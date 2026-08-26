@@ -75,9 +75,18 @@ enum InvoiceStatus {
 enum PaymentMethod {
   CASH
   BANK_TRANSFER
+  JAZZCASH
+  EASYPAISA
   CHEQUE
   CREDIT_CARD
   MOBILE_WALLET
+  OTHER
+}
+
+enum DocumentKind {
+  SALES_ORDER
+  INVOICE
+  PAYMENT_RECEIPT
 }
 
 enum LedgerEntryType {
@@ -126,6 +135,7 @@ model Workspace {
   invoices              Invoice[]
   payments              Payment[]
   ledgerEntries         LedgerEntry[]
+  documentSequences     DocumentSequence[]
 
   @@map("workspaces")
 }
@@ -261,20 +271,21 @@ model InventoryTransaction {
 }
 
 model SalesOrder {
-  id            String           @id @default(uuid())
-  workspaceId   String
-  customerId    String
-  orderNumber   String
-  status        SalesOrderStatus @default(DRAFT)
-  subtotal      Decimal          @default(0) @db.Decimal(15, 2)
-  discount      Decimal          @default(0) @db.Decimal(15, 2)
-  total         Decimal          @default(0) @db.Decimal(15, 2)
-  paidAmount    Decimal          @default(0) @db.Decimal(15, 2)
-  balanceAmount Decimal          @default(0) @db.Decimal(15, 2)
-  notes         String?
-  orderDate     DateTime         @default(now())
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  id             String           @id @default(uuid())
+  workspaceId    String
+  customerId     String
+  orderNumber    String
+  status         SalesOrderStatus @default(DRAFT)
+  subtotal       Decimal          @default(0) @db.Decimal(15, 2)
+  discount       Decimal          @default(0) @db.Decimal(15, 2)
+  total          Decimal          @default(0) @db.Decimal(15, 2)
+  paidAmount     Decimal          @default(0) @db.Decimal(15, 2)
+  balanceAmount  Decimal          @default(0) @db.Decimal(15, 2)
+  notes          String?
+  idempotencyKey String?
+  orderDate      DateTime         @default(now())
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
   workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   customer  Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
@@ -282,6 +293,8 @@ model SalesOrder {
   invoices  Invoice[]
 
   @@unique([workspaceId, orderNumber])
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, status])
   @@index([workspaceId, customerId])
   @@map("sales_orders")
 }
@@ -359,8 +372,12 @@ model Invoice {
   workspace  Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   customer   Customer    @relation(fields: [customerId], references: [id], onDelete: Restrict)
   salesOrder SalesOrder? @relation(fields: [salesOrderId], references: [id], onDelete: SetNull)
+  payments   Payment[]
 
   @@unique([workspaceId, invoiceNumber])
+  @@unique([salesOrderId])
+  @@index([workspaceId, status])
+  @@index([workspaceId, issuedAt])
   @@index([workspaceId, customerId])
   @@map("invoices")
 }
@@ -374,6 +391,7 @@ model Payment {
   workspaceId String
   customerId  String? // Null if paying a supplier
   supplierId  String? // Null if receiving from a customer
+  invoiceId   String?
   amount      Decimal       @db.Decimal(15, 2)
   method      PaymentMethod @default(CASH)
   reference   String? // Cheque number, transaction ID, etc.
@@ -385,11 +403,27 @@ model Payment {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   customer  Customer? @relation(fields: [customerId], references: [id], onDelete: Restrict)
   supplier  Supplier? @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  invoice   Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
 
   @@index([workspaceId])
   @@index([workspaceId, customerId])
   @@index([workspaceId, supplierId])
+  @@index([workspaceId, invoiceId])
   @@map("payments")
+}
+
+model DocumentSequence {
+  id          String       @id @default(uuid())
+  workspaceId String
+  kind        DocumentKind
+  nextNumber  Int          @default(1)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, kind])
+  @@map("document_sequences")
 }
 
 model LedgerEntry {

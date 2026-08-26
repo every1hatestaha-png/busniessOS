@@ -1,0 +1,23 @@
+import { z } from "zod";
+
+export const saleSchema = z.object({
+  customerId: z.string().uuid(),
+  items: z.array(z.object({
+    productId: z.string().uuid(),
+    quantity: z.number().int().positive(),
+    unitPrice: z.number().nonnegative().max(100000000),
+    discount: z.number().nonnegative().max(100000000),
+  })).min(1).max(100),
+  orderDiscount: z.number().nonnegative().max(100000000),
+  paidAmount: z.number().nonnegative().max(100000000),
+  notes: z.string().trim().max(500).default(""),
+  idempotencyKey: z.string().uuid(),
+}).superRefine((sale, context) => {
+  const ids = sale.items.map((item) => item.productId);
+  if (new Set(ids).size !== ids.length) context.addIssue({ code: "custom", path: ["items"], message: "Combine duplicate products into one line." });
+  sale.items.forEach((item, index) => {
+    if (item.discount > item.quantity * item.unitPrice) context.addIssue({ code: "custom", path: ["items", index, "discount"], message: "Discount exceeds line value." });
+  });
+});
+
+export type SaleInput = z.infer<typeof saleSchema>;

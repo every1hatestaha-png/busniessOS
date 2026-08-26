@@ -1,6 +1,14 @@
 import { SalesOrderForm } from "@/components/sales/sales-order-form";
-import { DEMO_CUSTOMERS, DEMO_PRODUCTS } from "@/lib/demo-data";
+import { requirePermission } from "@/lib/server/authorization";
+import { listCustomers } from "@/lib/server/customers";
+import { listProducts } from "@/lib/server/products";
 
-export default function NewSalePage() {
-  return <SalesOrderForm customers={DEMO_CUSTOMERS} products={DEMO_PRODUCTS} />;
+export default async function NewSalePage() {
+  const { workspaceId } = await requirePermission("sales.create");
+  const [customers, products] = await Promise.all([
+    listCustomers(workspaceId),
+    listProducts(),
+  ]);
+
+  return <SalesOrderForm customers={customers} products={products} />;
 }

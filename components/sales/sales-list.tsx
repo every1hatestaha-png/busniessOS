@@ -3,7 +3,6 @@
 import { useDeferredValue, useState } from "react";
 import Link from "next/link";
 import { Search, ShoppingCart } from "lucide-react";
-import type { Sale } from "@/lib/demo-data";
 import { formatDate, formatPKR } from "@/lib/utils";
 import { StatusBadge } from "@/components/business/status-badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,7 +11,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 const statuses = ["ALL", "DRAFT", "CONFIRMED", "PROCESSING", "COMPLETED", "CANCELLED"] as const;
 
-export function SalesList({ sales }: { sales: Sale[] }) {
+export type SaleListItem = {
+  id: string;
+  orderNumber: string;
+  customerName: string;
+  date: string;
+  items: number;
+  total: number;
+  paidAmount: number;
+  balanceAmount: number;
+  status: Exclude<(typeof statuses)[number], "ALL">;
+};
+
+export function SalesList({ sales }: { sales: SaleListItem[] }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<(typeof statuses)[number]>("ALL");
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
@@ -43,7 +54,7 @@ export function SalesList({ sales }: { sales: Sale[] }) {
           {filteredSales.length ? (
             <Table>
               <TableHeader><TableRow><TableHead>Order</TableHead><TableHead>Customer</TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Paid</TableHead><TableHead className="text-right">Balance</TableHead><TableHead className="text-right">Total</TableHead></TableRow></TableHeader>
-              <TableBody>{filteredSales.map((sale) => <TableRow key={sale.id}><TableCell><Link href={`/sales/${sale.id}`} className="font-semibold text-neutral-950 hover:underline">{sale.orderNumber}</Link><p className="text-xs text-neutral-500">{sale.items.length} line{sale.items.length === 1 ? "" : "s"}</p></TableCell><TableCell className="font-medium">{sale.customerName}</TableCell><TableCell className="text-neutral-600">{formatDate(sale.date)}</TableCell><TableCell><StatusBadge status={sale.status} /></TableCell><TableCell className="text-right text-neutral-600">{formatPKR(sale.paidAmount)}</TableCell><TableCell className="text-right text-neutral-600">{formatPKR(sale.balanceAmount)}</TableCell><TableCell className="text-right font-semibold">{formatPKR(sale.total)}</TableCell></TableRow>)}</TableBody>
+              <TableBody>{filteredSales.map((sale) => <TableRow key={sale.id}><TableCell><Link href={`/sales/${sale.id}`} className="font-semibold text-neutral-950 hover:underline">{sale.orderNumber}</Link><p className="text-xs text-neutral-500">{sale.items} line{sale.items === 1 ? "" : "s"}</p></TableCell><TableCell className="font-medium">{sale.customerName}</TableCell><TableCell className="text-neutral-600">{formatDate(sale.date)}</TableCell><TableCell><StatusBadge status={sale.status} /></TableCell><TableCell className="text-right text-neutral-600">{formatPKR(sale.paidAmount)}</TableCell><TableCell className="text-right text-neutral-600">{formatPKR(sale.balanceAmount)}</TableCell><TableCell className="text-right font-semibold">{formatPKR(sale.total)}</TableCell></TableRow>)}</TableBody>
             </Table>
           ) : (
             <div className="flex min-h-64 flex-col items-center justify-center text-center"><span className="rounded-full bg-neutral-100 p-3 text-neutral-500"><ShoppingCart className="h-5 w-5" /></span><p className="mt-3 font-semibold">No sales orders found</p><p className="mt-1 text-sm text-neutral-500">Try a different search or status.</p></div>

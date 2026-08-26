@@ -1,51 +1,56 @@
 "use client";
 
-import { useState } from "react";
+import { startTransition, useActionState } from "react";
 import Link from "next/link";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, CheckCircle2, Plus, Trash2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
-import type { Customer, Product } from "@/lib/demo-data";
+import { createSaleAction, type CreateSaleState } from "@/app/(dashboard)/sales/actions";
 import { calculateBalance, calculateOrderTotal, formatPKR } from "@/lib/utils";
+import { saleSchema, type SaleInput } from "@/lib/validation/sale";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
-const itemSchema = z.object({
-  productId: z.string().min(1, "Select a product"),
-  quantity: z.number().int("Use a whole quantity").min(1, "Minimum quantity is 1"),
-  unitPrice: z.number().min(0, "Price cannot be negative"),
-  discount: z.number().min(0, "Discount cannot be negative"),
-});
-
-const orderSchema = z.object({
-  customerId: z.string().min(1, "Select a customer"),
-  status: z.enum(["DRAFT", "CONFIRMED"]),
-  items: z.array(itemSchema).min(1, "Add at least one product"),
-  orderDiscount: z.number().min(0, "Discount cannot be negative"),
-  paidAmount: z.number().min(0, "Paid amount cannot be negative"),
-  notes: z.string().max(500, "Notes must be 500 characters or fewer"),
-}).superRefine((order, context) => {
+const orderSchema = saleSchema.superRefine((order, context) => {
   const gross = order.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
   const lineDiscounts = order.items.reduce((sum, item) => sum + item.discount, 0);
-  order.items.forEach((item, index) => {
-    if (item.discount > item.quantity * item.unitPrice) context.addIssue({ code: "custom", message: "Discount exceeds line value", path: ["items", index, "discount"] });
-  });
   if (order.orderDiscount > Math.max(0, gross - lineDiscounts)) context.addIssue({ code: "custom", message: "Discount exceeds the remaining order value", path: ["orderDiscount"] });
   const total = Math.max(0, gross - lineDiscounts - order.orderDiscount);
   if (order.paidAmount > total) context.addIssue({ code: "custom", message: "Paid amount cannot exceed the total", path: ["paidAmount"] });
 });
 
-type OrderFormValues = z.infer<typeof orderSchema>;
+type OrderFormInput = z.input<typeof orderSchema>;
+type OrderFormValues = z.output<typeof orderSchema>;
+
+type CustomerOption = {
+  id: string;
+  name: string;
+  companyName: string;
+  phone: string;
+  creditLimit: number;
+  currentBalance: number;
+  status: "ACTIVE" | "INACTIVE" | "BLACKLISTED";
+};
+
+type ProductOption = {
+  id: string;
+  name: string;
+  sku: string;
+  sellingPrice: number;
+  stockQuantity: number;
+  status: "ACTIVE" | "INACTIVE" | "ARCHIVED";
+  unit: string;
+};
 
 const fieldClass = "h-9 w-full rounded-lg border border-input bg-white px-3 text-sm outline-none transition focus:border-ring focus:ring-3 focus:ring-ring/50";
 
-export function SalesOrderForm({ customers, products }: { customers: Customer[]; products: Product[] }) {
-  const [submitted, setSubmitted] = useState(false);
-  const { control, register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<OrderFormValues>({
+export function SalesOrderForm({ customers, products }: { customers: CustomerOption[]; products: ProductOption[] }) {
+  const [actionState, submitAction, isPending] = useActionState(createSaleAction, {} as CreateSaleState);
+  const { control, register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<OrderFormInput, unknown, OrderFormValues>({
     resolver: zodResolver(orderSchema),
-    defaultValues: { customerId: "", status: "CONFIRMED", items: [{ productId: "", quantity: 1, unitPrice: 0, discount: 0 }], orderDiscount: 0, paidAmount: 0, notes: "" },
+    defaultValues: { customerId: "", items: [{ productId: "", quantity: 1, unitPrice: 0, discount: 0 }], orderDiscount: 0, paidAmount: 0, notes: "", idempotencyKey: "00000000-0000-0000-0000-000000000000" },
   });
   const { fields, append, remove } = useFieldArray({ control, name: "items" });
   const items = useWatch({ control, name: "items" }) ?? [];
@@ -64,32 +69,31 @@ export function SalesOrderForm({ customers, products }: { customers: Customer[];
     if (product) setValue(`items.${index}.unitPrice`, product.sellingPrice, { shouldValidate: true, shouldDirty: true });
   }
 
-  function submitDemoOrder() {
-    setSubmitted(true);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  function submitOrder(values: OrderFormValues) {
+    const idempotencyKey = values.idempotencyKey === "00000000-0000-0000-0000-000000000000" ? crypto.randomUUID() : values.idempotencyKey;
+    setValue("idempotencyKey", idempotencyKey);
+    const input: SaleInput = { ...values, idempotencyKey };
+    startTransition(() => submitAction(input));
   }
 
   return (
-    <form onSubmit={handleSubmit(submitDemoOrder)} className="mx-auto max-w-[1500px] space-y-6">
+    <form onSubmit={handleSubmit(submitOrder)} className="mx-auto max-w-[1500px] space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div><Link href="/sales" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-neutral-500 hover:text-neutral-950"><ArrowLeft className="h-4 w-4" /> Sales orders</Link><h1 className="text-2xl font-bold tracking-tight text-neutral-950 md:text-3xl">Create sales order</h1><p className="mt-1 text-sm text-neutral-500">Prepare a demo order and review totals before submitting.</p></div>
-        <div className="flex gap-2"><Button type="button" variant="outline" render={<Link href="/sales" />}>Cancel</Button><Button type="submit" disabled={isSubmitting}>Create demo order</Button></div>
+        <div><Link href="/sales" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-neutral-500 hover:text-neutral-950"><ArrowLeft className="h-4 w-4" /> Sales orders</Link><h1 className="text-2xl font-bold tracking-tight text-neutral-950 md:text-3xl">Create sales order</h1><p className="mt-1 text-sm text-neutral-500">Review the confirmed order before creating it.</p></div>
+        <div className="flex gap-2"><Button type="button" variant="outline" render={<Link href="/sales" />}>Cancel</Button><Button type="submit" disabled={isSubmitting || isPending}>{isPending ? "Creating..." : "Create order"}</Button></div>
       </div>
 
-      {submitted && <div role="status" className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" /><div><p className="font-semibold">Demo order validated successfully</p><p className="mt-0.5 text-sm text-emerald-700">This preview is local only. No order was saved and the demo data has not changed.</p></div></div>}
+      {actionState.error && <div role="alert" className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0" /><p className="text-sm font-medium">{actionState.error}</p></div>}
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-6">
           <Card className="shadow-none">
             <CardHeader><CardTitle>Customer and order</CardTitle></CardHeader>
-            <CardContent className="grid gap-5 md:grid-cols-2">
+            <CardContent className="grid gap-5">
               <Field label="Customer" error={errors.customerId?.message}>
                 <select {...register("customerId")} className={fieldClass} aria-invalid={Boolean(errors.customerId)}><option value="">Choose a customer</option>{customers.filter((customer) => customer.status === "ACTIVE").map((customer) => <option key={customer.id} value={customer.id}>{customer.companyName} · {customer.name}</option>)}</select>
               </Field>
-              <Field label="Order status" error={errors.status?.message}>
-                <select {...register("status")} className={fieldClass}><option value="CONFIRMED">Confirmed</option><option value="DRAFT">Draft</option></select>
-              </Field>
-              {selectedCustomer && <div className="rounded-lg bg-neutral-50 p-4 md:col-span-2"><div className="grid gap-3 text-sm sm:grid-cols-3"><div><p className="text-xs text-neutral-500">Contact</p><p className="mt-1 font-medium">{selectedCustomer.phone}</p></div><div><p className="text-xs text-neutral-500">Current balance</p><p className="mt-1 font-medium">{formatPKR(selectedCustomer.currentBalance)}</p></div><div><p className="text-xs text-neutral-500">Available credit</p><p className="mt-1 font-medium">{formatPKR(Math.max(0, selectedCustomer.creditLimit - selectedCustomer.currentBalance))}</p></div></div></div>}
+              {selectedCustomer && <div className="rounded-lg bg-neutral-50 p-4"><div className="grid gap-3 text-sm sm:grid-cols-3"><div><p className="text-xs text-neutral-500">Contact</p><p className="mt-1 font-medium">{selectedCustomer.phone || "No phone provided"}</p></div><div><p className="text-xs text-neutral-500">Current balance</p><p className="mt-1 font-medium">{formatPKR(selectedCustomer.currentBalance)}</p></div><div><p className="text-xs text-neutral-500">Available credit</p><p className="mt-1 font-medium">{formatPKR(Math.max(0, selectedCustomer.creditLimit - selectedCustomer.currentBalance))}</p></div></div></div>}
             </CardContent>
           </Card>
 
@@ -113,8 +117,8 @@ export function SalesOrderForm({ customers, products }: { customers: Customer[];
           <CardHeader><CardTitle>Order summary</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-3 text-sm"><SummaryRow label="Subtotal" value={formatPKR(subtotal)} /><SummaryRow label="Line discounts" value={`- ${formatPKR(lineDiscounts)}`} /><SummaryRow label="Order discount" value={`- ${formatPKR(orderDiscount)}`} /><div className="flex items-center justify-between border-t pt-4 text-base"><span className="font-semibold">Total</span><span className="text-xl font-bold">{formatPKR(total)}</span></div><SummaryRow label="Paid" value={formatPKR(paidAmount)} /><div className="flex items-center justify-between rounded-lg bg-neutral-950 p-4 text-white"><span className="font-medium">Balance due</span><span className="text-lg font-bold">{formatPKR(balance)}</span></div></div>
-            <p className="border-t pt-4 text-xs leading-5 text-neutral-500">Demo mode: submitting validates this order in your browser only. It does not persist, reserve stock, or create an invoice.</p>
-            <Button type="submit" className="w-full" disabled={isSubmitting}>Create demo order</Button>
+            <p className="border-t pt-4 text-xs leading-5 text-neutral-500">Creating this confirmed order updates stock, customer balance, and creates an invoice.</p>
+            <Button type="submit" className="w-full" disabled={isSubmitting || isPending}>{isPending ? "Creating..." : "Create confirmed order"}</Button>
           </CardContent>
         </Card>
       </div>
