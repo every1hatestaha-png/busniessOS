@@ -25,7 +25,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       </div>
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_360px] print:block">
-        <article className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm print:rounded-none print:border-0 print:shadow-none">
+        <article className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-none print:rounded-none print:border-0">
           <header className="border-b border-neutral-200 p-6 sm:p-8">
             <div className="flex flex-col justify-between gap-6 sm:flex-row">
               <div><p className="text-xs font-bold uppercase tracking-[0.2em] text-neutral-400">Invoice</p><h2 className="mt-2 text-2xl font-bold">{workspace.name}</h2><div className="mt-2 space-y-0.5 text-sm text-neutral-500">{workspace.address && <p>{workspace.address}</p>}<p>{[workspace.city, workspace.country].filter(Boolean).join(", ")}</p>{workspace.phone && <p>{workspace.phone}</p>}{workspace.email && <p>{workspace.email}</p>}</div></div>

@@ -8,8 +8,9 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/s
 import { Sidebar } from "@/components/layout/sidebar";
 import { GlobalSearch } from "@/components/search/global-search";
 import type { SearchResult } from "@/lib/search";
+import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 
-export function TopNav({ workspaceName, searchResults }: { workspaceName: string; searchResults: SearchResult[] }) {
+export function TopNav({ workspaceName, workspaceId, workspaces, searchResults }: { workspaceName: string; workspaceId: string; workspaces: Array<{ workspaceId: string; workspace: { name: string } }>; searchResults: SearchResult[] }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
@@ -32,6 +33,7 @@ export function TopNav({ workspaceName, searchResults }: { workspaceName: string
         <GlobalSearch results={searchResults} className="mx-auto hidden max-w-xl lg:block" />
 
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
+          <WorkspaceSwitcher activeId={workspaceId} workspaces={workspaces} />
           <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileSearchOpen((open) => !open)} aria-label={mobileSearchOpen ? "Close search" : "Open search"}>
             {mobileSearchOpen ? <X /> : <Search />}
           </Button>

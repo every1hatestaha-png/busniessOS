@@ -2,7 +2,7 @@ import "server-only";
 
 import type { DocumentKind, Prisma } from "@prisma/client";
 
-const prefixes: Record<DocumentKind, string> = { SALES_ORDER: "SO", INVOICE: "INV", PAYMENT_RECEIPT: "PAY" };
+const prefixes: Record<DocumentKind, string> = { SALES_ORDER: "SO", PURCHASE_ORDER: "PO", INVOICE: "INV", PAYMENT_RECEIPT: "PAY" };
 
 export async function nextDocumentNumber(tx: Prisma.TransactionClient, workspaceId: string, kind: DocumentKind) {
   const sequence = await tx.documentSequence.upsert({

@@ -1,0 +1,3 @@
+import { apiData, apiHandler, requireApiContext } from "@/lib/server/api";
+import { db } from "@/lib/server/db";
+export const GET = apiHandler(async (request: Request) => { const context = await requireApiContext("workspace.manage"); const url = new URL(request.url); const cursor = url.searchParams.get("cursor"); const rows = await db.auditLog.findMany({ where: { workspaceId: context.workspaceId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 51, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}), include: { actor: { select: { email: true, firstName: true, lastName: true } } } }); const nextCursor = rows.length > 50 ? rows[49].id : null; return apiData({ items: rows.slice(0, 50), nextCursor }); });

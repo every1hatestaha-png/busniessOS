@@ -30,7 +30,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-6">
-      <section className="overflow-hidden rounded-2xl bg-neutral-950 px-5 py-6 text-white md:px-7">
+      <section className="overflow-hidden border bg-neutral-950 px-5 py-6 text-white md:px-7">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Wednesday, 26 August</p>

@@ -85,6 +85,7 @@ enum PaymentMethod {
 
 enum DocumentKind {
   SALES_ORDER
+  PURCHASE_ORDER
   INVOICE
   PAYMENT_RECEIPT
 }
@@ -96,6 +97,7 @@ enum LedgerEntryType {
   PAYMENT_RECEIVED
   PAYMENT_MADE
   ADJUSTMENT
+  REVERSAL
 }
 
 enum InventoryTransactionType {
@@ -105,6 +107,14 @@ enum InventoryTransactionType {
   RETURN_IN
   RETURN_OUT
   ADJUSTMENT
+  SALE_CANCELLATION
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
 }
 
 // ----------------------------------------
@@ -136,6 +146,8 @@ model Workspace {
   payments              Payment[]
   ledgerEntries         LedgerEntry[]
   documentSequences     DocumentSequence[]
+  auditLogs             AuditLog[]
+  invitations           WorkspaceInvitation[]
 
   @@map("workspaces")
 }
@@ -149,7 +161,9 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships WorkspaceMember[]
+  memberships     WorkspaceMember[]
+  auditLogs       AuditLog[]
+  invitationsSent WorkspaceInvitation[] @relation("InvitationSender")
 
   @@map("users")
 }
@@ -286,6 +300,8 @@ model SalesOrder {
   orderDate      DateTime         @default(now())
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
+  cancelledAt    DateTime?
+  cancelledById  String?
 
   workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   customer  Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
@@ -307,6 +323,8 @@ model SalesOrderItem {
   unitPrice    Decimal  @db.Decimal(15, 2)
   discount     Decimal  @default(0) @db.Decimal(15, 2)
   totalPrice   Decimal  @db.Decimal(15, 2)
+  productName  String?
+  productSku   String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -318,22 +336,27 @@ model SalesOrderItem {
 }
 
 model PurchaseOrder {
-  id          String              @id @default(uuid())
-  workspaceId String
-  supplierId  String
-  orderNumber String
-  status      PurchaseOrderStatus @default(DRAFT)
-  totalAmount Decimal             @default(0) @db.Decimal(15, 2)
-  notes       String?
-  orderDate   DateTime            @default(now())
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  id             String              @id @default(uuid())
+  workspaceId    String
+  supplierId     String
+  orderNumber    String
+  status         PurchaseOrderStatus @default(DRAFT)
+  totalAmount    Decimal             @default(0) @db.Decimal(15, 2)
+  paidAmount     Decimal             @default(0) @db.Decimal(15, 2)
+  balanceAmount  Decimal             @default(0) @db.Decimal(15, 2)
+  idempotencyKey String?
+  notes          String?
+  orderDate      DateTime            @default(now())
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
 
   workspace Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   supplier  Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   items     PurchaseOrderItem[]
 
   @@unique([workspaceId, orderNumber])
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, status])
   @@index([workspaceId, supplierId])
   @@map("purchase_orders")
 }
@@ -345,6 +368,8 @@ model PurchaseOrderItem {
   quantity        Int
   unitCost        Decimal  @db.Decimal(15, 2)
   totalCost       Decimal  @db.Decimal(15, 2)
+  productName     String?
+  productSku      String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -387,28 +412,34 @@ model Invoice {
 // ----------------------------------------
 
 model Payment {
-  id          String        @id @default(uuid())
-  workspaceId String
-  customerId  String? // Null if paying a supplier
-  supplierId  String? // Null if receiving from a customer
-  invoiceId   String?
-  amount      Decimal       @db.Decimal(15, 2)
-  method      PaymentMethod @default(CASH)
-  reference   String? // Cheque number, transaction ID, etc.
-  notes       String?
-  paymentDate DateTime      @default(now())
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id           String        @id @default(uuid())
+  workspaceId  String
+  customerId   String? // Null if paying a supplier
+  supplierId   String? // Null if receiving from a customer
+  invoiceId    String?
+  amount       Decimal       @db.Decimal(15, 2)
+  method       PaymentMethod @default(CASH)
+  reference    String? // Cheque number, transaction ID, etc.
+  notes        String?
+  paymentDate  DateTime      @default(now())
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  isReversed   Boolean       @default(false)
+  reversedAt   DateTime?
+  reversalOfId String?
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  customer  Customer? @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  supplier  Supplier? @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  invoice   Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  workspace  Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  supplier   Supplier? @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  invoice    Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  reversalOf Payment?  @relation("PaymentReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversals  Payment[] @relation("PaymentReversal")
 
   @@index([workspaceId])
   @@index([workspaceId, customerId])
   @@index([workspaceId, supplierId])
   @@index([workspaceId, invoiceId])
+  @@index([reversalOfId])
   @@map("payments")
 }
 
@@ -447,4 +478,43 @@ model LedgerEntry {
   @@index([workspaceId, customerId])
   @@index([workspaceId, supplierId])
   @@map("ledger_entries")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  workspaceId String
+  actorId     String?
+  action      String
+  entityType  String
+  entityId    String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actor     User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, entityType, entityId])
+  @@map("audit_logs")
+}
+
+model WorkspaceInvitation {
+  id          String           @id @default(uuid())
+  workspaceId String
+  email       String
+  role        Role             @default(STAFF)
+  token       String           @unique
+  status      InvitationStatus @default(PENDING)
+  invitedById String
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invitedBy User      @relation("InvitationSender", fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([email, status])
+  @@map("workspace_invitations")
 }

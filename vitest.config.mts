@@ -11,6 +11,7 @@ export default defineConfig({
     ],
   },
   test: {
+    fileParallelism: !runIntegrationTests,
     testTimeout: runIntegrationTests ? 30_000 : 5_000,
     include: [
       "tests/unit/**/*.test.ts",

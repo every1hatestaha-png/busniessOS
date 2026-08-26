@@ -4,6 +4,7 @@ import type { Role } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { z, ZodError, type ZodType } from "zod";
 
 import { canPerformAction, type Permission } from "@/lib/server/authorization";
@@ -66,6 +67,7 @@ export async function requireApiContext(permission?: Permission): Promise<ApiCon
       firstName: true,
       lastName: true,
       memberships: {
+        where: (await cookies()).get("businessos_workspace")?.value ? { workspaceId: (await cookies()).get("businessos_workspace")!.value } : undefined,
         orderBy: { createdAt: "asc" },
         take: 1,
         select: {

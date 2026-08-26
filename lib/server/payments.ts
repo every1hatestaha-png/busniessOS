@@ -5,6 +5,7 @@ import { db } from "@/lib/server/db";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";
 import type { ServiceContext } from "@/lib/server/sales";
 import { paymentSchema, type PaymentInput } from "@/lib/validation/payment";
+import { writeAudit } from "@/lib/server/audit";
 
 export class PaymentDomainError extends Error {}
 
@@ -29,6 +30,7 @@ export async function recordPayment(context: ServiceContext, input: PaymentInput
       await tx.invoice.update({ where: { id: invoice.id }, data: { paidAmount, status: paidAmount.equals(invoice.amount) ? "PAID" : "PARTIALLY_PAID" } });
       if (invoice.salesOrderId) await tx.salesOrder.update({ where: { id: invoice.salesOrderId }, data: { paidAmount: { increment: amount }, balanceAmount: { decrement: amount } } });
     }
+    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "customer.payment_recorded", entityType: "Payment", entityId: payment.id, metadata: { amount: data.amount } });
     return { id: payment.id };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
 }

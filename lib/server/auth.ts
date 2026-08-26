@@ -3,6 +3,7 @@ import "server-only";
 import { cache } from "react";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 
 import { db } from "@/lib/server/db";
 
@@ -39,8 +40,9 @@ export const getCurrentUser = cache(async () => {
 
 export const getCurrentWorkspace = cache(async () => {
   const user = await getCurrentUser();
+  const activeWorkspaceId = (await cookies()).get("businessos_workspace")?.value;
   const membership = await db.workspaceMember.findFirst({
-    where: { userId: user.id },
+    where: { userId: user.id, ...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}) },
     orderBy: { createdAt: "asc" },
     include: { workspace: true },
   });
@@ -54,6 +56,11 @@ export const getCurrentWorkspace = cache(async () => {
     role: membership.role,
   };
 });
+
+export async function listCurrentUserWorkspaces() {
+  const user = await getCurrentUser();
+  return db.workspaceMember.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" }, select: { workspaceId: true, role: true, workspace: { select: { name: true } } } });
+}
 
 export async function requireWorkspace() {
   const context = await getCurrentWorkspace();

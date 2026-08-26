@@ -1,0 +1,8 @@
+import { z } from "zod";
+import { ApiError, apiData, apiHandler, parseApiBody, requireApiContext } from "@/lib/server/api";
+import { deleteSupplier, getSupplier, SupplierDomainError, updateSupplier } from "@/lib/server/suppliers";
+import { supplierSchema } from "@/lib/validation/supplier";
+const paramsSchema = z.object({ id: z.uuid() });
+export const GET = apiHandler(async (_request: Request, { params }: { params: Promise<{ id: string }> }) => { const context = await requireApiContext("business.read"); const { id } = paramsSchema.parse(await params); const row = await getSupplier(context.workspaceId, id); if (!row) throw new ApiError(404, "NOT_FOUND", "Supplier not found."); return apiData(row); });
+export const PATCH = apiHandler(async (request: Request, { params }: { params: Promise<{ id: string }> }) => { const context = await requireApiContext("financial.manage"); const { id } = paramsSchema.parse(await params); try { return apiData(await updateSupplier({ ...context, userId: context.user.id }, id, await parseApiBody(request, supplierSchema))); } catch (error) { if (error instanceof SupplierDomainError) throw new ApiError(422, "SUPPLIER_ERROR", error.message); throw error; } });
+export const DELETE = apiHandler(async (_request: Request, { params }: { params: Promise<{ id: string }> }) => { const context = await requireApiContext("financial.manage"); const { id } = paramsSchema.parse(await params); try { await deleteSupplier({ ...context, userId: context.user.id }, id); return new Response(null, { status: 204 }); } catch (error) { if (error instanceof SupplierDomainError) throw new ApiError(422, "SUPPLIER_ERROR", error.message); throw error; } });

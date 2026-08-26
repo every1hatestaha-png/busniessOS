@@ -1,0 +1,66 @@
+import "server-only";
+
+import { Prisma } from "@prisma/client";
+import { writeAudit } from "@/lib/server/audit";
+import { db } from "@/lib/server/db";
+import { nextDocumentNumber } from "@/lib/server/document-numbers";
+import type { ServiceContext } from "@/lib/server/sales";
+import { supplierPaymentSchema, supplierSchema, type SupplierInput, type SupplierPaymentInput } from "@/lib/validation/supplier";
+
+export class SupplierDomainError extends Error {}
+
+export async function listSuppliers(workspaceId: string) {
+  const rows = await db.supplier.findMany({ where: { workspaceId }, orderBy: { name: "asc" }, include: { _count: { select: { purchaseOrders: true } }, purchaseOrders: { select: { totalAmount: true } } } });
+  return rows.map((row) => ({ ...row, currentBalance: Number(row.currentBalance), totalPurchases: row.purchaseOrders.reduce((sum, order) => sum + Number(order.totalAmount), 0), purchases: undefined }));
+}
+
+export async function getSupplier(workspaceId: string, id: string) {
+  const row = await db.supplier.findFirst({ where: { id, workspaceId }, include: { ledgerEntries: { orderBy: [{ date: "desc" }, { createdAt: "desc" }], take: 100 }, payments: { orderBy: { paymentDate: "desc" }, take: 100 } } });
+  if (!row) return null;
+  return { ...row, currentBalance: Number(row.currentBalance), ledgerEntries: row.ledgerEntries.map((entry) => ({ ...entry, debit: Number(entry.debit), credit: Number(entry.credit) })), payments: row.payments.map((payment) => ({ ...payment, amount: Number(payment.amount) })) };
+}
+
+export async function createSupplier(context: ServiceContext, input: SupplierInput) {
+  const data = supplierSchema.parse(input);
+  return db.$transaction(async (tx) => {
+    const supplier = await tx.supplier.create({ data: { workspaceId: context.workspaceId, ...data, companyName: data.companyName || null, phone: data.phone || null, email: data.email || null, address: data.address || null, city: data.city || null, notes: data.notes || null } });
+    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "supplier.created", entityType: "Supplier", entityId: supplier.id });
+    return supplier;
+  });
+}
+
+export async function updateSupplier(context: ServiceContext, id: string, input: SupplierInput) {
+  const data = supplierSchema.parse(input);
+  return db.$transaction(async (tx) => {
+    const found = await tx.supplier.findFirst({ where: { id, workspaceId: context.workspaceId }, select: { id: true } });
+    if (!found) throw new SupplierDomainError("Supplier not found.");
+    const supplier = await tx.supplier.update({ where: { id }, data: { ...data, companyName: data.companyName || null, phone: data.phone || null, email: data.email || null, address: data.address || null, city: data.city || null, notes: data.notes || null } });
+    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "supplier.updated", entityType: "Supplier", entityId: id });
+    return supplier;
+  });
+}
+
+export async function deleteSupplier(context: ServiceContext, id: string) {
+  return db.$transaction(async (tx) => {
+    const supplier = await tx.supplier.findFirst({ where: { id, workspaceId: context.workspaceId }, include: { _count: { select: { purchaseOrders: true, payments: true, ledgerEntries: true } } } });
+    if (!supplier) throw new SupplierDomainError("Supplier not found.");
+    if (supplier._count.purchaseOrders || supplier._count.payments || supplier._count.ledgerEntries || !supplier.currentBalance.isZero()) throw new SupplierDomainError("Suppliers with financial history cannot be deleted.");
+    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "supplier.deleted", entityType: "Supplier", entityId: id });
+    await tx.supplier.delete({ where: { id } });
+  });
+}
+
+export async function recordSupplierPayment(context: ServiceContext, supplierId: string, input: SupplierPaymentInput) {
+  const data = supplierPaymentSchema.parse(input); const amount = new Prisma.Decimal(data.amount);
+  return db.$transaction(async (tx) => {
+    const supplier = await tx.supplier.findFirst({ where: { id: supplierId, workspaceId: context.workspaceId }, select: { id: true, currentBalance: true } });
+    if (!supplier) throw new SupplierDomainError("Supplier not found.");
+    if (amount.greaterThan(supplier.currentBalance)) throw new SupplierDomainError("Payment cannot exceed supplier payable.");
+    const number = await nextDocumentNumber(tx, context.workspaceId, "PAYMENT_RECEIPT");
+    const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, supplierId, amount, method: data.method, reference: data.reference || number, notes: data.notes || null, paymentDate: data.paymentDate } });
+    await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, supplierId, type: "PAYMENT_MADE", debit: amount, description: `Supplier payment ${number}`, referenceId: payment.id, date: data.paymentDate } });
+    await tx.supplier.update({ where: { id: supplierId }, data: { currentBalance: { decrement: amount } } });
+    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "supplier.payment_recorded", entityType: "Payment", entityId: payment.id, metadata: { supplierId, amount: data.amount } });
+    return { id: payment.id };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}

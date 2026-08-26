@@ -22,7 +22,7 @@ export async function createSaleAction(
 
   let saleId: string;
   try {
-    const sale = await createSale(context, parsed.data);
+    const sale = await createSale({ ...context, userId: context.user.id }, parsed.data);
     saleId = sale.id;
   } catch (error) {
     if (error instanceof SaleDomainError) {
