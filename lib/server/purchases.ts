@@ -46,3 +46,25 @@ export async function listPurchases(workspaceId: string) {
   const rows = await db.purchaseOrder.findMany({ where: { workspaceId }, include: { supplier: { select: { name: true, companyName: true } }, _count: { select: { items: true } } }, orderBy: { orderDate: "desc" } });
   return rows.map((row) => ({ id: row.id, orderNumber: row.orderNumber, supplierName: row.supplier.companyName ?? row.supplier.name, date: row.orderDate.toISOString(), status: row.status, items: row._count.items, total: Number(row.totalAmount), paid: Number(row.paidAmount), balance: Number(row.balanceAmount) }));
 }
+
+export async function getPurchase(workspaceId: string, id: string) {
+  const row = await db.purchaseOrder.findFirst({ where: { id, workspaceId }, include: { supplier: true, items: { include: { product: { select: { name: true, sku: true } } } } } });
+  if (!row) return null;
+  const items = row.items.map((item) => ({ id: item.id, productId: item.productId, productName: item.productName ?? item.product.name, sku: item.productSku ?? item.product.sku ?? "", quantity: item.quantity, unitCost: Number(item.unitCost), total: Number(item.totalCost) }));
+  const subtotal = items.reduce((sum, item) => sum + item.total, 0);
+  const total = Number(row.totalAmount);
+  return {
+    id: row.id,
+    orderNumber: row.orderNumber,
+    date: row.orderDate.toISOString(),
+    status: row.status,
+    notes: row.notes ?? "",
+    subtotal,
+    discount: Math.max(0, subtotal - total),
+    total,
+    paid: Number(row.paidAmount),
+    outstanding: Number(row.balanceAmount),
+    supplier: { id: row.supplier.id, name: row.supplier.name, companyName: row.supplier.companyName ?? row.supplier.name, phone: row.supplier.phone ?? "", currentBalance: Number(row.supplier.currentBalance) },
+    items,
+  };
+}
