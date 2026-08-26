@@ -4,14 +4,17 @@ import { AlertTriangle, CircleDollarSign, CreditCard, Users } from "lucide-react
 import { MetricCard } from "@/components/business/metric-card";
 import { PageHeader } from "@/components/business/page-header";
 import { StatusBadge } from "@/components/business/status-badge";
+import { RecordPaymentForm } from "@/components/payments/record-payment-form";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { requireWorkspace } from "@/lib/server/auth";
 import { getKhataSummary } from "@/lib/server/khata";
+import { canPerformAction } from "@/lib/server/authorization";
 import { formatPKR } from "@/lib/utils";
 
 export default async function KhataPage() {
-  const { workspaceId } = await requireWorkspace();
+  const { workspaceId, role } = await requireWorkspace();
   const summary = await getKhataSummary(workspaceId);
+  const paymentCustomers = summary.customers.filter((customer) => customer.outstanding > 0).map((customer) => ({ id: customer.id, name: customer.name, balance: customer.outstanding }));
 
   return (
     <div className="space-y-6">
@@ -23,7 +26,7 @@ export default async function KhataPage() {
         <MetricCard label="Overdue" value={formatPKR(summary.overdueAmount)} detail="Past-due invoice balances" icon={AlertTriangle} />
       </div>
 
-      <div>
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
           <div className="border-b border-neutral-200 px-4 py-4"><h2 className="font-semibold">Customer credit position</h2><p className="mt-1 text-sm text-neutral-500">Sales, collections, outstanding balance, and approved credit.</p></div>
           {summary.customers.length > 0 ? (
@@ -48,7 +51,8 @@ export default async function KhataPage() {
           ) : <p className="px-4 py-12 text-center text-sm text-neutral-500">No customer accounts have been added yet.</p>}
         </div>
 
+        </div>
+        <div className="rounded-xl border border-neutral-200 bg-white p-5 xl:sticky xl:top-6"><div className="mb-5"><h2 className="font-semibold">Record payment</h2><p className="mt-1 text-sm text-neutral-500">Unallocated receipts reduce the customer account balance.</p></div>{canPerformAction(role, "payments.record") ? <RecordPaymentForm customers={paymentCustomers} /> : <p className="text-sm text-neutral-500">Your role cannot record payments.</p>}</div>
       </div>
-    </div>
   );
 }
