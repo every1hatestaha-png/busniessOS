@@ -1,36 +1,127 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# BusinessOS
 
-## Getting Started
+BusinessOS is a multi-tenant business operations workspace for Pakistani wholesalers and distributors. The local MVP brings sales, customer credit, khata, inventory, purchasing, invoices, suppliers, onboarding, search, and an AI-style business assistant into one responsive interface.
 
-First, run the development server:
+## Current Architecture
+
+- Next.js App Router with server pages and focused client components for interactive tables and forms
+- TypeScript in strict mode
+- Tailwind CSS and shadcn/Base UI primitives
+- Clerk provider and route-protection structure retained for production authentication
+- Prisma/PostgreSQL schema with workspace-scoped business records
+- Centralized in-memory demo domain in `lib/demo-data.ts`
+- Financial and business calculations in `lib/utils.ts`
+- Provider-independent assistant contract in `lib/business-assistant.ts`
+
+The local MVP is intentionally read-only. Forms calculate and validate realistic workflows, then show demo confirmations without writing to a database.
+
+## Tech Stack
+
+- Next.js 16 and React 19
+- TypeScript 5
+- Tailwind CSS 4
+- shadcn/ui with Base UI
+- Clerk
+- Prisma and PostgreSQL
+- React Hook Form and Zod
+- Lucide icons
+
+## Demo Mode
+
+Demo mode requires no database or third-party API credentials. All screens use a single realistic Pakistani auto-parts dataset containing customers, products, sales, purchases, invoices, payments, suppliers, ledger entries, and stock movements.
+
+Demo writes are deliberately not persisted. New sale, customer, product, onboarding, stock adjustment, settings, and assistant action flows clearly state this behavior.
+
+## Setup
+
+```bash
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000`. The root route redirects to `/dashboard`.
+
+To exercise production authentication or database tooling, copy the required values from `.env.example` into a local `.env` file. Never commit real credentials.
+
+## Environment Variables
+
+```dotenv
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+CLERK_SECRET_KEY=
+NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/business_os
+```
+
+- Clerk keys are required only when enabling live authentication.
+- `DATABASE_URL` is required for database validation, migrations, and live data access.
+- Gemini, WhatsApp, payments, and courier credentials are not used by this MVP.
+- No secret is exposed from a client component.
+
+## Database Architecture
+
+`prisma/schema.prisma` defines 14 models. `Workspace` is the tenant root and business entities carry `workspaceId`. Membership is resolved through `WorkspaceMember`; future server-side repositories must derive the active workspace from the authenticated user and must never accept a client-supplied workspace ID as authorization.
+
+Money is represented with PostgreSQL `Decimal(15,2)` fields. The schema covers users, workspaces, customers, suppliers, products, inventory transactions, sales and purchase orders with line items, invoices, payments, and ledger entries.
+
+No real database connection, migrations, or writes are enabled in demo mode.
+
+## AI Architecture
+
+`BusinessAssistantService` separates the UI from the future model provider. `MockBusinessAssistantService` currently answers deterministic questions from centralized demo data and performs basic English/Roman Urdu intent matching for:
+
+- Today and monthly sales context
+- Customer outstanding balances
+- Low-stock and product availability questions
+- Top purchasing customer
+- Payments received this month
+- Overdue invoices
+
+Write-like requests produce proposed actions only. For example, a payment-recording request returns a confirmation card with customer and amount. Confirming remains a non-persisted preview. A future Gemini implementation should use server-only credentials, tenant-scoped tools, explicit authorization, validation, confirmation, and audit logging.
+
+## Routes
+
+| Route | Purpose |
+| --- | --- |
+| `/dashboard` | Business overview and alerts |
+| `/sales` | Searchable and filterable sales register |
+| `/sales/new` | Multi-line sales order workflow |
+| `/sales/[id]` | Sales order detail |
+| `/customers` | Customer and credit directory |
+| `/customers/new` | Validated customer form |
+| `/customers/[id]` | Customer overview, khata, orders, payments, and invoices |
+| `/khata` | Receivables and customer credit usage |
+| `/inventory` | Product and stock register |
+| `/inventory/new` | Validated product form |
+| `/inventory/[id]` | Product detail, stock movements, and adjustment preview |
+| `/suppliers` | Supplier register |
+| `/purchases` | Purchase order register |
+| `/invoices` | Invoice and collection register |
+| `/settings` | Business, users, preferences, invoices, security, and integrations |
+| `/onboarding` | Validated business setup |
+| `/ai` | Demo-backed BusinessOS assistant |
+
+Global search in the top navigation covers customers, products, orders, and invoices and links to the relevant records.
+
+## Commands
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run build
+npm run start
+npm run lint
+npx tsc --noEmit
+npx prisma format
+npx prisma validate
+npx prisma generate
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Future Roadmap
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Add Clerk sign-in, user synchronization, workspace selection, invitations, and role enforcement.
+2. Add tenant-safe server repositories and transactional write workflows.
+3. Create migrations and seed tooling for PostgreSQL.
+4. Add payment allocation, invoice printing, returns, purchase receiving, and ledger reconciliation.
+5. Add audited Gemini tools with explicit user confirmation for every write action.
+6. Add tests for money calculations, stock movements, ledger posting, permissions, and tenant isolation.
+7. Add opt-in WhatsApp, payments, courier, and accounting integrations.

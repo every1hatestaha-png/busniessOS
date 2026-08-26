@@ -1,0 +1,400 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ----------------------------------------
+// ENUMS
+// ----------------------------------------
+
+enum Role {
+  OWNER
+  ADMIN
+  MANAGER
+  STAFF
+}
+
+enum ProductUnit {
+  PIECE
+  BOX
+  CARTON
+  KG
+  SET
+  LITER
+  METER
+}
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+  BLACKLISTED
+}
+
+enum SalesOrderStatus {
+  DRAFT
+  CONFIRMED
+  PROCESSING
+  COMPLETED
+  CANCELLED
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  ORDERED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CHEQUE
+  CREDIT_CARD
+  MOBILE_WALLET
+}
+
+enum LedgerEntryType {
+  OPENING_BALANCE
+  SALE
+  PURCHASE
+  PAYMENT_RECEIVED
+  PAYMENT_MADE
+  ADJUSTMENT
+}
+
+enum InventoryTransactionType {
+  OPENING_STOCK
+  PURCHASE
+  SALE
+  RETURN_IN
+  RETURN_OUT
+  ADJUSTMENT
+}
+
+// ----------------------------------------
+// TENANT & AUTH MODELS
+// ----------------------------------------
+
+model Workspace {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members               WorkspaceMember[]
+  customers             Customer[]
+  suppliers             Supplier[]
+  products              Product[]
+  inventoryTransactions InventoryTransaction[]
+  salesOrders           SalesOrder[]
+  purchaseOrders        PurchaseOrder[]
+  invoices              Invoice[]
+  payments              Payment[]
+  ledgerEntries         LedgerEntry[]
+
+  @@map("workspaces")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  clerkId   String   @unique
+  email     String   @unique
+  firstName String?
+  lastName  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships WorkspaceMember[]
+
+  @@map("users")
+}
+
+model WorkspaceMember {
+  id          String   @id @default(uuid())
+  workspaceId String
+  userId      String
+  role        Role     @default(STAFF)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+  @@map("workspace_members")
+}
+
+// ----------------------------------------
+// CORE BUSINESS ENTITIES
+// ----------------------------------------
+
+model Customer {
+  id             String         @id @default(uuid())
+  workspaceId    String
+  name           String
+  companyName    String?
+  phone          String?
+  email          String?
+  address        String?
+  city           String?
+  creditLimit    Decimal        @default(0) @db.Decimal(15, 2)
+  currentBalance Decimal        @default(0) @db.Decimal(15, 2)
+  notes          String?
+  status         CustomerStatus @default(ACTIVE)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  salesOrders   SalesOrder[]
+  invoices      Invoice[]
+  payments      Payment[]
+  ledgerEntries LedgerEntry[]
+
+  @@index([workspaceId])
+  @@map("customers")
+}
+
+model Supplier {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  name           String
+  companyName    String?
+  phone          String?
+  email          String?
+  address        String?
+  city           String?
+  currentBalance Decimal  @default(0) @db.Decimal(15, 2)
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  purchaseOrders PurchaseOrder[]
+  payments       Payment[]
+  ledgerEntries  LedgerEntry[]
+
+  @@index([workspaceId])
+  @@map("suppliers")
+}
+
+model Product {
+  id            String        @id @default(uuid())
+  workspaceId   String
+  name          String
+  sku           String?
+  description   String?
+  category      String?
+  costPrice     Decimal       @default(0) @db.Decimal(15, 2)
+  sellingPrice  Decimal       @default(0) @db.Decimal(15, 2)
+  stockQuantity Int           @default(0)
+  reorderLevel  Int           @default(0)
+  unit          ProductUnit   @default(PIECE)
+  status        ProductStatus @default(ACTIVE)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  workspace             Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  inventoryTransactions InventoryTransaction[]
+  salesOrderItems       SalesOrderItem[]
+  purchaseOrderItems    PurchaseOrderItem[]
+
+  @@index([workspaceId])
+  @@index([workspaceId, sku])
+  @@map("products")
+}
+
+// ----------------------------------------
+// INVENTORY & TRANSACTIONS
+// ----------------------------------------
+
+model InventoryTransaction {
+  id              String                   @id @default(uuid())
+  workspaceId     String
+  productId       String
+  type            InventoryTransactionType
+  quantityChanged Int
+  unitCost        Decimal?                 @db.Decimal(15, 2)
+  reference       String? // Order ID or adjustment reason
+  createdAt       DateTime                 @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId, productId])
+  @@map("inventory_transactions")
+}
+
+model SalesOrder {
+  id            String           @id @default(uuid())
+  workspaceId   String
+  customerId    String
+  orderNumber   String
+  status        SalesOrderStatus @default(DRAFT)
+  subtotal      Decimal          @default(0) @db.Decimal(15, 2)
+  discount      Decimal          @default(0) @db.Decimal(15, 2)
+  total         Decimal          @default(0) @db.Decimal(15, 2)
+  paidAmount    Decimal          @default(0) @db.Decimal(15, 2)
+  balanceAmount Decimal          @default(0) @db.Decimal(15, 2)
+  notes         String?
+  orderDate     DateTime         @default(now())
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer  Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  items     SalesOrderItem[]
+  invoices  Invoice[]
+
+  @@index([workspaceId])
+  @@index([workspaceId, customerId])
+  @@map("sales_orders")
+}
+
+model SalesOrderItem {
+  id           String   @id @default(uuid())
+  salesOrderId String
+  productId    String
+  quantity     Int
+  unitPrice    Decimal  @db.Decimal(15, 2)
+  discount     Decimal  @default(0) @db.Decimal(15, 2)
+  totalPrice   Decimal  @db.Decimal(15, 2)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  salesOrder SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  product    Product    @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([salesOrderId])
+  @@map("sales_order_items")
+}
+
+model PurchaseOrder {
+  id          String              @id @default(uuid())
+  workspaceId String
+  supplierId  String
+  orderNumber String
+  status      PurchaseOrderStatus @default(DRAFT)
+  totalAmount Decimal             @default(0) @db.Decimal(15, 2)
+  notes       String?
+  orderDate   DateTime            @default(now())
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  workspace Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  supplier  Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  items     PurchaseOrderItem[]
+
+  @@index([workspaceId])
+  @@index([workspaceId, supplierId])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id              String   @id @default(uuid())
+  purchaseOrderId String
+  productId       String
+  quantity        Int
+  unitCost        Decimal  @db.Decimal(15, 2)
+  totalCost       Decimal  @db.Decimal(15, 2)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product       Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([purchaseOrderId])
+  @@map("purchase_order_items")
+}
+
+model Invoice {
+  id            String        @id @default(uuid())
+  workspaceId   String
+  customerId    String
+  salesOrderId  String?
+  invoiceNumber String
+  status        InvoiceStatus @default(UNPAID)
+  amount        Decimal       @db.Decimal(15, 2)
+  paidAmount    Decimal       @default(0) @db.Decimal(15, 2)
+  dueDate       DateTime?
+  issuedAt      DateTime      @default(now())
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  workspace  Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer   Customer    @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  salesOrder SalesOrder? @relation(fields: [salesOrderId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([workspaceId, customerId])
+  @@map("invoices")
+}
+
+// ----------------------------------------
+// KHATA (LEDGER) & PAYMENTS
+// ----------------------------------------
+
+model Payment {
+  id          String        @id @default(uuid())
+  workspaceId String
+  customerId  String? // Null if paying a supplier
+  supplierId  String? // Null if receiving from a customer
+  amount      Decimal       @db.Decimal(15, 2)
+  method      PaymentMethod @default(CASH)
+  reference   String? // Cheque number, transaction ID, etc.
+  notes       String?
+  paymentDate DateTime      @default(now())
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer  Customer? @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  supplier  Supplier? @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId])
+  @@index([workspaceId, customerId])
+  @@index([workspaceId, supplierId])
+  @@map("payments")
+}
+
+model LedgerEntry {
+  id          String          @id @default(uuid())
+  workspaceId String
+  customerId  String?
+  supplierId  String?
+  type        LedgerEntryType
+  debit       Decimal         @default(0) @db.Decimal(15, 2)
+  credit      Decimal         @default(0) @db.Decimal(15, 2)
+  description String?
+  referenceId String? // ID of Invoice, Payment, Order etc.
+  date        DateTime        @default(now())
+  createdAt   DateTime        @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer  Customer? @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  supplier  Supplier? @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId])
+  @@index([workspaceId, customerId])
+  @@index([workspaceId, supplierId])
+  @@map("ledger_entries")
+}

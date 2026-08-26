@@ -1,0 +1,22 @@
+"use client";
+
+import { useDeferredValue, useState } from "react";
+import { Search, ShoppingCart, Truck, WalletCards } from "lucide-react";
+import { MetricCard } from "@/components/business/metric-card";
+import { PageHeader } from "@/components/business/page-header";
+import { StatusBadge } from "@/components/business/status-badge";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DEMO_PURCHASES } from "@/lib/demo-data";
+import { formatDate, formatPKR } from "@/lib/utils";
+
+export default function PurchasesPage() {
+  const [query, setQuery] = useState(""); const [status, setStatus] = useState("ALL"); const deferredQuery = useDeferredValue(query.toLowerCase().trim());
+  const purchases = DEMO_PURCHASES.filter((purchase) => `${purchase.orderNumber} ${purchase.supplierName}`.toLowerCase().includes(deferredQuery) && (status === "ALL" || purchase.status === status));
+  const total = DEMO_PURCHASES.reduce((sum, purchase) => sum + purchase.total, 0); const balance = DEMO_PURCHASES.reduce((sum, purchase) => sum + purchase.balance, 0);
+  return <main className="space-y-6 p-4 md:p-6 lg:p-8"><PageHeader title="Purchases" description="Monitor incoming stock orders and supplier balances." />
+    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"><MetricCard label="Purchase volume" value={formatPKR(total)} detail={`${DEMO_PURCHASES.length} purchase orders`} icon={ShoppingCart} /><MetricCard label="Outstanding" value={formatPKR(balance)} detail="Remaining supplier balance" icon={WalletCards} /><MetricCard label="Awaiting receipt" value={`${DEMO_PURCHASES.filter((purchase) => purchase.status !== "RECEIVED").length} orders`} detail="Ordered or partially received" icon={Truck} /></section>
+    <Card className="gap-0 py-0 shadow-none"><CardHeader className="gap-3 border-b py-4 lg:flex lg:flex-row lg:items-center lg:justify-between"><div><h2 className="font-semibold">Purchase orders</h2><p className="text-sm text-neutral-500">{purchases.length} orders shown</p></div><div className="flex flex-col gap-2 sm:flex-row"><label className="relative sm:w-72"><Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-neutral-400" /><Input className="pl-8" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Order or supplier..." /><span className="sr-only">Search purchases</span></label><select aria-label="Filter purchase status" value={status} onChange={(event) => setStatus(event.target.value)} className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/50"><option value="ALL">All statuses</option><option value="ORDERED">Ordered</option><option value="PARTIALLY_RECEIVED">Partially received</option><option value="RECEIVED">Received</option></select></div></CardHeader>
+      <CardContent className="p-0"><Table><TableHeader className="bg-neutral-50/80"><TableRow><TableHead className="pl-4">Order</TableHead><TableHead>Supplier</TableHead><TableHead className="hidden md:table-cell">Date</TableHead><TableHead className="hidden text-center lg:table-cell">Items</TableHead><TableHead className="hidden text-right sm:table-cell">Total</TableHead><TableHead className="text-right">Balance</TableHead><TableHead className="hidden pr-4 xl:table-cell">Status</TableHead></TableRow></TableHeader><TableBody>{purchases.map((purchase) => <TableRow key={purchase.id}><TableCell className="pl-4 font-mono text-xs font-semibold">{purchase.orderNumber}</TableCell><TableCell className="font-medium">{purchase.supplierName}<div className="mt-1 xl:hidden"><StatusBadge status={purchase.status} /></div></TableCell><TableCell className="hidden text-neutral-600 md:table-cell">{formatDate(purchase.date)}</TableCell><TableCell className="hidden text-center lg:table-cell">{purchase.items}</TableCell><TableCell className="hidden text-right tabular-nums sm:table-cell">{formatPKR(purchase.total)}</TableCell><TableCell className="text-right font-semibold tabular-nums">{formatPKR(purchase.balance)}</TableCell><TableCell className="hidden pr-4 xl:table-cell"><StatusBadge status={purchase.status} /></TableCell></TableRow>)}{purchases.length === 0 && <TableRow><TableCell colSpan={7} className="h-32 text-center text-neutral-500">No purchase orders match these filters.</TableCell></TableRow>}</TableBody></Table></CardContent></Card></main>;
+}

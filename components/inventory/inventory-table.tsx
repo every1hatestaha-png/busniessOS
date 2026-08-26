@@ -1,0 +1,91 @@
+"use client";
+
+import Link from "next/link";
+import { useDeferredValue, useState } from "react";
+import { ArrowUpRight, Search } from "lucide-react";
+import { StatusBadge } from "@/components/business/status-badge";
+import { buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import type { Product } from "@/lib/demo-data";
+import { cn, formatPKR, getStockStatus } from "@/lib/utils";
+
+export function InventoryTable({ products }: { products: Product[] }) {
+  const [query, setQuery] = useState("");
+  const [stockFilter, setStockFilter] = useState("ALL");
+  const deferredQuery = useDeferredValue(query.trim().toLowerCase());
+  const categories = Array.from(new Set(products.map((product) => product.category)));
+  const visibleProducts = products.filter((product) => {
+    const matchesQuery = `${product.name} ${product.sku} ${product.category}`.toLowerCase().includes(deferredQuery);
+    return matchesQuery && (stockFilter === "ALL" || product.category === stockFilter);
+  });
+
+  return (
+    <Card className="gap-0 py-0 shadow-none">
+      <CardHeader className="gap-3 border-b py-4 md:flex md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="font-semibold">Product catalog</h2>
+          <p className="text-sm text-neutral-500">{visibleProducts.length} of {products.length} products</p>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <label className="relative min-w-0 sm:w-72">
+            <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-neutral-400" />
+            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search product, SKU, category..." className="pl-8" />
+            <span className="sr-only">Search inventory</span>
+          </label>
+          <select
+            aria-label="Filter by category"
+            value={stockFilter}
+            onChange={(event) => setStockFilter(event.target.value)}
+            className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/50"
+          >
+            <option value="ALL">All categories</option>
+            {categories.map((category) => <option key={category}>{category}</option>)}
+          </select>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader className="bg-neutral-50/80">
+            <TableRow>
+              <TableHead className="pl-4">Product</TableHead>
+              <TableHead className="hidden md:table-cell">Category</TableHead>
+              <TableHead className="text-right">Stock</TableHead>
+              <TableHead className="hidden text-right sm:table-cell">Selling price</TableHead>
+              <TableHead className="hidden lg:table-cell">Status</TableHead>
+              <TableHead className="w-12"><span className="sr-only">Open</span></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {visibleProducts.map((product) => {
+              const stockStatus = getStockStatus(product.stockQuantity, product.reorderLevel);
+              return (
+                <TableRow key={product.id}>
+                  <TableCell className="pl-4">
+                    <Link href={`/inventory/${product.id}`} className="font-medium text-neutral-950 hover:underline">{product.name}</Link>
+                    <p className="mt-0.5 font-mono text-xs text-neutral-500">{product.sku}</p>
+                  </TableCell>
+                  <TableCell className="hidden text-neutral-600 md:table-cell">{product.category}</TableCell>
+                  <TableCell className="text-right">
+                    <span className="font-semibold tabular-nums">{product.stockQuantity}</span>
+                    <span className="ml-1 text-xs text-neutral-500">{product.unit.toLowerCase()}</span>
+                    <div className="mt-1 lg:hidden"><StatusBadge status={stockStatus} /></div>
+                  </TableCell>
+                  <TableCell className="hidden text-right font-medium tabular-nums sm:table-cell">{formatPKR(product.sellingPrice)}</TableCell>
+                  <TableCell className="hidden lg:table-cell"><StatusBadge status={stockStatus} /></TableCell>
+                  <TableCell className="pr-3 text-right">
+                    <Link href={`/inventory/${product.id}`} aria-label={`View ${product.name}`} className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "inline-flex")}><ArrowUpRight className="h-4 w-4" /></Link>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+            {visibleProducts.length === 0 && (
+              <TableRow><TableCell colSpan={6} className="h-32 text-center text-neutral-500">No products match your search.</TableCell></TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
