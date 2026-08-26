@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { CustomerInput } from "@/lib/validation/customer";
+import type { CustomerEditInput, CustomerInput } from "@/lib/validation/customer";
 import { db } from "@/lib/server/db";
 
 export type CustomerListItem = {
@@ -40,7 +40,7 @@ export type CustomerDetail = CustomerListItem & {
     id: string;
     date: string;
     reference: string;
-    method: "CASH" | "BANK_TRANSFER" | "CHEQUE" | "CREDIT_CARD" | "MOBILE_WALLET";
+    method: "CASH" | "BANK_TRANSFER" | "JAZZCASH" | "EASYPAISA" | "CHEQUE" | "CREDIT_CARD" | "MOBILE_WALLET" | "OTHER";
     amount: number;
   }>;
   invoices: Array<{
@@ -209,4 +209,27 @@ export async function createCustomer(workspaceId: string, input: CustomerInput):
 
     return customer.id;
   });
+}
+
+export async function updateCustomer(
+  workspaceId: string,
+  id: string,
+  input: CustomerEditInput,
+): Promise<void> {
+  const result = await db.customer.updateMany({
+    where: { id, workspaceId },
+    data: {
+      name: input.name,
+      companyName: input.companyName,
+      phone: input.phone,
+      email: input.email,
+      city: input.city,
+      address: input.address,
+      creditLimit: input.creditLimit,
+      status: input.status,
+      notes: input.notes || null,
+    },
+  });
+
+  if (result.count !== 1) throw new Error("Customer could not be updated");
 }

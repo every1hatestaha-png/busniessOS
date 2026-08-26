@@ -13,4 +13,7 @@ export const productSchema = z.object({
   description: z.string().trim().min(10).max(500),
 });
 
+export const productEditSchema = productSchema.omit({ stockQuantity: true });
+
 export type ProductInput = z.input<typeof productSchema>;
+export type ProductEditInput = z.input<typeof productEditSchema>;

@@ -5,9 +5,10 @@ import type { z } from "zod";
 
 import { requireWorkspace } from "@/lib/server/auth";
 import { db } from "@/lib/server/db";
-import { productSchema } from "@/lib/validation/product";
+import { productEditSchema, productSchema } from "@/lib/validation/product";
 
 type ProductData = z.output<typeof productSchema>;
+type ProductEditData = z.output<typeof productEditSchema>;
 
 export type ProductDTO = {
   id: string;
@@ -103,9 +104,7 @@ export async function getProduct(id: string): Promise<ProductDetailDTO | null> {
   return { ...toProductDTO(product), movements };
 }
 
-export async function createProduct(input: ProductData): Promise<string> {
-  const { workspaceId } = await requireWorkspace();
-
+export async function createProduct(workspaceId: string, input: ProductData): Promise<string> {
   return db.$transaction(async (transaction) => {
     const product = await transaction.product.create({
       data: {
@@ -138,11 +137,32 @@ export async function createProduct(input: ProductData): Promise<string> {
   });
 }
 
+export async function updateProduct(
+  workspaceId: string,
+  id: string,
+  input: ProductEditData,
+): Promise<void> {
+  const result = await db.product.updateMany({
+    where: { id, workspaceId },
+    data: {
+      name: input.name,
+      sku: input.sku,
+      category: input.category,
+      costPrice: input.costPrice,
+      sellingPrice: input.sellingPrice,
+      reorderLevel: input.reorderLevel,
+      unit: input.unit,
+      status: input.status,
+      description: input.description,
+    },
+  });
+
+  if (result.count !== 1) throw new Error("Product could not be updated");
+}
+
 export class StockAdjustmentRejectedError extends Error {}
 
-export async function adjustProductStock(productId: string, quantity: number, reason: string) {
-  const { workspaceId } = await requireWorkspace();
-
+export async function adjustProductStock(workspaceId: string, productId: string, quantity: number, reason: string) {
   return db.$transaction(async (transaction) => {
     const result = await transaction.product.updateMany({
       where: {

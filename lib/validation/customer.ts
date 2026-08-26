@@ -15,4 +15,7 @@ export const customerSchema = z.object({
   notes: z.string().trim().max(500),
 });
 
+export const customerEditSchema = customerSchema.omit({ openingBalance: true });
+
 export type CustomerInput = z.infer<typeof customerSchema>;
+export type CustomerEditInput = z.infer<typeof customerEditSchema>;

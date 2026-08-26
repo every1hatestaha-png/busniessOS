@@ -3,9 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { requireWorkspace } from "@/lib/server/auth";
-import { createCustomer } from "@/lib/server/customers";
-import { customerSchema, type CustomerInput } from "@/lib/validation/customer";
+import { requirePermission } from "@/lib/server/authorization";
+import { createCustomer, updateCustomer } from "@/lib/server/customers";
+import {
+  customerEditSchema,
+  customerSchema,
+  type CustomerEditInput,
+  type CustomerInput,
+} from "@/lib/validation/customer";
 
 export type CreateCustomerState = {
   message?: string;
@@ -16,7 +21,7 @@ export async function createCustomerAction(
   _previousState: CreateCustomerState,
   input: CustomerInput,
 ): Promise<CreateCustomerState> {
-  const { workspaceId } = await requireWorkspace();
+  const { workspaceId } = await requirePermission("customers.write");
   const parsed = customerSchema.safeParse(input);
 
   if (!parsed.success) {
@@ -37,4 +42,32 @@ export async function createCustomerAction(
 
   revalidatePath("/customers");
   redirect(`/customers/${customerId}`);
+}
+
+export async function updateCustomerAction(
+  id: string,
+  _previousState: CreateCustomerState,
+  input: CustomerEditInput,
+): Promise<CreateCustomerState> {
+  const { workspaceId } = await requirePermission("customers.write");
+  const parsed = customerEditSchema.safeParse(input);
+
+  if (!parsed.success) {
+    const fieldErrors: CreateCustomerState["fieldErrors"] = {};
+    for (const issue of parsed.error.issues) {
+      const field = issue.path[0] as keyof CustomerEditInput | undefined;
+      if (field) fieldErrors[field] = [...(fieldErrors[field] ?? []), issue.message];
+    }
+    return { message: "Please correct the highlighted fields.", fieldErrors };
+  }
+
+  try {
+    await updateCustomer(workspaceId, id, parsed.data);
+  } catch {
+    return { message: "We could not update this customer. Please try again." };
+  }
+
+  revalidatePath("/customers");
+  revalidatePath(`/customers/${id}`);
+  redirect(`/customers/${id}`);
 }

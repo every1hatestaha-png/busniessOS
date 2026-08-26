@@ -5,21 +5,36 @@ import Link from "next/link";
 import { startTransition, useActionState } from "react";
 import { useForm } from "react-hook-form";
 
-import { createCustomerAction, type CreateCustomerState } from "@/app/(dashboard)/customers/actions";
+import {
+  createCustomerAction,
+  type CreateCustomerState,
+  updateCustomerAction,
+} from "@/app/(dashboard)/customers/actions";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { customerSchema, type CustomerInput } from "@/lib/validation/customer";
+import {
+  customerSchema,
+  type CustomerEditInput,
+  type CustomerInput,
+} from "@/lib/validation/customer";
 
 type FormValues = CustomerInput;
 const initialState: CreateCustomerState = {};
 const labelClassName = "mb-1.5 block text-sm font-medium text-neutral-700";
 const fieldClassName = "space-y-1";
 
-export function CustomerForm() {
-  const [state, submitAction, isPending] = useActionState(createCustomerAction, initialState);
+type CustomerFormProps = {
+  customer?: CustomerEditInput & { id: string };
+};
+
+export function CustomerForm({ customer }: CustomerFormProps) {
+  const action = customer ? updateCustomerAction.bind(null, customer.id) : createCustomerAction;
+  const [state, submitAction, isPending] = useActionState(action, initialState);
   const { register, handleSubmit, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(customerSchema),
-    defaultValues: { name: "", companyName: "", phone: "", email: "", city: "", address: "", creditLimit: "0", openingBalance: "0", status: "ACTIVE", notes: "" },
+    defaultValues: customer
+      ? { ...customer, openingBalance: "0" }
+      : { name: "", companyName: "", phone: "", email: "", city: "", address: "", creditLimit: "0", openingBalance: "0", status: "ACTIVE", notes: "" },
   });
 
   function onSubmit(values: FormValues) {
@@ -46,15 +61,15 @@ export function CustomerForm() {
         </div>
       </div>
       <div className="rounded-xl border border-neutral-200 bg-white p-4 sm:p-6">
-        <div className="mb-5"><h2 className="font-semibold">Credit settings</h2><p className="text-sm text-neutral-500">Set the starting receivable and maximum approved credit.</p></div>
+        <div className="mb-5"><h2 className="font-semibold">Credit settings</h2><p className="text-sm text-neutral-500">{customer ? "Set the maximum approved credit without changing the current balance." : "Set the starting receivable and maximum approved credit."}</p></div>
         <div className="grid gap-5 md:grid-cols-2">
           <div className={fieldClassName}><label className={labelClassName} htmlFor="creditLimit">Credit limit (PKR)</label><Input id="creditLimit" type="number" min="0" step="1" {...register("creditLimit")} aria-invalid={!!errors.creditLimit} />{error("creditLimit")}</div>
-          <div className={fieldClassName}><label className={labelClassName} htmlFor="openingBalance">Opening balance (PKR)</label><Input id="openingBalance" type="number" min="0" step="1" {...register("openingBalance")} aria-invalid={!!errors.openingBalance} />{error("openingBalance")}</div>
+          {!customer && <div className={fieldClassName}><label className={labelClassName} htmlFor="openingBalance">Opening balance (PKR)</label><Input id="openingBalance" type="number" min="0" step="1" {...register("openingBalance")} aria-invalid={!!errors.openingBalance} />{error("openingBalance")}</div>}
           <div className={`${fieldClassName} md:col-span-2`}><label className={labelClassName} htmlFor="notes">Notes <span className="font-normal text-neutral-400">(optional)</span></label><textarea id="notes" {...register("notes")} rows={4} className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-200" placeholder="Delivery preferences, payment terms, or account notes" />{error("notes")}</div>
         </div>
       </div>
       {state.message && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{state.message}</div>}
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Link href="/customers" className={buttonVariants({ variant: "outline" })}>Cancel</Link><Button type="submit" disabled={isPending}>{isPending ? "Saving..." : "Add customer"}</Button></div>
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Link href={customer ? `/customers/${customer.id}` : "/customers"} className={buttonVariants({ variant: "outline" })}>Cancel</Link><Button type="submit" disabled={isPending}>{isPending ? "Saving..." : customer ? "Save changes" : "Add customer"}</Button></div>
     </form>
   );
 }

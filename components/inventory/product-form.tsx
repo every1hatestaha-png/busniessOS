@@ -6,12 +6,12 @@ import { AlertCircle } from "lucide-react";
 import { startTransition, useActionState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { createProductAction } from "@/app/(dashboard)/inventory/actions";
+import { createProductAction, updateProductAction } from "@/app/(dashboard)/inventory/actions";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
-import { productSchema, type ProductInput } from "@/lib/validation/product";
+import { productSchema, type ProductEditInput, type ProductInput } from "@/lib/validation/product";
 
 type ProductFormInput = ProductInput;
 type ProductFormValues = z.output<typeof productSchema>;
@@ -20,11 +20,16 @@ const fieldClass = "space-y-1.5";
 const labelClass = "text-sm font-medium text-neutral-800";
 const errorClass = "text-xs text-red-600";
 
-export function ProductForm() {
-  const [actionState, formAction, isPending] = useActionState(createProductAction, {});
+type ProductFormProps = {
+  product?: ProductEditInput & { id: string };
+};
+
+export function ProductForm({ product }: ProductFormProps) {
+  const action = product ? updateProductAction.bind(null, product.id) : createProductAction;
+  const [actionState, formAction, isPending] = useActionState(action, {});
   const { register, handleSubmit, formState: { errors } } = useForm<ProductFormInput, unknown, ProductFormValues>({
     resolver: zodResolver(productSchema),
-    defaultValues: { unit: "PIECE", stockQuantity: 0, reorderLevel: 10 },
+    defaultValues: product ? { ...product, stockQuantity: 0 } : { unit: "PIECE", stockQuantity: 0, reorderLevel: 10 },
   });
 
   function submit(values: ProductFormValues) {
@@ -38,7 +43,7 @@ export function ProductForm() {
       <Card className="shadow-none">
         <CardHeader className="border-b">
           <CardTitle>Product information</CardTitle>
-          <p className="text-sm text-neutral-500">Pricing is recorded in PKR. Stock quantities must be whole numbers.</p>
+          <p className="text-sm text-neutral-500">{product ? "Update catalog and pricing details. Use stock adjustment to change quantity." : "Pricing is recorded in PKR. Stock quantities must be whole numbers."}</p>
         </CardHeader>
         <CardContent className="grid gap-5 md:grid-cols-2">
           <div className={fieldClass}>
@@ -62,6 +67,7 @@ export function ProductForm() {
               <option value="PIECE">Piece</option><option value="BOX">Box</option><option value="CARTON">Carton</option><option value="KG">Kg</option><option value="SET">Set</option><option value="LITER">Liter</option><option value="METER">Meter</option>
             </select>
           </div>
+          {product && <div className={fieldClass}><label className={labelClass} htmlFor="status">Status</label><select id="status" className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm" {...register("status")}><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option><option value="ARCHIVED">Archived</option></select></div>}
           <div className={fieldClass}>
             <label className={labelClass} htmlFor="costPrice">Cost price</label>
             <Input id="costPrice" type="number" min="0" step="1" placeholder="0" aria-invalid={!!errors.costPrice} {...register("costPrice")} />
@@ -72,11 +78,11 @@ export function ProductForm() {
             <Input id="sellingPrice" type="number" min="1" step="1" placeholder="0" aria-invalid={!!errors.sellingPrice} {...register("sellingPrice")} />
             {errors.sellingPrice && <p className={errorClass}>{errors.sellingPrice.message}</p>}
           </div>
-          <div className={fieldClass}>
+          {!product && <div className={fieldClass}>
             <label className={labelClass} htmlFor="stockQuantity">Opening stock</label>
             <Input id="stockQuantity" type="number" min="0" step="1" aria-invalid={!!errors.stockQuantity} {...register("stockQuantity")} />
             {errors.stockQuantity && <p className={errorClass}>{errors.stockQuantity.message}</p>}
-          </div>
+          </div>}
           <div className={fieldClass}>
             <label className={labelClass} htmlFor="reorderLevel">Reorder level</label>
             <Input id="reorderLevel" type="number" min="0" step="1" aria-invalid={!!errors.reorderLevel} {...register("reorderLevel")} />
@@ -95,8 +101,8 @@ export function ProductForm() {
           )}
         </CardContent>
         <CardFooter className="justify-end gap-2">
-          <Link href="/inventory" className={buttonVariants({ variant: "outline" })}>Cancel</Link>
-          <Button type="submit" disabled={isPending}>{isPending ? "Saving..." : "Save product"}</Button>
+          <Link href={product ? `/inventory/${product.id}` : "/inventory"} className={buttonVariants({ variant: "outline" })}>Cancel</Link>
+          <Button type="submit" disabled={isPending}>{isPending ? "Saving..." : product ? "Save changes" : "Save product"}</Button>
         </CardFooter>
       </Card>
     </form>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CircleDollarSign, PackageCheck, Tags } from "lucide-react";
+import { ArrowLeft, CircleDollarSign, PackageCheck, Pencil, Tags } from "lucide-react";
 import { MetricCard } from "@/components/business/metric-card";
 import { StatusBadge } from "@/components/business/status-badge";
 import { StockAdjustment } from "@/components/inventory/stock-adjustment";
@@ -9,9 +9,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getProduct } from "@/lib/server/products";
 import { calculateInventoryValue, cn, formatDate, formatPKR, getStockStatus } from "@/lib/utils";
+import { requireWorkspace } from "@/lib/server/auth";
+import { canPerformAction } from "@/lib/server/authorization";
 
 export default async function ProductDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const { role } = await requireWorkspace();
   const product = await getProduct(id);
   if (!product) notFound();
   const movements = product.movements;
@@ -23,7 +26,7 @@ export default async function ProductDetailsPage({ params }: { params: Promise<{
         <Link href="/inventory" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2 mb-3")}><ArrowLeft className="h-4 w-4" />Inventory</Link>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div><div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-bold tracking-tight md:text-3xl">{product.name}</h1><StatusBadge status={stockStatus} /></div><p className="mt-1 font-mono text-sm text-neutral-500">{product.sku}</p></div>
-          <StockAdjustment productId={product.id} initialStock={product.stockQuantity} unit={product.unit.toLowerCase()} />
+          <div className="flex flex-col gap-2 sm:flex-row">{canPerformAction(role, "products.write") && <Link href={`/inventory/${product.id}/edit`} className={buttonVariants({ variant: "outline" })}><Pencil className="h-4 w-4" />Edit</Link>}{canPerformAction(role, "inventory.adjust") && <StockAdjustment productId={product.id} initialStock={product.stockQuantity} unit={product.unit.toLowerCase()} />}</div>
         </div>
       </div>
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

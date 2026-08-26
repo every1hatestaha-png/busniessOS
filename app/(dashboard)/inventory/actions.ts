@@ -9,8 +9,10 @@ import {
   adjustProductStock,
   createProduct,
   StockAdjustmentRejectedError,
+  updateProduct,
 } from "@/lib/server/products";
-import { productSchema } from "@/lib/validation/product";
+import { requirePermission } from "@/lib/server/authorization";
+import { productEditSchema, productSchema } from "@/lib/validation/product";
 
 export type ProductActionState = { error?: string };
 
@@ -18,6 +20,7 @@ export async function createProductAction(
   _previousState: ProductActionState,
   formData: FormData,
 ): Promise<ProductActionState> {
+  const { workspaceId } = await requirePermission("products.write");
   const parsed = productSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: "Check the highlighted product details and try again." };
@@ -25,7 +28,7 @@ export async function createProductAction(
 
   let productId: string;
   try {
-    productId = await createProduct(parsed.data);
+    productId = await createProduct(workspaceId, parsed.data);
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return { error: "That SKU is already used in this workspace." };
@@ -35,6 +38,31 @@ export async function createProductAction(
 
   revalidatePath("/inventory");
   redirect(`/inventory/${productId}`);
+}
+
+export async function updateProductAction(
+  id: string,
+  _previousState: ProductActionState,
+  formData: FormData,
+): Promise<ProductActionState> {
+  const { workspaceId } = await requirePermission("products.write");
+  const parsed = productEditSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return { error: "Check the highlighted product details and try again." };
+  }
+
+  try {
+    await updateProduct(workspaceId, id, parsed.data);
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return { error: "That SKU is already used in this workspace." };
+    }
+    return { error: "The product could not be updated. Please try again." };
+  }
+
+  revalidatePath("/inventory");
+  revalidatePath(`/inventory/${id}`);
+  redirect(`/inventory/${id}`);
 }
 
 const adjustmentSchema = z.object({
@@ -53,6 +81,7 @@ export async function adjustStockAction(
   _previousState: StockAdjustmentState,
   formData: FormData,
 ): Promise<StockAdjustmentState> {
+  const { workspaceId } = await requirePermission("inventory.adjust");
   const parsed = adjustmentSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: "Enter a valid quantity and a brief reason." };
@@ -60,6 +89,7 @@ export async function adjustStockAction(
 
   try {
     const stockQuantity = await adjustProductStock(
+      workspaceId,
       parsed.data.productId,
       parsed.data.quantity,
       parsed.data.reason,
