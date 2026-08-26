@@ -3,6 +3,7 @@
 import { useDeferredValue, useState } from "react";
 import { Building2, Search, WalletCards } from "lucide-react";
 import { MetricCard } from "@/components/business/metric-card";
+import { DemoDataNotice } from "@/components/business/demo-data-notice";
 import { PageHeader } from "@/components/business/page-header";
 import { StatusBadge } from "@/components/business/status-badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -18,7 +19,7 @@ export default function SuppliersPage() {
   const totalPurchases = DEMO_SUPPLIERS.reduce((sum, supplier) => sum + supplier.totalPurchases, 0);
   const payable = DEMO_SUPPLIERS.reduce((sum, supplier) => sum + supplier.currentBalance, 0);
 
-  return <main className="space-y-6 p-4 md:p-6 lg:p-8"><PageHeader title="Suppliers" description="Manage supplier relationships and outstanding payables." />
+  return <main className="space-y-6 p-4 md:p-6 lg:p-8"><PageHeader title="Suppliers" description="Manage supplier relationships and outstanding payables." /><DemoDataNotice module="Suppliers" />
     <section className="grid gap-3 sm:grid-cols-2"><MetricCard label="Active suppliers" value={`${DEMO_SUPPLIERS.length}`} detail="Approved supply partners" icon={Building2} /><MetricCard label="Outstanding payable" value={formatPKR(payable)} detail={`${formatPKR(totalPurchases)} lifetime purchases`} icon={WalletCards} /></section>
     <Card className="gap-0 py-0 shadow-none"><CardHeader className="gap-3 border-b py-4 sm:flex sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-semibold">Supplier directory</h2><p className="text-sm text-neutral-500">{suppliers.length} suppliers shown</p></div><label className="relative sm:w-72"><Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-neutral-400" /><Input className="pl-8" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search suppliers..." /><span className="sr-only">Search suppliers</span></label></CardHeader>
       <CardContent className="p-0"><Table><TableHeader className="bg-neutral-50/80"><TableRow><TableHead className="pl-4">Supplier</TableHead><TableHead className="hidden md:table-cell">Contact</TableHead><TableHead className="hidden lg:table-cell">City</TableHead><TableHead className="hidden text-right sm:table-cell">Total purchases</TableHead><TableHead className="text-right">Payable</TableHead><TableHead className="hidden pr-4 xl:table-cell">Status</TableHead></TableRow></TableHeader><TableBody>

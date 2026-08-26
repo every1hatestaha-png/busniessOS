@@ -1,5 +1,8 @@
 import { redirect } from "next/navigation";
 
-export default function Home() {
-  redirect("/dashboard");
+import { getCurrentWorkspace } from "@/lib/server/auth";
+
+export default async function Home() {
+  const context = await getCurrentWorkspace();
+  redirect(context ? "/dashboard" : "/onboarding");
 }

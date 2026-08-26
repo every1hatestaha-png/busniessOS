@@ -29,15 +29,16 @@ const routes = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export function Sidebar() {
+export function Sidebar({ workspaceName }: { workspaceName: string }) {
   const pathname = usePathname();
 
   return (
     <div className="flex h-full w-64 flex-col border-r bg-white">
       <div className="flex h-16 items-center border-b px-6">
-        <h1 className="text-xl font-bold tracking-tight text-neutral-900">
-          BusinessOS
-        </h1>
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-neutral-500">BusinessOS</p>
+          <h1 className="truncate text-lg font-bold tracking-tight text-neutral-900" title={workspaceName}>{workspaceName}</h1>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto py-4">
         <nav className="space-y-1 px-3">

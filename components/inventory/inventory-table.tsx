@@ -2,16 +2,16 @@
 
 import Link from "next/link";
 import { useDeferredValue, useState } from "react";
-import { ArrowUpRight, Search } from "lucide-react";
+import { ArrowUpRight, PackagePlus, Search } from "lucide-react";
 import { StatusBadge } from "@/components/business/status-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { Product } from "@/lib/demo-data";
+import type { ProductDTO } from "@/lib/server/products";
 import { cn, formatPKR, getStockStatus } from "@/lib/utils";
 
-export function InventoryTable({ products }: { products: Product[] }) {
+export function InventoryTable({ products }: { products: ProductDTO[] }) {
   const [query, setQuery] = useState("");
   const [stockFilter, setStockFilter] = useState("ALL");
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
@@ -20,6 +20,19 @@ export function InventoryTable({ products }: { products: Product[] }) {
     const matchesQuery = `${product.name} ${product.sku} ${product.category}`.toLowerCase().includes(deferredQuery);
     return matchesQuery && (stockFilter === "ALL" || product.category === stockFilter);
   });
+
+  if (products.length === 0) {
+    return (
+      <Card className="items-center py-12 text-center shadow-none">
+        <CardContent className="flex max-w-md flex-col items-center">
+          <span className="mb-4 flex size-12 items-center justify-center rounded-xl bg-neutral-100 text-neutral-600"><PackagePlus className="size-5" /></span>
+          <h2 className="font-semibold">Add your first product</h2>
+          <p className="mt-1 text-sm text-neutral-500">Create a product to start tracking stock levels and movements.</p>
+          <Link href="/inventory/new" className={cn(buttonVariants(), "mt-5")}>New product</Link>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="gap-0 py-0 shadow-none">

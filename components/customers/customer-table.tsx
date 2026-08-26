@@ -7,12 +7,12 @@ import { useDeferredValue, useState } from "react";
 import { StatusBadge } from "@/components/business/status-badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { Customer } from "@/lib/demo-data";
+import type { CustomerListItem } from "@/lib/server/customers";
 import { formatPKR, getCreditStatus } from "@/lib/utils";
 
 const selectClassName = "h-8 rounded-lg border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-neutral-400 focus:ring-2 focus:ring-neutral-200";
 
-export function CustomerTable({ customers }: { customers: Customer[] }) {
+export function CustomerTable({ customers }: { customers: CustomerListItem[] }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("ALL");
   const [city, setCity] = useState("ALL");

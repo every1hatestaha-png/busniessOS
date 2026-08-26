@@ -2,44 +2,34 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
-import { CheckCircle2 } from "lucide-react";
-import { useState } from "react";
+import { startTransition, useActionState } from "react";
 import { useForm } from "react-hook-form";
-import { z } from "zod";
 
+import { createCustomerAction, type CreateCustomerState } from "@/app/(dashboard)/customers/actions";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { customerSchema, type CustomerInput } from "@/lib/validation/customer";
 
-const schema = z.object({
-  name: z.string().trim().min(2, "Enter the contact name"),
-  companyName: z.string().trim().min(2, "Enter the company name"),
-  phone: z.string().trim().min(10, "Enter a valid phone number"),
-  email: z.string().trim().email("Enter a valid email address"),
-  city: z.string().trim().min(2, "Enter the city"),
-  address: z.string().trim().min(5, "Enter the full address"),
-  creditLimit: z.string().trim().min(1, "Enter a credit limit").refine((value) => Number.isFinite(Number(value)) && Number(value) >= 0, "Credit limit cannot be negative"),
-  openingBalance: z.string().trim().min(1, "Enter an opening balance").refine((value) => Number.isFinite(Number(value)) && Number(value) >= 0, "Opening balance cannot be negative"),
-  status: z.enum(["ACTIVE", "INACTIVE", "BLACKLISTED"]),
-  notes: z.string().trim().max(500, "Notes must be under 500 characters"),
-});
-
-type FormValues = z.infer<typeof schema>;
+type FormValues = CustomerInput;
+const initialState: CreateCustomerState = {};
 const labelClassName = "mb-1.5 block text-sm font-medium text-neutral-700";
 const fieldClassName = "space-y-1";
 
 export function CustomerForm() {
-  const [submittedName, setSubmittedName] = useState<string>();
-  const { register, handleSubmit, formState: { errors, isSubmitting }, reset } = useForm<FormValues>({
-    resolver: zodResolver(schema),
+  const [state, submitAction, isPending] = useActionState(createCustomerAction, initialState);
+  const { register, handleSubmit, formState: { errors } } = useForm<FormValues>({
+    resolver: zodResolver(customerSchema),
     defaultValues: { name: "", companyName: "", phone: "", email: "", city: "", address: "", creditLimit: "0", openingBalance: "0", status: "ACTIVE", notes: "" },
   });
 
   function onSubmit(values: FormValues) {
-    setSubmittedName(values.companyName);
-    reset();
+    startTransition(() => submitAction(values));
   }
 
-  const error = (name: keyof FormValues) => errors[name] && <p className="text-xs text-red-600">{errors[name]?.message}</p>;
+  const error = (name: keyof FormValues) => {
+    const message = errors[name]?.message ?? state.fieldErrors?.[name]?.[0];
+    return message && <p className="text-xs text-red-600">{message}</p>;
+  };
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -63,8 +53,8 @@ export function CustomerForm() {
           <div className={`${fieldClassName} md:col-span-2`}><label className={labelClassName} htmlFor="notes">Notes <span className="font-normal text-neutral-400">(optional)</span></label><textarea id="notes" {...register("notes")} rows={4} className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-200" placeholder="Delivery preferences, payment terms, or account notes" />{error("notes")}</div>
         </div>
       </div>
-      {submittedName && <div role="status" className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /><p><strong>{submittedName}</strong> passed validation. This is a demo, so the customer was not saved and the form has been reset.</p></div>}
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Link href="/customers" className={buttonVariants({ variant: "outline" })}>Cancel</Link><Button type="submit" disabled={isSubmitting}>Validate demo customer</Button></div>
+      {state.message && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{state.message}</div>}
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Link href="/customers" className={buttonVariants({ variant: "outline" })}>Cancel</Link><Button type="submit" disabled={isPending}>{isPending ? "Saving..." : "Add customer"}</Button></div>
     </form>
   );
 }

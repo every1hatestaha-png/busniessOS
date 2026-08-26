@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AlertTriangle, CircleDollarSign, CreditCard, Users } from "lucide-react";
 
 import { MetricCard } from "@/components/business/metric-card";
+import { DemoDataNotice } from "@/components/business/demo-data-notice";
 import { PageHeader } from "@/components/business/page-header";
 import { StatusBadge } from "@/components/business/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -18,6 +19,7 @@ export default function KhataPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Khata" description="Monitor customer receivables and credit exposure" />
+      <DemoDataNotice module="Khata" />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard label="Total receivable" value={formatPKR(outstanding)} detail="Across all customer accounts" icon={CircleDollarSign} />
         <MetricCard label="Available credit" value={formatPKR(availableCredit)} detail={`${formatPKR(totalLimit)} total approved`} icon={CreditCard} />

@@ -7,14 +7,14 @@ import { StockAdjustment } from "@/components/inventory/stock-adjustment";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DEMO_STOCK_MOVEMENTS, findProduct } from "@/lib/demo-data";
+import { getProduct } from "@/lib/server/products";
 import { calculateInventoryValue, cn, formatDate, formatPKR, getStockStatus } from "@/lib/utils";
 
 export default async function ProductDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const product = findProduct(id);
+  const product = await getProduct(id);
   if (!product) notFound();
-  const movements = DEMO_STOCK_MOVEMENTS.filter((movement) => movement.productId === product.id);
+  const movements = product.movements;
   const stockStatus = getStockStatus(product.stockQuantity, product.reorderLevel);
 
   return (
@@ -23,7 +23,7 @@ export default async function ProductDetailsPage({ params }: { params: Promise<{
         <Link href="/inventory" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2 mb-3")}><ArrowLeft className="h-4 w-4" />Inventory</Link>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div><div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-bold tracking-tight md:text-3xl">{product.name}</h1><StatusBadge status={stockStatus} /></div><p className="mt-1 font-mono text-sm text-neutral-500">{product.sku}</p></div>
-          <StockAdjustment initialStock={product.stockQuantity} unit={product.unit.toLowerCase()} />
+          <StockAdjustment productId={product.id} initialStock={product.stockQuantity} unit={product.unit.toLowerCase()} />
         </div>
       </div>
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -39,7 +39,7 @@ export default async function ProductDetailsPage({ params }: { params: Promise<{
               <TableHeader className="bg-neutral-50/80"><TableRow><TableHead className="pl-4">Date</TableHead><TableHead>Type</TableHead><TableHead className="hidden sm:table-cell">Reference</TableHead><TableHead className="text-right">Change</TableHead><TableHead className="pr-4 text-right">Balance</TableHead></TableRow></TableHeader>
               <TableBody>
                 {movements.map((movement) => <TableRow key={movement.id}><TableCell className="pl-4 text-neutral-600">{formatDate(movement.date)}</TableCell><TableCell><StatusBadge status={movement.type} /></TableCell><TableCell className="hidden font-mono text-xs text-neutral-500 sm:table-cell">{movement.reference}</TableCell><TableCell className={`text-right font-semibold tabular-nums ${movement.quantity > 0 ? "text-emerald-700" : "text-red-600"}`}>{movement.quantity > 0 ? "+" : ""}{movement.quantity}</TableCell><TableCell className="pr-4 text-right font-medium tabular-nums">{movement.balance}</TableCell></TableRow>)}
-                {movements.length === 0 && <TableRow><TableCell colSpan={5} className="h-32 text-center text-neutral-500">No stock movements recorded for this demo product.</TableCell></TableRow>}
+                {movements.length === 0 && <TableRow><TableCell colSpan={5} className="h-32 text-center text-neutral-500">No stock movements recorded yet.</TableCell></TableRow>}
               </TableBody>
             </Table>
           </CardContent>

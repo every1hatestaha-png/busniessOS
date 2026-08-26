@@ -1,13 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import { UserButton } from "@clerk/nextjs";
 import { Bell, Menu, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Sidebar } from "@/components/layout/sidebar";
 import { GlobalSearch } from "@/components/search/global-search";
+import type { SearchResult } from "@/lib/search";
 
-export function TopNav() {
+export function TopNav({ workspaceName, searchResults }: { workspaceName: string; searchResults: SearchResult[] }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
@@ -22,12 +24,12 @@ export function TopNav() {
             if ((event.target as HTMLElement).closest("a")) setMobileMenuOpen(false);
           }}>
             <SheetTitle className="sr-only">Navigation menu</SheetTitle>
-            <Sidebar />
+            <Sidebar workspaceName={workspaceName} />
           </SheetContent>
         </Sheet>
 
-        <span className="text-base font-bold tracking-tight lg:hidden">BusinessOS</span>
-        <GlobalSearch className="mx-auto hidden max-w-xl lg:block" />
+        <span className="max-w-40 truncate text-base font-bold tracking-tight lg:hidden" title={workspaceName}>{workspaceName}</span>
+        <GlobalSearch results={searchResults} className="mx-auto hidden max-w-xl lg:block" />
 
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
           <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileSearchOpen((open) => !open)} aria-label={mobileSearchOpen ? "Close search" : "Open search"}>
@@ -37,12 +39,10 @@ export function TopNav() {
             <Bell className="size-5 text-neutral-600" />
             <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-red-600 ring-2 ring-white" />
           </Button>
-          <div className="flex size-8 items-center justify-center rounded-full bg-neutral-900 text-xs font-semibold text-white" title="Demo user">
-            HR
-          </div>
+          <UserButton />
         </div>
       </div>
-      {mobileSearchOpen && <GlobalSearch autoFocus onNavigate={() => setMobileSearchOpen(false)} className="mt-3 lg:hidden" />}
+      {mobileSearchOpen && <GlobalSearch results={searchResults} autoFocus onNavigate={() => setMobileSearchOpen(false)} className="mt-3 lg:hidden" />}
     </header>
   );
 }

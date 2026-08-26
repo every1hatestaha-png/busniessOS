@@ -9,11 +9,12 @@ BusinessOS is a multi-tenant business operations workspace for Pakistani wholesa
 - Tailwind CSS and shadcn/Base UI primitives
 - Clerk provider and route-protection structure retained for production authentication
 - Prisma/PostgreSQL schema with workspace-scoped business records
-- Centralized in-memory demo domain in `lib/demo-data.ts`
+- Server-only Prisma repositories for workspaces, customers, products, search, and dashboard summaries
+- Centralized demo data retained for Phase 2B modules
 - Financial and business calculations in `lib/utils.ts`
 - Provider-independent assistant contract in `lib/business-assistant.ts`
 
-The local MVP is intentionally read-only. Forms calculate and validate realistic workflows, then show demo confirmations without writing to a database.
+Phase 2A persists authenticated workspaces, customers, products, opening balances, and stock movements in PostgreSQL. Sales, Khata, suppliers, purchases, invoices, and AI answers remain clearly labeled demo workflows until Phase 2B.
 
 ## Tech Stack
 
@@ -26,11 +27,11 @@ The local MVP is intentionally read-only. Forms calculate and validate realistic
 - React Hook Form and Zod
 - Lucide icons
 
-## Demo Mode
+## Persistence Status
 
-Demo mode requires no database or third-party API credentials. All screens use a single realistic Pakistani auto-parts dataset containing customers, products, sales, purchases, invoices, payments, suppliers, ledger entries, and stock movements.
+Customers and Inventory use the authenticated workspace and Neon PostgreSQL. Every read and write derives the workspace through Clerk identity, the local `User`, and `WorkspaceMember`; browser-provided workspace IDs are never authorization inputs.
 
-Demo writes are deliberately not persisted. New sale, customer, product, onboarding, stock adjustment, settings, and assistant action flows clearly state this behavior.
+The retained demo dataset supplies Sales, Khata, Suppliers, Purchases, Invoices, and AI until their transactional services are implemented.
 
 ## Setup
 
@@ -64,7 +65,7 @@ DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/business_os
 
 Money is represented with PostgreSQL `Decimal(15,2)` fields. The schema covers users, workspaces, customers, suppliers, products, inventory transactions, sales and purchase orders with line items, invoices, payments, and ledger entries.
 
-No real database connection, migrations, or writes are enabled in demo mode.
+The initial migration is stored in `prisma/migrations`. Prisma uses `@prisma/adapter-pg`, with application database access centralized in `lib/server/db.ts`.
 
 ## AI Architecture
 

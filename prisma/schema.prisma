@@ -17,6 +17,14 @@ enum Role {
   STAFF
 }
 
+enum BusinessType {
+  WHOLESALER
+  DISTRIBUTOR
+  MANUFACTURER
+  RETAILER
+  OTHER
+}
+
 enum ProductUnit {
   PIECE
   BOX
@@ -95,10 +103,18 @@ enum InventoryTransactionType {
 // ----------------------------------------
 
 model Workspace {
-  id        String   @id @default(uuid())
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String       @id @default(uuid())
+  name         String
+  phone        String?
+  email        String?
+  address      String?
+  city         String?
+  country      String       @default("Pakistan")
+  currency     String       @default("PKR")
+  timezone     String       @default("Asia/Karachi")
+  businessType BusinessType @default(WHOLESALER)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   members               WorkspaceMember[]
   customers             Customer[]
@@ -218,8 +234,8 @@ model Product {
   salesOrderItems       SalesOrderItem[]
   purchaseOrderItems    PurchaseOrderItem[]
 
+  @@unique([workspaceId, sku])
   @@index([workspaceId])
-  @@index([workspaceId, sku])
   @@map("products")
 }
 
@@ -265,7 +281,7 @@ model SalesOrder {
   items     SalesOrderItem[]
   invoices  Invoice[]
 
-  @@index([workspaceId])
+  @@unique([workspaceId, orderNumber])
   @@index([workspaceId, customerId])
   @@map("sales_orders")
 }
@@ -304,7 +320,7 @@ model PurchaseOrder {
   supplier  Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   items     PurchaseOrderItem[]
 
-  @@index([workspaceId])
+  @@unique([workspaceId, orderNumber])
   @@index([workspaceId, supplierId])
   @@map("purchase_orders")
 }
@@ -344,7 +360,7 @@ model Invoice {
   customer   Customer    @relation(fields: [customerId], references: [id], onDelete: Restrict)
   salesOrder SalesOrder? @relation(fields: [salesOrderId], references: [id], onDelete: SetNull)
 
-  @@index([workspaceId])
+  @@unique([workspaceId, invoiceNumber])
   @@index([workspaceId, customerId])
   @@map("invoices")
 }

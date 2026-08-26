@@ -3,28 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, Package, Receipt, Search, UserRound } from "lucide-react";
-import { DEMO_CUSTOMERS, DEMO_INVOICES, DEMO_PRODUCTS, DEMO_SALES } from "@/lib/demo-data";
+import type { SearchResult } from "@/lib/search";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 
-type SearchResult = {
-  id: string;
-  type: "Customer" | "Product" | "Order" | "Invoice";
-  title: string;
-  detail: string;
-  href: string;
-};
-
-const results: SearchResult[] = [
-  ...DEMO_CUSTOMERS.map((customer) => ({ id: customer.id, type: "Customer" as const, title: customer.companyName, detail: `${customer.name} · ${customer.phone}`, href: `/customers?customer=${customer.id}` })),
-  ...DEMO_PRODUCTS.map((product) => ({ id: product.id, type: "Product" as const, title: product.name, detail: `${product.sku} · ${product.stockQuantity} in stock`, href: `/inventory?product=${product.id}` })),
-  ...DEMO_SALES.map((sale) => ({ id: sale.id, type: "Order" as const, title: sale.orderNumber, detail: `${sale.customerName} · Rs ${sale.total.toLocaleString("en-PK")}`, href: `/sales?order=${sale.id}` })),
-  ...DEMO_INVOICES.map((invoice) => ({ id: invoice.id, type: "Invoice" as const, title: invoice.invoiceNumber, detail: `${invoice.customerName} · Rs ${invoice.total.toLocaleString("en-PK")}`, href: `/invoices?invoice=${invoice.id}` })),
-];
-
 const icons = { Customer: UserRound, Product: Package, Order: Receipt, Invoice: FileText };
 
-export function GlobalSearch({ className, autoFocus = false, onNavigate }: { className?: string; autoFocus?: boolean; onNavigate?: () => void }) {
+export function GlobalSearch({ results, className, autoFocus = false, onNavigate }: { results: SearchResult[]; className?: string; autoFocus?: boolean; onNavigate?: () => void }) {
   const router = useRouter();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
@@ -86,7 +71,7 @@ export function GlobalSearch({ className, autoFocus = false, onNavigate }: { cla
                 <span className="text-[10px] font-semibold uppercase tracking-wide text-neutral-400">{result.type}</span>
               </button>
             );
-          }) : <p className="px-3 py-6 text-center text-sm text-neutral-500">No demo records found for “{query}”.</p>}
+          }) : <p className="px-3 py-6 text-center text-sm text-neutral-500">No records found for “{query}”.</p>}
         </div>
       )}
     </div>
