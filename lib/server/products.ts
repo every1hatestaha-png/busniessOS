@@ -66,8 +66,8 @@ function toProductDTO(product: {
   };
 }
 
-export async function listProducts(): Promise<ProductDTO[]> {
-  const { workspaceId } = await requireWorkspace();
+export async function listProducts(authorizedWorkspaceId?: string): Promise<ProductDTO[]> {
+  const workspaceId = authorizedWorkspaceId ?? (await requireWorkspace()).workspaceId;
   const products = await db.product.findMany({
     where: { workspaceId },
     orderBy: [{ name: "asc" }, { createdAt: "desc" }],
@@ -76,8 +76,8 @@ export async function listProducts(): Promise<ProductDTO[]> {
   return products.map(toProductDTO);
 }
 
-export async function getProduct(id: string): Promise<ProductDetailDTO | null> {
-  const { workspaceId } = await requireWorkspace();
+export async function getProduct(id: string, authorizedWorkspaceId?: string): Promise<ProductDetailDTO | null> {
+  const workspaceId = authorizedWorkspaceId ?? (await requireWorkspace()).workspaceId;
   const product = await db.product.findFirst({
     where: { id, workspaceId },
     include: {
