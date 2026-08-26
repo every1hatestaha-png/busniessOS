@@ -1,11 +1,10 @@
 import "server-only";
 
-import { DEMO_INVOICES, DEMO_SALES } from "@/lib/demo-data";
 import type { SearchResult } from "@/lib/search";
 import { db } from "@/lib/server/db";
 
 export async function getSearchResults(workspaceId: string): Promise<SearchResult[]> {
-  const [customers, products] = await Promise.all([
+  const [customers, products, sales, invoices] = await Promise.all([
     db.customer.findMany({
       where: { workspaceId },
       orderBy: { updatedAt: "desc" },
@@ -18,6 +17,8 @@ export async function getSearchResults(workspaceId: string): Promise<SearchResul
       take: 100,
       select: { id: true, name: true, sku: true, stockQuantity: true },
     }),
+    db.salesOrder.findMany({ where: { workspaceId }, orderBy: { updatedAt: "desc" }, take: 100, select: { id: true, orderNumber: true, total: true, customer: { select: { companyName: true, name: true } } } }),
+    db.invoice.findMany({ where: { workspaceId }, orderBy: { updatedAt: "desc" }, take: 100, select: { id: true, invoiceNumber: true, amount: true, customer: { select: { companyName: true, name: true } } } }),
   ]);
 
   return [
@@ -35,19 +36,19 @@ export async function getSearchResults(workspaceId: string): Promise<SearchResul
       detail: `${product.sku ?? "No SKU"} · ${product.stockQuantity} in stock`,
       href: `/inventory/${product.id}`,
     })),
-    ...DEMO_SALES.map((sale) => ({
+    ...sales.map((sale) => ({
       id: sale.id,
       type: "Order" as const,
       title: sale.orderNumber,
-      detail: `${sale.customerName} · Demo record`,
+      detail: `${sale.customer.companyName ?? sale.customer.name} · Rs ${Number(sale.total).toLocaleString("en-PK")}`,
       href: `/sales/${sale.id}`,
     })),
-    ...DEMO_INVOICES.map((invoice) => ({
+    ...invoices.map((invoice) => ({
       id: invoice.id,
       type: "Invoice" as const,
       title: invoice.invoiceNumber,
-      detail: `${invoice.customerName} · Demo record`,
-      href: `/invoices?invoice=${invoice.id}`,
+      detail: `${invoice.customer.companyName ?? invoice.customer.name} · Rs ${Number(invoice.amount).toLocaleString("en-PK")}`,
+      href: `/invoices/${invoice.id}`,
     })),
   ];
 }

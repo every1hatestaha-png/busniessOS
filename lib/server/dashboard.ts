@@ -3,7 +3,7 @@ import "server-only";
 import { db } from "@/lib/server/db";
 
 export async function getDashboardSummary(workspaceId: string) {
-  const [customers, products] = await Promise.all([
+  const [customers, products, sales] = await Promise.all([
     db.customer.findMany({
       where: { workspaceId },
       select: { currentBalance: true },
@@ -22,6 +22,7 @@ export async function getDashboardSummary(workspaceId: string) {
         category: true,
       },
     }),
+    db.salesOrder.findMany({ where: { workspaceId, status: { not: "CANCELLED" } }, orderBy: { orderDate: "desc" }, include: { customer: { select: { companyName: true, name: true } } } }),
   ]);
 
   const lowStock = products.filter((product) => product.stockQuantity <= product.reorderLevel);
@@ -35,5 +36,6 @@ export async function getDashboardSummary(workspaceId: string) {
     inventoryValue: products.reduce((sum, product) => sum + product.stockQuantity * Number(product.costPrice), 0),
     lowStockCount: lowStock.length,
     lowStock: lowStock.slice(0, 4).map((product) => ({ ...product, sku: product.sku ?? "No SKU" })),
+    sales: sales.map((sale) => ({ id: sale.id, orderNumber: sale.orderNumber, customerName: sale.customer.companyName ?? sale.customer.name, date: sale.orderDate.toISOString(), status: sale.status, total: Number(sale.total), paid: Number(sale.paidAmount), balance: Number(sale.balanceAmount) })),
   };
 }

@@ -53,7 +53,7 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
       await tx.customer.update({ where: { id: customer.id }, data: { currentBalance: { decrement: paid } } });
     }
     return { id: order.id };
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
 }
 
 export async function listSales(workspaceId: string) {

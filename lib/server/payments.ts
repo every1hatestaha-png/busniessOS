@@ -30,5 +30,5 @@ export async function recordPayment(context: ServiceContext, input: PaymentInput
       if (invoice.salesOrderId) await tx.salesOrder.update({ where: { id: invoice.salesOrderId }, data: { paidAmount: { increment: amount }, balanceAmount: { decrement: amount } } });
     }
     return { id: payment.id };
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
 }

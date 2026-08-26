@@ -10,11 +10,11 @@ BusinessOS is a multi-tenant business operations workspace for Pakistani wholesa
 - Clerk provider and route-protection structure retained for production authentication
 - Prisma/PostgreSQL schema with workspace-scoped business records
 - Server-only Prisma repositories for workspaces, customers, products, search, and dashboard summaries
-- Centralized demo data retained for Phase 2B modules
+- Centralized demo data retained only for unfinished suppliers, purchases, settings, and AI modules
 - Financial and business calculations in `lib/utils.ts`
 - Provider-independent assistant contract in `lib/business-assistant.ts`
 
-Phase 2A persists authenticated workspaces, customers, products, opening balances, and stock movements in PostgreSQL. Sales, Khata, suppliers, purchases, invoices, and AI answers remain clearly labeled demo workflows until Phase 2B.
+Phase 2B adds transactional sales, stock deductions, invoices, Khata ledger posting, customer payments, role authorization, editing, authenticated APIs, and automated transaction/isolation tests.
 
 ## Tech Stack
 
@@ -31,7 +31,7 @@ Phase 2A persists authenticated workspaces, customers, products, opening balance
 
 Customers and Inventory use the authenticated workspace and Neon PostgreSQL. Every read and write derives the workspace through Clerk identity, the local `User`, and `WorkspaceMember`; browser-provided workspace IDs are never authorization inputs.
 
-The retained demo dataset supplies Sales, Khata, Suppliers, Purchases, Invoices, and AI until their transactional services are implemented.
+The retained demo dataset supplies Suppliers, Purchases, Settings, and AI until their transactional services are implemented.
 
 ## Setup
 
