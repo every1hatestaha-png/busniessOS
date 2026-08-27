@@ -5,9 +5,10 @@ import { db } from "@/lib/server/db";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";
 import { saleSchema, type SaleInput } from "@/lib/validation/sale";
 import { writeAudit } from "@/lib/server/audit";
+import { customerReturnSchema, type CustomerReturnInput } from "@/lib/validation/returns";
 
 export type ServiceContext = { workspaceId: string; role: Role; userId?: string };
-export class SaleDomainError extends Error { constructor(public code: "CUSTOMER_NOT_FOUND" | "PRODUCT_NOT_FOUND" | "INSUFFICIENT_STOCK" | "INVALID_TOTAL", message: string) { super(message); } }
+export class SaleDomainError extends Error { constructor(public code: "CUSTOMER_NOT_FOUND" | "PRODUCT_NOT_FOUND" | "INSUFFICIENT_STOCK" | "INVALID_TOTAL" | "SALE_NOT_FOUND" | "INVALID_RETURN", message: string) { super(message); } }
 
 export async function createSale(context: ServiceContext, input: SaleInput) {
   const data = saleSchema.parse(input);
@@ -55,6 +56,44 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
     }
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "sale.created", entityType: "SalesOrder", entityId: order.id, metadata: { orderNumber, total: total.toString() } });
     return { id: order.id };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
+}
+
+export async function createCustomerReturn(context: ServiceContext, input: CustomerReturnInput) {
+  const data = customerReturnSchema.parse(input);
+  return db.$transaction(async (tx) => {
+    if (data.idempotencyKey) {
+      const existing = await tx.customerReturn.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true } });
+      if (existing) return existing;
+    }
+    const order = await tx.salesOrder.findFirst({ where: { id: data.salesOrderId, workspaceId: context.workspaceId, status: { not: "CANCELLED" } }, include: { items: true } });
+    if (!order) throw new SaleDomainError("SALE_NOT_FOUND", "Sale not found.");
+    const itemIds = data.items.map((item) => item.itemId);
+    if (new Set(itemIds).size !== itemIds.length) throw new SaleDomainError("INVALID_RETURN", "Duplicate return items are not allowed.");
+    const previous = await tx.customerReturnItem.groupBy({ by: ["salesOrderItemId"], where: { salesOrderItemId: { in: itemIds }, customerReturn: { workspaceId: context.workspaceId } }, _sum: { quantity: true } });
+    const lines = data.items.map((item) => {
+      const source = order.items.find((entry) => entry.id === item.itemId);
+      const returned = previous.find((entry) => entry.salesOrderItemId === item.itemId)?._sum.quantity ?? 0;
+      if (!source || item.quantity > source.quantity - returned) throw new SaleDomainError("INVALID_RETURN", "Return quantity exceeds sold quantity.");
+      const unitPrice = source.totalPrice.div(source.quantity);
+      return { source, quantity: item.quantity, unitPrice, total: unitPrice.mul(item.quantity) };
+    });
+    const total = lines.reduce((sum, line) => sum.plus(line.total), new Prisma.Decimal(0));
+    const number = await nextDocumentNumber(tx, context.workspaceId, "CUSTOMER_RETURN");
+    const noteNumber = await nextDocumentNumber(tx, context.workspaceId, "CREDIT_NOTE");
+    const customerReturn = await tx.customerReturn.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, salesOrderId: order.id, idempotencyKey: data.idempotencyKey, number, reason: data.reason || null, totalAmount: total, restock: data.restock, notes: data.notes || null }, select: { id: true } });
+    for (const line of lines) {
+      await tx.customerReturnItem.create({ data: { customerReturnId: customerReturn.id, salesOrderItemId: line.source.id, productId: line.source.productId, quantity: line.quantity, unitPrice: line.unitPrice, totalPrice: line.total } });
+      if (data.restock) {
+        await tx.product.updateMany({ where: { id: line.source.productId, workspaceId: context.workspaceId }, data: { stockQuantity: { increment: line.quantity } } });
+        await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: line.source.productId, type: "RETURN_IN", quantityChanged: line.quantity, reference: number } });
+      }
+    }
+    await tx.creditNote.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, salesOrderId: order.id, number: noteNumber, reason: data.reason || "Customer return", amount: total, reference: number, notes: data.notes || null } });
+    await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, type: "SALES_RETURN", credit: total, description: `Customer return ${number}`, referenceId: customerReturn.id } });
+    await tx.customer.update({ where: { id: order.customerId }, data: { currentBalance: { decrement: total } } });
+    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "customer_return.created", entityType: "CustomerReturn", entityId: customerReturn.id, metadata: { salesOrderId: order.id, total: total.toString() } });
+    return customerReturn;
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
 }
 

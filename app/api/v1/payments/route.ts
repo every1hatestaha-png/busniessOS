@@ -4,7 +4,9 @@ import { paymentSchema } from "@/lib/validation/payment";
 
 export const POST = apiHandler(async (request: Request) => {
   const context = await requireApiContext("payments.record");
-  const input = await parseApiBody(request, paymentSchema);
+  const body = await request.clone().json().catch(() => ({}));
+  const key = request.headers.get("Idempotency-Key");
+  const input = await parseApiBody(new Request(request.url, { method: "POST", headers: request.headers, body: JSON.stringify({ ...body, idempotencyKey: key ?? body.idempotencyKey }) }), paymentSchema);
   try {
     return apiData(await recordPayment({ ...context, userId: context.user.id }, input), 201);
   } catch (error) {

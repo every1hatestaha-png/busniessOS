@@ -12,10 +12,12 @@ export const supplierSchema = z.object({
 
 export const supplierPaymentSchema = z.object({
   amount: z.coerce.number().positive().max(999_999_999),
+  allocations: z.array(z.object({ purchaseOrderId: z.uuid(), amount: z.coerce.number().positive().max(999_999_999) })).max(100).optional(),
   method: z.enum(["CASH", "BANK_TRANSFER", "JAZZCASH", "EASYPAISA", "CHEQUE", "CREDIT_CARD", "MOBILE_WALLET", "OTHER"]),
   reference: z.string().trim().max(120).optional().default(""),
   notes: z.string().trim().max(500).optional().default(""),
   paymentDate: z.coerce.date().default(() => new Date()),
+  idempotencyKey: z.string().trim().min(8).max(200).optional(),
 });
 
 export type SupplierInput = z.infer<typeof supplierSchema>;

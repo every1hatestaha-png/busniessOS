@@ -88,6 +88,10 @@ enum DocumentKind {
   PURCHASE_ORDER
   INVOICE
   PAYMENT_RECEIPT
+  CREDIT_NOTE
+  DEBIT_NOTE
+  CUSTOMER_RETURN
+  SUPPLIER_RETURN
 }
 
 enum LedgerEntryType {
@@ -98,6 +102,10 @@ enum LedgerEntryType {
   PAYMENT_MADE
   ADJUSTMENT
   REVERSAL
+  CREDIT_NOTE
+  DEBIT_NOTE
+  SALES_RETURN
+  PURCHASE_RETURN
 }
 
 enum InventoryTransactionType {
@@ -108,6 +116,7 @@ enum InventoryTransactionType {
   RETURN_OUT
   ADJUSTMENT
   SALE_CANCELLATION
+  PURCHASE_CANCELLATION
 }
 
 enum InvitationStatus {
@@ -148,6 +157,11 @@ model Workspace {
   documentSequences     DocumentSequence[]
   auditLogs             AuditLog[]
   invitations           WorkspaceInvitation[]
+  paymentAllocations    PaymentAllocation[]
+  creditNotes           CreditNote[]
+  debitNotes            DebitNote[]
+  customerReturns       CustomerReturn[]
+  supplierReturns       SupplierReturn[]
 
   @@map("workspaces")
 }
@@ -204,11 +218,13 @@ model Customer {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
-  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   salesOrders   SalesOrder[]
   invoices      Invoice[]
   payments      Payment[]
   ledgerEntries LedgerEntry[]
+  creditNotes   CreditNote[]
+  returns       CustomerReturn[]
 
   @@index([workspaceId])
   @@map("customers")
@@ -228,10 +244,12 @@ model Supplier {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace      Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   purchaseOrders PurchaseOrder[]
   payments       Payment[]
   ledgerEntries  LedgerEntry[]
+  debitNotes     DebitNote[]
+  returns        SupplierReturn[]
 
   @@index([workspaceId])
   @@map("suppliers")
@@ -303,10 +321,12 @@ model SalesOrder {
   cancelledAt    DateTime?
   cancelledById  String?
 
-  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  customer  Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  items     SalesOrderItem[]
-  invoices  Invoice[]
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer    Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  items       SalesOrderItem[]
+  invoices    Invoice[]
+  creditNotes CreditNote[]
+  returns     CustomerReturn[]
 
   @@unique([workspaceId, orderNumber])
   @@unique([workspaceId, idempotencyKey])
@@ -349,10 +369,15 @@ model PurchaseOrder {
   orderDate      DateTime            @default(now())
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
+  cancelledAt    DateTime?
+  cancelledById  String?
 
-  workspace Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  supplier  Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  items     PurchaseOrderItem[]
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  supplier           Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  items              PurchaseOrderItem[]
+  debitNotes         DebitNote[]
+  returns            SupplierReturn[]
+  paymentAllocations PaymentAllocation[]
 
   @@unique([workspaceId, orderNumber])
   @@unique([workspaceId, idempotencyKey])
@@ -394,10 +419,11 @@ model Invoice {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  workspace  Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  customer   Customer    @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  salesOrder SalesOrder? @relation(fields: [salesOrderId], references: [id], onDelete: SetNull)
-  payments   Payment[]
+  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer    Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  salesOrder  SalesOrder?         @relation(fields: [salesOrderId], references: [id], onDelete: SetNull)
+  payments    Payment[]
+  allocations PaymentAllocation[]
 
   @@unique([workspaceId, invoiceNumber])
   @@unique([salesOrderId])
@@ -412,29 +438,32 @@ model Invoice {
 // ----------------------------------------
 
 model Payment {
-  id           String        @id @default(uuid())
-  workspaceId  String
-  customerId   String? // Null if paying a supplier
-  supplierId   String? // Null if receiving from a customer
-  invoiceId    String?
-  amount       Decimal       @db.Decimal(15, 2)
-  method       PaymentMethod @default(CASH)
-  reference    String? // Cheque number, transaction ID, etc.
-  notes        String?
-  paymentDate  DateTime      @default(now())
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  isReversed   Boolean       @default(false)
-  reversedAt   DateTime?
-  reversalOfId String?
+  id             String        @id @default(uuid())
+  workspaceId    String
+  customerId     String? // Null if paying a supplier
+  supplierId     String? // Null if receiving from a customer
+  invoiceId      String?
+  idempotencyKey String?
+  amount         Decimal       @db.Decimal(15, 2)
+  method         PaymentMethod @default(CASH)
+  reference      String? // Cheque number, transaction ID, etc.
+  notes          String?
+  paymentDate    DateTime      @default(now())
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  isReversed     Boolean       @default(false)
+  reversedAt     DateTime?
+  reversalOfId   String?
 
-  workspace  Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  supplier   Supplier? @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  invoice    Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
-  reversalOf Payment?  @relation("PaymentReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
-  reversals  Payment[] @relation("PaymentReversal")
+  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer    Customer?           @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  supplier    Supplier?           @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  invoice     Invoice?            @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  reversalOf  Payment?            @relation("PaymentReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversals   Payment[]           @relation("PaymentReversal")
+  allocations PaymentAllocation[]
 
+  @@unique([workspaceId, idempotencyKey])
   @@index([workspaceId])
   @@index([workspaceId, customerId])
   @@index([workspaceId, supplierId])
@@ -517,4 +546,162 @@ model WorkspaceInvitation {
   @@index([workspaceId, status])
   @@index([email, status])
   @@map("workspace_invitations")
+}
+
+// ----------------------------------------
+// PHASE 2D: ALLOCATIONS, NOTES & RETURNS
+// ----------------------------------------
+
+model PaymentAllocation {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  paymentId       String
+  invoiceId       String?
+  purchaseOrderId String?
+  amount          Decimal  @db.Decimal(15, 2)
+  createdAt       DateTime @default(now())
+
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  payment       Payment        @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoice       Invoice?       @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId])
+  @@index([paymentId])
+  @@index([invoiceId])
+  @@index([purchaseOrderId])
+  @@map("payment_allocations")
+}
+
+model CreditNote {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  customerId   String
+  salesOrderId String?
+  number       String
+  reason       String
+  amount       Decimal  @db.Decimal(15, 2)
+  reference    String?
+  notes        String?
+  date         DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace  Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer   Customer    @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  salesOrder SalesOrder? @relation(fields: [salesOrderId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, number])
+  @@index([workspaceId, customerId])
+  @@map("credit_notes")
+}
+
+model DebitNote {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  supplierId      String
+  purchaseOrderId String?
+  number          String
+  reason          String
+  amount          Decimal  @db.Decimal(15, 2)
+  reference       String?
+  notes           String?
+  date            DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  supplier      Supplier       @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, number])
+  @@index([workspaceId, supplierId])
+  @@map("debit_notes")
+}
+
+model CustomerReturn {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  customerId     String
+  salesOrderId   String
+  idempotencyKey String?
+  number         String
+  reason         String?
+  totalAmount    Decimal  @db.Decimal(15, 2)
+  restock        Boolean  @default(true)
+  notes          String?
+  date           DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace  Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer   Customer             @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  salesOrder SalesOrder           @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
+  items      CustomerReturnItem[]
+
+  @@unique([workspaceId, number])
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, customerId])
+  @@index([workspaceId, salesOrderId])
+  @@map("customer_returns")
+}
+
+model CustomerReturnItem {
+  id               String   @id @default(uuid())
+  customerReturnId String
+  salesOrderItemId String
+  productId        String
+  quantity         Int
+  unitPrice        Decimal  @db.Decimal(15, 2)
+  totalPrice       Decimal  @db.Decimal(15, 2)
+  createdAt        DateTime @default(now())
+
+  customerReturn CustomerReturn @relation(fields: [customerReturnId], references: [id], onDelete: Cascade)
+
+  @@index([customerReturnId])
+  @@index([salesOrderItemId])
+  @@map("customer_return_items")
+}
+
+model SupplierReturn {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  supplierId      String
+  purchaseOrderId String
+  idempotencyKey  String?
+  number          String
+  reason          String?
+  totalAmount     Decimal  @db.Decimal(15, 2)
+  notes           String?
+  date            DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace     Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  supplier      Supplier             @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  purchaseOrder PurchaseOrder        @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  items         SupplierReturnItem[]
+
+  @@unique([workspaceId, number])
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, supplierId])
+  @@index([workspaceId, purchaseOrderId])
+  @@map("supplier_returns")
+}
+
+model SupplierReturnItem {
+  id                  String   @id @default(uuid())
+  supplierReturnId    String
+  purchaseOrderItemId String
+  productId           String
+  quantity            Int
+  unitCost            Decimal  @db.Decimal(15, 2)
+  totalCost           Decimal  @db.Decimal(15, 2)
+  createdAt           DateTime @default(now())
+
+  supplierReturn SupplierReturn @relation(fields: [supplierReturnId], references: [id], onDelete: Cascade)
+
+  @@index([supplierReturnId])
+  @@index([purchaseOrderItemId])
+  @@map("supplier_return_items")
 }
