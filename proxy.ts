@@ -10,7 +10,7 @@ export const proxy = clerkMiddleware(async (auth, request) => {
   }
 
   const isPublicRoute = path === "/api/webhooks/clerk" || path === "/sign-in" || path.startsWith("/sign-in/") || path === "/sign-up" || path.startsWith("/sign-up/");
-  if (!isPublicRoute) {
+  if (!isApiV1Request(path) && !isPublicRoute) {
     await auth.protect();
   }
 
