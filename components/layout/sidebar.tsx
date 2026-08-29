@@ -11,6 +11,7 @@ import {
   Truck,
   BookOpen,
   Receipt,
+  Landmark,
   Settings,
   Sparkles
 } from "lucide-react";
@@ -25,6 +26,7 @@ const routes = [
   { href: "/suppliers", label: "Suppliers", icon: Truck },
   { href: "/khata", label: "Khata", icon: BookOpen },
   { href: "/invoices", label: "Invoices", icon: Receipt },
+  { href: "/payables", label: "Payables", icon: Landmark },
   { href: "/ai", label: "AI Assistant", icon: Sparkles },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
