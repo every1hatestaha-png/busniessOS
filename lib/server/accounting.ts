@@ -46,12 +46,15 @@ function normalizeRange(input: ProfitLossInput | LedgerReportInput) {
 }
 
 export async function ensureDefaultAccounts(workspaceId: string, tx: Prisma.TransactionClient = db) {
-  for (const account of DEFAULT_ACCOUNTS) {
-    await tx.account.upsert({
-      where: { workspaceId_systemCode: { workspaceId, systemCode: account.systemCode } },
-      create: { workspaceId, ...account },
-      update: { code: account.code, name: account.name, category: account.category, normalBalance: account.normalBalance, isActive: true },
-    });
+  const existingDefaults = await tx.account.count({ where: { workspaceId, systemCode: { in: DEFAULT_ACCOUNTS.map((account) => account.systemCode) } } });
+  if (existingDefaults < DEFAULT_ACCOUNTS.length) {
+    for (const account of DEFAULT_ACCOUNTS) {
+      await tx.account.upsert({
+        where: { workspaceId_systemCode: { workspaceId, systemCode: account.systemCode } },
+        create: { workspaceId, ...account },
+        update: { code: account.code, name: account.name, category: account.category, normalBalance: account.normalBalance, isActive: true },
+      });
+    }
   }
 
   const cashAccount = await tx.account.findUniqueOrThrow({ where: { workspaceId_systemCode: { workspaceId, systemCode: "CASH_IN_HAND" } } });
