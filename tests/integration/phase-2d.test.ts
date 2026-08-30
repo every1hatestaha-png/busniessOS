@@ -9,9 +9,10 @@ let createPurchase: typeof import("@/lib/server/purchases")["createPurchase"];
 let cancelPurchase: typeof import("@/lib/server/purchases")["cancelPurchase"];
 let createSupplierReturn: typeof import("@/lib/server/purchases")["createSupplierReturn"];
 let recordSupplierPayment: typeof import("@/lib/server/suppliers")["recordSupplierPayment"];
+let ensureDefaultAccounts: typeof import("@/lib/server/accounting")["ensureDefaultAccounts"];
 
 const runId = randomUUID();
-let userId = ""; let workspaceId = ""; let supplierId = ""; let customerId = ""; let productId = "";
+let userId = ""; let workspaceId = ""; let supplierId = ""; let customerId = ""; let productId = ""; let cashBankAccountId = "";
 const context = () => ({ workspaceId, userId, role: "OWNER" as const });
 
 describe("Phase 2D financial operations", () => {
@@ -22,6 +23,7 @@ describe("Phase 2D financial operations", () => {
     ({ recordPayment } = await import("@/lib/server/payments"));
     ({ createPurchase, cancelPurchase, createSupplierReturn } = await import("@/lib/server/purchases"));
     ({ recordSupplierPayment } = await import("@/lib/server/suppliers"));
+    ({ ensureDefaultAccounts } = await import("@/lib/server/accounting"));
     const user = await db.user.create({ data: { clerkId: `phase2d-${runId}`, email: `phase2d-${runId}@example.invalid` } }); userId = user.id;
     const workspace = await db.workspace.create({ data: { name: `Phase 2D ${runId}`, members: { create: { userId, role: "OWNER" } } } }); workspaceId = workspace.id;
     const [supplier, customer, product] = await Promise.all([
@@ -30,6 +32,8 @@ describe("Phase 2D financial operations", () => {
       db.product.create({ data: { workspaceId, name: "2D product", sku: `2d-${runId}`, stockQuantity: 20, costPrice: 10, sellingPrice: 50 } }),
     ]);
     supplierId = supplier.id; customerId = customer.id; productId = product.id;
+    await ensureDefaultAccounts(workspaceId);
+    cashBankAccountId = (await db.cashBankAccount.findFirstOrThrow({ where: { workspaceId, isActive: true }, select: { id: true } })).id;
   }, 30_000);
 
   afterAll(async () => {
@@ -50,7 +54,7 @@ describe("Phase 2D financial operations", () => {
     const second = await createSale(context(), { customerId, items: [{ productId, quantity: 1, unitPrice: 50, discount: 0 }], orderDiscount: 0, paidAmount: 0, notes: "", idempotencyKey: randomUUID() });
     const invoices = await db.invoice.findMany({ where: { salesOrderId: { in: [first.id, second.id] } }, orderBy: { createdAt: "asc" } });
     const key = randomUUID();
-    const input = { customerId, amount: 70, allocations: [{ invoiceId: invoices[0].id, amount: 50 }, { invoiceId: invoices[1].id, amount: 20 }], paymentDate: new Date(), method: "CASH" as const, reference: "", notes: "", idempotencyKey: key };
+    const input = { customerId, cashBankAccountId, amount: 70, allocations: [{ invoiceId: invoices[0].id, amount: 50 }, { invoiceId: invoices[1].id, amount: 20 }], paymentDate: new Date(), method: "CASH" as const, reference: "", notes: "", idempotencyKey: key };
     const payment = await recordPayment(context(), input);
     expect((await recordPayment(context(), input)).id).toBe(payment.id);
     expect(await db.paymentAllocation.count({ where: { paymentId: payment.id } })).toBe(2);
@@ -88,7 +92,7 @@ describe("Phase 2D financial operations", () => {
     const first = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 1, unitCost: 10 }], paidAmount: 0, paymentMethod: "CASH", notes: "", idempotencyKey: randomUUID() });
     const second = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 1, unitCost: 15 }], paidAmount: 0, paymentMethod: "CASH", notes: "", idempotencyKey: randomUUID() });
     const key = randomUUID();
-    const input = { amount: 20, allocations: [{ purchaseOrderId: first.id, amount: 10 }, { purchaseOrderId: second.id, amount: 10 }], method: "CASH" as const, reference: "", notes: "", paymentDate: new Date(), idempotencyKey: key };
+    const input = { amount: 20, cashBankAccountId, allocations: [{ purchaseOrderId: first.id, amount: 10 }, { purchaseOrderId: second.id, amount: 10 }], method: "CASH" as const, reference: "", notes: "", paymentDate: new Date(), idempotencyKey: key };
     const payment = await recordSupplierPayment(context(), supplierId, input);
     expect((await recordSupplierPayment(context(), supplierId, input)).id).toBe(payment.id);
     expect(await db.paymentAllocation.count({ where: { paymentId: payment.id } })).toBe(2);

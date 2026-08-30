@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/business/status-badge";
 import { RecordPaymentForm } from "@/components/payments/record-payment-form";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { requireWorkspace } from "@/lib/server/auth";
+import { getCashBankAccounts } from "@/lib/server/accounting";
 import { getKhataSummary } from "@/lib/server/khata";
 import { canPerformAction } from "@/lib/server/authorization";
 import { formatPKR } from "@/lib/utils";
@@ -14,6 +15,7 @@ import { formatPKR } from "@/lib/utils";
 export default async function KhataPage() {
   const { workspaceId, role } = await requireWorkspace();
   const summary = await getKhataSummary(workspaceId);
+  const cashBankAccounts = canPerformAction(role, "payments.record") ? await getCashBankAccounts(workspaceId) : [];
   const paymentCustomers = summary.customers.filter((customer) => customer.outstanding > 0).map((customer) => ({ id: customer.id, name: customer.name, balance: customer.outstanding }));
 
   return (
@@ -52,7 +54,7 @@ export default async function KhataPage() {
         </div>
 
         </div>
-        <div className="rounded-xl border border-neutral-200 bg-white p-5 xl:sticky xl:top-6"><div className="mb-5"><h2 className="font-semibold">Record payment</h2><p className="mt-1 text-sm text-neutral-500">Unallocated receipts reduce the customer account balance.</p></div>{canPerformAction(role, "payments.record") ? <RecordPaymentForm customers={paymentCustomers} /> : <p className="text-sm text-neutral-500">Your role cannot record payments.</p>}</div>
+        <div className="rounded-xl border border-neutral-200 bg-white p-5 xl:sticky xl:top-6"><div className="mb-5"><h2 className="font-semibold">Record payment</h2><p className="mt-1 text-sm text-neutral-500">Unallocated receipts reduce the customer account balance.</p></div>{canPerformAction(role, "payments.record") ? <RecordPaymentForm customers={paymentCustomers} cashBankAccounts={cashBankAccounts} /> : <p className="text-sm text-neutral-500">Your role cannot record payments.</p>}</div>
       </div>
   );
 }

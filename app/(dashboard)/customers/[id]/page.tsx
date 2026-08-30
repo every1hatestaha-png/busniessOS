@@ -8,6 +8,7 @@ import { CustomerDetailsTabs } from "@/components/customers/customer-details-tab
 import { RecordPaymentForm } from "@/components/payments/record-payment-form";
 import { buttonVariants } from "@/components/ui/button";
 import { requireWorkspace } from "@/lib/server/auth";
+import { getCashBankAccounts } from "@/lib/server/accounting";
 import { getCustomer } from "@/lib/server/customers";
 import { canPerformAction } from "@/lib/server/authorization";
 import { formatPKR, getCreditStatus } from "@/lib/utils";
@@ -16,6 +17,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   const { id } = await params;
   const { workspaceId, role } = await requireWorkspace();
   const customer = await getCustomer(workspaceId, id);
+  const cashBankAccounts = canPerformAction(role, "payments.record") ? await getCashBankAccounts(workspaceId) : [];
   if (!customer) notFound();
   const usage = customer.creditLimit ? Math.round((customer.currentBalance / customer.creditLimit) * 100) : 0;
 
@@ -31,7 +33,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         <MetricCard label="Total sales" value={formatPKR(customer.totalSales)} detail="Lifetime sales" icon={ShoppingCart} />
         <MetricCard label="Total payments" value={formatPKR(customer.totalPayments)} detail="Lifetime receipts" icon={CircleDollarSign} />
       </div>
-      {customer.currentBalance > 0 && canPerformAction(role, "payments.record") && <div className="max-w-md rounded-xl border bg-white p-5"><h2 className="font-semibold">Record payment</h2><p className="mb-4 mt-1 text-sm text-neutral-500">Record an unallocated receipt against this customer account.</p><RecordPaymentForm customers={[{ id: customer.id, name: customer.companyName, balance: customer.currentBalance }]} /></div>}
+      {customer.currentBalance > 0 && canPerformAction(role, "payments.record") && <div className="max-w-md rounded-xl border bg-white p-5"><h2 className="font-semibold">Record payment</h2><p className="mb-4 mt-1 text-sm text-neutral-500">Record an unallocated receipt against this customer account.</p><RecordPaymentForm customers={[{ id: customer.id, name: customer.companyName, balance: customer.currentBalance }]} cashBankAccounts={cashBankAccounts} /></div>}
       <CustomerDetailsTabs customer={customer} />
     </div>
   );

@@ -52,7 +52,7 @@ export async function deleteSupplier(context: ServiceContext, id: string) {
 }
 
 export async function recordSupplierPayment(context: ServiceContext, supplierId: string, input: SupplierPaymentInput) {
-  const data = supplierPaymentSchema.parse(input); const amount = new Prisma.Decimal(data.amount);
+  const data = supplierPaymentSchema.parse(input); const amount = new Prisma.Decimal(data.amount); const withholdingTaxAmount = new Prisma.Decimal(data.withholdingTaxAmount ?? 0); const netAmount = amount.minus(withholdingTaxAmount);
   return db.$transaction(async (tx) => {
     if (data.idempotencyKey) {
       const existing = await tx.payment.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true } });
@@ -60,6 +60,11 @@ export async function recordSupplierPayment(context: ServiceContext, supplierId:
     }
     const supplier = await tx.supplier.findFirst({ where: { id: supplierId, workspaceId: context.workspaceId }, select: { id: true, currentBalance: true } });
     if (!supplier) throw new SupplierDomainError("Supplier not found.");
+    if (!data.cashBankAccountId) throw new SupplierDomainError("Select a cash/bank account for this voucher.");
+    if (withholdingTaxAmount.greaterThan(amount)) throw new SupplierDomainError("Withholding tax cannot exceed the gross payment amount.");
+    if (netAmount.lessThan(0)) throw new SupplierDomainError("Net payment cannot be negative.");
+    const cashBankAccount = await tx.cashBankAccount.findFirst({ where: { id: data.cashBankAccountId, workspaceId: context.workspaceId, isActive: true }, select: { id: true } });
+    if (!cashBankAccount) throw new SupplierDomainError("Cash/bank account is unavailable.");
     if (amount.greaterThan(supplier.currentBalance)) throw new SupplierDomainError("Payment cannot exceed supplier payable.");
     const requestedAllocations = data.allocations ?? [];
     if (requestedAllocations.length) {
@@ -74,17 +79,45 @@ export async function recordSupplierPayment(context: ServiceContext, supplierId:
         if (new Prisma.Decimal(allocation.amount).greaterThan(purchase.totalAmount.minus(purchase.paidAmount))) throw new SupplierDomainError("Payment exceeds purchase balance or purchase is unavailable.");
       }
     }
-    const number = await nextDocumentNumber(tx, context.workspaceId, "PAYMENT_RECEIPT");
-    const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, supplierId, idempotencyKey: data.idempotencyKey, amount, method: data.method, reference: data.reference || number, notes: data.notes || null, paymentDate: data.paymentDate } });
+    const number = await nextDocumentNumber(tx, context.workspaceId, "BANK_PAYMENT_VOUCHER");
+    const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, supplierId, cashBankAccountId: cashBankAccount.id, documentNumber: number, idempotencyKey: data.idempotencyKey, amount, netAmount, withholdingTaxAmount, method: data.method, reference: data.reference || null, notes: data.notes || null, paymentDate: data.paymentDate } });
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, supplierId, type: "PAYMENT_MADE", debit: amount, description: `Supplier payment ${number}`, referenceId: payment.id, date: data.paymentDate } });
     await tx.supplier.update({ where: { id: supplierId }, data: { currentBalance: { decrement: amount } } });
-    await postSupplierPaymentToGeneralLedger(tx, { workspaceId: context.workspaceId, paymentId: payment.id, documentNo: data.reference || number, date: data.paymentDate, amount });
+    await postSupplierPaymentToGeneralLedger(tx, { workspaceId: context.workspaceId, paymentId: payment.id, documentNo: number, date: data.paymentDate, amount, withholdingTaxAmount, cashBankAccountId: cashBankAccount.id });
     for (const allocation of requestedAllocations) {
       const allocationAmount = new Prisma.Decimal(allocation.amount);
       await tx.paymentAllocation.create({ data: { workspaceId: context.workspaceId, paymentId: payment.id, purchaseOrderId: allocation.purchaseOrderId, amount: allocationAmount } });
       await tx.purchaseOrder.update({ where: { id: allocation.purchaseOrderId }, data: { paidAmount: { increment: allocationAmount }, balanceAmount: { decrement: allocationAmount } } });
     }
-    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "supplier.payment_recorded", entityType: "Payment", entityId: payment.id, metadata: { supplierId, amount: data.amount } });
+    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "supplier.payment_recorded", entityType: "Payment", entityId: payment.id, metadata: { supplierId, amount: data.amount, withholdingTaxAmount: withholdingTaxAmount.toString(), netAmount: netAmount.toString(), documentNumber: number } });
     return { id: payment.id };
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
+}
+
+export async function getSupplierPaymentVoucher(workspaceId: string, paymentId: string) {
+  const payment = await db.payment.findFirst({
+    where: { id: paymentId, workspaceId, supplierId: { not: null } },
+    include: {
+      supplier: true,
+      cashBankAccount: { include: { account: true } },
+      allocations: { include: { purchaseOrder: { select: { orderNumber: true, orderDate: true, totalAmount: true } } } },
+      workspace: true,
+    },
+  });
+  if (!payment) return null;
+  return {
+    id: payment.id,
+    documentNumber: payment.documentNumber ?? payment.reference ?? payment.id,
+    paymentDate: payment.paymentDate.toISOString(),
+    method: payment.method,
+    reference: payment.reference,
+    notes: payment.notes,
+    grossAmount: Number(payment.amount),
+    withholdingTaxAmount: Number(payment.withholdingTaxAmount),
+    netAmount: Number(payment.netAmount ?? payment.amount.minus(payment.withholdingTaxAmount)),
+    supplier: payment.supplier ? { name: payment.supplier.name, companyName: payment.supplier.companyName, phone: payment.supplier.phone, address: payment.supplier.address, city: payment.supplier.city } : null,
+    cashBankAccount: payment.cashBankAccount ? { name: payment.cashBankAccount.name, code: payment.cashBankAccount.account.code, isBank: payment.cashBankAccount.isBank, bankName: payment.cashBankAccount.bankName, accountTitle: payment.cashBankAccount.accountTitle, accountNumber: payment.cashBankAccount.accountNumber } : null,
+    workspace: { name: payment.workspace.name, phone: payment.workspace.phone, email: payment.workspace.email, address: payment.workspace.address, city: payment.workspace.city, country: payment.workspace.country },
+    allocations: payment.allocations.map((allocation) => ({ id: allocation.id, amount: Number(allocation.amount), purchaseOrder: allocation.purchaseOrder ? { orderNumber: allocation.purchaseOrder.orderNumber, orderDate: allocation.purchaseOrder.orderDate.toISOString(), totalAmount: Number(allocation.purchaseOrder.totalAmount) } : null })),
+  };
 }

@@ -76,6 +76,20 @@ async function getSystemAccounts(tx: Prisma.TransactionClient, workspaceId: stri
   })) as Record<AccountSystemCode, (typeof accounts)[number]>;
 }
 
+async function getDefaultCashBankAccount(tx: Prisma.TransactionClient, workspaceId: string) {
+  await ensureDefaultAccounts(workspaceId, tx);
+  const cash = await tx.account.findUniqueOrThrow({ where: { workspaceId_systemCode: { workspaceId, systemCode: "CASH_IN_HAND" } } });
+  const cashBank = await tx.cashBankAccount.findUniqueOrThrow({ where: { workspaceId_accountId: { workspaceId, accountId: cash.id } }, include: { account: true } });
+  return cashBank;
+}
+
+async function resolveCashBankAccount(tx: Prisma.TransactionClient, workspaceId: string, cashBankAccountId?: string | null) {
+  if (!cashBankAccountId) return getDefaultCashBankAccount(tx, workspaceId);
+  const cashBank = await tx.cashBankAccount.findFirst({ where: { id: cashBankAccountId, workspaceId, isActive: true }, include: { account: true } });
+  if (!cashBank) throw new AccountingDomainError("Cash/bank account is unavailable.");
+  return cashBank;
+}
+
 async function postBalancedEntries(tx: Prisma.TransactionClient, entries: Prisma.GeneralLedgerEntryCreateManyInput[]) {
   const debit = entries.reduce((sum, entry) => sum.plus(new Prisma.Decimal(entry.debit?.toString() ?? 0)), new Prisma.Decimal(0));
   const credit = entries.reduce((sum, entry) => sum.plus(new Prisma.Decimal(entry.credit?.toString() ?? 0)), new Prisma.Decimal(0));
@@ -83,8 +97,9 @@ async function postBalancedEntries(tx: Prisma.TransactionClient, entries: Prisma
   if (entries.length) await tx.generalLedgerEntry.createMany({ data: entries });
 }
 
-export async function postSaleToGeneralLedger(tx: Prisma.TransactionClient, params: { workspaceId: string; saleId: string; orderNumber: string; date: Date; revenue: Prisma.Decimal; costOfGoodsSold: Prisma.Decimal; cashReceived: Prisma.Decimal }) {
-  const accounts = await getSystemAccounts(tx, params.workspaceId, ["ACCOUNTS_RECEIVABLE", "SALES_REVENUE", "COST_OF_GOODS_SOLD", "INVENTORY", "CASH_IN_HAND"]);
+export async function postSaleToGeneralLedger(tx: Prisma.TransactionClient, params: { workspaceId: string; saleId: string; orderNumber: string; date: Date; revenue: Prisma.Decimal; costOfGoodsSold: Prisma.Decimal; cashReceived: Prisma.Decimal; cashBankAccountId?: string | null }) {
+  const accounts = await getSystemAccounts(tx, params.workspaceId, ["ACCOUNTS_RECEIVABLE", "SALES_REVENUE", "COST_OF_GOODS_SOLD", "INVENTORY"]);
+  const cashBank = params.cashReceived.greaterThan(0) ? await resolveCashBankAccount(tx, params.workspaceId, params.cashBankAccountId) : null;
   const narration = `Sale ${params.orderNumber}`;
   const entries: Prisma.GeneralLedgerEntryCreateManyInput[] = [
     { workspaceId: params.workspaceId, accountId: accounts.ACCOUNTS_RECEIVABLE.id, sourceType: "SALE", sourceId: params.saleId, documentNo: params.orderNumber, date: params.date, narration, debit: params.revenue, credit: 0 },
@@ -98,16 +113,17 @@ export async function postSaleToGeneralLedger(tx: Prisma.TransactionClient, para
   }
   if (params.cashReceived.greaterThan(0)) {
     entries.push(
-      { workspaceId: params.workspaceId, accountId: accounts.CASH_IN_HAND.id, sourceType: "RECEIPT", sourceId: params.saleId, documentNo: params.orderNumber, date: params.date, narration: `Cash received with ${params.orderNumber}`, debit: params.cashReceived, credit: 0 },
+      { workspaceId: params.workspaceId, accountId: cashBank!.accountId, sourceType: "RECEIPT", sourceId: params.saleId, documentNo: params.orderNumber, date: params.date, narration: `Cash received with ${params.orderNumber}`, debit: params.cashReceived, credit: 0 },
       { workspaceId: params.workspaceId, accountId: accounts.ACCOUNTS_RECEIVABLE.id, sourceType: "RECEIPT", sourceId: params.saleId, documentNo: params.orderNumber, date: params.date, narration: `Cash received with ${params.orderNumber}`, debit: 0, credit: params.cashReceived },
     );
-    await tx.cashBankAccount.updateMany({ where: { workspaceId: params.workspaceId, accountId: accounts.CASH_IN_HAND.id }, data: { currentBalance: { increment: params.cashReceived } } });
+    await tx.cashBankAccount.update({ where: { id: cashBank!.id }, data: { currentBalance: { increment: params.cashReceived } } });
   }
   await postBalancedEntries(tx, entries);
 }
 
-export async function postPurchaseToGeneralLedger(tx: Prisma.TransactionClient, params: { workspaceId: string; purchaseId: string; orderNumber: string; date: Date; inventoryAmount: Prisma.Decimal; cashPaid: Prisma.Decimal }) {
-  const accounts = await getSystemAccounts(tx, params.workspaceId, ["INVENTORY", "ACCOUNTS_PAYABLE", "CASH_IN_HAND"]);
+export async function postPurchaseToGeneralLedger(tx: Prisma.TransactionClient, params: { workspaceId: string; purchaseId: string; orderNumber: string; date: Date; inventoryAmount: Prisma.Decimal; cashPaid: Prisma.Decimal; cashBankAccountId?: string | null }) {
+  const accounts = await getSystemAccounts(tx, params.workspaceId, ["INVENTORY", "ACCOUNTS_PAYABLE"]);
+  const cashBank = params.cashPaid.greaterThan(0) ? await resolveCashBankAccount(tx, params.workspaceId, params.cashBankAccountId) : null;
   const narration = `Purchase ${params.orderNumber}`;
   const entries: Prisma.GeneralLedgerEntryCreateManyInput[] = [
     { workspaceId: params.workspaceId, accountId: accounts.INVENTORY.id, sourceType: "PURCHASE", sourceId: params.purchaseId, documentNo: params.orderNumber, date: params.date, narration, debit: params.inventoryAmount, credit: 0 },
@@ -116,29 +132,35 @@ export async function postPurchaseToGeneralLedger(tx: Prisma.TransactionClient, 
   if (params.cashPaid.greaterThan(0)) {
     entries.push(
       { workspaceId: params.workspaceId, accountId: accounts.ACCOUNTS_PAYABLE.id, sourceType: "PAYMENT", sourceId: params.purchaseId, documentNo: params.orderNumber, date: params.date, narration: `Paid with ${params.orderNumber}`, debit: params.cashPaid, credit: 0 },
-      { workspaceId: params.workspaceId, accountId: accounts.CASH_IN_HAND.id, sourceType: "PAYMENT", sourceId: params.purchaseId, documentNo: params.orderNumber, date: params.date, narration: `Paid with ${params.orderNumber}`, debit: 0, credit: params.cashPaid },
+      { workspaceId: params.workspaceId, accountId: cashBank!.accountId, sourceType: "PAYMENT", sourceId: params.purchaseId, documentNo: params.orderNumber, date: params.date, narration: `Paid with ${params.orderNumber}`, debit: 0, credit: params.cashPaid },
     );
-    await tx.cashBankAccount.updateMany({ where: { workspaceId: params.workspaceId, accountId: accounts.CASH_IN_HAND.id }, data: { currentBalance: { decrement: params.cashPaid } } });
+    await tx.cashBankAccount.update({ where: { id: cashBank!.id }, data: { currentBalance: { decrement: params.cashPaid } } });
   }
   await postBalancedEntries(tx, entries);
 }
 
-export async function postCustomerPaymentToGeneralLedger(tx: Prisma.TransactionClient, params: { workspaceId: string; paymentId: string; documentNo: string; date: Date; amount: Prisma.Decimal }) {
-  const accounts = await getSystemAccounts(tx, params.workspaceId, ["CASH_IN_HAND", "ACCOUNTS_RECEIVABLE"]);
+export async function postCustomerPaymentToGeneralLedger(tx: Prisma.TransactionClient, params: { workspaceId: string; paymentId: string; documentNo: string; date: Date; amount: Prisma.Decimal; cashBankAccountId?: string | null }) {
+  const accounts = await getSystemAccounts(tx, params.workspaceId, ["ACCOUNTS_RECEIVABLE"]);
+  const cashBank = await resolveCashBankAccount(tx, params.workspaceId, params.cashBankAccountId);
   await postBalancedEntries(tx, [
-    { workspaceId: params.workspaceId, accountId: accounts.CASH_IN_HAND.id, sourceType: "RECEIPT", sourceId: params.paymentId, documentNo: params.documentNo, date: params.date, narration: `Customer receipt ${params.documentNo}`, debit: params.amount, credit: 0 },
+    { workspaceId: params.workspaceId, accountId: cashBank.accountId, sourceType: "RECEIPT", sourceId: params.paymentId, documentNo: params.documentNo, date: params.date, narration: `Customer receipt ${params.documentNo}`, debit: params.amount, credit: 0 },
     { workspaceId: params.workspaceId, accountId: accounts.ACCOUNTS_RECEIVABLE.id, sourceType: "RECEIPT", sourceId: params.paymentId, documentNo: params.documentNo, date: params.date, narration: `Customer receipt ${params.documentNo}`, debit: 0, credit: params.amount },
   ]);
-  await tx.cashBankAccount.updateMany({ where: { workspaceId: params.workspaceId, accountId: accounts.CASH_IN_HAND.id }, data: { currentBalance: { increment: params.amount } } });
+  await tx.cashBankAccount.update({ where: { id: cashBank.id }, data: { currentBalance: { increment: params.amount } } });
 }
 
-export async function postSupplierPaymentToGeneralLedger(tx: Prisma.TransactionClient, params: { workspaceId: string; paymentId: string; documentNo: string; date: Date; amount: Prisma.Decimal }) {
-  const accounts = await getSystemAccounts(tx, params.workspaceId, ["ACCOUNTS_PAYABLE", "CASH_IN_HAND"]);
-  await postBalancedEntries(tx, [
+export async function postSupplierPaymentToGeneralLedger(tx: Prisma.TransactionClient, params: { workspaceId: string; paymentId: string; documentNo: string; date: Date; amount: Prisma.Decimal; withholdingTaxAmount?: Prisma.Decimal; cashBankAccountId?: string | null }) {
+  const accounts = await getSystemAccounts(tx, params.workspaceId, ["ACCOUNTS_PAYABLE", "WITHHOLDING_TAX_PAYABLE"]);
+  const cashBank = await resolveCashBankAccount(tx, params.workspaceId, params.cashBankAccountId);
+  const withholdingTaxAmount = params.withholdingTaxAmount ?? new Prisma.Decimal(0);
+  const netAmount = params.amount.minus(withholdingTaxAmount);
+  const entries: Prisma.GeneralLedgerEntryCreateManyInput[] = [
     { workspaceId: params.workspaceId, accountId: accounts.ACCOUNTS_PAYABLE.id, sourceType: "PAYMENT", sourceId: params.paymentId, documentNo: params.documentNo, date: params.date, narration: `Supplier payment ${params.documentNo}`, debit: params.amount, credit: 0 },
-    { workspaceId: params.workspaceId, accountId: accounts.CASH_IN_HAND.id, sourceType: "PAYMENT", sourceId: params.paymentId, documentNo: params.documentNo, date: params.date, narration: `Supplier payment ${params.documentNo}`, debit: 0, credit: params.amount },
-  ]);
-  await tx.cashBankAccount.updateMany({ where: { workspaceId: params.workspaceId, accountId: accounts.CASH_IN_HAND.id }, data: { currentBalance: { decrement: params.amount } } });
+  ];
+  if (withholdingTaxAmount.greaterThan(0)) entries.push({ workspaceId: params.workspaceId, accountId: accounts.WITHHOLDING_TAX_PAYABLE.id, sourceType: "PAYMENT", sourceId: params.paymentId, documentNo: params.documentNo, date: params.date, narration: `WHT on ${params.documentNo}`, debit: 0, credit: withholdingTaxAmount });
+  if (netAmount.greaterThan(0)) entries.push({ workspaceId: params.workspaceId, accountId: cashBank.accountId, sourceType: "PAYMENT", sourceId: params.paymentId, documentNo: params.documentNo, date: params.date, narration: `Supplier payment ${params.documentNo}`, debit: 0, credit: netAmount });
+  await postBalancedEntries(tx, entries);
+  if (netAmount.greaterThan(0)) await tx.cashBankAccount.update({ where: { id: cashBank.id }, data: { currentBalance: { decrement: netAmount } } });
 }
 
 export async function postCustomerReturnToGeneralLedger(tx: Prisma.TransactionClient, params: { workspaceId: string; returnId: string; documentNo: string; date: Date; amount: Prisma.Decimal; inventoryCost?: Prisma.Decimal }) {
@@ -173,7 +195,31 @@ export async function getChartOfAccounts(workspaceId: string) {
 export async function getCashBankAccounts(workspaceId: string) {
   await ensureDefaultAccounts(workspaceId);
   const rows = await db.cashBankAccount.findMany({ where: { workspaceId, isActive: true }, include: { account: true }, orderBy: { name: "asc" } });
-  return rows.map((row) => ({ id: row.account.id, cashBankAccountId: row.id, name: row.name, code: row.account.code, isBank: row.isBank, bankName: row.bankName, accountNumber: row.accountNumber, openingBalance: amount(row.openingBalance), currentBalance: amount(row.currentBalance) }));
+  return rows.map((row) => ({ id: row.account.id, cashBankAccountId: row.id, name: row.name, code: row.account.code, isBank: row.isBank, bankName: row.bankName, accountTitle: row.accountTitle, accountNumber: row.accountNumber, notes: row.notes, openingBalance: amount(row.openingBalance), currentBalance: amount(row.currentBalance) }));
+}
+
+export async function getCashBankAccountLedger(workspaceId: string, cashBankAccountId: string) {
+  await ensureDefaultAccounts(workspaceId);
+  const cashBank = await db.cashBankAccount.findFirst({ where: { id: cashBankAccountId, workspaceId, isActive: true }, include: { account: true } });
+  if (!cashBank) return null;
+  const entries = await db.generalLedgerEntry.findMany({ where: { workspaceId, accountId: cashBank.accountId }, orderBy: [{ date: "desc" }, { createdAt: "desc" }], take: 200 });
+  const ordered = [...entries].reverse();
+  const running = calculateRunningBalance(0, cashBank.account.normalBalance, ordered.map((entry) => ({ debit: amount(entry.debit), credit: amount(entry.credit) })));
+  const balanceById = new Map(ordered.map((entry, index) => [entry.id, running[index].runningBalance]));
+  return {
+    id: cashBank.id,
+    accountId: cashBank.accountId,
+    code: cashBank.account.code,
+    name: cashBank.name,
+    isBank: cashBank.isBank,
+    bankName: cashBank.bankName,
+    accountTitle: cashBank.accountTitle,
+    accountNumber: cashBank.accountNumber,
+    notes: cashBank.notes,
+    openingBalance: amount(cashBank.openingBalance),
+    currentBalance: amount(cashBank.currentBalance),
+    entries: entries.map((entry) => ({ id: entry.id, date: entry.date.toISOString(), sourceType: entry.sourceType, documentNo: entry.documentNo, narration: entry.narration, debit: amount(entry.debit), credit: amount(entry.credit), runningBalance: balanceById.get(entry.id) ?? 0 })),
+  };
 }
 
 export async function createCashBankAccount(context: ServiceContext, input: CashBankAccountInput) {
@@ -183,7 +229,7 @@ export async function createCashBankAccount(context: ServiceContext, input: Cash
     const count = await tx.cashBankAccount.count({ where: { workspaceId: context.workspaceId, isBank: data.isBank } });
     const code = data.isBank ? `10${20 + count}` : `10${10 + count}`;
     const account = await tx.account.create({ data: { workspaceId: context.workspaceId, code, name: data.name, category: "ASSET", normalBalance: "DEBIT", isActive: true } });
-    await tx.cashBankAccount.create({ data: { workspaceId: context.workspaceId, accountId: account.id, name: data.name, openingBalance: data.openingBalance, currentBalance: data.openingBalance, isBank: data.isBank, bankName: data.bankName || null, accountNumber: data.accountNumber || null } });
+    await tx.cashBankAccount.create({ data: { workspaceId: context.workspaceId, accountId: account.id, name: data.name, openingBalance: data.openingBalance, currentBalance: data.openingBalance, isBank: data.isBank, bankName: data.bankName || null, accountTitle: data.accountTitle || null, accountNumber: data.accountNumber || null, notes: data.notes || null } });
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "cash_bank_account.created", entityType: "Account", entityId: account.id, metadata: { name: data.name, openingBalance: String(data.openingBalance) } });
     return { id: account.id };
   });

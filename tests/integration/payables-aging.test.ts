@@ -7,6 +7,7 @@ let cancelPurchase: typeof import("@/lib/server/purchases")["cancelPurchase"];
 let createSupplierReturn: typeof import("@/lib/server/purchases")["createSupplierReturn"];
 let recordSupplierPayment: typeof import("@/lib/server/suppliers")["recordSupplierPayment"];
 let getPayablesAging: typeof import("@/lib/server/payables")["getPayablesAging"];
+let ensureDefaultAccounts: typeof import("@/lib/server/accounting")["ensureDefaultAccounts"];
 
 const runId = randomUUID();
 let userId = "";
@@ -15,6 +16,7 @@ let otherWorkspaceId = "";
 let supplierA = "";
 let supplierB = "";
 let productId = "";
+let cashBankAccountId = "";
 
 const context = () => ({ workspaceId, userId, role: "OWNER" as const });
 
@@ -36,6 +38,7 @@ describe("payable aging service", () => {
     ({ createPurchase, cancelPurchase, createSupplierReturn } = await import("@/lib/server/purchases"));
     ({ recordSupplierPayment } = await import("@/lib/server/suppliers"));
     ({ getPayablesAging } = await import("@/lib/server/payables"));
+    ({ ensureDefaultAccounts } = await import("@/lib/server/accounting"));
     const user = await db.user.create({ data: { clerkId: `aging-${runId}`, email: `aging-${runId}@example.invalid` } });
     userId = user.id;
     const workspace = await db.workspace.create({ data: { name: `Aging ${runId}`, members: { create: { userId, role: "OWNER" } } } });
@@ -49,6 +52,8 @@ describe("payable aging service", () => {
       db.product.create({ data: { workspaceId, name: "Aging product", sku: `aging-${runId}`, stockQuantity: 500, costPrice: 10, sellingPrice: 50 } }),
     ]);
     supplierA = a.id; supplierB = b.id; productId = product.id;
+    await ensureDefaultAccounts(workspaceId);
+    cashBankAccountId = (await db.cashBankAccount.findFirstOrThrow({ where: { workspaceId, isActive: true }, select: { id: true } })).id;
   }, 30_000);
 
   afterAll(async () => {
@@ -67,7 +72,7 @@ describe("payable aging service", () => {
   it("ages only the remaining outstanding amount after a partial payment", async () => {
     const purchase = await createPurchase(context(), { supplierId: supplierA, items: [{ productId, quantity: 1, unitCost: 500 }], paidAmount: 0, paymentMethod: "CASH" as const, notes: "", idempotencyKey: randomUUID() });
     await backdate(purchase.id, 48); // -> 46-60 bucket
-    await recordSupplierPayment(context(), supplierA, { amount: 300, allocations: [{ purchaseOrderId: purchase.id, amount: 300 }], method: "CASH", reference: "", notes: "", idempotencyKey: randomUUID(), paymentDate: new Date() });
+    await recordSupplierPayment(context(), supplierA, { amount: 300, cashBankAccountId, allocations: [{ purchaseOrderId: purchase.id, amount: 300 }], method: "CASH", reference: "", notes: "", idempotencyKey: randomUUID(), paymentDate: new Date() });
     const report = await getPayablesAging(workspaceId, { asOf: AS_OF, timeZone: TZ });
     const supplier = report.suppliers.find((entry) => entry.supplierId === supplierA)!;
     const item = supplier.items.find((entry) => entry.purchaseId === purchase.id)!;
@@ -81,7 +86,7 @@ describe("payable aging service", () => {
   it("drops a fully-paid purchase from the active aging report", async () => {
     const purchase = await createPurchase(context(), { supplierId: supplierA, items: [{ productId, quantity: 1, unitCost: 100 }], paidAmount: 0, paymentMethod: "CASH" as const, notes: "", idempotencyKey: randomUUID() });
     await backdate(purchase.id, 61);
-    await recordSupplierPayment(context(), supplierA, { amount: 100, allocations: [{ purchaseOrderId: purchase.id, amount: 100 }], method: "CASH", reference: "", notes: "", idempotencyKey: randomUUID(), paymentDate: new Date() });
+    await recordSupplierPayment(context(), supplierA, { amount: 100, cashBankAccountId, allocations: [{ purchaseOrderId: purchase.id, amount: 100 }], method: "CASH", reference: "", notes: "", idempotencyKey: randomUUID(), paymentDate: new Date() });
     const report = await getPayablesAging(workspaceId, { asOf: AS_OF, timeZone: TZ });
     const supplier = report.suppliers.find((entry) => entry.supplierId === supplierA)!;
     expect(supplier.items.some((entry) => entry.purchaseId === purchase.id)).toBe(false);

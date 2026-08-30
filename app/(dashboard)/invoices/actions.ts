@@ -20,6 +20,7 @@ export async function recordPaymentAction(
   const parsed = paymentSchema.safeParse({
     customerId: formData.get("customerId"),
     invoiceId: formData.get("invoiceId") ?? "",
+    cashBankAccountId: formData.get("cashBankAccountId") ?? "",
     amount: formData.get("amount"),
     paymentDate: formData.get("paymentDate"),
     method: formData.get("method"),

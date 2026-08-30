@@ -3,6 +3,7 @@ import { z } from "zod";
 export const paymentSchema = z.object({
   customerId: z.string().uuid(),
   invoiceId: z.string().uuid().optional().or(z.literal("")),
+  cashBankAccountId: z.string().uuid().optional().or(z.literal("")),
   allocations: z.array(z.object({ invoiceId: z.string().uuid(), amount: z.coerce.number().positive().max(100000000) })).max(100).optional(),
   amount: z.coerce.number().positive().max(100000000),
   paymentDate: z.coerce.date(),
@@ -12,4 +13,4 @@ export const paymentSchema = z.object({
   idempotencyKey: z.string().trim().min(8).max(200).optional(),
 });
 
-export type PaymentInput = z.infer<typeof paymentSchema>;
+export type PaymentInput = z.input<typeof paymentSchema>;

@@ -13,6 +13,7 @@ let getSale: typeof import("@/lib/server/sales")["getSale"];
 let recordPayment: typeof import("@/lib/server/payments")["recordPayment"];
 let getCustomer: typeof import("@/lib/server/customers")["getCustomer"];
 let getProduct: typeof import("@/lib/server/products")["getProduct"];
+let ensureDefaultAccounts: typeof import("@/lib/server/accounting")["ensureDefaultAccounts"];
 
 let workspaceA: string;
 let workspaceB: string;
@@ -20,6 +21,7 @@ let customerA: string;
 let customerB: string;
 let productA: string;
 let productB: string;
+let cashBankAccountA: string;
 
 const context = (workspaceId: string) => ({ workspaceId, role: "OWNER" as const });
 
@@ -44,6 +46,7 @@ describe("sales and payments against Neon", () => {
     ({ recordPayment } = await import("@/lib/server/payments"));
     ({ getCustomer } = await import("@/lib/server/customers"));
     ({ getProduct } = await import("@/lib/server/products"));
+    ({ ensureDefaultAccounts } = await import("@/lib/server/accounting"));
 
     const [userA, userB] = await Promise.all([
       db.user.create({ data: { clerkId: `test-clerk-a-${runId}`, email: `test-a-${runId}@example.invalid` } }),
@@ -69,6 +72,8 @@ describe("sales and payments against Neon", () => {
     customerB = secondCustomer.id;
     productA = firstProduct.id;
     productB = secondProduct.id;
+    await ensureDefaultAccounts(workspaceA);
+    cashBankAccountA = (await db.cashBankAccount.findFirstOrThrow({ where: { workspaceId: workspaceA, isActive: true }, select: { id: true } })).id;
   }, 30_000);
 
   afterAll(async () => {
@@ -149,6 +154,7 @@ describe("sales and payments against Neon", () => {
     const result = await recordPayment(context(workspaceA), {
       customerId: customer.id,
       invoiceId: invoice.id,
+      cashBankAccountId: cashBankAccountA,
       amount: 35,
       paymentDate: new Date(),
       method: "BANK_TRANSFER",
@@ -177,6 +183,7 @@ describe("sales and payments against Neon", () => {
     const before = await db.payment.count({ where: { workspaceId: workspaceA, customerId: customerB } });
     await expect(recordPayment(context(workspaceA), {
       customerId: customerB,
+      cashBankAccountId: cashBankAccountA,
       amount: 1,
       paymentDate: new Date(),
       method: "CASH",

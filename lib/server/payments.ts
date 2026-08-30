@@ -20,6 +20,9 @@ export async function recordPayment(context: ServiceContext, input: PaymentInput
     }
     const customer = await tx.customer.findFirst({ where: { id: data.customerId, workspaceId: context.workspaceId }, select: { id: true, currentBalance: true } });
     if (!customer) throw new PaymentDomainError("Customer not found.");
+    if (!data.cashBankAccountId) throw new PaymentDomainError("Select a cash/bank account for this receipt.");
+    const cashBankAccount = await tx.cashBankAccount.findFirst({ where: { id: data.cashBankAccountId, workspaceId: context.workspaceId, isActive: true }, select: { id: true } });
+    if (!cashBankAccount) throw new PaymentDomainError("Cash/bank account is unavailable.");
     if (amount.greaterThan(customer.currentBalance)) throw new PaymentDomainError("Payment cannot exceed customer outstanding balance.");
     const requestedAllocations = data.allocations?.length ? data.allocations : data.invoiceId ? [{ invoiceId: data.invoiceId, amount: data.amount }] : [];
     let invoices: { id: string; amount: Prisma.Decimal; paidAmount: Prisma.Decimal; salesOrderId: string | null }[] = [];
@@ -36,10 +39,10 @@ export async function recordPayment(context: ServiceContext, input: PaymentInput
       }
     }
     const paymentNumber = await nextDocumentNumber(tx, context.workspaceId, "PAYMENT_RECEIPT");
-    const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, invoiceId: requestedAllocations.length === 1 ? requestedAllocations[0].invoiceId : null, idempotencyKey: data.idempotencyKey, amount, method: data.method, reference: data.reference || paymentNumber, notes: data.notes || null, paymentDate: data.paymentDate }, select: { id: true } });
+    const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, invoiceId: requestedAllocations.length === 1 ? requestedAllocations[0].invoiceId : null, cashBankAccountId: cashBankAccount.id, documentNumber: paymentNumber, idempotencyKey: data.idempotencyKey, amount, netAmount: amount, method: data.method, reference: data.reference || null, notes: data.notes || null, paymentDate: data.paymentDate }, select: { id: true } });
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, type: "PAYMENT_RECEIVED", credit: amount, description: `Payment ${paymentNumber}`, referenceId: payment.id, date: data.paymentDate } });
     await tx.customer.update({ where: { id: customer.id }, data: { currentBalance: { decrement: amount } } });
-    await postCustomerPaymentToGeneralLedger(tx, { workspaceId: context.workspaceId, paymentId: payment.id, documentNo: data.reference || paymentNumber, date: data.paymentDate, amount });
+    await postCustomerPaymentToGeneralLedger(tx, { workspaceId: context.workspaceId, paymentId: payment.id, documentNo: paymentNumber, date: data.paymentDate, amount, cashBankAccountId: cashBankAccount.id });
     for (const allocation of requestedAllocations) {
       const invoice = invoices.find((entry) => entry.id === allocation.invoiceId)!;
       const allocationAmount = new Prisma.Decimal(allocation.amount);

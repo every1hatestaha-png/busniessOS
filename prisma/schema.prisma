@@ -93,6 +93,7 @@ enum DocumentKind {
   CUSTOMER_RETURN
   SUPPLIER_RETURN
   EXPENSE_VOUCHER
+  BANK_PAYMENT_VOUCHER
 }
 
 enum AccountCategory {
@@ -371,12 +372,15 @@ model CashBankAccount {
   isBank         Boolean  @default(false)
   bankName       String?
   accountNumber  String?
+  accountTitle   String?
+  notes          String?
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   account   Account   @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  payments  Payment[]
 
   @@unique([workspaceId, accountId])
   @@index([workspaceId, isActive])
@@ -588,36 +592,43 @@ model Invoice {
 // ----------------------------------------
 
 model Payment {
-  id             String        @id @default(uuid())
-  workspaceId    String
-  customerId     String? // Null if paying a supplier
-  supplierId     String? // Null if receiving from a customer
-  invoiceId      String?
-  idempotencyKey String?
-  amount         Decimal       @db.Decimal(15, 2)
-  method         PaymentMethod @default(CASH)
-  reference      String? // Cheque number, transaction ID, etc.
-  notes          String?
-  paymentDate    DateTime      @default(now())
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  isReversed     Boolean       @default(false)
-  reversedAt     DateTime?
-  reversalOfId   String?
+  id                   String        @id @default(uuid())
+  workspaceId          String
+  customerId           String? // Null if paying a supplier
+  supplierId           String? // Null if receiving from a customer
+  invoiceId            String?
+  cashBankAccountId    String?
+  documentNumber       String?
+  idempotencyKey       String?
+  amount               Decimal       @db.Decimal(15, 2)
+  netAmount            Decimal?      @db.Decimal(15, 2)
+  withholdingTaxAmount Decimal       @default(0) @db.Decimal(15, 2)
+  method               PaymentMethod @default(CASH)
+  reference            String? // Cheque number, transaction ID, etc.
+  notes                String?
+  paymentDate          DateTime      @default(now())
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  isReversed           Boolean       @default(false)
+  reversedAt           DateTime?
+  reversalOfId         String?
 
-  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  customer    Customer?           @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  supplier    Supplier?           @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  invoice     Invoice?            @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
-  reversalOf  Payment?            @relation("PaymentReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
-  reversals   Payment[]           @relation("PaymentReversal")
-  allocations PaymentAllocation[]
+  workspace       Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer        Customer?           @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  supplier        Supplier?           @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  invoice         Invoice?            @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  cashBankAccount CashBankAccount?    @relation(fields: [cashBankAccountId], references: [id], onDelete: Restrict)
+  reversalOf      Payment?            @relation("PaymentReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversals       Payment[]           @relation("PaymentReversal")
+  allocations     PaymentAllocation[]
 
   @@unique([workspaceId, idempotencyKey])
+  @@unique([workspaceId, documentNumber])
   @@index([workspaceId])
   @@index([workspaceId, customerId])
   @@index([workspaceId, supplierId])
   @@index([workspaceId, invoiceId])
+  @@index([workspaceId, cashBankAccountId])
   @@index([reversalOfId])
   @@map("payments")
 }

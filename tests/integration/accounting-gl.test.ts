@@ -9,6 +9,7 @@ let createSupplierReturn: typeof import("@/lib/server/purchases")["createSupplie
 let recordPayment: typeof import("@/lib/server/payments")["recordPayment"];
 let recordSupplierPayment: typeof import("@/lib/server/suppliers")["recordSupplierPayment"];
 let getPayablesAging: typeof import("@/lib/server/payables")["getPayablesAging"];
+let ensureDefaultAccounts: typeof import("@/lib/server/accounting")["ensureDefaultAccounts"];
 
 const runId = randomUUID();
 let userId = "";
@@ -17,6 +18,7 @@ let otherWorkspaceId = "";
 let customerId = "";
 let supplierId = "";
 let productId = "";
+let cashBankAccountId = "";
 
 const context = () => ({ workspaceId, userId, role: "OWNER" as const });
 
@@ -54,6 +56,7 @@ describe("accounting GL integration", () => {
     ({ recordPayment } = await import("@/lib/server/payments"));
     ({ recordSupplierPayment } = await import("@/lib/server/suppliers"));
     ({ getPayablesAging } = await import("@/lib/server/payables"));
+    ({ ensureDefaultAccounts } = await import("@/lib/server/accounting"));
     const user = await db.user.create({ data: { clerkId: `gl-${runId}`, email: `gl-${runId}@example.invalid` } });
     userId = user.id;
     const workspace = await db.workspace.create({ data: { name: `GL ${runId}`, members: { create: { userId, role: "OWNER" } } } });
@@ -68,6 +71,8 @@ describe("accounting GL integration", () => {
     customerId = customer.id;
     supplierId = supplier.id;
     productId = product.id;
+    await ensureDefaultAccounts(workspaceId);
+    cashBankAccountId = (await db.cashBankAccount.findFirstOrThrow({ where: { workspaceId, isActive: true }, select: { id: true } })).id;
   }, 30_000);
 
   afterAll(async () => {
@@ -75,12 +80,12 @@ describe("accounting GL integration", () => {
     const workspaceIds = [workspaceId, otherWorkspaceId].filter(Boolean);
     await db.generalLedgerEntry.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
     await db.expense.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
-    await db.cashBankAccount.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
-    await db.account.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
     await db.supplierReturnItem.deleteMany({ where: { supplierReturn: { workspaceId: { in: workspaceIds } } } });
     await db.customerReturnItem.deleteMany({ where: { customerReturn: { workspaceId: { in: workspaceIds } } } });
     await db.paymentAllocation.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
     await db.payment.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
+    await db.cashBankAccount.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
+    await db.account.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
     await db.supplierReturn.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
     await db.customerReturn.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
     await db.debitNote.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
@@ -108,7 +113,7 @@ describe("accounting GL integration", () => {
   });
 
   it("posts a balanced standalone customer payment", async () => {
-    const payment = await recordPayment(context(), { customerId, amount: 50, paymentDate: new Date(), method: "CASH", reference: "", notes: "", idempotencyKey: randomUUID() });
+    const payment = await recordPayment(context(), { customerId, cashBankAccountId, amount: 50, paymentDate: new Date(), method: "CASH", reference: "", notes: "", idempotencyKey: randomUUID() });
     expect(await glTotals(payment.id)).toEqual({ count: 2, debit: 50, credit: 50 });
     const rows = await glLines(payment.id);
     expect(lineAmount(rows, "CASH_IN_HAND", "debit")).toBe(50);
@@ -144,11 +149,12 @@ describe("accounting GL integration", () => {
 
   it("posts a balanced standalone supplier payment", async () => {
     const purchase = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 1, unitCost: 20 }], paidAmount: 0, paymentMethod: "CASH", notes: "", idempotencyKey: randomUUID() });
-    const payment = await recordSupplierPayment(context(), supplierId, { amount: 20, allocations: [{ purchaseOrderId: purchase.id, amount: 20 }], paymentDate: new Date(), method: "CASH", reference: "", notes: "", idempotencyKey: randomUUID() });
-    expect(await glTotals(payment.id)).toEqual({ count: 2, debit: 20, credit: 20 });
+    const payment = await recordSupplierPayment(context(), supplierId, { amount: 20, withholdingTaxAmount: 2, cashBankAccountId, allocations: [{ purchaseOrderId: purchase.id, amount: 20 }], paymentDate: new Date(), method: "CASH", reference: "", notes: "", idempotencyKey: randomUUID() });
+    expect(await glTotals(payment.id)).toEqual({ count: 3, debit: 20, credit: 20 });
     const rows = await glLines(payment.id);
     expect(lineAmount(rows, "ACCOUNTS_PAYABLE", "debit")).toBe(20);
-    expect(lineAmount(rows, "CASH_IN_HAND", "credit")).toBe(20);
+    expect(lineAmount(rows, "CASH_IN_HAND", "credit")).toBe(18);
+    expect(lineAmount(rows, "WITHHOLDING_TAX_PAYABLE", "credit")).toBe(2);
   });
 
   it("does not duplicate GL entries on idempotent sale retry", async () => {

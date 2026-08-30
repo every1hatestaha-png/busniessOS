@@ -5,7 +5,9 @@ export const cashBankAccountSchema = z.object({
   openingBalance: z.coerce.number().min(0).default(0),
   isBank: z.boolean().default(false),
   bankName: z.string().trim().optional().nullable(),
+  accountTitle: z.string().trim().max(160).optional().nullable(),
   accountNumber: z.string().trim().optional().nullable(),
+  notes: z.string().trim().max(500).optional().nullable(),
 });
 
 export const expenseSchema = z.object({

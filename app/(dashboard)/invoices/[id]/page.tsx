@@ -7,6 +7,7 @@ import { PrintButton } from "@/components/invoices/print-button";
 import { RecordPaymentForm } from "@/components/payments/record-payment-form";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { requireWorkspace } from "@/lib/server/auth";
+import { getCashBankAccounts } from "@/lib/server/accounting";
 import { getInvoice } from "@/lib/server/invoices";
 import { canPerformAction } from "@/lib/server/authorization";
 import { formatDate, formatPKR } from "@/lib/utils";
@@ -15,6 +16,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const { id } = await params;
   const { workspaceId, workspace, role } = await requireWorkspace();
   const invoice = await getInvoice(workspaceId, id);
+  const cashBankAccounts = canPerformAction(role, "payments.record") ? await getCashBankAccounts(workspaceId) : [];
   if (!invoice) notFound();
 
   return (
@@ -43,7 +45,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
           {invoice.payments.length > 0 && <section className="border-t border-neutral-200 p-6 sm:p-8"><h3 className="font-semibold">Payment history</h3><div className="mt-3 overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Method</TableHead><TableHead>Reference</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader><TableBody>{invoice.payments.map((payment) => <TableRow key={payment.id}><TableCell>{formatDate(payment.date)}</TableCell><TableCell>{payment.method.replaceAll("_", " ")}</TableCell><TableCell>{payment.reference}</TableCell><TableCell className="text-right font-medium">{formatPKR(payment.amount)}</TableCell></TableRow>)}</TableBody></Table></div></section>}
         </article>
-        <aside className="rounded-xl border border-neutral-200 bg-white p-5 print:hidden xl:sticky xl:top-6"><div className="mb-5"><h2 className="font-semibold">Record payment</h2><p className="mt-1 text-sm text-neutral-500">Allocate a manual receipt to this invoice.</p></div>{canPerformAction(role, "payments.record") && invoice.balance > 0 && !["CANCELLED", "DRAFT"].includes(invoice.status) ? <RecordPaymentForm invoice={{ id: invoice.id, number: invoice.invoiceNumber, customerId: invoice.customer.id, customerName: invoice.customer.companyName, balance: invoice.balance }} /> : <p className="rounded-lg bg-neutral-50 p-4 text-sm text-neutral-600">{invoice.balance <= 0 ? "This invoice has been paid in full." : "Payment recording is unavailable for your role or this invoice."}</p>}</aside>
+        <aside className="rounded-xl border border-neutral-200 bg-white p-5 print:hidden xl:sticky xl:top-6"><div className="mb-5"><h2 className="font-semibold">Record payment</h2><p className="mt-1 text-sm text-neutral-500">Allocate a manual receipt to this invoice.</p></div>{canPerformAction(role, "payments.record") && invoice.balance > 0 && !["CANCELLED", "DRAFT"].includes(invoice.status) ? <RecordPaymentForm invoice={{ id: invoice.id, number: invoice.invoiceNumber, customerId: invoice.customer.id, customerName: invoice.customer.companyName, balance: invoice.balance }} cashBankAccounts={cashBankAccounts} /> : <p className="rounded-lg bg-neutral-50 p-4 text-sm text-neutral-600">{invoice.balance <= 0 ? "This invoice has been paid in full." : "Payment recording is unavailable for your role or this invoice."}</p>}</aside>
       </div>
     </div>
   );
