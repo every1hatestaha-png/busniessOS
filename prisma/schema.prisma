@@ -92,6 +92,54 @@ enum DocumentKind {
   DEBIT_NOTE
   CUSTOMER_RETURN
   SUPPLIER_RETURN
+  EXPENSE_VOUCHER
+}
+
+enum AccountCategory {
+  ASSET
+  LIABILITY
+  EQUITY
+  INCOME
+  COST_OF_SALES
+  EXPENSE
+}
+
+enum AccountNormalBalance {
+  DEBIT
+  CREDIT
+}
+
+enum AccountSystemCode {
+  CASH_IN_HAND
+  BANK
+  ACCOUNTS_RECEIVABLE
+  INVENTORY
+  ACCOUNTS_PAYABLE
+  WITHHOLDING_TAX_PAYABLE
+  OWNER_EQUITY
+  SALES_REVENUE
+  OTHER_INCOME
+  COST_OF_GOODS_SOLD
+  SALARY_EXPENSE
+  ELECTRICITY_EXPENSE
+  RENT_EXPENSE
+  FUEL_EXPENSE
+  TRANSPORT_EXPENSE
+  FACTORY_EXPENSE
+  OFFICE_EXPENSE
+  REPAIRS_EXPENSE
+  OTHER_OPERATING_EXPENSE
+}
+
+enum GeneralLedgerSourceType {
+  EXPENSE
+  PAYMENT
+  RECEIPT
+  SALE
+  PURCHASE
+  CUSTOMER_RETURN
+  SUPPLIER_RETURN
+  ADJUSTMENT
 }
 
 enum LedgerEntryType {
@@ -162,6 +210,10 @@ model Workspace {
   debitNotes            DebitNote[]
   customerReturns       CustomerReturn[]
   supplierReturns       SupplierReturn[]
+  accounts              Account[]
+  cashBankAccounts      CashBankAccount[]
+  expenses              Expense[]
+  generalLedgerEntries  GeneralLedgerEntry[]
 
   @@map("workspaces")
 }
@@ -279,6 +331,104 @@ model Product {
   @@unique([workspaceId, sku])
   @@index([workspaceId])
   @@map("products")
+}
+
+// ----------------------------------------
+// ACCOUNTING CORE
+// ----------------------------------------
+
+model Account {
+  id            String               @id @default(uuid())
+  workspaceId   String
+  code          String
+  name          String
+  category      AccountCategory
+  normalBalance AccountNormalBalance
+  systemCode    AccountSystemCode?
+  isActive      Boolean              @default(true)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  workspace            Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  cashBankAccounts     CashBankAccount[]
+  expenses             Expense[]            @relation("ExpenseAccount")
+  paidExpenses         Expense[]            @relation("ExpensePaymentAccount")
+  generalLedgerEntries GeneralLedgerEntry[]
+
+  @@unique([workspaceId, code])
+  @@unique([workspaceId, systemCode])
+  @@index([workspaceId, category])
+  @@map("accounts")
+}
+
+model CashBankAccount {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  accountId      String
+  name           String
+  openingBalance Decimal  @default(0) @db.Decimal(15, 2)
+  currentBalance Decimal  @default(0) @db.Decimal(15, 2)
+  isBank         Boolean  @default(false)
+  bankName       String?
+  accountNumber  String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account   Account   @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, accountId])
+  @@index([workspaceId, isActive])
+  @@map("cash_bank_accounts")
+}
+
+model Expense {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  expenseAccountId String
+  paymentAccountId String
+  voucherNumber    String
+  expenseDate      DateTime @default(now())
+  amount           Decimal  @db.Decimal(15, 2)
+  payee            String?
+  reference        String?
+  notes            String?
+  idempotencyKey   String?
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  expenseAccount Account   @relation("ExpenseAccount", fields: [expenseAccountId], references: [id], onDelete: Restrict)
+  paymentAccount Account   @relation("ExpensePaymentAccount", fields: [paymentAccountId], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, voucherNumber])
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, expenseDate])
+  @@index([workspaceId, expenseAccountId])
+  @@map("expenses")
+}
+
+model GeneralLedgerEntry {
+  id          String                  @id @default(uuid())
+  workspaceId String
+  accountId   String
+  sourceType  GeneralLedgerSourceType
+  sourceId    String
+  documentNo  String
+  date        DateTime                @default(now())
+  narration   String
+  debit       Decimal                 @default(0) @db.Decimal(15, 2)
+  credit      Decimal                 @default(0) @db.Decimal(15, 2)
+  createdAt   DateTime                @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account   Account   @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId, accountId, date])
+  @@index([workspaceId, sourceType, sourceId])
+  @@map("general_ledger_entries")
 }
 
 // ----------------------------------------
