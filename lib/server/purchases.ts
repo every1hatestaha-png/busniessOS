@@ -2,6 +2,7 @@ import "server-only";
 
 import { Prisma } from "@prisma/client";
 import { writeAudit } from "@/lib/server/audit";
+import { postPurchaseToGeneralLedger, postSupplierReturnToGeneralLedger } from "@/lib/server/accounting";
 import { db } from "@/lib/server/db";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";
 import type { ServiceContext } from "@/lib/server/sales";
@@ -25,7 +26,7 @@ export async function createPurchase(context: ServiceContext, input: PurchaseInp
     const total = lines.reduce((sum, line) => sum.plus(line.total), new Prisma.Decimal(0)); const paid = new Prisma.Decimal(data.paidAmount);
     if (paid.greaterThan(total)) throw new PurchaseDomainError("INVALID_PAYMENT", "Payment cannot exceed purchase total.");
     const orderNumber = await nextDocumentNumber(tx, context.workspaceId, "PURCHASE_ORDER");
-    const order = await tx.purchaseOrder.create({ data: { workspaceId: context.workspaceId, supplierId: supplier.id, orderNumber, status: "RECEIVED", totalAmount: total, paidAmount: paid, balanceAmount: total.minus(paid), idempotencyKey: data.idempotencyKey, notes: data.notes || null }, select: { id: true } });
+    const order = await tx.purchaseOrder.create({ data: { workspaceId: context.workspaceId, supplierId: supplier.id, orderNumber, status: "RECEIVED", totalAmount: total, paidAmount: paid, balanceAmount: total.minus(paid), idempotencyKey: data.idempotencyKey, notes: data.notes || null }, select: { id: true, orderDate: true } });
     for (const line of lines) {
       await tx.purchaseOrderItem.create({ data: { purchaseOrderId: order.id, productId: line.productId, productName: line.product.name, productSku: line.product.sku, quantity: line.quantity, unitCost: line.unitCost, totalCost: line.total } });
       await tx.product.update({ where: { id: line.productId }, data: { stockQuantity: { increment: line.quantity }, costPrice: line.unitCost } });
@@ -39,6 +40,7 @@ export async function createPurchase(context: ServiceContext, input: PurchaseInp
       await tx.paymentAllocation.create({ data: { workspaceId: context.workspaceId, paymentId: payment.id, purchaseOrderId: order.id, amount: paid } });
       await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, supplierId: supplier.id, type: "PAYMENT_MADE", debit: paid, description: `Supplier payment ${paymentNumber}`, referenceId: payment.id } });
     }
+    await postPurchaseToGeneralLedger(tx, { workspaceId: context.workspaceId, purchaseId: order.id, orderNumber, date: order.orderDate, inventoryAmount: total, cashPaid: paid });
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "purchase.created", entityType: "PurchaseOrder", entityId: order.id, metadata: { orderNumber, total: total.toString() } });
     return order;
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
@@ -96,7 +98,7 @@ export async function createSupplierReturn(context: ServiceContext, input: Suppl
     const total = lines.reduce((sum, line) => sum.plus(line.total), new Prisma.Decimal(0));
     const number = await nextDocumentNumber(tx, context.workspaceId, "SUPPLIER_RETURN");
     const noteNumber = await nextDocumentNumber(tx, context.workspaceId, "DEBIT_NOTE");
-    const supplierReturn = await tx.supplierReturn.create({ data: { workspaceId: context.workspaceId, supplierId: order.supplierId, purchaseOrderId: order.id, idempotencyKey: data.idempotencyKey, number, reason: data.reason || null, totalAmount: total, notes: data.notes || null }, select: { id: true } });
+    const supplierReturn = await tx.supplierReturn.create({ data: { workspaceId: context.workspaceId, supplierId: order.supplierId, purchaseOrderId: order.id, idempotencyKey: data.idempotencyKey, number, reason: data.reason || null, totalAmount: total, notes: data.notes || null }, select: { id: true, date: true } });
     for (const line of lines) {
       const changed = await tx.product.updateMany({ where: { id: line.source.productId, workspaceId: context.workspaceId, stockQuantity: { gte: line.quantity } }, data: { stockQuantity: { decrement: line.quantity } } });
       if (changed.count !== 1) throw new PurchaseDomainError("INSUFFICIENT_STOCK", `${line.source.productName ?? "Product"} has insufficient stock to return.`);
@@ -106,6 +108,7 @@ export async function createSupplierReturn(context: ServiceContext, input: Suppl
     await tx.debitNote.create({ data: { workspaceId: context.workspaceId, supplierId: order.supplierId, purchaseOrderId: order.id, number: noteNumber, reason: data.reason || "Supplier return", amount: total, reference: number, notes: data.notes || null } });
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, supplierId: order.supplierId, type: "PURCHASE_RETURN", debit: total, description: `Supplier return ${number}`, referenceId: supplierReturn.id } });
     await tx.supplier.update({ where: { id: order.supplierId }, data: { currentBalance: { decrement: total } } });
+    await postSupplierReturnToGeneralLedger(tx, { workspaceId: context.workspaceId, returnId: supplierReturn.id, documentNo: number, date: supplierReturn.date, amount: total });
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "supplier_return.created", entityType: "SupplierReturn", entityId: supplierReturn.id, metadata: { purchaseOrderId: order.id, total: total.toString() } });
     return supplierReturn;
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });

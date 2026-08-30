@@ -1,6 +1,7 @@
 import "server-only";
 
 import { Prisma } from "@prisma/client";
+import { postSupplierPaymentToGeneralLedger } from "@/lib/server/accounting";
 import { writeAudit } from "@/lib/server/audit";
 import { db } from "@/lib/server/db";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";
@@ -77,6 +78,7 @@ export async function recordSupplierPayment(context: ServiceContext, supplierId:
     const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, supplierId, idempotencyKey: data.idempotencyKey, amount, method: data.method, reference: data.reference || number, notes: data.notes || null, paymentDate: data.paymentDate } });
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, supplierId, type: "PAYMENT_MADE", debit: amount, description: `Supplier payment ${number}`, referenceId: payment.id, date: data.paymentDate } });
     await tx.supplier.update({ where: { id: supplierId }, data: { currentBalance: { decrement: amount } } });
+    await postSupplierPaymentToGeneralLedger(tx, { workspaceId: context.workspaceId, paymentId: payment.id, documentNo: data.reference || number, date: data.paymentDate, amount });
     for (const allocation of requestedAllocations) {
       const allocationAmount = new Prisma.Decimal(allocation.amount);
       await tx.paymentAllocation.create({ data: { workspaceId: context.workspaceId, paymentId: payment.id, purchaseOrderId: allocation.purchaseOrderId, amount: allocationAmount } });

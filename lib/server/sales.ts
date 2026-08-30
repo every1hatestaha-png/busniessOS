@@ -3,6 +3,7 @@ import "server-only";
 import { Prisma, type Role } from "@prisma/client";
 import { db } from "@/lib/server/db";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";
+import { postCustomerReturnToGeneralLedger, postSaleToGeneralLedger } from "@/lib/server/accounting";
 import { saleSchema, type SaleInput } from "@/lib/validation/sale";
 import { writeAudit } from "@/lib/server/audit";
 import { customerReturnSchema, type CustomerReturnInput } from "@/lib/validation/returns";
@@ -34,10 +35,12 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
 
     const orderNumber = await nextDocumentNumber(tx, context.workspaceId, "SALES_ORDER");
     const invoiceNumber = await nextDocumentNumber(tx, context.workspaceId, "INVOICE");
-    const order = await tx.salesOrder.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, orderNumber, status: "CONFIRMED", subtotal, discount, total, paidAmount: paid, balanceAmount: total.minus(paid), notes: data.notes || null, idempotencyKey: data.idempotencyKey }, select: { id: true } });
+    const order = await tx.salesOrder.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, orderNumber, status: "CONFIRMED", subtotal, discount, total, paidAmount: paid, balanceAmount: total.minus(paid), notes: data.notes || null, idempotencyKey: data.idempotencyKey }, select: { id: true, orderDate: true } });
+    let costOfGoodsSold = new Prisma.Decimal(0);
 
     for (const line of lines) {
       const product = products.find((entry) => entry.id === line.productId)!;
+      costOfGoodsSold = costOfGoodsSold.plus(product.costPrice.mul(line.quantity));
       const changed = await tx.product.updateMany({ where: { id: line.productId, workspaceId: context.workspaceId, stockQuantity: { gte: line.quantity } }, data: { stockQuantity: { decrement: line.quantity } } });
       if (changed.count !== 1) throw new SaleDomainError("INSUFFICIENT_STOCK", `${product.name} has insufficient stock.`);
       await tx.salesOrderItem.create({ data: { salesOrderId: order.id, productId: line.productId, productName: product.name, productSku: product.sku, quantity: line.quantity, unitPrice: line.unitPrice, discount: line.discount, totalPrice: line.total } });
@@ -54,6 +57,7 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
       await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, type: "PAYMENT_RECEIVED", credit: paid, description: `Payment ${paymentNumber}`, referenceId: payment.id } });
       await tx.customer.update({ where: { id: customer.id }, data: { currentBalance: { decrement: paid } } });
     }
+    await postSaleToGeneralLedger(tx, { workspaceId: context.workspaceId, saleId: order.id, orderNumber, date: order.orderDate, revenue: total, costOfGoodsSold, cashReceived: paid });
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "sale.created", entityType: "SalesOrder", entityId: order.id, metadata: { orderNumber, total: total.toString() } });
     return { id: order.id };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
@@ -79,9 +83,14 @@ export async function createCustomerReturn(context: ServiceContext, input: Custo
       return { source, quantity: item.quantity, unitPrice, total: unitPrice.mul(item.quantity) };
     });
     const total = lines.reduce((sum, line) => sum.plus(line.total), new Prisma.Decimal(0));
+    const saleCosts = data.restock ? await tx.inventoryTransaction.findMany({ where: { workspaceId: context.workspaceId, reference: order.orderNumber, type: "SALE", productId: { in: lines.map((line) => line.source.productId) } }, select: { productId: true, unitCost: true } }) : [];
+    const inventoryCost = lines.reduce((sum, line) => {
+      const cost = saleCosts.find((entry) => entry.productId === line.source.productId)?.unitCost ?? new Prisma.Decimal(0);
+      return sum.plus(cost.mul(line.quantity));
+    }, new Prisma.Decimal(0));
     const number = await nextDocumentNumber(tx, context.workspaceId, "CUSTOMER_RETURN");
     const noteNumber = await nextDocumentNumber(tx, context.workspaceId, "CREDIT_NOTE");
-    const customerReturn = await tx.customerReturn.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, salesOrderId: order.id, idempotencyKey: data.idempotencyKey, number, reason: data.reason || null, totalAmount: total, restock: data.restock, notes: data.notes || null }, select: { id: true } });
+    const customerReturn = await tx.customerReturn.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, salesOrderId: order.id, idempotencyKey: data.idempotencyKey, number, reason: data.reason || null, totalAmount: total, restock: data.restock, notes: data.notes || null }, select: { id: true, date: true } });
     for (const line of lines) {
       await tx.customerReturnItem.create({ data: { customerReturnId: customerReturn.id, salesOrderItemId: line.source.id, productId: line.source.productId, quantity: line.quantity, unitPrice: line.unitPrice, totalPrice: line.total } });
       if (data.restock) {
@@ -92,6 +101,7 @@ export async function createCustomerReturn(context: ServiceContext, input: Custo
     await tx.creditNote.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, salesOrderId: order.id, number: noteNumber, reason: data.reason || "Customer return", amount: total, reference: number, notes: data.notes || null } });
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, type: "SALES_RETURN", credit: total, description: `Customer return ${number}`, referenceId: customerReturn.id } });
     await tx.customer.update({ where: { id: order.customerId }, data: { currentBalance: { decrement: total } } });
+    await postCustomerReturnToGeneralLedger(tx, { workspaceId: context.workspaceId, returnId: customerReturn.id, documentNo: number, date: customerReturn.date, amount: total, inventoryCost });
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "customer_return.created", entityType: "CustomerReturn", entityId: customerReturn.id, metadata: { salesOrderId: order.id, total: total.toString() } });
     return customerReturn;
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });

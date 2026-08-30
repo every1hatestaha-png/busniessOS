@@ -1,6 +1,7 @@
 import "server-only";
 
 import { Prisma } from "@prisma/client";
+import { postCustomerPaymentToGeneralLedger } from "@/lib/server/accounting";
 import { db } from "@/lib/server/db";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";
 import type { ServiceContext } from "@/lib/server/sales";
@@ -38,6 +39,7 @@ export async function recordPayment(context: ServiceContext, input: PaymentInput
     const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, invoiceId: requestedAllocations.length === 1 ? requestedAllocations[0].invoiceId : null, idempotencyKey: data.idempotencyKey, amount, method: data.method, reference: data.reference || paymentNumber, notes: data.notes || null, paymentDate: data.paymentDate }, select: { id: true } });
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, type: "PAYMENT_RECEIVED", credit: amount, description: `Payment ${paymentNumber}`, referenceId: payment.id, date: data.paymentDate } });
     await tx.customer.update({ where: { id: customer.id }, data: { currentBalance: { decrement: amount } } });
+    await postCustomerPaymentToGeneralLedger(tx, { workspaceId: context.workspaceId, paymentId: payment.id, documentNo: data.reference || paymentNumber, date: data.paymentDate, amount });
     for (const allocation of requestedAllocations) {
       const invoice = invoices.find((entry) => entry.id === allocation.invoiceId)!;
       const allocationAmount = new Prisma.Decimal(allocation.amount);
