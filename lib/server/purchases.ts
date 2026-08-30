@@ -36,7 +36,8 @@ export async function createPurchase(context: ServiceContext, input: PurchaseInp
     await tx.supplier.update({ where: { id: supplier.id }, data: { currentBalance: { increment: total.minus(paid) } } });
     if (paid.greaterThan(0)) {
       const paymentNumber = await nextDocumentNumber(tx, context.workspaceId, "PAYMENT_RECEIPT");
-      const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, supplierId: supplier.id, amount: paid, method: data.paymentMethod, reference: paymentNumber, notes: "Payment made with purchase" } });
+      const cashBankAccountId = data.cashBankAccountId && data.cashBankAccountId !== "" ? data.cashBankAccountId : null;
+      const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, supplierId: supplier.id, cashBankAccountId, amount: paid, method: data.paymentMethod, reference: paymentNumber, notes: "Payment made with purchase" } });
       await tx.paymentAllocation.create({ data: { workspaceId: context.workspaceId, paymentId: payment.id, purchaseOrderId: order.id, amount: paid } });
       await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, supplierId: supplier.id, type: "PAYMENT_MADE", debit: paid, description: `Supplier payment ${paymentNumber}`, referenceId: payment.id } });
     }

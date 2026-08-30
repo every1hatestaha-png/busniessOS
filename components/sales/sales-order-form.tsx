@@ -46,11 +46,13 @@ type ProductOption = {
 
 const fieldClass = "h-9 w-full rounded-lg border border-input bg-white px-3 text-sm outline-none transition focus:border-ring focus:ring-3 focus:ring-ring/50";
 
-export function SalesOrderForm({ customers, products }: { customers: CustomerOption[]; products: ProductOption[] }) {
+type CashBankOption = { cashBankAccountId: string; name: string; currentBalance: number; isBank: boolean; bankName?: string | null };
+
+export function SalesOrderForm({ customers, products, cashBankAccounts = [] }: { customers: CustomerOption[]; products: ProductOption[]; cashBankAccounts?: CashBankOption[] }) {
   const [actionState, submitAction, isPending] = useActionState(createSaleAction, {} as CreateSaleState);
   const { control, register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<OrderFormInput, unknown, OrderFormValues>({
     resolver: zodResolver(orderSchema),
-    defaultValues: { customerId: "", items: [{ productId: "", quantity: 1, unitPrice: 0, discount: 0 }], orderDiscount: 0, paidAmount: 0, notes: "", idempotencyKey: "00000000-0000-0000-0000-000000000000" },
+    defaultValues: { customerId: "", items: [{ productId: "", quantity: 1, unitPrice: 0, discount: 0 }], orderDiscount: 0, paidAmount: 0, cashBankAccountId: "", notes: "", idempotencyKey: "00000000-0000-0000-0000-000000000000" },
   });
   const { fields, append, remove } = useFieldArray({ control, name: "items" });
   const items = useWatch({ control, name: "items" }) ?? [];
@@ -110,7 +112,7 @@ export function SalesOrderForm({ customers, products }: { customers: CustomerOpt
             </CardContent>
           </Card>
 
-          <Card className="shadow-none"><CardHeader><CardTitle>Payment and notes</CardTitle></CardHeader><CardContent className="grid gap-5 md:grid-cols-2"><Field label="Order discount" hint="Applied after line discounts" error={errors.orderDiscount?.message}><Input type="number" min="0" step="1" className="h-9" {...register("orderDiscount", { valueAsNumber: true })} /></Field><Field label="Paid amount" hint="Amount received with this order" error={errors.paidAmount?.message}><Input type="number" min="0" step="1" className="h-9" {...register("paidAmount", { valueAsNumber: true })} /></Field><div className="md:col-span-2"><Field label="Notes" error={errors.notes?.message}><textarea {...register("notes")} rows={4} placeholder="Dispatch, delivery, or payment instructions" className={`${fieldClass} h-auto resize-y py-2`} /></Field></div></CardContent></Card>
+          <Card className="shadow-none"><CardHeader><CardTitle>Payment and notes</CardTitle></CardHeader><CardContent className="grid gap-5 md:grid-cols-2"><Field label="Order discount" hint="Applied after line discounts" error={errors.orderDiscount?.message}><Input type="number" min="0" step="1" className="h-9" {...register("orderDiscount", { valueAsNumber: true })} /></Field><Field label="Paid amount" hint="Amount received with this order" error={errors.paidAmount?.message}><Input type="number" min="0" step="1" className="h-9" {...register("paidAmount", { valueAsNumber: true })} /></Field>{paidAmount > 0 && <Field label="Receive into" hint="Cash/bank account for this receipt"><select {...register("cashBankAccountId")} className={fieldClass} required><option value="">Select cash/bank</option>{cashBankAccounts.map((account) => <option key={account.cashBankAccountId} value={account.cashBankAccountId}>{account.name}{account.isBank && account.bankName ? ` · ${account.bankName}` : ""} · {formatPKR(account.currentBalance)}</option>)}</select></Field>}<div className="md:col-span-2"><Field label="Notes" error={errors.notes?.message}><textarea {...register("notes")} rows={4} placeholder="Dispatch, delivery, or payment instructions" className={`${fieldClass} h-auto resize-y py-2`} /></Field></div></CardContent></Card>
         </div>
 
         <Card className="shadow-none xl:sticky xl:top-6">

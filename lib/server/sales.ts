@@ -53,7 +53,8 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
     await tx.customer.update({ where: { id: customer.id }, data: { currentBalance: { increment: total } } });
     if (paid.greaterThan(0)) {
       const paymentNumber = await nextDocumentNumber(tx, context.workspaceId, "PAYMENT_RECEIPT");
-      const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, invoiceId: invoice.id, amount: paid, method: "CASH", reference: paymentNumber, notes: "Payment received with sale" }, select: { id: true } });
+      const cashBankAccountId = data.cashBankAccountId && data.cashBankAccountId !== "" ? data.cashBankAccountId : null;
+      const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, invoiceId: invoice.id, cashBankAccountId, amount: paid, method: "CASH", reference: paymentNumber, notes: "Payment received with sale" }, select: { id: true } });
       await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, type: "PAYMENT_RECEIVED", credit: paid, description: `Payment ${paymentNumber}`, referenceId: payment.id } });
       await tx.customer.update({ where: { id: customer.id }, data: { currentBalance: { decrement: paid } } });
     }

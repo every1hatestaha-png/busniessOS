@@ -67,17 +67,16 @@ export async function recordSupplierPayment(context: ServiceContext, supplierId:
     if (!cashBankAccount) throw new SupplierDomainError("Cash/bank account is unavailable.");
     if (amount.greaterThan(supplier.currentBalance)) throw new SupplierDomainError("Payment cannot exceed supplier payable.");
     const requestedAllocations = data.allocations ?? [];
-    if (requestedAllocations.length) {
-      const allocationTotal = requestedAllocations.reduce((sum, entry) => sum.plus(entry.amount), new Prisma.Decimal(0));
-      if (!allocationTotal.equals(amount)) throw new SupplierDomainError("Payment allocations must equal the payment amount.");
-      const purchaseIds = requestedAllocations.map((entry) => entry.purchaseOrderId);
-      if (new Set(purchaseIds).size !== purchaseIds.length) throw new SupplierDomainError("Duplicate purchase allocations are not allowed.");
-      const purchases = await tx.purchaseOrder.findMany({ where: { id: { in: purchaseIds }, workspaceId: context.workspaceId, supplierId, status: { not: "CANCELLED" } }, select: { id: true, totalAmount: true, paidAmount: true } });
-      if (purchases.length !== requestedAllocations.length) throw new SupplierDomainError("One or more purchases are unavailable.");
-      for (const allocation of requestedAllocations) {
-        const purchase = purchases.find((entry) => entry.id === allocation.purchaseOrderId)!;
-        if (new Prisma.Decimal(allocation.amount).greaterThan(purchase.totalAmount.minus(purchase.paidAmount))) throw new SupplierDomainError("Payment exceeds purchase balance or purchase is unavailable.");
-      }
+    if (!requestedAllocations.length) throw new SupplierDomainError("Allocate this payment to one or more purchase bills.");
+    const allocationTotal = requestedAllocations.reduce((sum, entry) => sum.plus(entry.amount), new Prisma.Decimal(0));
+    if (!allocationTotal.equals(amount)) throw new SupplierDomainError("Payment allocations must equal the gross payment amount.");
+    const purchaseIds = requestedAllocations.map((entry) => entry.purchaseOrderId);
+    if (new Set(purchaseIds).size !== purchaseIds.length) throw new SupplierDomainError("Duplicate purchase allocations are not allowed.");
+    const purchases = await tx.purchaseOrder.findMany({ where: { id: { in: purchaseIds }, workspaceId: context.workspaceId, supplierId, status: { not: "CANCELLED" } }, select: { id: true, totalAmount: true, paidAmount: true } });
+    if (purchases.length !== requestedAllocations.length) throw new SupplierDomainError("One or more purchases are unavailable.");
+    for (const allocation of requestedAllocations) {
+      const purchase = purchases.find((entry) => entry.id === allocation.purchaseOrderId)!;
+      if (new Prisma.Decimal(allocation.amount).greaterThan(purchase.totalAmount.minus(purchase.paidAmount))) throw new SupplierDomainError("Payment exceeds purchase balance or purchase is unavailable.");
     }
     const number = await nextDocumentNumber(tx, context.workspaceId, "BANK_PAYMENT_VOUCHER");
     const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, supplierId, cashBankAccountId: cashBankAccount.id, documentNumber: number, idempotencyKey: data.idempotencyKey, amount, netAmount, withholdingTaxAmount, method: data.method, reference: data.reference || null, notes: data.notes || null, paymentDate: data.paymentDate } });
@@ -89,7 +88,7 @@ export async function recordSupplierPayment(context: ServiceContext, supplierId:
       await tx.paymentAllocation.create({ data: { workspaceId: context.workspaceId, paymentId: payment.id, purchaseOrderId: allocation.purchaseOrderId, amount: allocationAmount } });
       await tx.purchaseOrder.update({ where: { id: allocation.purchaseOrderId }, data: { paidAmount: { increment: allocationAmount }, balanceAmount: { decrement: allocationAmount } } });
     }
-    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "supplier.payment_recorded", entityType: "Payment", entityId: payment.id, metadata: { supplierId, amount: data.amount, withholdingTaxAmount: withholdingTaxAmount.toString(), netAmount: netAmount.toString(), documentNumber: number } });
+    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "supplier.payment_recorded", entityType: "Payment", entityId: payment.id, metadata: { supplierId, amount: data.amount, withholdingTaxAmount: withholdingTaxAmount.toString(), netAmount: netAmount.toString(), documentNumber: number, allocations: requestedAllocations.map((a) => ({ purchaseOrderId: a.purchaseOrderId, amount: a.amount })) } });
     return { id: payment.id };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
 }

@@ -10,6 +10,7 @@ export const saleSchema = z.object({
   })).min(1).max(100),
   orderDiscount: z.number().nonnegative().max(100000000),
   paidAmount: z.number().nonnegative().max(100000000),
+  cashBankAccountId: z.string().uuid().optional().or(z.literal("")),
   notes: z.string().trim().max(500).default(""),
   idempotencyKey: z.string().uuid(),
 }).superRefine((sale, context) => {

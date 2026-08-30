@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
 import type { PayablesAgingReport, PayablesBucket } from "@/lib/server/payables";
@@ -83,6 +84,7 @@ export function PayablesTable({ report }: { report: PayablesAgingReport }) {
                 <TableHead className="text-right">31–45</TableHead>
                 <TableHead className="text-right">46–60</TableHead>
                 <TableHead className="text-right">61+</TableHead>
+                <TableHead className="w-24" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -93,6 +95,7 @@ export function PayablesTable({ report }: { report: PayablesAgingReport }) {
                     key={supplier.supplierId}
                     isOpen={isOpen}
                     onToggle={() => toggle(supplier.supplierId)}
+                    supplierId={supplier.supplierId}
                     supplierName={supplier.supplierName}
                     total={supplier.totalOutstanding}
                     buckets={supplier.buckets}
@@ -102,7 +105,7 @@ export function PayablesTable({ report }: { report: PayablesAgingReport }) {
               })}
               {!suppliers.length && (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-32 text-center text-neutral-500">
+                  <TableCell colSpan={8} className="h-32 text-center text-neutral-500">
                     No outstanding payables match.
                   </TableCell>
                 </TableRow>
@@ -118,6 +121,7 @@ export function PayablesTable({ report }: { report: PayablesAgingReport }) {
 function ExpandedRow({
   isOpen,
   onToggle,
+  supplierId,
   supplierName,
   total,
   buckets,
@@ -125,6 +129,7 @@ function ExpandedRow({
 }: {
   isOpen: boolean;
   onToggle: () => void;
+  supplierId: string;
   supplierName: string;
   total: number;
   buckets: Record<PayablesBucket, number>;
@@ -145,10 +150,15 @@ function ExpandedRow({
             {formatPKR(buckets[bucket])}
           </TableCell>
         ))}
+        <TableCell className="text-right">
+          <Link href={`/suppliers/${supplierId}`} className="inline-flex h-7 items-center rounded-md border border-neutral-900 bg-neutral-900 px-2.5 text-xs font-medium text-white hover:bg-neutral-800" onClick={(e) => e.stopPropagation()}>
+            Pay
+          </Link>
+        </TableCell>
       </TableRow>
       {isOpen && (
         <TableRow className="hover:bg-transparent">
-          <TableCell colSpan={7} className="bg-neutral-50 p-0">
+          <TableCell colSpan={8} className="bg-neutral-50 p-0">
             <div className="px-6 py-4">
               <Table>
                 <TableHeader>

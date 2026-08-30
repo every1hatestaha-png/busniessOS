@@ -270,9 +270,11 @@ describe("cash/bank + payment voucher + WHT integration", () => {
   });
 
   it("rejects cross-workspace and inactive cash/bank accounts", async () => {
+    const rejectPurchase = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 1, unitCost: 10 }], paidAmount: 0, paymentMethod: "CASH", notes: "", idempotencyKey: randomUUID() });
     await expect(recordPayment(context(), { customerId, cashBankAccountId: otherCashBankAccountId, amount: 10, paymentDate: new Date(), method: "CASH", reference: "", notes: "", idempotencyKey: randomUUID() })).rejects.toThrow("Cash/bank account is unavailable");
-    await expect(recordSupplierPayment(context(), supplierId, { amount: 10, cashBankAccountId: otherCashBankAccountId, paymentDate: new Date(), method: "CASH", reference: "", notes: "", idempotencyKey: randomUUID() })).rejects.toThrow("Cash/bank account is unavailable");
+    await expect(recordSupplierPayment(context(), supplierId, { amount: 10, cashBankAccountId: otherCashBankAccountId, allocations: [{ purchaseOrderId: rejectPurchase.id, amount: 10 }], paymentDate: new Date(), method: "CASH", reference: "", notes: "", idempotencyKey: randomUUID() })).rejects.toThrow("Cash/bank account is unavailable");
     await expect(recordPayment(context(), { customerId, amount: 10, paymentDate: new Date(), method: "CASH", reference: "", notes: "", idempotencyKey: randomUUID() })).rejects.toThrow("cash/bank");
+    await expect(recordSupplierPayment(context(), supplierId, { amount: 10, cashBankAccountId: bankAccountCashBankId, paymentDate: new Date(), method: "CASH", reference: "", notes: "", idempotencyKey: randomUUID() })).rejects.toThrow("Allocate this payment");
   });
 
   it("rejects WHT exceeding gross and missing pay-from account on a voucher", async () => {
