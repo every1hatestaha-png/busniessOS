@@ -52,8 +52,12 @@ describe("Phase 2C transactions", () => {
   it("cancels a sale only without later payments and explicitly reverses its initial payment", async () => {
     const sale = await createSale(context(), { customerId, items: [{ productId, quantity: 1, unitPrice: 30, discount: 0 }], orderDiscount: 0, paidAmount: 10, notes: "", idempotencyKey: randomUUID() });
     await expect(cancelSale(context(), sale.id, false)).rejects.toThrow("Explicitly confirm"); await cancelSale(context(), sale.id, true);
-    const [order, invoice, product, customer, reversal, audit] = await Promise.all([db.salesOrder.findUniqueOrThrow({ where: { id: sale.id } }), db.invoice.findUniqueOrThrow({ where: { salesOrderId: sale.id } }), db.product.findUniqueOrThrow({ where: { id: productId } }), db.customer.findUniqueOrThrow({ where: { id: customerId } }), db.payment.findFirst({ where: { workspaceId, customerId, reversalOfId: { not: null } } }), db.auditLog.findFirst({ where: { workspaceId, entityId: sale.id, action: "sale.cancelled" } })]);
+    const [order, invoice, product, customer, reversal, audit, glReversals] = await Promise.all([db.salesOrder.findUniqueOrThrow({ where: { id: sale.id } }), db.invoice.findUniqueOrThrow({ where: { salesOrderId: sale.id } }), db.product.findUniqueOrThrow({ where: { id: productId } }), db.customer.findUniqueOrThrow({ where: { id: customerId } }), db.payment.findFirst({ where: { workspaceId, customerId, reversalOfId: { not: null } } }), db.auditLog.findFirst({ where: { workspaceId, entityId: sale.id, action: "sale.cancelled" } }), db.generalLedgerEntry.findMany({ where: { workspaceId, sourceType: "REVERSAL", sourceId: sale.id, reversalOfId: { not: null } } })]);
     expect(order.status).toBe("CANCELLED"); expect(invoice.status).toBe("CANCELLED"); expect(product.stockQuantity).toBe(5); expect(Number(customer.currentBalance)).toBe(0); expect(reversal).not.toBeNull(); expect(audit).not.toBeNull();
+    expect(glReversals.length).toBeGreaterThan(0);
+    expect(glReversals.reduce((sum, entry) => sum + Number(entry.debit), 0)).toBe(glReversals.reduce((sum, entry) => sum + Number(entry.credit), 0));
+    await cancelSale(context(), sale.id, true);
+    expect(await db.generalLedgerEntry.count({ where: { workspaceId, sourceType: "REVERSAL", sourceId: sale.id, reversalOfId: { not: null } } })).toBe(glReversals.length);
   });
 
   it("rejects cancellation when a later invoice payment exists", async () => {

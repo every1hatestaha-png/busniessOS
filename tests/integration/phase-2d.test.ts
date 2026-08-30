@@ -68,19 +68,26 @@ describe("Phase 2D financial operations", () => {
   it("cancels a received purchase with stock, payable, payment, ledger, and audit reversals", async () => {
     const purchase = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 3, unitCost: 12 }], idempotencyKey: randomUUID() });
     const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: purchase.id } });
-    await createGoodsReceipt(context(), { purchaseOrderId: purchase.id, items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 3, acceptedQuantity: 3, actualUnitCost: 12 }] });
+    const grn = await createGoodsReceipt(context(), { purchaseOrderId: purchase.id, items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 3, acceptedQuantity: 3, actualUnitCost: 12 }] });
 
     const productBefore = await db.product.findUniqueOrThrow({ where: { id: productId } });
     await expect(cancelPurchase(context(), purchase.id, false)).rejects.toThrow("Explicitly confirm");
     await cancelPurchase(context(), purchase.id, true);
-    const [order, product, audit] = await Promise.all([
+    const [order, product, audit, grnAfterCancel, glReversals] = await Promise.all([
       db.purchaseOrder.findUniqueOrThrow({ where: { id: purchase.id } }),
       db.product.findUniqueOrThrow({ where: { id: productId } }),
       db.auditLog.findFirst({ where: { workspaceId, entityId: purchase.id, action: "purchase.cancelled" } }),
+      db.goodReceivedNote.findUnique({ where: { id: grn.id } }),
+      db.generalLedgerEntry.findMany({ where: { workspaceId, sourceType: "REVERSAL", reversalOfId: { not: null } } }),
     ]);
     expect(order.status).toBe("CANCELLED");
     expect(product.stockQuantity).toBe(productBefore.stockQuantity - 3);
+    expect(grnAfterCancel).not.toBeNull();
+    expect(glReversals.length).toBeGreaterThan(0);
+    expect(glReversals.reduce((sum, entry) => sum + Number(entry.debit), 0)).toBe(glReversals.reduce((sum, entry) => sum + Number(entry.credit), 0));
     expect(audit).not.toBeNull();
+    await cancelPurchase(context(), purchase.id, true);
+    expect(await db.generalLedgerEntry.count({ where: { workspaceId, sourceType: "REVERSAL", reversalOfId: { not: null } } })).toBe(glReversals.length);
   });
 
   it("records customer and supplier returns with notes, stock, ledger, balances, and audit", async () => {
@@ -120,5 +127,43 @@ describe("Phase 2D financial operations", () => {
     expect(await db.paymentAllocation.count({ where: { paymentId: payment.id } })).toBe(2);
     expect(Number((await db.purchaseOrder.findUniqueOrThrow({ where: { id: first.id } })).balanceAmount)).toBe(0);
     expect(Number((await db.purchaseOrder.findUniqueOrThrow({ where: { id: second.id } })).balanceAmount)).toBe(5);
+  });
+
+  it("limits supplier payments to actual accepted GRN payable", async () => {
+    const purchase = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 10, unitCost: 100 }], idempotencyKey: randomUUID() });
+    const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: purchase.id } });
+    await createGoodsReceipt(context(), { purchaseOrderId: purchase.id, items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 8, acceptedQuantity: 6, actualUnitCost: 90 }] });
+    const other = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 1, unitCost: 100 }], idempotencyKey: randomUUID() });
+    const otherItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: other.id } });
+    await createGoodsReceipt(context(), { purchaseOrderId: other.id, items: [{ purchaseOrderItemId: otherItem.id, receivedQuantity: 1, acceptedQuantity: 1, actualUnitCost: 100 }] });
+
+    await expect(recordSupplierPayment(context(), supplierId, { amount: 600, cashBankAccountId, allocations: [{ purchaseOrderId: purchase.id, amount: 600 }], method: "CASH", reference: "", notes: "", paymentDate: new Date(), idempotencyKey: randomUUID() })).rejects.toThrow("Payment exceeds purchase balance");
+
+    const payment = await recordSupplierPayment(context(), supplierId, { amount: 540, cashBankAccountId, allocations: [{ purchaseOrderId: purchase.id, amount: 540 }], method: "CASH", reference: "", notes: "", paymentDate: new Date(), idempotencyKey: randomUUID() });
+    expect(payment.id).toBeTruthy();
+    expect(Number((await db.purchaseOrder.findUniqueOrThrow({ where: { id: purchase.id } })).balanceAmount)).toBe(0);
+  });
+
+  it("limits supplier returns to accepted GRN quantity and actual cost", async () => {
+    const purchase = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 10, unitCost: 100 }], idempotencyKey: randomUUID() });
+    const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: purchase.id } });
+    await createGoodsReceipt(context(), { purchaseOrderId: purchase.id, items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 8, acceptedQuantity: 6, actualUnitCost: 90 }] });
+
+    await expect(createSupplierReturn(context(), { purchaseOrderId: purchase.id, items: [{ itemId: poItem.id, quantity: 7 }], reason: "Too many", notes: "", idempotencyKey: randomUUID() })).rejects.toThrow("Return quantity exceeds received quantity");
+
+    const supplierReturn = await createSupplierReturn(context(), { purchaseOrderId: purchase.id, items: [{ itemId: poItem.id, quantity: 2 }], reason: "Defective", notes: "", idempotencyKey: randomUUID() });
+    const saved = await db.supplierReturn.findUniqueOrThrow({ where: { id: supplierReturn.id }, include: { items: true } });
+    expect(Number(saved.totalAmount)).toBe(180);
+    expect(Number(saved.items[0].unitCost)).toBe(90);
+    expect(Number((await db.purchaseOrder.findUniqueOrThrow({ where: { id: purchase.id } })).balanceAmount)).toBe(360);
+  });
+
+  it("blocks purchase cancellation after supplier returns", async () => {
+    const purchase = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 3, unitCost: 20 }], idempotencyKey: randomUUID() });
+    const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: purchase.id } });
+    await createGoodsReceipt(context(), { purchaseOrderId: purchase.id, items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 3, acceptedQuantity: 3, actualUnitCost: 20 }] });
+    await createSupplierReturn(context(), { purchaseOrderId: purchase.id, items: [{ itemId: poItem.id, quantity: 1 }], reason: "Returned", notes: "", idempotencyKey: randomUUID() });
+
+    await expect(cancelPurchase(context(), purchase.id, true)).rejects.toThrow("supplier returns");
   });
 });

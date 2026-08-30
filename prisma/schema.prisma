@@ -72,6 +72,13 @@ enum InvoiceStatus {
   CANCELLED
 }
 
+enum CreditNoteStatus {
+  OPEN
+  PARTIALLY_APPLIED
+  APPLIED
+  CANCELLED
+}
+
 enum PaymentMethod {
   CASH
   BANK_TRANSFER
@@ -143,6 +150,7 @@ enum GeneralLedgerSourceType {
   SUPPLIER_RETURN
   ADJUSTMENT
   PURCHASE_RECEIPT
+  REVERSAL
 }
 
 enum LedgerEntryType {
@@ -202,29 +210,30 @@ model Workspace {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
-  members               WorkspaceMember[]
-  customers             Customer[]
-  suppliers             Supplier[]
-  products              Product[]
-  inventoryTransactions InventoryTransaction[]
-  salesOrders           SalesOrder[]
-  purchaseOrders        PurchaseOrder[]
-  invoices              Invoice[]
-  payments              Payment[]
-  ledgerEntries         LedgerEntry[]
-  documentSequences     DocumentSequence[]
-  auditLogs             AuditLog[]
-  invitations           WorkspaceInvitation[]
-  paymentAllocations    PaymentAllocation[]
-  creditNotes           CreditNote[]
-  debitNotes            DebitNote[]
-  customerReturns       CustomerReturn[]
-  supplierReturns       SupplierReturn[]
-  accounts              Account[]
-  cashBankAccounts      CashBankAccount[]
-  expenses              Expense[]
-  generalLedgerEntries  GeneralLedgerEntry[]
-  goodReceivedNotes     GoodReceivedNote[]
+  members                   WorkspaceMember[]
+  customers                 Customer[]
+  suppliers                 Supplier[]
+  products                  Product[]
+  inventoryTransactions     InventoryTransaction[]
+  salesOrders               SalesOrder[]
+  purchaseOrders            PurchaseOrder[]
+  invoices                  Invoice[]
+  payments                  Payment[]
+  ledgerEntries             LedgerEntry[]
+  documentSequences         DocumentSequence[]
+  auditLogs                 AuditLog[]
+  invitations               WorkspaceInvitation[]
+  paymentAllocations        PaymentAllocation[]
+  creditNotes               CreditNote[]
+  debitNotes                DebitNote[]
+  customerReturns           CustomerReturn[]
+  supplierReturns           SupplierReturn[]
+  accounts                  Account[]
+  cashBankAccounts          CashBankAccount[]
+  expenses                  Expense[]
+  generalLedgerEntries      GeneralLedgerEntry[]
+  goodReceivedNotes         GoodReceivedNote[]
+  customerCreditAllocations CustomerCreditAllocation[]
 
   @@map("workspaces")
 }
@@ -238,9 +247,10 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships     WorkspaceMember[]
-  auditLogs       AuditLog[]
-  invitationsSent WorkspaceInvitation[] @relation("InvitationSender")
+  memberships          WorkspaceMember[]
+  auditLogs            AuditLog[]
+  invitationsSent      WorkspaceInvitation[] @relation("InvitationSender")
+  generalLedgerEntries GeneralLedgerEntry[]
 
   @@map("users")
 }
@@ -427,21 +437,29 @@ model Expense {
 }
 
 model GeneralLedgerEntry {
-  id          String                  @id @default(uuid())
-  workspaceId String
-  accountId   String
-  sourceType  GeneralLedgerSourceType
-  sourceId    String
-  documentNo  String
-  date        DateTime                @default(now())
-  narration   String
-  debit       Decimal                 @default(0) @db.Decimal(15, 2)
-  credit      Decimal                 @default(0) @db.Decimal(15, 2)
-  createdAt   DateTime                @default(now())
+  id             String                  @id @default(uuid())
+  workspaceId    String
+  accountId      String
+  sourceType     GeneralLedgerSourceType
+  sourceId       String
+  documentNo     String
+  date           DateTime                @default(now())
+  narration      String
+  debit          Decimal                 @default(0) @db.Decimal(15, 2)
+  credit         Decimal                 @default(0) @db.Decimal(15, 2)
+  reversalOfId   String?
+  reversedAt     DateTime?
+  reversedById   String?
+  reversalReason String?
+  createdAt      DateTime                @default(now())
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  account   Account   @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  workspace  Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account    Account              @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  reversalOf GeneralLedgerEntry?  @relation("GeneralLedgerReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversals  GeneralLedgerEntry[] @relation("GeneralLedgerReversal")
+  reversedBy User?                @relation(fields: [reversedById], references: [id], onDelete: SetNull)
 
+  @@unique([workspaceId, reversalOfId])
   @@index([workspaceId, accountId, date])
   @@index([workspaceId, sourceType, sourceId])
   @@map("general_ledger_entries")
@@ -586,6 +604,7 @@ model GoodReceivedNote {
   supplierId      String
   purchaseOrderId String
   grnNumber       String
+  idempotencyKey  String?
   receiptDate     DateTime @default(now())
   notes           String?
   receivedBy      String?
@@ -600,6 +619,7 @@ model GoodReceivedNote {
   items         GoodReceivedNoteItem[]
 
   @@unique([workspaceId, grnNumber])
+  @@unique([workspaceId, idempotencyKey])
   @@index([workspaceId, purchaseOrderId])
   @@index([workspaceId, supplierId])
   @@map("goods_received_notes")
@@ -635,16 +655,18 @@ model Invoice {
   status        InvoiceStatus @default(UNPAID)
   amount        Decimal       @db.Decimal(15, 2)
   paidAmount    Decimal       @default(0) @db.Decimal(15, 2)
+  creditApplied Decimal       @default(0) @db.Decimal(15, 2)
   dueDate       DateTime?
   issuedAt      DateTime      @default(now())
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  customer    Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  salesOrder  SalesOrder?         @relation(fields: [salesOrderId], references: [id], onDelete: SetNull)
-  payments    Payment[]
-  allocations PaymentAllocation[]
+  workspace         Workspace                  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer          Customer                   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  salesOrder        SalesOrder?                @relation(fields: [salesOrderId], references: [id], onDelete: SetNull)
+  payments          Payment[]
+  allocations       PaymentAllocation[]
+  creditAllocations CustomerCreditAllocation[]
 
   @@unique([workspaceId, invoiceNumber])
   @@unique([salesOrderId])
@@ -802,26 +824,54 @@ model PaymentAllocation {
 }
 
 model CreditNote {
-  id           String   @id @default(uuid())
-  workspaceId  String
-  customerId   String
-  salesOrderId String?
-  number       String
-  reason       String
-  amount       Decimal  @db.Decimal(15, 2)
-  reference    String?
-  notes        String?
-  date         DateTime @default(now())
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id               String           @id @default(uuid())
+  workspaceId      String
+  customerId       String
+  salesOrderId     String?
+  customerReturnId String?          @unique
+  number           String
+  reason           String
+  amount           Decimal          @db.Decimal(15, 2)
+  appliedAmount    Decimal          @default(0) @db.Decimal(15, 2)
+  remainingAmount  Decimal          @default(0) @db.Decimal(15, 2)
+  status           CreditNoteStatus @default(OPEN)
+  reference        String?
+  notes            String?
+  date             DateTime         @default(now())
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
-  workspace  Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  customer   Customer    @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  salesOrder SalesOrder? @relation(fields: [salesOrderId], references: [id], onDelete: SetNull)
+  workspace      Workspace                  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer       Customer                   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  salesOrder     SalesOrder?                @relation(fields: [salesOrderId], references: [id], onDelete: SetNull)
+  customerReturn CustomerReturn?            @relation(fields: [customerReturnId], references: [id], onDelete: SetNull)
+  allocations    CustomerCreditAllocation[]
 
   @@unique([workspaceId, number])
+  @@unique([workspaceId, customerReturnId])
   @@index([workspaceId, customerId])
+  @@index([workspaceId, customerId, date])
+  @@index([workspaceId, status])
   @@map("credit_notes")
+}
+
+model CustomerCreditAllocation {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  creditNoteId   String
+  invoiceId      String
+  amount         Decimal  @db.Decimal(15, 2)
+  idempotencyKey String?
+  createdAt      DateTime @default(now())
+
+  workspace  Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creditNote CreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Restrict)
+  invoice    Invoice    @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, creditNoteId])
+  @@index([workspaceId, invoiceId])
+  @@map("customer_credit_allocations")
 }
 
 model DebitNote {
@@ -865,6 +915,7 @@ model CustomerReturn {
   workspace  Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   customer   Customer             @relation(fields: [customerId], references: [id], onDelete: Restrict)
   salesOrder SalesOrder           @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
+  creditNote CreditNote?
   items      CustomerReturnItem[]
 
   @@unique([workspaceId, number])

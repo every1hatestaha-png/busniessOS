@@ -15,7 +15,7 @@ export function TopNav({ workspaceName, workspaceId, workspaces, searchResults }
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
   return (
-    <header className="relative z-40 flex min-h-16 flex-wrap items-center border-b bg-white px-4 py-3 sm:px-6">
+    <header className="relative z-40 flex min-h-16 flex-wrap items-center border-b bg-white px-4 py-3 print:hidden sm:px-6">
       <div className="flex w-full items-center gap-3">
         <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
           <SheetTrigger render={<Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open navigation menu" />}>

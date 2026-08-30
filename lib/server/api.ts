@@ -45,7 +45,7 @@ export class ApiError extends Error {
   }
 }
 
-export async function requireApiContext(permission?: Permission): Promise<ApiContext> {
+export async function requireApiUser() {
   const session = await auth();
   if (!session.userId) {
     throw new ApiError(401, "UNAUTHENTICATED", "Authentication is required.");
@@ -59,15 +59,21 @@ export async function requireApiContext(permission?: Permission): Promise<ApiCon
     localUser = await db.user.upsert({ where: { clerkId: session.userId }, create: { clerkId: session.userId, email, firstName: clerkUser.firstName, lastName: clerkUser.lastName }, update: { email, firstName: clerkUser.firstName, lastName: clerkUser.lastName } });
   }
 
+  return localUser;
+}
+
+export async function requireApiContext(permission?: Permission): Promise<ApiContext> {
+  const localUser = await requireApiUser();
+  const activeWorkspaceId = (await cookies()).get("businessos_workspace")?.value;
   const user = await db.user.findUnique({
-    where: { clerkId: session.userId },
+    where: { id: localUser.id },
     select: {
       id: true,
       email: true,
       firstName: true,
       lastName: true,
       memberships: {
-        where: (await cookies()).get("businessos_workspace")?.value ? { workspaceId: (await cookies()).get("businessos_workspace")!.value } : undefined,
+        where: activeWorkspaceId ? { workspaceId: activeWorkspaceId } : undefined,
         orderBy: { createdAt: "asc" },
         take: 1,
         select: {

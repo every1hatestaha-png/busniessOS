@@ -6,6 +6,7 @@ import { writeAudit } from "@/lib/server/audit";
 import { db } from "@/lib/server/db";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";
 import type { ServiceContext } from "@/lib/server/sales";
+import { withSerializableRetry } from "@/lib/server/tx-retry";
 import { supplierPaymentSchema, supplierSchema, type SupplierInput, type SupplierPaymentInput } from "@/lib/validation/supplier";
 
 export class SupplierDomainError extends Error {}
@@ -53,7 +54,7 @@ export async function deleteSupplier(context: ServiceContext, id: string) {
 
 export async function recordSupplierPayment(context: ServiceContext, supplierId: string, input: SupplierPaymentInput) {
   const data = supplierPaymentSchema.parse(input); const amount = new Prisma.Decimal(data.amount); const withholdingTaxAmount = new Prisma.Decimal(data.withholdingTaxAmount ?? 0); const netAmount = amount.minus(withholdingTaxAmount);
-  return db.$transaction(async (tx) => {
+  return withSerializableRetry(async (tx) => {
     if (data.idempotencyKey) {
       const existing = await tx.payment.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true } });
       if (existing) return existing;
@@ -72,11 +73,11 @@ export async function recordSupplierPayment(context: ServiceContext, supplierId:
     if (!allocationTotal.equals(amount)) throw new SupplierDomainError("Payment allocations must equal the gross payment amount.");
     const purchaseIds = requestedAllocations.map((entry) => entry.purchaseOrderId);
     if (new Set(purchaseIds).size !== purchaseIds.length) throw new SupplierDomainError("Duplicate purchase allocations are not allowed.");
-    const purchases = await tx.purchaseOrder.findMany({ where: { id: { in: purchaseIds }, workspaceId: context.workspaceId, supplierId, status: { not: "CANCELLED" } }, select: { id: true, totalAmount: true, paidAmount: true } });
+    const purchases = await tx.purchaseOrder.findMany({ where: { id: { in: purchaseIds }, workspaceId: context.workspaceId, supplierId, status: { not: "CANCELLED" } }, select: { id: true, balanceAmount: true } });
     if (purchases.length !== requestedAllocations.length) throw new SupplierDomainError("One or more purchases are unavailable.");
     for (const allocation of requestedAllocations) {
       const purchase = purchases.find((entry) => entry.id === allocation.purchaseOrderId)!;
-      if (new Prisma.Decimal(allocation.amount).greaterThan(purchase.totalAmount.minus(purchase.paidAmount))) throw new SupplierDomainError("Payment exceeds purchase balance or purchase is unavailable.");
+      if (new Prisma.Decimal(allocation.amount).greaterThan(purchase.balanceAmount)) throw new SupplierDomainError("Payment exceeds purchase balance or purchase is unavailable.");
     }
     const number = await nextDocumentNumber(tx, context.workspaceId, "BANK_PAYMENT_VOUCHER");
     const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, supplierId, cashBankAccountId: cashBankAccount.id, documentNumber: number, idempotencyKey: data.idempotencyKey, amount, netAmount, withholdingTaxAmount, method: data.method, reference: data.reference || null, notes: data.notes || null, paymentDate: data.paymentDate } });
@@ -90,7 +91,7 @@ export async function recordSupplierPayment(context: ServiceContext, supplierId:
     }
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "supplier.payment_recorded", entityType: "Payment", entityId: payment.id, metadata: { supplierId, amount: data.amount, withholdingTaxAmount: withholdingTaxAmount.toString(), netAmount: netAmount.toString(), documentNumber: number, allocations: requestedAllocations.map((a) => ({ purchaseOrderId: a.purchaseOrderId, amount: a.amount })) } });
     return { id: payment.id };
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
+  });
 }
 
 export async function getSupplierPaymentVoucher(workspaceId: string, paymentId: string) {

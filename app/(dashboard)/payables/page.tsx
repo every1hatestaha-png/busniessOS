@@ -1,6 +1,7 @@
 import { ArrowDownCircle, Clock4 } from "lucide-react";
 import { PageHeader } from "@/components/business/page-header";
 import { MetricCard } from "@/components/business/metric-card";
+import { PrintButton } from "@/components/invoices/print-button";
 import { PayablesTable } from "@/components/payables/payables-table";
 import { requireWorkspace } from "@/lib/server/auth";
 import { getPayablesAging } from "@/lib/server/payables";
@@ -14,8 +15,11 @@ export default async function PayablesPage() {
   }
   const report = await getPayablesAging(workspaceId, { timeZone: workspace.timezone });
   return (
-    <div className="space-y-6">
-      <PageHeader title="Payables" description={`Outstanding supplier bills as of ${report.asOfDate}.`} />
+    <div className="space-y-6 print:space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <PageHeader title="Payables" description={`Outstanding supplier bills as of ${report.asOfDate}.`} />
+        <div className="print:hidden"><PrintButton label="Print aging" /></div>
+      </div>
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <MetricCard label="Total Payable" value={formatPKR(report.totalOutstanding)} detail={`${report.suppliers.length} suppliers`} icon={ArrowDownCircle} />
         {PAYABLES_BUCKET_ORDER.map((bucket) => (

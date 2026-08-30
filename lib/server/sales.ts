@@ -3,7 +3,8 @@ import "server-only";
 import { Prisma, type Role } from "@prisma/client";
 import { db } from "@/lib/server/db";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";
-import { postCustomerReturnToGeneralLedger, postSaleToGeneralLedger } from "@/lib/server/accounting";
+import { postCustomerReturnToGeneralLedger, postSaleToGeneralLedger, reverseGeneralLedgerEntries } from "@/lib/server/accounting";
+import { withSerializableRetry } from "@/lib/server/tx-retry";
 import { saleSchema, type SaleInput } from "@/lib/validation/sale";
 import { writeAudit } from "@/lib/server/audit";
 import { customerReturnSchema, type CustomerReturnInput } from "@/lib/validation/returns";
@@ -13,7 +14,7 @@ export class SaleDomainError extends Error { constructor(public code: "CUSTOMER_
 
 export async function createSale(context: ServiceContext, input: SaleInput) {
   const data = saleSchema.parse(input);
-  return db.$transaction(async (tx) => {
+  return withSerializableRetry(async (tx) => {
     const existing = await tx.salesOrder.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true } });
     if (existing) return existing;
     const customer = await tx.customer.findFirst({ where: { id: data.customerId, workspaceId: context.workspaceId, status: "ACTIVE" }, select: { id: true } });
@@ -36,6 +37,11 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
     const orderNumber = await nextDocumentNumber(tx, context.workspaceId, "SALES_ORDER");
     const invoiceNumber = await nextDocumentNumber(tx, context.workspaceId, "INVOICE");
     const order = await tx.salesOrder.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, orderNumber, status: "CONFIRMED", subtotal, discount, total, paidAmount: paid, balanceAmount: total.minus(paid), notes: data.notes || null, idempotencyKey: data.idempotencyKey }, select: { id: true, orderDate: true } });
+    const cashBankAccountId = data.cashBankAccountId && data.cashBankAccountId !== "" ? data.cashBankAccountId : null;
+    if (paid.greaterThan(0) && cashBankAccountId) {
+      const cashBankAccount = await tx.cashBankAccount.findFirst({ where: { id: cashBankAccountId, workspaceId: context.workspaceId, isActive: true }, select: { id: true } });
+      if (!cashBankAccount) throw new SaleDomainError("INVALID_TOTAL", "Cash/bank account is unavailable.");
+    }
     let costOfGoodsSold = new Prisma.Decimal(0);
 
     for (const line of lines) {
@@ -53,20 +59,19 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
     await tx.customer.update({ where: { id: customer.id }, data: { currentBalance: { increment: total } } });
     if (paid.greaterThan(0)) {
       const paymentNumber = await nextDocumentNumber(tx, context.workspaceId, "PAYMENT_RECEIPT");
-      const cashBankAccountId = data.cashBankAccountId && data.cashBankAccountId !== "" ? data.cashBankAccountId : null;
       const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, invoiceId: invoice.id, cashBankAccountId, amount: paid, method: "CASH", reference: paymentNumber, notes: "Payment received with sale" }, select: { id: true } });
       await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, type: "PAYMENT_RECEIVED", credit: paid, description: `Payment ${paymentNumber}`, referenceId: payment.id } });
       await tx.customer.update({ where: { id: customer.id }, data: { currentBalance: { decrement: paid } } });
     }
-    await postSaleToGeneralLedger(tx, { workspaceId: context.workspaceId, saleId: order.id, orderNumber, date: order.orderDate, revenue: total, costOfGoodsSold, cashReceived: paid });
+    await postSaleToGeneralLedger(tx, { workspaceId: context.workspaceId, saleId: order.id, orderNumber, date: order.orderDate, revenue: total, costOfGoodsSold, cashReceived: paid, cashBankAccountId });
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "sale.created", entityType: "SalesOrder", entityId: order.id, metadata: { orderNumber, total: total.toString() } });
     return { id: order.id };
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
+  });
 }
 
 export async function createCustomerReturn(context: ServiceContext, input: CustomerReturnInput) {
   const data = customerReturnSchema.parse(input);
-  return db.$transaction(async (tx) => {
+  return withSerializableRetry(async (tx) => {
     if (data.idempotencyKey) {
       const existing = await tx.customerReturn.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true } });
       if (existing) return existing;
@@ -99,24 +104,25 @@ export async function createCustomerReturn(context: ServiceContext, input: Custo
         await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: line.source.productId, type: "RETURN_IN", quantityChanged: line.quantity, reference: number } });
       }
     }
-    await tx.creditNote.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, salesOrderId: order.id, number: noteNumber, reason: data.reason || "Customer return", amount: total, reference: number, notes: data.notes || null } });
+    await tx.creditNote.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, salesOrderId: order.id, customerReturnId: customerReturn.id, number: noteNumber, reason: data.reason || "Customer return", amount: total, appliedAmount: 0, remainingAmount: total, status: "OPEN", reference: number, notes: data.notes || null } });
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, type: "SALES_RETURN", credit: total, description: `Customer return ${number}`, referenceId: customerReturn.id } });
     await tx.customer.update({ where: { id: order.customerId }, data: { currentBalance: { decrement: total } } });
     await postCustomerReturnToGeneralLedger(tx, { workspaceId: context.workspaceId, returnId: customerReturn.id, documentNo: number, date: customerReturn.date, amount: total, inventoryCost });
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "customer_return.created", entityType: "CustomerReturn", entityId: customerReturn.id, metadata: { salesOrderId: order.id, total: total.toString() } });
     return customerReturn;
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
+  });
 }
 
 export async function cancelSale(context: ServiceContext, id: string, reverseInitialPayment: boolean) {
-  return db.$transaction(async (tx) => {
-    const order = await tx.salesOrder.findFirst({ where: { id, workspaceId: context.workspaceId }, include: { items: true, invoices: { include: { payments: { where: { isReversed: false }, orderBy: { createdAt: "asc" } } } } } });
+  return withSerializableRetry(async (tx) => {
+    const order = await tx.salesOrder.findFirst({ where: { id, workspaceId: context.workspaceId }, include: { items: true, returns: { select: { id: true }, take: 1 }, invoices: { include: { payments: { where: { isReversed: false }, orderBy: { createdAt: "asc" } } } } } });
     if (!order) throw new SaleDomainError("CUSTOMER_NOT_FOUND", "Sale not found.");
     if (order.status === "CANCELLED") return { id: order.id };
     const invoice = order.invoices[0];
     const activePayments = invoice?.payments ?? [];
     const initial = activePayments.find((payment) => payment.notes === "Payment received with sale");
     const laterPayments = activePayments.filter((payment) => payment.id !== initial?.id);
+    if (order.returns.length) throw new SaleDomainError("INVALID_RETURN", "Sale cannot be cancelled after customer returns have been recorded.");
     if (laterPayments.length) throw new SaleDomainError("INVALID_TOTAL", "Sale cannot be cancelled after later payments have been recorded.");
     if (initial && !reverseInitialPayment) throw new SaleDomainError("INVALID_TOTAL", "Explicitly confirm reversal of the initial sale payment.");
 
@@ -127,16 +133,18 @@ export async function cancelSale(context: ServiceContext, id: string, reverseIni
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, type: "REVERSAL", credit: order.total, description: `Cancelled sale ${order.orderNumber}`, referenceId: order.id } });
     await tx.customer.update({ where: { id: order.customerId }, data: { currentBalance: { decrement: order.total } } });
     if (initial) {
-      const reversal = await tx.payment.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, invoiceId: invoice?.id, amount: initial.amount, method: initial.method, reference: `REV-${initial.reference ?? initial.id}`, notes: "Initial sale payment reversal", reversalOfId: initial.id } });
+      const reversal = await tx.payment.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, invoiceId: invoice?.id, cashBankAccountId: initial.cashBankAccountId, amount: initial.amount, method: initial.method, reference: `REV-${initial.reference ?? initial.id}`, notes: "Initial sale payment reversal", reversalOfId: initial.id } });
       await tx.payment.update({ where: { id: initial.id }, data: { isReversed: true, reversedAt: new Date() } });
       await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, type: "REVERSAL", debit: initial.amount, description: `Reversed payment ${initial.reference ?? initial.id}`, referenceId: reversal.id } });
       await tx.customer.update({ where: { id: order.customerId }, data: { currentBalance: { increment: initial.amount } } });
+      if (initial.cashBankAccountId) await tx.cashBankAccount.update({ where: { id: initial.cashBankAccountId }, data: { currentBalance: { decrement: initial.amount } } });
     }
+    await reverseGeneralLedgerEntries(tx, { workspaceId: context.workspaceId, sources: [{ sourceType: "SALE", sourceId: order.id }, { sourceType: "RECEIPT", sourceId: order.id }], documentNo: `REV-${order.orderNumber}`, date: new Date(), reason: `Cancelled sale ${order.orderNumber}`, reversedById: context.userId });
     if (invoice) await tx.invoice.update({ where: { id: invoice.id }, data: { status: "CANCELLED", paidAmount: 0 } });
     await tx.salesOrder.update({ where: { id: order.id }, data: { status: "CANCELLED", paidAmount: 0, balanceAmount: 0, cancelledAt: new Date(), cancelledById: context.userId } });
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "sale.cancelled", entityType: "SalesOrder", entityId: order.id, metadata: { initialPaymentReversed: Boolean(initial) } });
     return { id: order.id };
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
+  });
 }
 
 export async function listSales(workspaceId: string) {

@@ -2,10 +2,11 @@ import "server-only";
 
 import { Prisma } from "@prisma/client";
 import { writeAudit } from "@/lib/server/audit";
-import { postGoodsReceiptToGeneralLedger, postSupplierReturnToGeneralLedger } from "@/lib/server/accounting";
+import { postGoodsReceiptToGeneralLedger, postSupplierReturnToGeneralLedger, reverseGeneralLedgerEntries } from "@/lib/server/accounting";
 import { db } from "@/lib/server/db";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";
 import type { ServiceContext } from "@/lib/server/sales";
+import { withSerializableRetry } from "@/lib/server/tx-retry";
 import { purchaseSchema, goodsReceiptSchema, type PurchaseInput, type GoodsReceiptInput } from "@/lib/validation/purchase";
 import { supplierReturnSchema, type SupplierReturnInput } from "@/lib/validation/returns";
 
@@ -35,7 +36,7 @@ export class PurchaseDomainError extends Error {
  */
 export async function createPurchase(context: ServiceContext, input: PurchaseInput) {
   const data = purchaseSchema.parse(input);
-  return db.$transaction(async (tx) => {
+  return withSerializableRetry(async (tx) => {
     const existing = await tx.purchaseOrder.findFirst({
       where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey },
       select: { id: true, orderNumber: true },
@@ -74,7 +75,7 @@ export async function createPurchase(context: ServiceContext, input: PurchaseInp
         status: "ORDERED",
         totalAmount: total,
         paidAmount: 0,
-        balanceAmount: total,
+        balanceAmount: 0,
         idempotencyKey: data.idempotencyKey,
         notes: data.notes || null,
         expectedDeliveryDate: data.expectedDeliveryDate || null,
@@ -115,7 +116,7 @@ export async function createPurchase(context: ServiceContext, input: PurchaseInp
     });
 
     return order;
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
+  });
 }
 
 /**
@@ -124,13 +125,18 @@ export async function createPurchase(context: ServiceContext, input: PurchaseInp
  */
 export async function createGoodsReceipt(context: ServiceContext, input: GoodsReceiptInput) {
   const data = goodsReceiptSchema.parse(input);
-  return db.$transaction(async (tx) => {
+  return withSerializableRetry(async (tx) => {
     if (data.idempotencyKey) {
       const existing = await tx.goodReceivedNote.findFirst({
-        where: { workspaceId: context.workspaceId, grnNumber: data.idempotencyKey },
+        where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey },
         select: { id: true, grnNumber: true },
       });
       if (existing) return { id: existing.id, grnNumber: existing.grnNumber, status: "RECEIVED" as const };
+    }
+
+    const itemIds = data.items.map((item) => item.purchaseOrderItemId);
+    if (new Set(itemIds).size !== itemIds.length) {
+      throw new PurchaseDomainError("INVALID_RECEIPT", "Duplicate purchase order items are not allowed on a GRN.");
     }
 
     const order = await tx.purchaseOrder.findFirst({
@@ -192,6 +198,7 @@ export async function createGoodsReceipt(context: ServiceContext, input: GoodsRe
         purchaseOrderId: order.id,
         grnNumber,
         receiptDate: data.receiptDate || new Date(),
+        idempotencyKey: data.idempotencyKey || null,
         notes: data.notes || null,
         receivedBy: data.receivedBy || null,
         checkedBy: data.checkedBy || null,
@@ -289,6 +296,7 @@ export async function createGoodsReceipt(context: ServiceContext, input: GoodsRe
       where: { id: order.id },
       data: {
         status: newStatus,
+        balanceAmount: { increment: totalAcceptedAmount },
       },
     });
 
@@ -308,14 +316,14 @@ export async function createGoodsReceipt(context: ServiceContext, input: GoodsRe
     });
 
     return { id: grn.id, grnNumber, status: newStatus };
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
+  });
 }
 
 export async function cancelPurchase(context: ServiceContext, id: string, reverseInitialPayment: boolean) {
-  return db.$transaction(async (tx) => {
+  return withSerializableRetry(async (tx) => {
     const order = await tx.purchaseOrder.findFirst({
       where: { id, workspaceId: context.workspaceId },
-      include: { items: true, paymentAllocations: { include: { payment: true }, orderBy: { createdAt: "asc" } } },
+      include: { items: true, returns: { select: { id: true }, take: 1 }, paymentAllocations: { include: { payment: true }, orderBy: { createdAt: "asc" } } },
     });
     if (!order) throw new PurchaseDomainError("PURCHASE_NOT_FOUND", "Purchase not found.");
     if (order.status === "CANCELLED") return { id: order.id };
@@ -323,6 +331,18 @@ export async function cancelPurchase(context: ServiceContext, id: string, revers
     if (order.status === "RECEIVED" || order.status === "PARTIALLY_RECEIVED") {
       const hasGrn = await tx.goodReceivedNote.count({ where: { purchaseOrderId: id } });
       if (hasGrn > 0) {
+        const grns = await tx.goodReceivedNote.findMany({ where: { purchaseOrderId: id, workspaceId: context.workspaceId }, select: { id: true } });
+        const receiptItems = await tx.goodReceivedNoteItem.groupBy({
+          by: ["purchaseOrderItemId"],
+          where: { goodReceivedNote: { purchaseOrderId: id, workspaceId: context.workspaceId } },
+          _sum: { acceptedQuantity: true, totalCost: true },
+        });
+        const receiptByItem = new Map(receiptItems.map((item) => [item.purchaseOrderItemId, item]));
+        const grnTotal = receiptItems.reduce((sum, item) => sum.plus(item._sum.totalCost ?? 0), new Prisma.Decimal(0));
+
+        if (order.returns.length) {
+          throw new PurchaseDomainError("INVALID_RETURN", "Purchase cannot be cancelled after supplier returns have been recorded.");
+        }
         if (order.paymentAllocations.length > 1) {
           throw new PurchaseDomainError("INVALID_PAYMENT", "Purchase cannot be cancelled after later payments have been allocated.");
         }
@@ -338,10 +358,11 @@ export async function cancelPurchase(context: ServiceContext, id: string, revers
         }
 
         for (const item of order.items) {
-          if (item.receivedQuantity > 0) {
+          const acceptedQuantity = receiptByItem.get(item.id)?._sum.acceptedQuantity ?? 0;
+          if (acceptedQuantity > 0) {
             const changed = await tx.product.updateMany({
-              where: { id: item.productId, workspaceId: context.workspaceId, stockQuantity: { gte: item.receivedQuantity } },
-              data: { stockQuantity: { decrement: item.receivedQuantity } },
+              where: { id: item.productId, workspaceId: context.workspaceId, stockQuantity: { gte: acceptedQuantity } },
+              data: { stockQuantity: { decrement: acceptedQuantity } },
             });
             if (changed.count !== 1) {
               throw new PurchaseDomainError("INSUFFICIENT_STOCK", `${item.productName ?? "Product"} has insufficient stock to cancel this purchase.`);
@@ -351,7 +372,7 @@ export async function cancelPurchase(context: ServiceContext, id: string, revers
                 workspaceId: context.workspaceId,
                 productId: item.productId,
                 type: "PURCHASE_CANCELLATION",
-                quantityChanged: -item.receivedQuantity,
+                quantityChanged: -acceptedQuantity,
                 unitCost: item.unitCost,
                 reference: order.orderNumber,
               },
@@ -364,7 +385,7 @@ export async function cancelPurchase(context: ServiceContext, id: string, revers
             workspaceId: context.workspaceId,
             supplierId: order.supplierId,
             type: "REVERSAL",
-            debit: order.totalAmount,
+            debit: grnTotal,
             description: `Cancelled purchase ${order.orderNumber}`,
             referenceId: order.id,
           },
@@ -372,7 +393,7 @@ export async function cancelPurchase(context: ServiceContext, id: string, revers
 
         await tx.supplier.update({
           where: { id: order.supplierId },
-          data: { currentBalance: { decrement: order.totalAmount.minus(order.paidAmount) } },
+          data: { currentBalance: { decrement: grnTotal.minus(order.paidAmount) } },
         });
 
         if (order.paymentAllocations[0]) {
@@ -401,7 +422,7 @@ export async function cancelPurchase(context: ServiceContext, id: string, revers
           });
         }
 
-        await tx.goodReceivedNote.deleteMany({ where: { purchaseOrderId: id } });
+        await reverseGeneralLedgerEntries(tx, { workspaceId: context.workspaceId, sources: grns.map((grn) => ({ sourceType: "PURCHASE_RECEIPT", sourceId: grn.id })), documentNo: `REV-${order.orderNumber}`, date: new Date(), reason: `Cancelled purchase ${order.orderNumber}`, reversedById: context.userId });
       }
     }
 
@@ -420,12 +441,12 @@ export async function cancelPurchase(context: ServiceContext, id: string, revers
     });
 
     return { id: order.id };
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
+  });
 }
 
 export async function createSupplierReturn(context: ServiceContext, input: SupplierReturnInput) {
   const data = supplierReturnSchema.parse(input);
-  return db.$transaction(async (tx) => {
+  return withSerializableRetry(async (tx) => {
     if (data.idempotencyKey) {
       const existing = await tx.supplierReturn.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true } });
       if (existing) return existing;
@@ -434,13 +455,20 @@ export async function createSupplierReturn(context: ServiceContext, input: Suppl
     if (!order) throw new PurchaseDomainError("PURCHASE_NOT_FOUND", "Purchase not found.");
     const itemIds = data.items.map((item) => item.itemId);
     if (new Set(itemIds).size !== itemIds.length) throw new PurchaseDomainError("INVALID_RETURN", "Duplicate return items are not allowed.");
-    const previous = await tx.supplierReturnItem.groupBy({ by: ["purchaseOrderItemId"], where: { purchaseOrderItemId: { in: itemIds }, supplierReturn: { workspaceId: context.workspaceId } }, _sum: { quantity: true } });
+    const [previous, received] = await Promise.all([
+      tx.supplierReturnItem.groupBy({ by: ["purchaseOrderItemId"], where: { purchaseOrderItemId: { in: itemIds }, supplierReturn: { workspaceId: context.workspaceId } }, _sum: { quantity: true } }),
+      tx.goodReceivedNoteItem.groupBy({ by: ["purchaseOrderItemId"], where: { purchaseOrderItemId: { in: itemIds }, goodReceivedNote: { workspaceId: context.workspaceId, purchaseOrderId: order.id } }, _sum: { acceptedQuantity: true, totalCost: true } }),
+    ]);
     const lines = data.items.map((item) => {
       const source = order.items.find((entry) => entry.id === item.itemId);
       const returned = previous.find((entry) => entry.purchaseOrderItemId === item.itemId)?._sum.quantity ?? 0;
-      if (!source || item.quantity > source.quantity - returned) throw new PurchaseDomainError("INVALID_RETURN", "Return quantity exceeds purchased quantity.");
-      const total = source.unitCost.mul(item.quantity);
-      return { source, quantity: item.quantity, total };
+      const receipt = received.find((entry) => entry.purchaseOrderItemId === item.itemId);
+      const acceptedQuantity = receipt?._sum.acceptedQuantity ?? 0;
+      if (!source || item.quantity > acceptedQuantity - returned) throw new PurchaseDomainError("INVALID_RETURN", "Return quantity exceeds received quantity.");
+      const receivedTotalCost = receipt?._sum.totalCost ?? new Prisma.Decimal(0);
+      const unitCost = acceptedQuantity > 0 ? receivedTotalCost.div(acceptedQuantity) : source.unitCost;
+      const total = unitCost.mul(item.quantity);
+      return { source, quantity: item.quantity, unitCost, total };
     });
     const total = lines.reduce((sum, line) => sum.plus(line.total), new Prisma.Decimal(0));
     const number = await nextDocumentNumber(tx, context.workspaceId, "SUPPLIER_RETURN");
@@ -449,16 +477,17 @@ export async function createSupplierReturn(context: ServiceContext, input: Suppl
     for (const line of lines) {
       const changed = await tx.product.updateMany({ where: { id: line.source.productId, workspaceId: context.workspaceId, stockQuantity: { gte: line.quantity } }, data: { stockQuantity: { decrement: line.quantity } } });
       if (changed.count !== 1) throw new PurchaseDomainError("INSUFFICIENT_STOCK", `${line.source.productName ?? "Product"} has insufficient stock to return.`);
-      await tx.supplierReturnItem.create({ data: { supplierReturnId: supplierReturn.id, purchaseOrderItemId: line.source.id, productId: line.source.productId, quantity: line.quantity, unitCost: line.source.unitCost, totalCost: line.total } });
-      await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: line.source.productId, type: "RETURN_OUT", quantityChanged: -line.quantity, unitCost: line.source.unitCost, reference: number } });
+      await tx.supplierReturnItem.create({ data: { supplierReturnId: supplierReturn.id, purchaseOrderItemId: line.source.id, productId: line.source.productId, quantity: line.quantity, unitCost: line.unitCost, totalCost: line.total } });
+      await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: line.source.productId, type: "RETURN_OUT", quantityChanged: -line.quantity, unitCost: line.unitCost, reference: number } });
     }
     await tx.debitNote.create({ data: { workspaceId: context.workspaceId, supplierId: order.supplierId, purchaseOrderId: order.id, number: noteNumber, reason: data.reason || "Supplier return", amount: total, reference: number, notes: data.notes || null } });
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, supplierId: order.supplierId, type: "PURCHASE_RETURN", debit: total, description: `Supplier return ${number}`, referenceId: supplierReturn.id } });
     await tx.supplier.update({ where: { id: order.supplierId }, data: { currentBalance: { decrement: total } } });
+    await tx.purchaseOrder.update({ where: { id: order.id }, data: { balanceAmount: { decrement: total } } });
     await postSupplierReturnToGeneralLedger(tx, { workspaceId: context.workspaceId, returnId: supplierReturn.id, documentNo: number, date: supplierReturn.date, amount: total });
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "supplier_return.created", entityType: "SupplierReturn", entityId: supplierReturn.id, metadata: { purchaseOrderId: order.id, total: total.toString() } });
     return supplierReturn;
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
+  });
 }
 
 export async function listPurchases(workspaceId: string) {

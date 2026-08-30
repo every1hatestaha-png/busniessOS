@@ -1,8 +1,10 @@
 import "server-only";
 
 export type PayablesBucket = "1-30" | "31-45" | "46-60" | "61+";
+export type ReceivablesBucket = "1-30" | "31-60" | "61-90" | "90+";
 
 export const PAYABLES_BUCKET_ORDER: PayablesBucket[] = ["1-30", "31-45", "46-60", "61+"];
+export const RECEIVABLES_BUCKET_ORDER: ReceivablesBucket[] = ["1-30", "31-60", "61-90", "90+"];
 
 export function startOfDayInTimezone(date: Date, timeZone: string): Date {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -38,6 +40,14 @@ export function payablesBucket(age: number): PayablesBucket | "current" {
   if (age <= 45) return "31-45";
   if (age <= 60) return "46-60";
   return "61+";
+}
+
+export function receivablesBucket(age: number): ReceivablesBucket | "current" {
+  if (age <= 0) return "current";
+  if (age <= 30) return "1-30";
+  if (age <= 60) return "31-60";
+  if (age <= 90) return "61-90";
+  return "90+";
 }
 
 export const DEFAULT_BUSINESS_TIMEZONE = "Asia/Karachi";

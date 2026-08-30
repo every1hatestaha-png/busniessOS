@@ -110,7 +110,7 @@ export async function getCustomer(workspaceId: string, id: string): Promise<Cust
       invoices: {
         where: { workspaceId },
         orderBy: { issuedAt: "desc" },
-        select: { id: true, invoiceNumber: true, issuedAt: true, dueDate: true, status: true, amount: true, paidAmount: true },
+        select: { id: true, invoiceNumber: true, issuedAt: true, dueDate: true, status: true, amount: true, paidAmount: true, creditApplied: true },
       },
       ledgerEntries: {
         where: { workspaceId },
@@ -161,7 +161,7 @@ export async function getCustomer(workspaceId: string, id: string): Promise<Cust
       dueDate: invoice.dueDate?.toISOString() ?? null,
       status: invoice.status,
       total: Number(invoice.amount),
-      balance: Number(invoice.amount) - Number(invoice.paidAmount),
+      balance: Number(invoice.amount) - Number(invoice.paidAmount) - Number(invoice.creditApplied),
     })),
     ledgerEntries: customer.ledgerEntries.map((entry) => ({
       id: entry.id,

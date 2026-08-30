@@ -13,7 +13,7 @@ export default async function PaymentVoucherPage({ params }: { params: Promise<{
 
   return (
     <div className="mx-auto max-w-[1050px] space-y-4 print:max-w-none print:space-y-0">
-      <div className="flex items-center justify-between print:hidden"><div><p className="text-sm text-neutral-500">Supplier payment voucher</p><h1 className="text-2xl font-bold">{voucher.documentNumber}</h1></div><PrintButton /></div>
+      <div className="flex items-center justify-between print:hidden"><div><p className="text-sm text-neutral-500">Supplier payment voucher</p><h1 className="text-2xl font-bold">{voucher.documentNumber}</h1></div><PrintButton label="Print voucher" /></div>
       <article className="bg-white p-8 shadow-sm print:p-0 print:shadow-none">
         <header className="border-b-2 border-neutral-900 pb-5">
           <div className="flex items-start justify-between gap-8"><div><p className="text-xs font-bold uppercase tracking-[0.25em] text-neutral-500">Bank Payment Voucher</p><h2 className="mt-2 text-2xl font-bold">{voucher.workspace.name}</h2><div className="mt-2 text-sm text-neutral-600">{voucher.workspace.address && <p>{voucher.workspace.address}</p>}<p>{[voucher.workspace.city, voucher.workspace.country].filter(Boolean).join(", ")}</p>{voucher.workspace.phone && <p>{voucher.workspace.phone}</p>}</div></div><div className="text-right"><p className="font-mono text-lg font-bold">{voucher.documentNumber}</p><p className="mt-2 text-sm text-neutral-600">Date: {formatDate(voucher.paymentDate)}</p><p className="text-sm text-neutral-600">Method: {voucher.method.replaceAll("_", " ")}</p></div></div>

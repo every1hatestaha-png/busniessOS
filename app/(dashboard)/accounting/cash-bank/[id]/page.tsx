@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { PageHeader } from "@/components/business/page-header";
+import { PrintButton } from "@/components/invoices/print-button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getCashBankAccountLedger } from "@/lib/server/accounting";
 import { requireWorkspace } from "@/lib/server/auth";
@@ -13,9 +14,12 @@ export default async function CashBankDetailPage({ params }: { params: Promise<{
   if (!account) notFound();
 
   return (
-    <div className="space-y-6">
-      <PageHeader title={account.name} description={`${account.isBank ? "Bank" : "Cash"} ledger account ${account.code}`} />
-      <Link href="/accounting/cash-bank" className="text-sm text-neutral-500 hover:text-neutral-900">Back to Cash & Bank</Link>
+    <div className="space-y-6 print:space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <PageHeader title={account.name} description={`${account.isBank ? "Bank" : "Cash"} ledger account ${account.code}`} />
+        <div className="print:hidden"><PrintButton label="Print ledger" /></div>
+      </div>
+      <Link href="/accounting/cash-bank" className="text-sm text-neutral-500 hover:text-neutral-900 print:hidden">Back to Cash & Bank</Link>
       <div className="grid gap-4 lg:grid-cols-4">
         <div className="rounded-xl border border-neutral-200 bg-neutral-950 p-5 text-white"><p className="text-sm text-neutral-300">Current balance</p><p className="mt-2 text-3xl font-bold tabular-nums">{formatPKR(account.currentBalance)}</p></div>
         <div className="rounded-xl border border-neutral-200 bg-white p-5"><p className="text-sm text-neutral-500">Opening balance</p><p className="mt-2 text-2xl font-bold tabular-nums">{formatPKR(account.openingBalance)}</p></div>

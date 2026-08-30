@@ -1,9 +1,10 @@
 import "server-only";
 
 import { db } from "@/lib/server/db";
+import { getReceivablesAging } from "@/lib/server/receivables";
 
 export async function getDashboardSummary(workspaceId: string) {
-  const [customers, products, sales] = await Promise.all([
+  const [customers, products, sales, receivables] = await Promise.all([
     db.customer.findMany({
       where: { workspaceId },
       select: { currentBalance: true },
@@ -23,14 +24,15 @@ export async function getDashboardSummary(workspaceId: string) {
       },
     }),
     db.salesOrder.findMany({ where: { workspaceId, status: { not: "CANCELLED" } }, orderBy: { orderDate: "desc" }, include: { customer: { select: { companyName: true, name: true } } } }),
+    getReceivablesAging(workspaceId),
   ]);
 
   const lowStock = products.filter((product) => product.stockQuantity <= product.reorderLevel);
 
   return {
     customerCount: customers.length,
-    customersWithBalance: customers.filter((customer) => customer.currentBalance.greaterThan(0)).length,
-    receivables: customers.reduce((sum, customer) => sum + Number(customer.currentBalance), 0),
+    customersWithBalance: receivables.customers.filter((customer) => customer.totalOutstanding > 0).length,
+    receivables: receivables.totalOutstanding,
     productCount: products.length,
     categoryCount: new Set(products.map((product) => product.category).filter(Boolean)).size,
     inventoryValue: products.reduce((sum, product) => sum + product.stockQuantity * Number(product.costPrice), 0),

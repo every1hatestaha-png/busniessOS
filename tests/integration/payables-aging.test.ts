@@ -159,4 +159,27 @@ describe("payable aging service", () => {
       expect(["current", "1-30"]).toContain(entry.bucket);
     }
   });
+
+  it("does not age ordered POs before GRN creates payable liability", async () => {
+    const order = await createPurchase(context(), { supplierId: supplierA, items: [{ productId, quantity: 1, unitCost: 999 }], idempotencyKey: randomUUID() });
+    await backdate(order.id, 75);
+
+    const report = await getPayablesAging(workspaceId, { asOf: AS_OF, timeZone: TZ });
+
+    expect(report.suppliers.flatMap((supplier) => supplier.items).some((item) => item.purchaseId === order.id)).toBe(false);
+  });
+
+  it("ages actual accepted GRN value instead of ordered PO total", async () => {
+    const order = await createPurchase(context(), { supplierId: supplierA, items: [{ productId, quantity: 10, unitCost: 100 }], idempotencyKey: randomUUID() });
+    const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: order.id } });
+    await createGoodsReceipt(context(), { purchaseOrderId: order.id, items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 8, acceptedQuantity: 6, actualUnitCost: 90 }] });
+    await backdate(order.id, 35);
+
+    const report = await getPayablesAging(workspaceId, { asOf: AS_OF, timeZone: TZ });
+    const item = report.suppliers.flatMap((supplier) => supplier.items).find((entry) => entry.purchaseId === order.id);
+
+    expect(item).toBeDefined();
+    expect(item!.originalAmount).toBe(1000);
+    expect(item!.outstandingAmount).toBe(540);
+  });
 });

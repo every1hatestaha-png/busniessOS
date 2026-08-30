@@ -1,0 +1,138 @@
+import "server-only";
+
+import { db } from "@/lib/server/db";
+import { ageDays, receivablesBucket, type ReceivablesBucket } from "@/lib/server/aging";
+
+export type { ReceivablesBucket };
+
+export type ReceivablesFilters = {
+  asOf?: Date;
+  customerId?: string;
+  search?: string;
+  bucket?: ReceivablesBucket | "current";
+  timeZone?: string;
+};
+
+export type ReceivablesAgingItem = {
+  invoiceId: string;
+  documentNumber: string;
+  customerId: string;
+  customerName: string;
+  invoiceDate: string;
+  dueDate: string | null;
+  originalAmount: number;
+  paymentsApplied: number;
+  creditsApplied: number;
+  outstandingAmount: number;
+  ageDays: number;
+  bucket: ReceivablesBucket | "current";
+};
+
+export type CustomerReceivablesAging = {
+  customerId: string;
+  customerName: string;
+  totalOutstanding: number;
+  unappliedCredit: number;
+  buckets: ReceivablesBucketTotals;
+  oldestAgeDays: number | null;
+  items: ReceivablesAgingItem[];
+};
+
+export type ReceivablesBucketTotals = Record<ReceivablesBucket, number>;
+
+export type ReceivablesAgingReport = {
+  asOfDate: string;
+  totalOutstanding: number;
+  totalUnappliedCredit: number;
+  buckets: ReceivablesBucketTotals;
+  customers: CustomerReceivablesAging[];
+};
+
+export const EMPTY_RECEIVABLES_BUCKETS: ReceivablesBucketTotals = { "1-30": 0, "31-60": 0, "61-90": 0, "90+": 0 };
+
+function toBucketTotals(): ReceivablesBucketTotals {
+  return { ...EMPTY_RECEIVABLES_BUCKETS };
+}
+
+export async function getReceivablesAging(workspaceId: string, filters: ReceivablesFilters = {}): Promise<ReceivablesAgingReport> {
+  const timeZone = filters.timeZone ?? "Asia/Karachi";
+  const asOf = filters.asOf ?? new Date();
+  const asOfDate = toDateKey(asOf, timeZone);
+  const search = filters.search?.trim().toLowerCase();
+
+  const [invoices, credits] = await Promise.all([
+    db.invoice.findMany({
+      where: { workspaceId, status: { notIn: ["CANCELLED", "DRAFT"] }, ...(filters.customerId ? { customerId: filters.customerId } : {}) },
+      select: { id: true, invoiceNumber: true, customerId: true, issuedAt: true, dueDate: true, amount: true, paidAmount: true, creditApplied: true, customer: { select: { name: true, companyName: true } } },
+    }),
+    db.creditNote.findMany({
+      where: { workspaceId, status: { not: "CANCELLED" }, remainingAmount: { gt: 0 }, ...(filters.customerId ? { customerId: filters.customerId } : {}) },
+      select: { customerId: true, remainingAmount: true, customer: { select: { name: true, companyName: true } } },
+    }),
+  ]);
+
+  const unappliedCreditByCustomer = new Map<string, { amount: number; customerName: string }>();
+  for (const credit of credits) {
+    const current = unappliedCreditByCustomer.get(credit.customerId);
+    unappliedCreditByCustomer.set(credit.customerId, { amount: (current?.amount ?? 0) + Number(credit.remainingAmount), customerName: current?.customerName ?? credit.customer.companyName ?? credit.customer.name });
+  }
+  const items: ReceivablesAgingItem[] = [];
+  for (const invoice of invoices) {
+    const outstanding = Number(invoice.amount.minus(invoice.paidAmount).minus(invoice.creditApplied));
+    if (outstanding <= 0) continue;
+    const customerName = invoice.customer.companyName ?? invoice.customer.name;
+    if (search && !customerName.toLowerCase().includes(search) && !invoice.invoiceNumber.toLowerCase().includes(search)) continue;
+    const age = ageDays(invoice.dueDate ?? invoice.issuedAt, asOf, timeZone);
+    const bucket = receivablesBucket(age);
+    if (filters.bucket && bucket !== filters.bucket) continue;
+    items.push({
+      invoiceId: invoice.id,
+      documentNumber: invoice.invoiceNumber,
+      customerId: invoice.customerId,
+      customerName,
+      invoiceDate: invoice.issuedAt.toISOString(),
+      dueDate: invoice.dueDate?.toISOString() ?? null,
+      originalAmount: Number(invoice.amount),
+      paymentsApplied: Number(invoice.paidAmount),
+      creditsApplied: Number(invoice.creditApplied),
+      outstandingAmount: outstanding,
+      ageDays: age,
+      bucket,
+    });
+  }
+
+  const customers = new Map<string, CustomerReceivablesAging>();
+  for (const item of items) {
+    let customer = customers.get(item.customerId);
+    if (!customer) {
+      customer = { customerId: item.customerId, customerName: item.customerName, totalOutstanding: 0, unappliedCredit: unappliedCreditByCustomer.get(item.customerId)?.amount ?? 0, buckets: toBucketTotals(), oldestAgeDays: null, items: [] };
+      customers.set(item.customerId, customer);
+    }
+    customer.totalOutstanding += item.outstandingAmount;
+    if (item.bucket !== "current") customer.buckets[item.bucket] += item.outstandingAmount;
+    customer.items.push(item);
+    customer.oldestAgeDays = customer.oldestAgeDays === null ? item.ageDays : Math.max(customer.oldestAgeDays, item.ageDays);
+  }
+
+  for (const [customerId, credit] of unappliedCreditByCustomer) {
+    if (!customers.has(customerId)) {
+      customers.set(customerId, { customerId, customerName: credit.customerName, totalOutstanding: 0, unappliedCredit: credit.amount, buckets: toBucketTotals(), oldestAgeDays: null, items: [] });
+    }
+  }
+
+  const totals = toBucketTotals();
+  let totalOutstanding = 0;
+  let totalUnappliedCredit = 0;
+  const customerRows = [...customers.values()].map((customer) => ({ ...customer, items: customer.items.sort((a, b) => b.ageDays - a.ageDays) }));
+  for (const customer of customerRows) {
+    totalOutstanding += customer.totalOutstanding;
+    totalUnappliedCredit += customer.unappliedCredit;
+    for (const bucket of Object.keys(totals) as ReceivablesBucket[]) totals[bucket] += customer.buckets[bucket];
+  }
+
+  return { asOfDate, totalOutstanding, totalUnappliedCredit, buckets: totals, customers: customerRows };
+}
+
+function toDateKey(date: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+}

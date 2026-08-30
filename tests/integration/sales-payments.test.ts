@@ -14,6 +14,7 @@ let recordPayment: typeof import("@/lib/server/payments")["recordPayment"];
 let getCustomer: typeof import("@/lib/server/customers")["getCustomer"];
 let getProduct: typeof import("@/lib/server/products")["getProduct"];
 let ensureDefaultAccounts: typeof import("@/lib/server/accounting")["ensureDefaultAccounts"];
+let createCashBankAccount: typeof import("@/lib/server/accounting")["createCashBankAccount"];
 
 let workspaceA: string;
 let workspaceB: string;
@@ -22,15 +23,17 @@ let customerB: string;
 let productA: string;
 let productB: string;
 let cashBankAccountA: string;
+let bankCashBankAccountA: string;
 
 const context = (workspaceId: string) => ({ workspaceId, role: "OWNER" as const });
 
-function saleInput(customerId: string, productId: string, overrides: { quantity?: number; paidAmount?: number } = {}) {
+function saleInput(customerId: string, productId: string, overrides: { quantity?: number; paidAmount?: number; cashBankAccountId?: string } = {}) {
   return {
     customerId,
     items: [{ productId, quantity: overrides.quantity ?? 2, unitPrice: 100, discount: 10 }],
     orderDiscount: 10,
     paidAmount: overrides.paidAmount ?? 60,
+    cashBankAccountId: overrides.cashBankAccountId,
     notes: `integration ${runId}`,
     idempotencyKey: randomUUID(),
   };
@@ -46,7 +49,7 @@ describe("sales and payments against Neon", () => {
     ({ recordPayment } = await import("@/lib/server/payments"));
     ({ getCustomer } = await import("@/lib/server/customers"));
     ({ getProduct } = await import("@/lib/server/products"));
-    ({ ensureDefaultAccounts } = await import("@/lib/server/accounting"));
+    ({ ensureDefaultAccounts, createCashBankAccount } = await import("@/lib/server/accounting"));
 
     const [userA, userB] = await Promise.all([
       db.user.create({ data: { clerkId: `test-clerk-a-${runId}`, email: `test-a-${runId}@example.invalid` } }),
@@ -74,6 +77,8 @@ describe("sales and payments against Neon", () => {
     productB = secondProduct.id;
     await ensureDefaultAccounts(workspaceA);
     cashBankAccountA = (await db.cashBankAccount.findFirstOrThrow({ where: { workspaceId: workspaceA, isActive: true }, select: { id: true } })).id;
+    const bankAccount = await createCashBankAccount({ workspaceId: workspaceA, userId: userA.id }, { name: `Sales bank ${runId}`, isBank: true, openingBalance: 0, bankName: "Test Bank", accountTitle: "BusinessOS", accountNumber: "123" });
+    bankCashBankAccountA = (await db.cashBankAccount.findFirstOrThrow({ where: { accountId: bankAccount.id }, select: { id: true } })).id;
   }, 30_000);
 
   afterAll(async () => {
@@ -141,6 +146,23 @@ describe("sales and payments against Neon", () => {
     expect(await getProduct(productB, workspaceA)).toBeNull();
     await expect(createSale(context(workspaceA), saleInput(customerB, productA))).rejects.toMatchObject({ code: "CUSTOMER_NOT_FOUND" });
     await expect(createSale(context(workspaceA), saleInput(customerA, productB))).rejects.toMatchObject({ code: "PRODUCT_NOT_FOUND" });
+  });
+
+  it("posts paid-at-sale cash receipt to the selected cash/bank account", async () => {
+    const defaultBefore = await db.cashBankAccount.findUniqueOrThrow({ where: { id: cashBankAccountA }, select: { currentBalance: true } });
+    const bankBefore = await db.cashBankAccount.findUniqueOrThrow({ where: { id: bankCashBankAccountA }, select: { currentBalance: true, accountId: true } });
+
+    const result = await createSale(context(workspaceA), saleInput(customerA, productA, { quantity: 1, paidAmount: 50, cashBankAccountId: bankCashBankAccountA }));
+
+    const [defaultAfter, bankAfter, glReceipt] = await Promise.all([
+      db.cashBankAccount.findUniqueOrThrow({ where: { id: cashBankAccountA }, select: { currentBalance: true } }),
+      db.cashBankAccount.findUniqueOrThrow({ where: { id: bankCashBankAccountA }, select: { currentBalance: true } }),
+      db.generalLedgerEntry.findFirstOrThrow({ where: { workspaceId: workspaceA, sourceId: result.id, sourceType: "RECEIPT", debit: { gt: 0 } } }),
+    ]);
+
+    expect(Number(defaultAfter.currentBalance)).toBe(Number(defaultBefore.currentBalance));
+    expect(Number(bankAfter.currentBalance)).toBe(Number(bankBefore.currentBalance) + 50);
+    expect(glReceipt.accountId).toBe(bankBefore.accountId);
   });
 
   it("records a payment transaction and reduces customer, invoice, and order balances", async () => {

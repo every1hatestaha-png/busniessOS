@@ -1,12 +1,13 @@
 import "server-only";
 
-import { AccountCategory, AccountNormalBalance, AccountSystemCode, Prisma } from "@prisma/client";
+import { AccountCategory, AccountNormalBalance, AccountSystemCode, Prisma, type GeneralLedgerSourceType } from "@prisma/client";
 import { endOfDay, startOfMonth } from "date-fns";
 
 import { calculateProfitLossTotals, calculateRunningBalance } from "@/lib/accounting-math";
 import { writeAudit } from "@/lib/server/audit";
 import { db } from "@/lib/server/db";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";
+import { withSerializableRetry } from "@/lib/server/tx-retry";
 import { cashBankAccountSchema, expenseSchema, ledgerReportSchema, profitLossSchema, type CashBankAccountInput, type ExpenseInput, type LedgerReportInput, type ProfitLossInput } from "@/lib/validation/accounting";
 
 export class AccountingDomainError extends Error {}
@@ -45,7 +46,11 @@ function normalizeRange(input: ProfitLossInput | LedgerReportInput) {
   return { from, to };
 }
 
+const bootstrappedWorkspaces = new Set<string>();
+
 export async function ensureDefaultAccounts(workspaceId: string, tx: Prisma.TransactionClient = db) {
+  if (bootstrappedWorkspaces.has(workspaceId)) return;
+
   const existingDefaults = await tx.account.count({ where: { workspaceId, systemCode: { in: DEFAULT_ACCOUNTS.map((account) => account.systemCode) } } });
   if (existingDefaults < DEFAULT_ACCOUNTS.length) {
     for (const account of DEFAULT_ACCOUNTS) {
@@ -63,6 +68,8 @@ export async function ensureDefaultAccounts(workspaceId: string, tx: Prisma.Tran
     create: { workspaceId, accountId: cashAccount.id, name: cashAccount.name, openingBalance: 0, currentBalance: 0, isBank: false },
     update: {},
   });
+
+  bootstrappedWorkspaces.add(workspaceId);
 }
 
 async function getSystemAccounts(tx: Prisma.TransactionClient, workspaceId: string, codes: AccountSystemCode[]) {
@@ -95,6 +102,45 @@ async function postBalancedEntries(tx: Prisma.TransactionClient, entries: Prisma
   const credit = entries.reduce((sum, entry) => sum.plus(new Prisma.Decimal(entry.credit?.toString() ?? 0)), new Prisma.Decimal(0));
   if (!debit.equals(credit)) throw new AccountingDomainError("General Ledger posting is not balanced.");
   if (entries.length) await tx.generalLedgerEntry.createMany({ data: entries });
+}
+
+export async function reverseGeneralLedgerEntries(tx: Prisma.TransactionClient, params: { workspaceId: string; sources: Array<{ sourceType: GeneralLedgerSourceType; sourceId: string }>; documentNo: string; date: Date; reason: string; reversedById?: string | null }) {
+  if (!params.sources.length) return { reversed: 0 };
+  const originals = await tx.generalLedgerEntry.findMany({
+    where: {
+      workspaceId: params.workspaceId,
+      reversalOfId: null,
+      OR: params.sources.map((source) => ({ sourceType: source.sourceType, sourceId: source.sourceId })),
+    },
+    orderBy: [{ date: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+  });
+  if (!originals.length) return { reversed: 0 };
+
+  const existing = await tx.generalLedgerEntry.findMany({
+    where: { workspaceId: params.workspaceId, reversalOfId: { in: originals.map((entry) => entry.id) } },
+    select: { reversalOfId: true },
+  });
+  const alreadyReversed = new Set(existing.map((entry) => entry.reversalOfId).filter(Boolean));
+  const entries = originals
+    .filter((entry) => !alreadyReversed.has(entry.id))
+    .map((entry) => ({
+      workspaceId: entry.workspaceId,
+      accountId: entry.accountId,
+      sourceType: "REVERSAL" as const,
+      sourceId: entry.sourceId,
+      documentNo: params.documentNo,
+      date: params.date,
+      narration: `${params.reason}: ${entry.narration}`,
+      debit: entry.credit,
+      credit: entry.debit,
+      reversalOfId: entry.id,
+      reversedAt: params.date,
+      reversedById: params.reversedById ?? null,
+      reversalReason: params.reason,
+    }));
+
+  await postBalancedEntries(tx, entries);
+  return { reversed: entries.length };
 }
 
 export async function postSaleToGeneralLedger(tx: Prisma.TransactionClient, params: { workspaceId: string; saleId: string; orderNumber: string; date: Date; revenue: Prisma.Decimal; costOfGoodsSold: Prisma.Decimal; cashReceived: Prisma.Decimal; cashBankAccountId?: string | null }) {
@@ -247,7 +293,7 @@ export async function createCashBankAccount(context: ServiceContext, input: Cash
 export async function createExpense(context: ServiceContext, input: ExpenseInput) {
   const data = expenseSchema.parse(input);
   const expenseAmount = new Prisma.Decimal(data.amount);
-  return db.$transaction(async (tx) => {
+  return withSerializableRetry(async (tx) => {
     await ensureDefaultAccounts(context.workspaceId, tx);
     if (data.idempotencyKey) {
       const existing = await tx.expense.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true } });
@@ -270,7 +316,7 @@ export async function createExpense(context: ServiceContext, input: ExpenseInput
     await tx.cashBankAccount.update({ where: { id: cashBank.id }, data: { currentBalance: { decrement: expenseAmount } } });
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "expense.created", entityType: "Expense", entityId: expense.id, metadata: { voucherNumber, amount: expenseAmount.toString() } });
     return { id: expense.id };
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
+  });
 }
 
 export async function getGeneralLedger(workspaceId: string, input: LedgerReportInput) {

@@ -54,11 +54,10 @@ function toBucketTotals(): PayablesBucketTotals {
  * Builds the payable aging report from the existing purchase / payment /
  * supplier-return model.
  *
- * Outstanding per purchase = stored balanceAmount (total minus allocated
- * payments) reduced by any supplier returns recorded against that purchase.
- * Already-paid amounts are simply never aged. Cancelled purchases and fully
- * settled purchases (effective outstanding of zero) are excluded from the
- * active aging report while their historical records remain intact.
+ * Outstanding per purchase = stored balanceAmount, which represents accepted
+ * GRN liability minus supplier payments and supplier returns. Ordered-only POs,
+ * cancelled purchases, and fully settled purchases are excluded from the active
+ * aging report while their historical records remain intact.
  *
  * This is a read-only projection: no ledgers, payments, purchases, or
  * inventory are mutated.
@@ -71,32 +70,18 @@ export async function getPayablesAging(
   const asOf = filters.asOf ?? new Date();
   const asOfDate = toDateKey(asOf, timeZone);
 
-  const [purchases, returnTotals] = await Promise.all([
-    db.purchaseOrder.findMany({
-      where: { workspaceId, status: { not: "CANCELLED" }, ...(filters.supplierId ? { supplierId: filters.supplierId } : {}) },
-      select: {
-        id: true,
-        orderNumber: true,
-        supplierId: true,
-        orderDate: true,
-        totalAmount: true,
-        balanceAmount: true,
-        supplier: { select: { name: true, companyName: true } },
-      },
-    }),
-    db.supplierReturn.groupBy({
-      by: ["purchaseOrderId"],
-      where: { workspaceId, ...(filters.supplierId ? { supplierId: filters.supplierId } : {}) },
-      _sum: { totalAmount: true },
-    }),
-  ]);
-
-  const returnByPurchase = new Map<string, number>();
-  for (const row of returnTotals) {
-    if (row.purchaseOrderId && row._sum.totalAmount) {
-      returnByPurchase.set(row.purchaseOrderId, Number(row._sum.totalAmount));
-    }
-  }
+  const purchases = await db.purchaseOrder.findMany({
+    where: { workspaceId, status: { in: ["PARTIALLY_RECEIVED", "RECEIVED"] }, balanceAmount: { gt: 0 }, ...(filters.supplierId ? { supplierId: filters.supplierId } : {}) },
+    select: {
+      id: true,
+      orderNumber: true,
+      supplierId: true,
+      orderDate: true,
+      totalAmount: true,
+      balanceAmount: true,
+      supplier: { select: { name: true, companyName: true } },
+    },
+  });
 
   const isMatch =
     filters.search && filters.search.trim().length > 0
@@ -105,8 +90,7 @@ export async function getPayablesAging(
 
   const items: AgingItem[] = [];
   for (const purchase of purchases) {
-    const returned = returnByPurchase.get(purchase.id) ?? 0;
-    const outstanding = Math.max(0, Number(purchase.balanceAmount) - returned);
+    const outstanding = Number(purchase.balanceAmount);
     if (outstanding <= 0) continue;
     const age = ageDays(purchase.orderDate, asOf, timeZone);
     const bucket = payablesBucket(age);

@@ -57,7 +57,7 @@ describe("PO → GRN separation integration", () => {
     productIdB = productB.id;
 
     await ensureDefaultAccounts(workspaceId);
-  });
+  }, 30_000);
 
   afterAll(async () => {
     if (!db) return;
@@ -72,7 +72,7 @@ describe("PO → GRN separation integration", () => {
     await db.supplier.deleteMany({ where: { workspaceId } });
     await db.workspace.delete({ where: { id: workspaceId } });
     await db.user.delete({ where: { id: userId } });
-  });
+  }, 30_000);
 
   it("1. createPurchase: NO inventory, NO payable, NO GL, NO supplier balance change", async () => {
     const productBefore = await db.product.findUnique({ where: { id: productIdA }, select: { stockQuantity: true } });
@@ -102,7 +102,7 @@ describe("PO → GRN separation integration", () => {
     const purchase = await db.purchaseOrder.findUnique({ where: { id: order.id } });
     expect(purchase!.status).toBe("ORDERED");
     expect(Number(purchase!.paidAmount)).toBe(0);
-    expect(Number(purchase!.balanceAmount)).toBe(Number(purchase!.totalAmount));
+    expect(Number(purchase!.balanceAmount)).toBe(0);
   });
 
   it("2. createGoodsReceipt: increases inventory, creates payable, posts GL", async () => {
@@ -149,7 +149,8 @@ describe("PO → GRN separation integration", () => {
 
     const purchase = await db.purchaseOrder.findUnique({ where: { id: order.id } });
     expect(purchase!.status).toBe("RECEIVED");
-    expect(Number(purchase!.paidAmount)).toBe(6000);
+    expect(Number(purchase!.paidAmount)).toBe(0);
+    expect(Number(purchase!.balanceAmount)).toBe(6000);
   });
 
   it("3. partial receiving: 100 ordered, 60 received, 40 remaining", async () => {
@@ -323,6 +324,53 @@ describe("PO → GRN separation integration", () => {
       idempotencyKey: key,
     });
     expect(second.id).toBe(first.id);
+  });
+
+  it("9b. GRN idempotency: same key does not duplicate stock, payable, or GL", async () => {
+    const order = await createPurchase(context(), {
+      supplierId,
+      items: [{ productId: productIdA, quantity: 4, unitCost: 20 }],
+      idempotencyKey: `po-grn-idempotent-${runId}`,
+    });
+    const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: order.id } });
+    const productBefore = await db.product.findUniqueOrThrow({ where: { id: productIdA }, select: { stockQuantity: true } });
+    const supplierBefore = await db.supplier.findUniqueOrThrow({ where: { id: supplierId }, select: { currentBalance: true } });
+    const key = `grn-idempotent-${runId}`;
+
+    const first = await createGoodsReceipt(context(), {
+      purchaseOrderId: order.id,
+      items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 4, acceptedQuantity: 4, actualUnitCost: 20 }],
+      idempotencyKey: key,
+    });
+    const second = await createGoodsReceipt(context(), {
+      purchaseOrderId: order.id,
+      items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 4, acceptedQuantity: 4, actualUnitCost: 20 }],
+      idempotencyKey: key,
+    });
+
+    expect(second.id).toBe(first.id);
+    expect(await db.goodReceivedNote.count({ where: { purchaseOrderId: order.id } })).toBe(1);
+    expect(await db.inventoryTransaction.count({ where: { workspaceId, reference: first.grnNumber } })).toBe(1);
+    expect(await db.generalLedgerEntry.count({ where: { workspaceId, sourceId: first.id } })).toBe(2);
+    expect((await db.product.findUniqueOrThrow({ where: { id: productIdA } })).stockQuantity).toBe(productBefore.stockQuantity + 4);
+    expect(Number((await db.supplier.findUniqueOrThrow({ where: { id: supplierId } })).currentBalance)).toBe(Number(supplierBefore.currentBalance) + 80);
+  });
+
+  it("9c. duplicate GRN lines for the same PO item are rejected", async () => {
+    const order = await createPurchase(context(), {
+      supplierId,
+      items: [{ productId: productIdA, quantity: 5, unitCost: 10 }],
+      idempotencyKey: `po-grn-duplicate-${runId}`,
+    });
+    const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: order.id } });
+
+    await expect(createGoodsReceipt(context(), {
+      purchaseOrderId: order.id,
+      items: [
+        { purchaseOrderItemId: poItem.id, receivedQuantity: 3, acceptedQuantity: 3, actualUnitCost: 10 },
+        { purchaseOrderItemId: poItem.id, receivedQuantity: 3, acceptedQuantity: 3, actualUnitCost: 10 },
+      ],
+    })).rejects.toThrow("Duplicate purchase order items");
   });
 
   it("10. receiving for cancelled PO is rejected", async () => {
