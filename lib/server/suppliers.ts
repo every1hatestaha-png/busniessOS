@@ -99,7 +99,7 @@ export async function getSupplierPaymentVoucher(workspaceId: string, paymentId: 
     include: {
       supplier: true,
       cashBankAccount: { include: { account: true } },
-      allocations: { include: { purchaseOrder: { select: { orderNumber: true, orderDate: true, totalAmount: true } } } },
+      allocations: { include: { purchaseOrder: true } },
       workspace: true,
     },
   });

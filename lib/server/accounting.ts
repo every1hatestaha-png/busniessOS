@@ -186,6 +186,15 @@ export async function postSupplierReturnToGeneralLedger(tx: Prisma.TransactionCl
   ]);
 }
 
+export async function postGoodsReceiptToGeneralLedger(tx: Prisma.TransactionClient, params: { workspaceId: string; grnId: string; grnNumber: string; date: Date; inventoryAmount: Prisma.Decimal }) {
+  const accounts = await getSystemAccounts(tx, params.workspaceId, ["INVENTORY", "ACCOUNTS_PAYABLE"]);
+  const narration = `Goods received ${params.grnNumber}`;
+  await postBalancedEntries(tx, [
+    { workspaceId: params.workspaceId, accountId: accounts.INVENTORY.id, sourceType: "PURCHASE_RECEIPT", sourceId: params.grnId, documentNo: params.grnNumber, date: params.date, narration, debit: params.inventoryAmount, credit: 0 },
+    { workspaceId: params.workspaceId, accountId: accounts.ACCOUNTS_PAYABLE.id, sourceType: "PURCHASE_RECEIPT", sourceId: params.grnId, documentNo: params.grnNumber, date: params.date, narration, debit: 0, credit: params.inventoryAmount },
+  ]);
+}
+
 export async function getChartOfAccounts(workspaceId: string) {
   await ensureDefaultAccounts(workspaceId);
   const accounts = await db.account.findMany({ where: { workspaceId }, orderBy: [{ code: "asc" }] });

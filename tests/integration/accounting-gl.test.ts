@@ -5,6 +5,7 @@ let db: typeof import("@/lib/server/db")["db"];
 let createSale: typeof import("@/lib/server/sales")["createSale"];
 let createCustomerReturn: typeof import("@/lib/server/sales")["createCustomerReturn"];
 let createPurchase: typeof import("@/lib/server/purchases")["createPurchase"];
+let createGoodsReceipt: typeof import("@/lib/server/purchases")["createGoodsReceipt"];
 let createSupplierReturn: typeof import("@/lib/server/purchases")["createSupplierReturn"];
 let recordPayment: typeof import("@/lib/server/payments")["recordPayment"];
 let recordSupplierPayment: typeof import("@/lib/server/suppliers")["recordSupplierPayment"];
@@ -52,7 +53,7 @@ describe("accounting GL integration", () => {
     const { config } = await import("dotenv"); config({ path: ".env.local", quiet: true });
     ({ db } = await import("@/lib/server/db"));
     ({ createSale, createCustomerReturn } = await import("@/lib/server/sales"));
-    ({ createPurchase, createSupplierReturn } = await import("@/lib/server/purchases"));
+    ({ createPurchase, createGoodsReceipt, createSupplierReturn } = await import("@/lib/server/purchases"));
     ({ recordPayment } = await import("@/lib/server/payments"));
     ({ recordSupplierPayment } = await import("@/lib/server/suppliers"));
     ({ getPayablesAging } = await import("@/lib/server/payables"));
@@ -82,6 +83,8 @@ describe("accounting GL integration", () => {
     await db.expense.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
     await db.supplierReturnItem.deleteMany({ where: { supplierReturn: { workspaceId: { in: workspaceIds } } } });
     await db.customerReturnItem.deleteMany({ where: { customerReturn: { workspaceId: { in: workspaceIds } } } });
+    await db.goodReceivedNoteItem.deleteMany({ where: { goodReceivedNote: { workspaceId: { in: workspaceIds } } } });
+    await db.goodReceivedNote.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
     await db.paymentAllocation.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
     await db.payment.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
     await db.cashBankAccount.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
@@ -121,17 +124,19 @@ describe("accounting GL integration", () => {
   });
 
   it("posts a balanced purchase including cash paid", async () => {
-    const purchase = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 3, unitCost: 30 }], paidAmount: 20, paymentMethod: "CASH", notes: "", idempotencyKey: randomUUID() });
-    expect(await glTotals(purchase.id)).toEqual({ count: 4, debit: 110, credit: 110 });
-    const rows = await glLines(purchase.id);
+    const purchase = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 3, unitCost: 30 }], idempotencyKey: randomUUID() });
+    const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: purchase.id } });
+    const grn = await createGoodsReceipt(context(), { purchaseOrderId: purchase.id, items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 3, acceptedQuantity: 3, actualUnitCost: 30 }] });
+    expect(await glTotals(grn.id)).toEqual({ count: 2, debit: 90, credit: 90 });
+    const rows = await glLines(grn.id);
     expect(lineAmount(rows, "INVENTORY", "debit")).toBe(90);
     expect(lineAmount(rows, "ACCOUNTS_PAYABLE", "credit")).toBe(90);
-    expect(lineAmount(rows, "ACCOUNTS_PAYABLE", "debit")).toBe(20);
-    expect(lineAmount(rows, "CASH_IN_HAND", "credit")).toBe(20);
   });
 
   it("posts balanced supplier and customer returns", async () => {
-    const purchase = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 2, unitCost: 25 }], paidAmount: 0, paymentMethod: "CASH", notes: "", idempotencyKey: randomUUID() });
+    const purchase = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 2, unitCost: 25 }], idempotencyKey: randomUUID() });
+    const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: purchase.id } });
+    await createGoodsReceipt(context(), { purchaseOrderId: purchase.id, items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 2, acceptedQuantity: 2, actualUnitCost: 25 }] });
     const purchaseDetail = await db.purchaseOrder.findUniqueOrThrow({ where: { id: purchase.id }, include: { items: true } });
     const supplierReturn = await createSupplierReturn(context(), { purchaseOrderId: purchase.id, items: [{ itemId: purchaseDetail.items[0].id, quantity: 1 }], reason: "", notes: "", idempotencyKey: randomUUID() });
     expect(await glTotals(supplierReturn.id)).toEqual({ count: 2, debit: 25, credit: 25 });
@@ -148,7 +153,9 @@ describe("accounting GL integration", () => {
   });
 
   it("posts a balanced standalone supplier payment", async () => {
-    const purchase = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 1, unitCost: 20 }], paidAmount: 0, paymentMethod: "CASH", notes: "", idempotencyKey: randomUUID() });
+    const purchase = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 1, unitCost: 20 }], idempotencyKey: randomUUID() });
+    const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: purchase.id } });
+    await createGoodsReceipt(context(), { purchaseOrderId: purchase.id, items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 1, acceptedQuantity: 1, actualUnitCost: 20 }] });
     const payment = await recordSupplierPayment(context(), supplierId, { amount: 20, withholdingTaxAmount: 2, cashBankAccountId, allocations: [{ purchaseOrderId: purchase.id, amount: 20 }], paymentDate: new Date(), method: "CASH", reference: "", notes: "", idempotencyKey: randomUUID() });
     expect(await glTotals(payment.id)).toEqual({ count: 3, debit: 20, credit: 20 });
     const rows = await glLines(payment.id);

@@ -94,6 +94,7 @@ enum DocumentKind {
   SUPPLIER_RETURN
   EXPENSE_VOUCHER
   BANK_PAYMENT_VOUCHER
+  PURCHASE_RECEIPT
 }
 
 enum AccountCategory {
@@ -141,6 +142,7 @@ enum GeneralLedgerSourceType {
   CUSTOMER_RETURN
   SUPPLIER_RETURN
   ADJUSTMENT
+  PURCHASE_RECEIPT
 }
 
 enum LedgerEntryType {
@@ -155,6 +157,7 @@ enum LedgerEntryType {
   DEBIT_NOTE
   SALES_RETURN
   PURCHASE_RETURN
+  GOODS_RECEIVED
 }
 
 enum InventoryTransactionType {
@@ -166,6 +169,12 @@ enum InventoryTransactionType {
   ADJUSTMENT
   SALE_CANCELLATION
   PURCHASE_CANCELLATION
+  PURCHASE_RECEIPT
+}
+
+enum PricingMode {
+  UNIT
+  WEIGHT
 }
 
 enum InvitationStatus {
@@ -215,6 +224,7 @@ model Workspace {
   cashBankAccounts      CashBankAccount[]
   expenses              Expense[]
   generalLedgerEntries  GeneralLedgerEntry[]
+  goodReceivedNotes     GoodReceivedNote[]
 
   @@map("workspaces")
 }
@@ -297,12 +307,13 @@ model Supplier {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  workspace      Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  purchaseOrders PurchaseOrder[]
-  payments       Payment[]
-  ledgerEntries  LedgerEntry[]
-  debitNotes     DebitNote[]
-  returns        SupplierReturn[]
+  workspace          Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  purchaseOrders     PurchaseOrder[]
+  payments           Payment[]
+  ledgerEntries      LedgerEntry[]
+  debitNotes         DebitNote[]
+  returns            SupplierReturn[]
+  goodsReceivedNotes GoodReceivedNote[]
 
   @@index([workspaceId])
   @@map("suppliers")
@@ -328,6 +339,7 @@ model Product {
   inventoryTransactions InventoryTransaction[]
   salesOrderItems       SalesOrderItem[]
   purchaseOrderItems    PurchaseOrderItem[]
+  goodReceivedNoteItems GoodReceivedNoteItem[]
 
   @@unique([workspaceId, sku])
   @@index([workspaceId])
@@ -510,21 +522,24 @@ model SalesOrderItem {
 }
 
 model PurchaseOrder {
-  id             String              @id @default(uuid())
-  workspaceId    String
-  supplierId     String
-  orderNumber    String
-  status         PurchaseOrderStatus @default(DRAFT)
-  totalAmount    Decimal             @default(0) @db.Decimal(15, 2)
-  paidAmount     Decimal             @default(0) @db.Decimal(15, 2)
-  balanceAmount  Decimal             @default(0) @db.Decimal(15, 2)
-  idempotencyKey String?
-  notes          String?
-  orderDate      DateTime            @default(now())
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
-  cancelledAt    DateTime?
-  cancelledById  String?
+  id                   String              @id @default(uuid())
+  workspaceId          String
+  supplierId           String
+  orderNumber          String
+  status               PurchaseOrderStatus @default(DRAFT)
+  totalAmount          Decimal             @default(0) @db.Decimal(15, 2)
+  paidAmount           Decimal             @default(0) @db.Decimal(15, 2)
+  balanceAmount        Decimal             @default(0) @db.Decimal(15, 2)
+  idempotencyKey       String?
+  notes                String?
+  orderDate            DateTime            @default(now())
+  expectedDeliveryDate DateTime?
+  department           String?
+  pricingMode          PricingMode         @default(UNIT)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  cancelledAt          DateTime?
+  cancelledById        String?
 
   workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   supplier           Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
@@ -532,6 +547,7 @@ model PurchaseOrder {
   debitNotes         DebitNote[]
   returns            SupplierReturn[]
   paymentAllocations PaymentAllocation[]
+  goodsReceivedNotes GoodReceivedNote[]
 
   @@unique([workspaceId, orderNumber])
   @@unique([workspaceId, idempotencyKey])
@@ -541,22 +557,73 @@ model PurchaseOrder {
 }
 
 model PurchaseOrderItem {
-  id              String   @id @default(uuid())
-  purchaseOrderId String
-  productId       String
-  quantity        Int
-  unitCost        Decimal  @db.Decimal(15, 2)
-  totalCost       Decimal  @db.Decimal(15, 2)
-  productName     String?
-  productSku      String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id               String   @id @default(uuid())
+  purchaseOrderId  String
+  productId        String
+  quantity         Int
+  unitCost         Decimal  @db.Decimal(15, 2)
+  totalCost        Decimal  @db.Decimal(15, 2)
+  receivedQuantity Int      @default(0)
+  unitWeight       Decimal? @db.Decimal(10, 3)
+  totalWeight      Decimal? @db.Decimal(15, 3)
+  perKgRate        Decimal? @db.Decimal(15, 2)
+  productName      String?
+  productSku       String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  product       Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  purchaseOrder      PurchaseOrder          @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product            Product                @relation(fields: [productId], references: [id], onDelete: Restrict)
+  goodsReceivedItems GoodReceivedNoteItem[]
 
   @@index([purchaseOrderId])
   @@map("purchase_order_items")
+}
+
+model GoodReceivedNote {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  supplierId      String
+  purchaseOrderId String
+  grnNumber       String
+  receiptDate     DateTime @default(now())
+  notes           String?
+  receivedBy      String?
+  checkedBy       String?
+  totalAmount     Decimal  @default(0) @db.Decimal(15, 2)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace     Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  supplier      Supplier               @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  purchaseOrder PurchaseOrder          @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  items         GoodReceivedNoteItem[]
+
+  @@unique([workspaceId, grnNumber])
+  @@index([workspaceId, purchaseOrderId])
+  @@index([workspaceId, supplierId])
+  @@map("goods_received_notes")
+}
+
+model GoodReceivedNoteItem {
+  id                  String   @id @default(uuid())
+  goodReceivedNoteId  String
+  purchaseOrderItemId String
+  productId           String
+  orderedQuantity     Int
+  receivedQuantity    Int
+  acceptedQuantity    Int
+  unitCost            Decimal  @db.Decimal(15, 2)
+  totalCost           Decimal  @db.Decimal(15, 2)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  goodReceivedNote  GoodReceivedNote  @relation(fields: [goodReceivedNoteId], references: [id], onDelete: Cascade)
+  purchaseOrderItem PurchaseOrderItem @relation(fields: [purchaseOrderItemId], references: [id], onDelete: Restrict)
+  product           Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([goodReceivedNoteId])
+  @@map("goods_received_note_items")
 }
 
 model Invoice {

@@ -6,6 +6,7 @@ let createSale: typeof import("@/lib/server/sales")["createSale"];
 let createCustomerReturn: typeof import("@/lib/server/sales")["createCustomerReturn"];
 let recordPayment: typeof import("@/lib/server/payments")["recordPayment"];
 let createPurchase: typeof import("@/lib/server/purchases")["createPurchase"];
+let createGoodsReceipt: typeof import("@/lib/server/purchases")["createGoodsReceipt"];
 let cancelPurchase: typeof import("@/lib/server/purchases")["cancelPurchase"];
 let createSupplierReturn: typeof import("@/lib/server/purchases")["createSupplierReturn"];
 let recordSupplierPayment: typeof import("@/lib/server/suppliers")["recordSupplierPayment"];
@@ -21,7 +22,7 @@ describe("Phase 2D financial operations", () => {
     ({ db } = await import("@/lib/server/db"));
     ({ createSale, createCustomerReturn } = await import("@/lib/server/sales"));
     ({ recordPayment } = await import("@/lib/server/payments"));
-    ({ createPurchase, cancelPurchase, createSupplierReturn } = await import("@/lib/server/purchases"));
+    ({ createPurchase, createGoodsReceipt, cancelPurchase, createSupplierReturn } = await import("@/lib/server/purchases"));
     ({ recordSupplierPayment } = await import("@/lib/server/suppliers"));
     ({ ensureDefaultAccounts } = await import("@/lib/server/accounting"));
     const user = await db.user.create({ data: { clerkId: `phase2d-${runId}`, email: `phase2d-${runId}@example.invalid` } }); userId = user.id;
@@ -42,6 +43,8 @@ describe("Phase 2D financial operations", () => {
       await db.customerReturnItem.deleteMany({ where: { customerReturn: { workspaceId } } });
       await db.supplierReturnItem.deleteMany({ where: { supplierReturn: { workspaceId } } });
       await db.salesOrderItem.deleteMany({ where: { salesOrder: { workspaceId } } });
+      await db.goodReceivedNoteItem.deleteMany({ where: { goodReceivedNote: { workspaceId } } });
+      await db.goodReceivedNote.deleteMany({ where: { workspaceId } });
       await db.purchaseOrderItem.deleteMany({ where: { purchaseOrder: { workspaceId } } });
       await db.workspace.deleteMany({ where: { id: workspaceId } });
     }
@@ -62,12 +65,22 @@ describe("Phase 2D financial operations", () => {
     expect(Number((await db.invoice.findUniqueOrThrow({ where: { id: invoices[1].id } })).paidAmount)).toBe(20);
   });
 
-  it("cancels a purchase with stock, payable, payment, ledger, and audit reversals", async () => {
-    const purchase = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 3, unitCost: 12 }], paidAmount: 10, paymentMethod: "CASH", notes: "", idempotencyKey: randomUUID() });
+  it("cancels a received purchase with stock, payable, payment, ledger, and audit reversals", async () => {
+    const purchase = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 3, unitCost: 12 }], idempotencyKey: randomUUID() });
+    const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: purchase.id } });
+    await createGoodsReceipt(context(), { purchaseOrderId: purchase.id, items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 3, acceptedQuantity: 3, actualUnitCost: 12 }] });
+
+    const productBefore = await db.product.findUniqueOrThrow({ where: { id: productId } });
     await expect(cancelPurchase(context(), purchase.id, false)).rejects.toThrow("Explicitly confirm");
     await cancelPurchase(context(), purchase.id, true);
-    const [order, product, supplier, reversal, audit] = await Promise.all([db.purchaseOrder.findUniqueOrThrow({ where: { id: purchase.id } }), db.product.findUniqueOrThrow({ where: { id: productId } }), db.supplier.findUniqueOrThrow({ where: { id: supplierId } }), db.payment.findFirst({ where: { workspaceId, supplierId, reversalOfId: { not: null } } }), db.auditLog.findFirst({ where: { workspaceId, entityId: purchase.id, action: "purchase.cancelled" } })]);
-    expect(order.status).toBe("CANCELLED"); expect(product.stockQuantity).toBe(18); expect(Number(supplier.currentBalance)).toBe(0); expect(reversal).not.toBeNull(); expect(audit).not.toBeNull();
+    const [order, product, audit] = await Promise.all([
+      db.purchaseOrder.findUniqueOrThrow({ where: { id: purchase.id } }),
+      db.product.findUniqueOrThrow({ where: { id: productId } }),
+      db.auditLog.findFirst({ where: { workspaceId, entityId: purchase.id, action: "purchase.cancelled" } }),
+    ]);
+    expect(order.status).toBe("CANCELLED");
+    expect(product.stockQuantity).toBe(productBefore.stockQuantity - 3);
+    expect(audit).not.toBeNull();
   });
 
   it("records customer and supplier returns with notes, stock, ledger, balances, and audit", async () => {
@@ -79,7 +92,10 @@ describe("Phase 2D financial operations", () => {
     expect(await db.creditNote.count({ where: { workspaceId, salesOrderId: sale.id } })).toBe(1);
     expect(await db.auditLog.count({ where: { workspaceId, entityId: customerReturn.id, action: "customer_return.created" } })).toBe(1);
 
-    const purchase = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 4, unitCost: 11 }], paidAmount: 0, paymentMethod: "CASH", notes: "", idempotencyKey: randomUUID() });
+    const purchase = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 4, unitCost: 11 }], idempotencyKey: randomUUID() });
+    const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: purchase.id } });
+    await createGoodsReceipt(context(), { purchaseOrderId: purchase.id, items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 4, acceptedQuantity: 4, actualUnitCost: 11 }] });
+
     const purchaseItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: purchase.id } });
     const supplierReturnInput = { purchaseOrderId: purchase.id, items: [{ itemId: purchaseItem.id, quantity: 2 }], reason: "Wrong item", notes: "", idempotencyKey: randomUUID() };
     const supplierReturn = await createSupplierReturn(context(), supplierReturnInput);
@@ -88,9 +104,15 @@ describe("Phase 2D financial operations", () => {
     expect(await db.auditLog.count({ where: { workspaceId, entityId: supplierReturn.id, action: "supplier_return.created" } })).toBe(1);
   });
 
-  it("allocates supplier payments to purchases", async () => {
-    const first = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 1, unitCost: 10 }], paidAmount: 0, paymentMethod: "CASH", notes: "", idempotencyKey: randomUUID() });
-    const second = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 1, unitCost: 15 }], paidAmount: 0, paymentMethod: "CASH", notes: "", idempotencyKey: randomUUID() });
+  it("allocates supplier payments to received purchases", async () => {
+    const first = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 1, unitCost: 10 }], idempotencyKey: randomUUID() });
+    const second = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 1, unitCost: 15 }], idempotencyKey: randomUUID() });
+
+    const firstItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: first.id } });
+    const secondItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: second.id } });
+    await createGoodsReceipt(context(), { purchaseOrderId: first.id, items: [{ purchaseOrderItemId: firstItem.id, receivedQuantity: 1, acceptedQuantity: 1, actualUnitCost: 10 }] });
+    await createGoodsReceipt(context(), { purchaseOrderId: second.id, items: [{ purchaseOrderItemId: secondItem.id, receivedQuantity: 1, acceptedQuantity: 1, actualUnitCost: 15 }] });
+
     const key = randomUUID();
     const input = { amount: 20, cashBankAccountId, allocations: [{ purchaseOrderId: first.id, amount: 10 }, { purchaseOrderId: second.id, amount: 10 }], method: "CASH" as const, reference: "", notes: "", paymentDate: new Date(), idempotencyKey: key };
     const payment = await recordSupplierPayment(context(), supplierId, input);

@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 let db: typeof import("@/lib/server/db")["db"];
 let createPurchase: typeof import("@/lib/server/purchases")["createPurchase"];
+let createGoodsReceipt: typeof import("@/lib/server/purchases")["createGoodsReceipt"];
 let cancelPurchase: typeof import("@/lib/server/purchases")["cancelPurchase"];
 let createSupplierReturn: typeof import("@/lib/server/purchases")["createSupplierReturn"];
 let recordSupplierPayment: typeof import("@/lib/server/suppliers")["recordSupplierPayment"];
@@ -20,8 +21,6 @@ let cashBankAccountId = "";
 
 const context = () => ({ workspaceId, userId, role: "OWNER" as const });
 
-// Fixed as-of date for deterministic aging; everything below is created years
-// before it unless we backdate orderDate explicitly.
 const AS_OF = new Date("2026-08-29T12:00:00Z");
 const TZ = "Asia/Karachi";
 
@@ -31,11 +30,18 @@ function asOfPlusDays(offset: number): Date {
   return d;
 }
 
+async function createPOAndReceive(ctx: { workspaceId: string; userId: string; role: "OWNER" }, supplierId: string, productId: string, quantity: number, unitCost: number) {
+  const order = await createPurchase(ctx, { supplierId, items: [{ productId, quantity, unitCost }], idempotencyKey: randomUUID() });
+  const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: order.id } });
+  await createGoodsReceipt(ctx, { purchaseOrderId: order.id, items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: quantity, acceptedQuantity: quantity, actualUnitCost: unitCost }] });
+  return order;
+}
+
 describe("payable aging service", () => {
   beforeAll(async () => {
     const { config } = await import("dotenv"); config({ path: ".env.local", quiet: true });
     ({ db } = await import("@/lib/server/db"));
-    ({ createPurchase, cancelPurchase, createSupplierReturn } = await import("@/lib/server/purchases"));
+    ({ createPurchase, createGoodsReceipt, cancelPurchase, createSupplierReturn } = await import("@/lib/server/purchases"));
     ({ recordSupplierPayment } = await import("@/lib/server/suppliers"));
     ({ getPayablesAging } = await import("@/lib/server/payables"));
     ({ ensureDefaultAccounts } = await import("@/lib/server/accounting"));
@@ -43,7 +49,6 @@ describe("payable aging service", () => {
     userId = user.id;
     const workspace = await db.workspace.create({ data: { name: `Aging ${runId}`, members: { create: { userId, role: "OWNER" } } } });
     workspaceId = workspace.id;
-    // A separate workspace owned by the same user to prove isolation.
     const other = await db.workspace.create({ data: { name: `Other ${runId}`, members: { create: { userId, role: "OWNER" } } } });
     otherWorkspaceId = other.id;
     const [a, b, product] = await Promise.all([
@@ -59,6 +64,8 @@ describe("payable aging service", () => {
   afterAll(async () => {
     if (!db) return;
     await db.supplierReturnItem.deleteMany({ where: { supplierReturn: { workspaceId: { in: [workspaceId, otherWorkspaceId] } } } });
+    await db.goodReceivedNoteItem.deleteMany({ where: { goodReceivedNote: { workspaceId: { in: [workspaceId, otherWorkspaceId] } } } });
+    await db.goodReceivedNote.deleteMany({ where: { workspaceId: { in: [workspaceId, otherWorkspaceId] } } });
     await db.purchaseOrderItem.deleteMany({ where: { purchaseOrder: { workspaceId: { in: [workspaceId, otherWorkspaceId] } } } });
     await db.workspace.deleteMany({ where: { id: { in: [workspaceId, otherWorkspaceId] } } });
     if (userId) await db.user.deleteMany({ where: { id: userId } });
@@ -70,8 +77,8 @@ describe("payable aging service", () => {
   }
 
   it("ages only the remaining outstanding amount after a partial payment", async () => {
-    const purchase = await createPurchase(context(), { supplierId: supplierA, items: [{ productId, quantity: 1, unitCost: 500 }], paidAmount: 0, paymentMethod: "CASH" as const, notes: "", idempotencyKey: randomUUID() });
-    await backdate(purchase.id, 48); // -> 46-60 bucket
+    const purchase = await createPOAndReceive(context(), supplierA, productId, 1, 500);
+    await backdate(purchase.id, 48);
     await recordSupplierPayment(context(), supplierA, { amount: 300, cashBankAccountId, allocations: [{ purchaseOrderId: purchase.id, amount: 300 }], method: "CASH", reference: "", notes: "", idempotencyKey: randomUUID(), paymentDate: new Date() });
     const report = await getPayablesAging(workspaceId, { asOf: AS_OF, timeZone: TZ });
     const supplier = report.suppliers.find((entry) => entry.supplierId === supplierA)!;
@@ -84,23 +91,22 @@ describe("payable aging service", () => {
   });
 
   it("drops a fully-paid purchase from the active aging report", async () => {
-    const purchase = await createPurchase(context(), { supplierId: supplierA, items: [{ productId, quantity: 1, unitCost: 100 }], paidAmount: 0, paymentMethod: "CASH" as const, notes: "", idempotencyKey: randomUUID() });
+    const purchase = await createPOAndReceive(context(), supplierA, productId, 1, 100);
     await backdate(purchase.id, 61);
     await recordSupplierPayment(context(), supplierA, { amount: 100, cashBankAccountId, allocations: [{ purchaseOrderId: purchase.id, amount: 100 }], method: "CASH", reference: "", notes: "", idempotencyKey: randomUUID(), paymentDate: new Date() });
     const report = await getPayablesAging(workspaceId, { asOf: AS_OF, timeZone: TZ });
     const supplier = report.suppliers.find((entry) => entry.supplierId === supplierA)!;
     expect(supplier.items.some((entry) => entry.purchaseId === purchase.id)).toBe(false);
-    // Historical purchase/payment records remain intact in the DB.
     const order = await db.purchaseOrder.findUniqueOrThrow({ where: { id: purchase.id } });
     expect(order.status).not.toBe("CANCELLED");
     expect(Number(order.balanceAmount)).toBe(0);
   });
 
   it("aggregates multiple purchases for the same supplier across buckets", async () => {
-    const recent = await createPurchase(context(), { supplierId: supplierB, items: [{ productId, quantity: 1, unitCost: 50 }], paidAmount: 0, paymentMethod: "CASH" as const, notes: "", idempotencyKey: randomUUID() });
-    const old = await createPurchase(context(), { supplierId: supplierB, items: [{ productId, quantity: 1, unitCost: 120 }], paidAmount: 0, paymentMethod: "CASH" as const, notes: "", idempotencyKey: randomUUID() });
-    await backdate(recent.id, 5);   // 1-30
-    await backdate(old.id, 75);     // 61+
+    const recent = await createPOAndReceive(context(), supplierB, productId, 1, 50);
+    const old = await createPOAndReceive(context(), supplierB, productId, 1, 120);
+    await backdate(recent.id, 5);
+    await backdate(old.id, 75);
     const report = await getPayablesAging(workspaceId, { asOf: AS_OF, timeZone: TZ });
     const supplier = report.suppliers.find((entry) => entry.supplierId === supplierB)!;
     expect(supplier.totalOutstanding).toBe(170);
@@ -111,23 +117,22 @@ describe("payable aging service", () => {
   });
 
   it("reflects supplier returns as a reduction to outstanding", async () => {
-    const purchase = await createPurchase(context(), { supplierId: supplierA, items: [{ productId, quantity: 4, unitCost: 25 }], paidAmount: 0, paymentMethod: "CASH" as const, notes: "", idempotencyKey: randomUUID() });
+    const purchase = await createPOAndReceive(context(), supplierA, productId, 4, 25);
     await backdate(purchase.id, 20);
     const item = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: purchase.id } });
     await createSupplierReturn(context(), { purchaseOrderId: purchase.id, items: [{ itemId: item.id, quantity: 1 }], reason: "Defective", notes: "", idempotencyKey: randomUUID() });
     const report = await getPayablesAging(workspaceId, { asOf: AS_OF, timeZone: TZ });
     const supplier = report.suppliers.find((entry) => entry.supplierId === supplierA)!;
     const entry = supplier.items.find((row) => row.purchaseId === purchase.id);
-    // 100 total - 25 returned = 75 still outstanding.
     expect(entry).toBeDefined();
     expect(entry!.originalAmount).toBe(100);
     expect(entry!.outstandingAmount).toBe(75);
   });
 
   it("does not keep a cancelled purchase as a payable", async () => {
-    const purchase = await createPurchase(context(), { supplierId: supplierB, items: [{ productId, quantity: 2, unitCost: 60 }], paidAmount: 0, paymentMethod: "CASH" as const, notes: "", idempotencyKey: randomUUID() });
+    const purchase = await createPOAndReceive(context(), supplierB, productId, 2, 60);
     await backdate(purchase.id, 10);
-    await cancelPurchase(context(), purchase.id, false);
+    await cancelPurchase(context(), purchase.id, true);
     const report = await getPayablesAging(workspaceId, { asOf: AS_OF, timeZone: TZ });
     for (const supplier of report.suppliers) {
       expect(supplier.items.some((entry) => entry.purchaseId === purchase.id)).toBe(false);
@@ -137,7 +142,6 @@ describe("payable aging service", () => {
   it("does not leak data across workspaces", async () => {
     const other = await db.purchaseOrder.create({ data: { workspaceId: otherWorkspaceId, supplierId: supplierA, orderNumber: `LEAK-${runId}`, status: "RECEIVED", totalAmount: 9999, paidAmount: 0, balanceAmount: 9999, orderDate: asOfPlusDays(0) } });
     const report = await getPayablesAging(workspaceId, { asOf: AS_OF, timeZone: TZ });
-    // No supplier or bucket from this workspace may reflect the other workspace's 9999 payable.
     for (const supplier of report.suppliers) {
       expect(supplier.totalOutstanding).not.toBe(9999);
     }
@@ -146,8 +150,7 @@ describe("payable aging service", () => {
   });
 
   it("creates zero-dated / current purchases without misclassification", async () => {
-    const purchase = await createPurchase(context(), { supplierId: supplierB, items: [{ productId, quantity: 1, unitCost: 30 }], paidAmount: 0, paymentMethod: "CASH" as const, notes: "", idempotencyKey: randomUUID() });
-    // orderDate defaults to now; compare with a matching asOf exactly.
+    const purchase = await createPOAndReceive(context(), supplierB, productId, 1, 30);
     const report = await getPayablesAging(workspaceId, { asOf: new Date(), timeZone: TZ });
     const supplier = report.suppliers.find((entry) => entry.supplierId === supplierB)!;
     const entry = supplier.items.find((row) => row.purchaseId === purchase.id);

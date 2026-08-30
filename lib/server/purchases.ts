@@ -2,77 +2,423 @@ import "server-only";
 
 import { Prisma } from "@prisma/client";
 import { writeAudit } from "@/lib/server/audit";
-import { postPurchaseToGeneralLedger, postSupplierReturnToGeneralLedger } from "@/lib/server/accounting";
+import { postGoodsReceiptToGeneralLedger, postSupplierReturnToGeneralLedger } from "@/lib/server/accounting";
 import { db } from "@/lib/server/db";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";
 import type { ServiceContext } from "@/lib/server/sales";
-import { purchaseSchema, type PurchaseInput } from "@/lib/validation/purchase";
+import { purchaseSchema, goodsReceiptSchema, type PurchaseInput, type GoodsReceiptInput } from "@/lib/validation/purchase";
 import { supplierReturnSchema, type SupplierReturnInput } from "@/lib/validation/returns";
 
-export class PurchaseDomainError extends Error { constructor(public code: "SUPPLIER_NOT_FOUND" | "PRODUCT_NOT_FOUND" | "INVALID_PAYMENT" | "PURCHASE_NOT_FOUND" | "INSUFFICIENT_STOCK" | "INVALID_RETURN", message: string) { super(message); } }
+export class PurchaseDomainError extends Error {
+  constructor(
+    public code:
+      | "SUPPLIER_NOT_FOUND"
+      | "PRODUCT_NOT_FOUND"
+      | "INVALID_PAYMENT"
+      | "PURCHASE_NOT_FOUND"
+      | "INSUFFICIENT_STOCK"
+      | "INVALID_RETURN"
+      | "INVALID_RECEIPT"
+      | "OVER_RECEIPT"
+      | "CANCELLED_PO"
+      | "RECEIPT_NOT_ALLOWED",
+    message: string,
+  ) {
+    super(message);
+  }
+}
 
+/**
+ * Create a Purchase Order (commercial commitment only).
+ * No inventory, no payable, no GL, no supplier balance changes.
+ * Status defaults to ORDERED.
+ */
 export async function createPurchase(context: ServiceContext, input: PurchaseInput) {
   const data = purchaseSchema.parse(input);
   return db.$transaction(async (tx) => {
-    const existing = await tx.purchaseOrder.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true } });
+    const existing = await tx.purchaseOrder.findFirst({
+      where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey },
+      select: { id: true, orderNumber: true },
+    });
     if (existing) return existing;
-    const supplier = await tx.supplier.findFirst({ where: { id: data.supplierId, workspaceId: context.workspaceId }, select: { id: true } });
+
+    const supplier = await tx.supplier.findFirst({
+      where: { id: data.supplierId, workspaceId: context.workspaceId },
+      select: { id: true },
+    });
     if (!supplier) throw new PurchaseDomainError("SUPPLIER_NOT_FOUND", "Supplier not found.");
+
     const ids = [...new Set(data.items.map((item) => item.productId))];
     if (ids.length !== data.items.length) throw new PurchaseDomainError("PRODUCT_NOT_FOUND", "Duplicate products are not allowed.");
-    const products = await tx.product.findMany({ where: { workspaceId: context.workspaceId, id: { in: ids }, status: { not: "ARCHIVED" } }, select: { id: true, name: true, sku: true } });
+
+    const products = await tx.product.findMany({
+      where: { workspaceId: context.workspaceId, id: { in: ids }, status: { not: "ARCHIVED" } },
+      select: { id: true, name: true, sku: true },
+    });
     if (products.length !== data.items.length) throw new PurchaseDomainError("PRODUCT_NOT_FOUND", "One or more products are unavailable.");
-    const lines = data.items.map((item) => ({ ...item, total: new Prisma.Decimal(item.unitCost).mul(item.quantity), product: products.find((product) => product.id === item.productId)! }));
-    const total = lines.reduce((sum, line) => sum.plus(line.total), new Prisma.Decimal(0)); const paid = new Prisma.Decimal(data.paidAmount);
-    if (paid.greaterThan(total)) throw new PurchaseDomainError("INVALID_PAYMENT", "Payment cannot exceed purchase total.");
+
+    const lines = data.items.map((item) => {
+      const product = products.find((p) => p.id === item.productId)!;
+      const totalCost = new Prisma.Decimal(item.unitCost).mul(item.quantity);
+      return { ...item, totalCost, product };
+    });
+
+    const total = lines.reduce((sum, line) => sum.plus(line.totalCost), new Prisma.Decimal(0));
     const orderNumber = await nextDocumentNumber(tx, context.workspaceId, "PURCHASE_ORDER");
-    const order = await tx.purchaseOrder.create({ data: { workspaceId: context.workspaceId, supplierId: supplier.id, orderNumber, status: "RECEIVED", totalAmount: total, paidAmount: paid, balanceAmount: total.minus(paid), idempotencyKey: data.idempotencyKey, notes: data.notes || null }, select: { id: true, orderDate: true } });
+
+    const order = await tx.purchaseOrder.create({
+      data: {
+        workspaceId: context.workspaceId,
+        supplierId: supplier.id,
+        orderNumber,
+        status: "ORDERED",
+        totalAmount: total,
+        paidAmount: 0,
+        balanceAmount: total,
+        idempotencyKey: data.idempotencyKey,
+        notes: data.notes || null,
+        expectedDeliveryDate: data.expectedDeliveryDate || null,
+        department: data.department || null,
+        pricingMode: data.pricingMode ?? "UNIT",
+      },
+      select: { id: true, orderNumber: true, orderDate: true },
+    });
+
     for (const line of lines) {
-      await tx.purchaseOrderItem.create({ data: { purchaseOrderId: order.id, productId: line.productId, productName: line.product.name, productSku: line.product.sku, quantity: line.quantity, unitCost: line.unitCost, totalCost: line.total } });
-      await tx.product.update({ where: { id: line.productId }, data: { stockQuantity: { increment: line.quantity }, costPrice: line.unitCost } });
-      await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: line.productId, type: "PURCHASE", quantityChanged: line.quantity, unitCost: line.unitCost, reference: orderNumber } });
+      const itemData: Prisma.PurchaseOrderItemCreateManyInput = {
+        purchaseOrderId: order.id,
+        productId: line.productId,
+        productName: line.product.name,
+        productSku: line.product.sku,
+        quantity: line.quantity,
+        unitCost: line.unitCost,
+        totalCost: line.totalCost,
+      };
+
+      if (data.pricingMode === "WEIGHT" && line.unitWeight != null && line.perKgRate != null) {
+        const totalWeight = new Prisma.Decimal(line.unitWeight).mul(line.quantity);
+        itemData.unitWeight = line.unitWeight;
+        itemData.totalWeight = totalWeight;
+        itemData.perKgRate = line.perKgRate;
+      }
+
+      await tx.purchaseOrderItem.create({ data: itemData });
     }
-    await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, supplierId: supplier.id, type: "PURCHASE", credit: total, description: `Purchase ${orderNumber}`, referenceId: order.id } });
-    await tx.supplier.update({ where: { id: supplier.id }, data: { currentBalance: { increment: total.minus(paid) } } });
-    if (paid.greaterThan(0)) {
-      const paymentNumber = await nextDocumentNumber(tx, context.workspaceId, "PAYMENT_RECEIPT");
-      const cashBankAccountId = data.cashBankAccountId && data.cashBankAccountId !== "" ? data.cashBankAccountId : null;
-      const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, supplierId: supplier.id, cashBankAccountId, amount: paid, method: data.paymentMethod, reference: paymentNumber, notes: "Payment made with purchase" } });
-      await tx.paymentAllocation.create({ data: { workspaceId: context.workspaceId, paymentId: payment.id, purchaseOrderId: order.id, amount: paid } });
-      await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, supplierId: supplier.id, type: "PAYMENT_MADE", debit: paid, description: `Supplier payment ${paymentNumber}`, referenceId: payment.id } });
-    }
-    await postPurchaseToGeneralLedger(tx, { workspaceId: context.workspaceId, purchaseId: order.id, orderNumber, date: order.orderDate, inventoryAmount: total, cashPaid: paid });
-    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "purchase.created", entityType: "PurchaseOrder", entityId: order.id, metadata: { orderNumber, total: total.toString() } });
+
+    await writeAudit(tx, {
+      workspaceId: context.workspaceId,
+      actorId: context.userId,
+      action: "purchase.created",
+      entityType: "PurchaseOrder",
+      entityId: order.id,
+      metadata: { orderNumber, total: total.toString(), pricingMode: data.pricingMode },
+    });
+
     return order;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
+}
+
+/**
+ * Post a Goods Receipt Note (GRN) for a purchase order.
+ * This is the financial trigger: inventory increases, supplier payable created, GL posted.
+ */
+export async function createGoodsReceipt(context: ServiceContext, input: GoodsReceiptInput) {
+  const data = goodsReceiptSchema.parse(input);
+  return db.$transaction(async (tx) => {
+    if (data.idempotencyKey) {
+      const existing = await tx.goodReceivedNote.findFirst({
+        where: { workspaceId: context.workspaceId, grnNumber: data.idempotencyKey },
+        select: { id: true, grnNumber: true },
+      });
+      if (existing) return { id: existing.id, grnNumber: existing.grnNumber, status: "RECEIVED" as const };
+    }
+
+    const order = await tx.purchaseOrder.findFirst({
+      where: { id: data.purchaseOrderId, workspaceId: context.workspaceId },
+      include: { items: true, supplier: true },
+    });
+    if (!order) throw new PurchaseDomainError("PURCHASE_NOT_FOUND", "Purchase order not found.");
+    if (order.status === "CANCELLED") throw new PurchaseDomainError("CANCELLED_PO", "Cannot receive goods for a cancelled purchase order.");
+
+    const grnNumber = await nextDocumentNumber(tx, context.workspaceId, "PURCHASE_RECEIPT");
+
+    let totalAcceptedAmount = new Prisma.Decimal(0);
+    const grnItems: Array<{
+      purchaseOrderItem: (typeof order.items)[number];
+      receivedQuantity: number;
+      acceptedQuantity: number;
+      unitCost: Prisma.Decimal;
+      totalCost: Prisma.Decimal;
+    }> = [];
+
+    for (const item of data.items) {
+      const poItem = order.items.find((i) => i.id === item.purchaseOrderItemId);
+      if (!poItem) throw new PurchaseDomainError("INVALID_RECEIPT", `Purchase order item not found: ${item.purchaseOrderItemId}`);
+
+      if (item.receivedQuantity < 0 || item.acceptedQuantity < 0) {
+        throw new PurchaseDomainError("INVALID_RECEIPT", "Received and accepted quantities cannot be negative.");
+      }
+
+      if (item.acceptedQuantity > item.receivedQuantity) {
+        throw new PurchaseDomainError("INVALID_RECEIPT", "Accepted quantity cannot exceed received quantity.");
+      }
+
+      const remainingOrdered = poItem.quantity - poItem.receivedQuantity;
+      if (remainingOrdered <= 0) {
+        throw new PurchaseDomainError("OVER_RECEIPT", `${poItem.productName ?? "Item"} has already been fully received.`);
+      }
+
+      if (item.receivedQuantity > remainingOrdered) {
+        throw new PurchaseDomainError("OVER_RECEIPT", `Cannot receive ${item.receivedQuantity} of ${poItem.productName ?? "Item"}. Only ${remainingOrdered} remaining.`);
+      }
+
+      const unitCost = new Prisma.Decimal(item.actualUnitCost);
+      const totalCost = unitCost.mul(item.acceptedQuantity);
+      totalAcceptedAmount = totalAcceptedAmount.plus(totalCost);
+
+      grnItems.push({
+        purchaseOrderItem: poItem,
+        receivedQuantity: item.receivedQuantity,
+        acceptedQuantity: item.acceptedQuantity,
+        unitCost,
+        totalCost,
+      });
+    }
+
+    const grn = await tx.goodReceivedNote.create({
+      data: {
+        workspaceId: context.workspaceId,
+        supplierId: order.supplierId,
+        purchaseOrderId: order.id,
+        grnNumber,
+        receiptDate: data.receiptDate || new Date(),
+        notes: data.notes || null,
+        receivedBy: data.receivedBy || null,
+        checkedBy: data.checkedBy || null,
+        totalAmount: totalAcceptedAmount,
+      },
+      select: { id: true, receiptDate: true },
+    });
+
+    for (const item of grnItems) {
+      await tx.goodReceivedNoteItem.create({
+        data: {
+          goodReceivedNoteId: grn.id,
+          purchaseOrderItemId: item.purchaseOrderItem.id,
+          productId: item.purchaseOrderItem.productId,
+          orderedQuantity: item.purchaseOrderItem.quantity,
+          receivedQuantity: item.receivedQuantity,
+          acceptedQuantity: item.acceptedQuantity,
+          unitCost: item.unitCost,
+          totalCost: item.totalCost,
+        },
+      });
+
+      await tx.purchaseOrderItem.update({
+        where: { id: item.purchaseOrderItem.id },
+        data: { receivedQuantity: { increment: item.receivedQuantity } },
+      });
+
+      await tx.product.update({
+        where: { id: item.purchaseOrderItem.productId },
+        data: {
+          stockQuantity: { increment: item.acceptedQuantity },
+          costPrice: item.unitCost,
+        },
+      });
+
+      await tx.inventoryTransaction.create({
+        data: {
+          workspaceId: context.workspaceId,
+          productId: item.purchaseOrderItem.productId,
+          type: "PURCHASE_RECEIPT",
+          quantityChanged: item.acceptedQuantity,
+          unitCost: item.unitCost,
+          reference: grnNumber,
+        },
+      });
+    }
+
+    await tx.ledgerEntry.create({
+      data: {
+        workspaceId: context.workspaceId,
+        supplierId: order.supplierId,
+        type: "GOODS_RECEIVED",
+        credit: totalAcceptedAmount,
+        description: `Goods received ${grnNumber} (PO ${order.orderNumber})`,
+        referenceId: grn.id,
+      },
+    });
+
+    await tx.supplier.update({
+      where: { id: order.supplierId },
+      data: { currentBalance: { increment: totalAcceptedAmount } },
+    });
+
+    await postGoodsReceiptToGeneralLedger(tx, {
+      workspaceId: context.workspaceId,
+      grnId: grn.id,
+      grnNumber,
+      date: grn.receiptDate,
+      inventoryAmount: totalAcceptedAmount,
+    });
+
+    const allFullyReceived = grnItems.every(
+      (item) => item.purchaseOrderItem.receivedQuantity + item.receivedQuantity >= item.purchaseOrderItem.quantity,
+    );
+    const anyReceived = grnItems.some((item) => item.receivedQuantity > 0);
+    const totalReceivedAllItems = await tx.purchaseOrderItem.aggregate({
+      where: { purchaseOrderId: order.id },
+      _sum: { receivedQuantity: true },
+    });
+    const totalOrderedAllItems = await tx.purchaseOrderItem.aggregate({
+      where: { purchaseOrderId: order.id },
+      _sum: { quantity: true },
+    });
+    const totalReceived = Number(totalReceivedAllItems._sum.receivedQuantity ?? 0);
+    const totalOrdered = Number(totalOrderedAllItems._sum.quantity ?? 0);
+
+    let newStatus: "PARTIALLY_RECEIVED" | "RECEIVED";
+    if (totalReceived >= totalOrdered) {
+      newStatus = "RECEIVED";
+    } else {
+      newStatus = "PARTIALLY_RECEIVED";
+    }
+
+    await tx.purchaseOrder.update({
+      where: { id: order.id },
+      data: {
+        status: newStatus,
+      },
+    });
+
+    await writeAudit(tx, {
+      workspaceId: context.workspaceId,
+      actorId: context.userId,
+      action: anyReceived && !allFullyReceived ? "grn.partial_received" : "grn.received",
+      entityType: "GoodReceivedNote",
+      entityId: grn.id,
+      metadata: {
+        grnNumber,
+        purchaseOrderId: order.id,
+        orderNumber: order.orderNumber,
+        totalAmount: totalAcceptedAmount.toString(),
+        status: newStatus,
+      },
+    });
+
+    return { id: grn.id, grnNumber, status: newStatus };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
 }
 
 export async function cancelPurchase(context: ServiceContext, id: string, reverseInitialPayment: boolean) {
   return db.$transaction(async (tx) => {
-    const order = await tx.purchaseOrder.findFirst({ where: { id, workspaceId: context.workspaceId }, include: { items: true, paymentAllocations: { include: { payment: true }, orderBy: { createdAt: "asc" } } } });
+    const order = await tx.purchaseOrder.findFirst({
+      where: { id, workspaceId: context.workspaceId },
+      include: { items: true, paymentAllocations: { include: { payment: true }, orderBy: { createdAt: "asc" } } },
+    });
     if (!order) throw new PurchaseDomainError("PURCHASE_NOT_FOUND", "Purchase not found.");
     if (order.status === "CANCELLED") return { id: order.id };
-    if (order.paymentAllocations.length > 1) throw new PurchaseDomainError("INVALID_PAYMENT", "Purchase cannot be cancelled after later payments have been allocated.");
-    const initialAllocation = order.paymentAllocations[0];
-    if (initialAllocation && initialAllocation.payment.notes !== "Payment made with purchase") throw new PurchaseDomainError("INVALID_PAYMENT", "Purchase cannot be cancelled after later payments have been allocated.");
-    if (initialAllocation && !reverseInitialPayment) throw new PurchaseDomainError("INVALID_PAYMENT", "Explicitly confirm reversal of the initial purchase payment.");
-    if (!initialAllocation && order.paidAmount.greaterThan(0)) throw new PurchaseDomainError("INVALID_PAYMENT", "Purchase payment history is not linked for safe cancellation.");
 
-    for (const item of order.items) {
-      const changed = await tx.product.updateMany({ where: { id: item.productId, workspaceId: context.workspaceId, stockQuantity: { gte: item.quantity } }, data: { stockQuantity: { decrement: item.quantity } } });
-      if (changed.count !== 1) throw new PurchaseDomainError("INSUFFICIENT_STOCK", `${item.productName ?? "Product"} has insufficient stock to cancel this purchase.`);
-      await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: item.productId, type: "PURCHASE_CANCELLATION", quantityChanged: -item.quantity, unitCost: item.unitCost, reference: order.orderNumber } });
+    if (order.status === "RECEIVED" || order.status === "PARTIALLY_RECEIVED") {
+      const hasGrn = await tx.goodReceivedNote.count({ where: { purchaseOrderId: id } });
+      if (hasGrn > 0) {
+        if (order.paymentAllocations.length > 1) {
+          throw new PurchaseDomainError("INVALID_PAYMENT", "Purchase cannot be cancelled after later payments have been allocated.");
+        }
+        const initialAllocation = order.paymentAllocations[0];
+        if (initialAllocation && initialAllocation.payment.notes !== "Payment made with purchase") {
+          throw new PurchaseDomainError("INVALID_PAYMENT", "Purchase cannot be cancelled after later payments have been allocated.");
+        }
+        if (initialAllocation && !reverseInitialPayment) {
+          throw new PurchaseDomainError("INVALID_PAYMENT", "Explicitly confirm reversal of the initial purchase payment.");
+        }
+        if (!initialAllocation && !reverseInitialPayment) {
+          throw new PurchaseDomainError("INVALID_PAYMENT", "Explicitly confirm cancellation of received purchase.");
+        }
+
+        for (const item of order.items) {
+          if (item.receivedQuantity > 0) {
+            const changed = await tx.product.updateMany({
+              where: { id: item.productId, workspaceId: context.workspaceId, stockQuantity: { gte: item.receivedQuantity } },
+              data: { stockQuantity: { decrement: item.receivedQuantity } },
+            });
+            if (changed.count !== 1) {
+              throw new PurchaseDomainError("INSUFFICIENT_STOCK", `${item.productName ?? "Product"} has insufficient stock to cancel this purchase.`);
+            }
+            await tx.inventoryTransaction.create({
+              data: {
+                workspaceId: context.workspaceId,
+                productId: item.productId,
+                type: "PURCHASE_CANCELLATION",
+                quantityChanged: -item.receivedQuantity,
+                unitCost: item.unitCost,
+                reference: order.orderNumber,
+              },
+            });
+          }
+        }
+
+        await tx.ledgerEntry.create({
+          data: {
+            workspaceId: context.workspaceId,
+            supplierId: order.supplierId,
+            type: "REVERSAL",
+            debit: order.totalAmount,
+            description: `Cancelled purchase ${order.orderNumber}`,
+            referenceId: order.id,
+          },
+        });
+
+        await tx.supplier.update({
+          where: { id: order.supplierId },
+          data: { currentBalance: { decrement: order.totalAmount.minus(order.paidAmount) } },
+        });
+
+        if (order.paymentAllocations[0]) {
+          const initial = order.paymentAllocations[0].payment;
+          const reversal = await tx.payment.create({
+            data: {
+              workspaceId: context.workspaceId,
+              supplierId: order.supplierId,
+              amount: initial.amount,
+              method: initial.method,
+              reference: `REV-${initial.reference ?? initial.id}`,
+              notes: "Initial purchase payment reversal",
+              reversalOfId: initial.id,
+            },
+          });
+          await tx.payment.update({ where: { id: initial.id }, data: { isReversed: true, reversedAt: new Date() } });
+          await tx.ledgerEntry.create({
+            data: {
+              workspaceId: context.workspaceId,
+              supplierId: order.supplierId,
+              type: "REVERSAL",
+              credit: initial.amount,
+              description: `Reversed supplier payment ${initial.reference ?? initial.id}`,
+              referenceId: reversal.id,
+            },
+          });
+        }
+
+        await tx.goodReceivedNote.deleteMany({ where: { purchaseOrderId: id } });
+      }
     }
-    await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, supplierId: order.supplierId, type: "REVERSAL", debit: order.totalAmount, description: `Cancelled purchase ${order.orderNumber}`, referenceId: order.id } });
-    await tx.supplier.update({ where: { id: order.supplierId }, data: { currentBalance: { decrement: order.totalAmount.minus(order.paidAmount) } } });
-    if (initialAllocation) {
-      const initial = initialAllocation.payment;
-      const reversal = await tx.payment.create({ data: { workspaceId: context.workspaceId, supplierId: order.supplierId, amount: initial.amount, method: initial.method, reference: `REV-${initial.reference ?? initial.id}`, notes: "Initial purchase payment reversal", reversalOfId: initial.id } });
-      await tx.payment.update({ where: { id: initial.id }, data: { isReversed: true, reversedAt: new Date() } });
-      await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, supplierId: order.supplierId, type: "REVERSAL", credit: initial.amount, description: `Reversed supplier payment ${initial.reference ?? initial.id}`, referenceId: reversal.id } });
-    }
-    await tx.purchaseOrder.update({ where: { id: order.id }, data: { status: "CANCELLED", paidAmount: 0, balanceAmount: 0, cancelledAt: new Date(), cancelledById: context.userId } });
-    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "purchase.cancelled", entityType: "PurchaseOrder", entityId: order.id, metadata: { initialPaymentReversed: Boolean(initialAllocation) } });
+
+    await tx.purchaseOrder.update({
+      where: { id: order.id },
+      data: { status: "CANCELLED", paidAmount: 0, balanceAmount: 0, cancelledAt: new Date(), cancelledById: context.userId },
+    });
+
+    await writeAudit(tx, {
+      workspaceId: context.workspaceId,
+      actorId: context.userId,
+      action: "purchase.cancelled",
+      entityType: "PurchaseOrder",
+      entityId: order.id,
+      metadata: { hadGrn: order.status === "RECEIVED" || order.status === "PARTIALLY_RECEIVED" },
+    });
+
     return { id: order.id };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 });
 }
@@ -116,28 +462,202 @@ export async function createSupplierReturn(context: ServiceContext, input: Suppl
 }
 
 export async function listPurchases(workspaceId: string) {
-  const rows = await db.purchaseOrder.findMany({ where: { workspaceId }, include: { supplier: { select: { name: true, companyName: true } }, _count: { select: { items: true } } }, orderBy: { orderDate: "desc" } });
-  return rows.map((row) => ({ id: row.id, orderNumber: row.orderNumber, supplierName: row.supplier.companyName ?? row.supplier.name, date: row.orderDate.toISOString(), status: row.status, items: row._count.items, total: Number(row.totalAmount), paid: Number(row.paidAmount), balance: Number(row.balanceAmount) }));
+  const rows = await db.purchaseOrder.findMany({
+    where: { workspaceId },
+    include: {
+      supplier: { select: { name: true, companyName: true } },
+      _count: { select: { items: true, goodsReceivedNotes: true } },
+    },
+    orderBy: { orderDate: "desc" },
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    orderNumber: row.orderNumber,
+    supplierName: row.supplier.companyName ?? row.supplier.name,
+    date: row.orderDate.toISOString(),
+    status: row.status,
+    items: row._count.items,
+    grnCount: row._count.goodsReceivedNotes,
+    total: Number(row.totalAmount),
+    paid: Number(row.paidAmount),
+    balance: Number(row.balanceAmount),
+  }));
 }
 
 export async function getPurchase(workspaceId: string, id: string) {
-  const row = await db.purchaseOrder.findFirst({ where: { id, workspaceId }, include: { supplier: true, items: { include: { product: { select: { name: true, sku: true } } } } } });
+  const row = await db.purchaseOrder.findFirst({
+    where: { id, workspaceId },
+    include: {
+      supplier: true,
+      items: {
+        include: { product: { select: { name: true, sku: true } } },
+      },
+      goodsReceivedNotes: {
+        include: {
+          items: true,
+        },
+        orderBy: { receiptDate: "asc" },
+      },
+    },
+  });
   if (!row) return null;
-  const items = row.items.map((item) => ({ id: item.id, productId: item.productId, productName: item.productName ?? item.product.name, sku: item.productSku ?? item.product.sku ?? "", quantity: item.quantity, unitCost: Number(item.unitCost), total: Number(item.totalCost) }));
+
+  const items = row.items.map((item) => ({
+    id: item.id,
+    productId: item.productId,
+    productName: item.productName ?? item.product.name,
+    sku: item.productSku ?? item.product.sku ?? "",
+    quantity: item.quantity,
+    unitCost: Number(item.unitCost),
+    total: Number(item.totalCost),
+    receivedQuantity: item.receivedQuantity,
+    remainingQuantity: item.quantity - item.receivedQuantity,
+    unitWeight: item.unitWeight ? Number(item.unitWeight) : null,
+    totalWeight: item.totalWeight ? Number(item.totalWeight) : null,
+    perKgRate: item.perKgRate ? Number(item.perKgRate) : null,
+  }));
+
+  const grns = row.goodsReceivedNotes.map((grn) => ({
+    id: grn.id,
+    grnNumber: grn.grnNumber,
+    receiptDate: grn.receiptDate.toISOString(),
+    totalAmount: Number(grn.totalAmount),
+    receivedBy: grn.receivedBy,
+    checkedBy: grn.checkedBy,
+    notes: grn.notes,
+    items: grn.items.map((gi) => ({
+      id: gi.id,
+      purchaseOrderItemId: gi.purchaseOrderItemId,
+      acceptedQuantity: gi.acceptedQuantity,
+      unitCost: Number(gi.unitCost),
+      totalCost: Number(gi.totalCost),
+    })),
+  }));
+
   const subtotal = items.reduce((sum, item) => sum + item.total, 0);
   const total = Number(row.totalAmount);
+
   return {
     id: row.id,
     orderNumber: row.orderNumber,
     date: row.orderDate.toISOString(),
     status: row.status,
     notes: row.notes ?? "",
+    expectedDeliveryDate: row.expectedDeliveryDate?.toISOString() ?? null,
+    department: row.department ?? "",
+    pricingMode: row.pricingMode,
     subtotal,
     discount: Math.max(0, subtotal - total),
     total,
     paid: Number(row.paidAmount),
     outstanding: Number(row.balanceAmount),
-    supplier: { id: row.supplier.id, name: row.supplier.name, companyName: row.supplier.companyName ?? row.supplier.name, phone: row.supplier.phone ?? "", currentBalance: Number(row.supplier.currentBalance) },
+    supplier: {
+      id: row.supplier.id,
+      name: row.supplier.name,
+      companyName: row.supplier.companyName ?? row.supplier.name,
+      phone: row.supplier.phone ?? "",
+      currentBalance: Number(row.supplier.currentBalance),
+    },
     items,
+    grns,
+  };
+}
+
+export async function getOpenPOItemsForGRN(workspaceId: string, purchaseOrderId: string) {
+  const order = await db.purchaseOrder.findFirst({
+    where: { id: purchaseOrderId, workspaceId, status: { not: "CANCELLED" } },
+    include: {
+      items: { include: { product: { select: { name: true, sku: true } } } },
+      supplier: { select: { name: true, companyName: true } },
+    },
+  });
+  if (!order) return null;
+
+  return {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    supplier: { id: order.supplierId, name: order.supplier.companyName ?? order.supplier.name },
+    items: order.items
+      .filter((item) => item.receivedQuantity < item.quantity)
+      .map((item) => ({
+        id: item.id,
+        productId: item.productId,
+        productName: item.productName ?? item.product.name,
+        sku: item.productSku ?? item.product.sku ?? "",
+        orderedQuantity: item.quantity,
+        receivedQuantity: item.receivedQuantity,
+        remainingQuantity: item.quantity - item.receivedQuantity,
+        unitCost: Number(item.unitCost),
+        unitWeight: item.unitWeight ? Number(item.unitWeight) : null,
+        totalWeight: item.totalWeight ? Number(item.totalWeight) : null,
+        perKgRate: item.perKgRate ? Number(item.perKgRate) : null,
+      })),
+  };
+}
+
+export async function listGoodsReceipts(workspaceId: string, purchaseOrderId: string) {
+  const grns = await db.goodReceivedNote.findMany({
+    where: { workspaceId, purchaseOrderId },
+    include: { items: true },
+    orderBy: { receiptDate: "desc" },
+  });
+  return grns.map((grn) => ({
+    id: grn.id,
+    grnNumber: grn.grnNumber,
+    receiptDate: grn.receiptDate.toISOString(),
+    totalAmount: Number(grn.totalAmount),
+    receivedBy: grn.receivedBy,
+    itemsCount: grn.items.length,
+    totalAccepted: grn.items.reduce((sum, i) => sum + i.acceptedQuantity, 0),
+  }));
+}
+
+export async function getGoodsReceipt(workspaceId: string, id: string) {
+  const grn = await db.goodReceivedNote.findFirst({
+    where: { id, workspaceId },
+    include: {
+      purchaseOrder: { select: { orderNumber: true, pricingMode: true } },
+      supplier: { select: { name: true, companyName: true, phone: true } },
+      items: {
+        include: {
+          purchaseOrderItem: { select: { quantity: true, receivedQuantity: true, unitWeight: true, totalWeight: true, perKgRate: true } },
+          product: { select: { name: true, sku: true } },
+        },
+      },
+    },
+  });
+  if (!grn) return null;
+
+  return {
+    id: grn.id,
+    grnNumber: grn.grnNumber,
+    receiptDate: grn.receiptDate.toISOString(),
+    totalAmount: Number(grn.totalAmount),
+    receivedBy: grn.receivedBy,
+    checkedBy: grn.checkedBy,
+    notes: grn.notes,
+    purchaseOrder: {
+      id: grn.purchaseOrderId,
+      orderNumber: grn.purchaseOrder.orderNumber,
+      pricingMode: grn.purchaseOrder.pricingMode,
+    },
+    supplier: {
+      id: grn.supplierId,
+      name: grn.supplier.companyName ?? grn.supplier.name,
+      phone: grn.supplier.phone ?? "",
+    },
+    items: grn.items.map((item) => ({
+      id: item.id,
+      productName: item.product.name,
+      sku: item.product.sku ?? "",
+      orderedQuantity: item.purchaseOrderItem.quantity,
+      previouslyReceived: item.purchaseOrderItem.receivedQuantity - item.receivedQuantity,
+      receivedNow: item.receivedQuantity,
+      acceptedQuantity: item.acceptedQuantity,
+      remainingQuantity: item.purchaseOrderItem.quantity - item.purchaseOrderItem.receivedQuantity,
+      unitCost: Number(item.unitCost),
+      totalCost: Number(item.totalCost),
+      unitWeight: item.purchaseOrderItem.unitWeight ? Number(item.purchaseOrderItem.unitWeight) : null,
+    })),
   };
 }

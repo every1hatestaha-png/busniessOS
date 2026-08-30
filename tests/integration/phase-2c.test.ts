@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 let db: typeof import("@/lib/server/db")["db"];
 let createPurchase: typeof import("@/lib/server/purchases")["createPurchase"];
+let createGoodsReceipt: typeof import("@/lib/server/purchases")["createGoodsReceipt"];
 let createSale: typeof import("@/lib/server/sales")["createSale"];
 let cancelSale: typeof import("@/lib/server/sales")["cancelSale"];
 let recordPayment: typeof import("@/lib/server/payments")["recordPayment"];
@@ -13,7 +14,7 @@ const context = () => ({ workspaceId, userId, role: "OWNER" as const });
 describe("Phase 2C transactions", () => {
   beforeAll(async () => {
     const { config } = await import("dotenv"); config({ path: ".env.local", quiet: true });
-    ({ db } = await import("@/lib/server/db")); ({ createPurchase } = await import("@/lib/server/purchases")); ({ createSale, cancelSale } = await import("@/lib/server/sales")); ({ recordPayment } = await import("@/lib/server/payments")); ({ ensureDefaultAccounts } = await import("@/lib/server/accounting"));
+    ({ db } = await import("@/lib/server/db")); ({ createPurchase, createGoodsReceipt } = await import("@/lib/server/purchases")); ({ createSale, cancelSale } = await import("@/lib/server/sales")); ({ recordPayment } = await import("@/lib/server/payments")); ({ ensureDefaultAccounts } = await import("@/lib/server/accounting"));
     const user = await db.user.create({ data: { clerkId: `phase2c-${runId}`, email: `phase2c-${runId}@example.invalid` } }); userId = user.id;
     const workspace = await db.workspace.create({ data: { name: `Phase 2C ${runId}`, members: { create: { userId, role: "OWNER" } } } }); workspaceId = workspace.id;
     const [supplier, customer, product] = await Promise.all([db.supplier.create({ data: { workspaceId, name: "Test supplier" } }), db.customer.create({ data: { workspaceId, name: "Test customer" } }), db.product.create({ data: { workspaceId, name: "Snapshot product", sku: `P-${runId}`, stockQuantity: 2, costPrice: 10, sellingPrice: 30 } })]);
@@ -21,13 +22,31 @@ describe("Phase 2C transactions", () => {
     await ensureDefaultAccounts(workspaceId);
     cashBankAccountId = (await db.cashBankAccount.findFirstOrThrow({ where: { workspaceId, isActive: true }, select: { id: true } })).id;
   }, 30_000);
-  afterAll(async () => { if (!db) return; if (workspaceId) { await db.payment.deleteMany({ where: { workspaceId } }); await db.salesOrderItem.deleteMany({ where: { salesOrder: { workspaceId } } }); await db.salesOrder.deleteMany({ where: { workspaceId } }); await db.purchaseOrderItem.deleteMany({ where: { purchaseOrder: { workspaceId } } }); await db.purchaseOrder.deleteMany({ where: { workspaceId } }); await db.workspace.delete({ where: { id: workspaceId } }); } if (userId) await db.user.deleteMany({ where: { id: userId } }); await db.$disconnect(); }, 30_000);
+  afterAll(async () => { if (!db) return; if (workspaceId) { await db.goodReceivedNoteItem.deleteMany({ where: { goodReceivedNote: { workspaceId } } }); await db.goodReceivedNote.deleteMany({ where: { workspaceId } }); await db.payment.deleteMany({ where: { workspaceId } }); await db.salesOrderItem.deleteMany({ where: { salesOrder: { workspaceId } } }); await db.salesOrder.deleteMany({ where: { workspaceId } }); await db.generalLedgerEntry.deleteMany({ where: { workspaceId } }); await db.ledgerEntry.deleteMany({ where: { workspaceId } }); await db.inventoryTransaction.deleteMany({ where: { workspaceId } }); await db.purchaseOrderItem.deleteMany({ where: { purchaseOrder: { workspaceId } } }); await db.purchaseOrder.deleteMany({ where: { workspaceId } }); await db.workspace.delete({ where: { id: workspaceId } }); } if (userId) await db.user.deleteMany({ where: { id: userId } }); await db.$disconnect(); }, 30_000);
 
-  it("receives an idempotent purchase with snapshots, stock, payable, payment, ledger, and audit", async () => {
-    const key = randomUUID(); const input = { supplierId, items: [{ productId, quantity: 3, unitCost: 12 }], paidAmount: 10, paymentMethod: "CASH" as const, notes: "test", idempotencyKey: key };
-    const first = await createPurchase(context(), input); const repeated = await createPurchase(context(), input); expect(repeated.id).toBe(first.id);
-    const [order, product, supplier, ledger, payments, audit] = await Promise.all([db.purchaseOrder.findUniqueOrThrow({ where: { id: first.id }, include: { items: true } }), db.product.findUniqueOrThrow({ where: { id: productId } }), db.supplier.findUniqueOrThrow({ where: { id: supplierId } }), db.ledgerEntry.findMany({ where: { workspaceId, supplierId } }), db.payment.findMany({ where: { workspaceId, supplierId } }), db.auditLog.findFirst({ where: { workspaceId, entityId: first.id, action: "purchase.created" } })]);
-    expect(Number(order.totalAmount)).toBe(36); expect(Number(order.balanceAmount)).toBe(26); expect(order.items[0]).toMatchObject({ productName: "Snapshot product", quantity: 3 }); expect(product.stockQuantity).toBe(5); expect(Number(supplier.currentBalance)).toBe(26); expect(ledger.map((entry) => entry.type)).toEqual(expect.arrayContaining(["PURCHASE", "PAYMENT_MADE"])); expect(payments).toHaveLength(1); expect(audit?.actorId).toBe(userId);
+  it("receives an idempotent PO then GRN with stock, payable, ledger, and audit", async () => {
+    const key = randomUUID();
+    const order = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 3, unitCost: 12 }], idempotencyKey: key });
+    const repeated = await createPurchase(context(), { supplierId, items: [{ productId, quantity: 3, unitCost: 12 }], idempotencyKey: key });
+    expect(repeated.id).toBe(order.id);
+
+    const poItem = await db.purchaseOrderItem.findFirst({ where: { purchaseOrderId: order.id } });
+    await createGoodsReceipt(context(), { purchaseOrderId: order.id, items: [{ purchaseOrderItemId: poItem!.id, receivedQuantity: 3, acceptedQuantity: 3, actualUnitCost: 12 }] });
+
+    const [orderRow, product, supplier, ledger, audit] = await Promise.all([
+      db.purchaseOrder.findUniqueOrThrow({ where: { id: order.id }, include: { items: true } }),
+      db.product.findUniqueOrThrow({ where: { id: productId } }),
+      db.supplier.findUniqueOrThrow({ where: { id: supplierId } }),
+      db.ledgerEntry.findMany({ where: { workspaceId, supplierId } }),
+      db.auditLog.findFirst({ where: { workspaceId, entityId: order.id, action: "purchase.created" } }),
+    ]);
+    expect(Number(orderRow.totalAmount)).toBe(36);
+    expect(Number(orderRow.balanceAmount)).toBe(36);
+    expect(orderRow.items[0]).toMatchObject({ productName: "Snapshot product", quantity: 3 });
+    expect(product.stockQuantity).toBe(5);
+    expect(Number(supplier.currentBalance)).toBe(36);
+    expect(ledger.map((entry) => entry.type)).toEqual(expect.arrayContaining(["GOODS_RECEIVED"]));
+    expect(audit?.actorId).toBe(userId);
   });
 
   it("cancels a sale only without later payments and explicitly reverses its initial payment", async () => {
