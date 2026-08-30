@@ -143,6 +143,19 @@
     display: table-header-group;
   }
 
+  tfoot {
+    display: table-footer-group;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  [data-report-section] {
+    break-inside: avoid;
+  }
+
   tr,
   img {
     break-inside: avoid;

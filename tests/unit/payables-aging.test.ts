@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ageDays, payablesBucket, startOfDayInTimezone } from "@/lib/server/aging";
+import { ageDays, payablesBucket, receivablesBucket, startOfDayInTimezone } from "@/lib/server/aging";
 
 const TZ = "Asia/Karachi";
 
@@ -74,5 +74,22 @@ describe("payablesBucket", () => {
     expect(payablesBucket(41)).toBe("31-45");
     expect(payablesBucket(48)).toBe("46-60");
     expect(payablesBucket(75)).toBe("61+");
+  });
+});
+
+describe("receivablesBucket", () => {
+  it.each([
+    [0, "current"],
+    [1, "1-30"],
+    [30, "1-30"],
+    [31, "31-45"],
+    [45, "31-45"],
+    [46, "46-60"],
+    [60, "46-60"],
+    [61, "61+"],
+    [365, "61+"],
+    [-1, "current"],
+  ] as const)("classifies %i receivable days as %s", (age, expected) => {
+    expect(receivablesBucket(age)).toBe(expected);
   });
 });

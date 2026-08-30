@@ -182,7 +182,7 @@ describe("customer credit allocation and receivables", () => {
 
   it("calculates receivables aging from payments and allocated credits while keeping unapplied credit separate", async () => {
     const old = await saleWithInvoice(120, 20);
-    await db.invoice.update({ where: { id: old.invoice.id }, data: { dueDate: new Date("2026-06-01T12:00:00.000Z") } });
+    await db.invoice.update({ where: { id: old.invoice.id }, data: { issuedAt: new Date("2026-06-01T12:00:00.000Z"), dueDate: null } });
     const creditSource = await saleWithInvoice(50, 0);
     const customerReturn = await returnFor(creditSource.item.id, creditSource.sale.id);
     const credit = await db.creditNote.findFirstOrThrow({ where: { customerReturnId: customerReturn.id } });
@@ -192,7 +192,7 @@ describe("customer credit allocation and receivables", () => {
 
     const report = await getReceivablesAging(workspaceId, { asOf: new Date("2026-08-30T12:00:00.000Z"), timeZone: "Asia/Karachi" });
     const item = report.customers.flatMap((customer) => customer.items).find((entry) => entry.invoiceId === old.invoice.id);
-    expect(item).toMatchObject({ originalAmount: 120, paymentsApplied: 20, creditsApplied: 30, outstandingAmount: 70, bucket: "61-90" });
+    expect(item).toMatchObject({ originalAmount: 120, paymentsApplied: 20, creditsApplied: 30, outstandingAmount: 70, bucket: "61+" });
     expect(report.totalOutstanding).toBeGreaterThanOrEqual(70);
     expect(report.totalUnappliedCredit).toBeGreaterThanOrEqual(40);
     expect(report.customers.flatMap((customer) => customer.items).every((entry) => entry.outstandingAmount > 0)).toBe(true);

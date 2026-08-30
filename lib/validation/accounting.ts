@@ -25,6 +25,7 @@ export const ledgerReportSchema = z.object({
   accountId: z.string().uuid(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
+  search: z.string().trim().max(120).optional(),
 });
 
 export const profitLossSchema = z.object({

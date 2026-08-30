@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { UserButton } from "@clerk/nextjs";
+import type { Role } from "@prisma/client";
 import { Bell, Menu, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -10,7 +11,7 @@ import { GlobalSearch } from "@/components/search/global-search";
 import type { SearchResult } from "@/lib/search";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 
-export function TopNav({ workspaceName, workspaceId, workspaces, searchResults }: { workspaceName: string; workspaceId: string; workspaces: Array<{ workspaceId: string; workspace: { name: string } }>; searchResults: SearchResult[] }) {
+export function TopNav({ workspaceName, workspaceId, workspaces, searchResults, role }: { workspaceName: string; workspaceId: string; workspaces: Array<{ workspaceId: string; workspace: { name: string } }>; searchResults: SearchResult[]; role: Role }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
@@ -25,7 +26,7 @@ export function TopNav({ workspaceName, workspaceId, workspaces, searchResults }
             if ((event.target as HTMLElement).closest("a")) setMobileMenuOpen(false);
           }}>
             <SheetTitle className="sr-only">Navigation menu</SheetTitle>
-            <Sidebar workspaceName={workspaceName} />
+            <Sidebar workspaceName={workspaceName} role={role} />
           </SheetContent>
         </Sheet>
 

@@ -7,6 +7,8 @@ import { calculateProfitLossTotals, calculateRunningBalance } from "@/lib/accoun
 import { writeAudit } from "@/lib/server/audit";
 import { db } from "@/lib/server/db";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";
+import { getPayablesSummary } from "@/lib/server/payables";
+import { getReceivablesAging } from "@/lib/server/receivables";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 import { cashBankAccountSchema, expenseSchema, ledgerReportSchema, profitLossSchema, type CashBankAccountInput, type ExpenseInput, type LedgerReportInput, type ProfitLossInput } from "@/lib/validation/accounting";
 
@@ -253,14 +255,16 @@ export async function getCashBankAccounts(workspaceId: string) {
   return rows.map((row) => ({ id: row.account.id, cashBankAccountId: row.id, name: row.name, code: row.account.code, isBank: row.isBank, bankName: row.bankName, accountTitle: row.accountTitle, accountNumber: row.accountNumber, notes: row.notes, openingBalance: amount(row.openingBalance), currentBalance: amount(row.currentBalance) }));
 }
 
-export async function getCashBankAccountLedger(workspaceId: string, cashBankAccountId: string) {
+export async function getCashBankAccountLedger(workspaceId: string, cashBankAccountId: string, input: Omit<LedgerReportInput, "accountId"> = {}) {
   await ensureDefaultAccounts(workspaceId);
   const cashBank = await db.cashBankAccount.findFirst({ where: { id: cashBankAccountId, workspaceId, isActive: true }, include: { account: true } });
   if (!cashBank) return null;
-  const entries = await db.generalLedgerEntry.findMany({ where: { workspaceId, accountId: cashBank.accountId }, orderBy: [{ date: "desc" }, { createdAt: "desc" }], take: 200 });
-  const ordered = [...entries].reverse();
-  const running = calculateRunningBalance(0, cashBank.account.normalBalance, ordered.map((entry) => ({ debit: amount(entry.debit), credit: amount(entry.credit) })));
-  const balanceById = new Map(ordered.map((entry, index) => [entry.id, running[index].runningBalance]));
+  const ledger = await getGeneralLedger(workspaceId, { accountId: cashBank.accountId, ...input });
+  const openingBalance = amount(cashBank.openingBalance) + ledger.openingBalance;
+  const entries = ledger.entries.map((entry) => ({ ...entry, runningBalance: entry.runningBalance + amount(cashBank.openingBalance) }));
+  const receipts = entries.reduce((sum, entry) => sum + entry.debit, 0);
+  const payments = entries.reduce((sum, entry) => sum + entry.credit, 0);
+  const closingBalance = entries.at(-1)?.runningBalance ?? openingBalance;
   return {
     id: cashBank.id,
     accountId: cashBank.accountId,
@@ -271,9 +275,15 @@ export async function getCashBankAccountLedger(workspaceId: string, cashBankAcco
     accountTitle: cashBank.accountTitle,
     accountNumber: cashBank.accountNumber,
     notes: cashBank.notes,
-    openingBalance: amount(cashBank.openingBalance),
+    from: ledger.from,
+    to: ledger.to,
+    openingBalance,
     currentBalance: amount(cashBank.currentBalance),
-    entries: entries.map((entry) => ({ id: entry.id, date: entry.date.toISOString(), sourceType: entry.sourceType, documentNo: entry.documentNo, narration: entry.narration, debit: amount(entry.debit), credit: amount(entry.credit), runningBalance: balanceById.get(entry.id) ?? 0 })),
+    receipts,
+    payments,
+    closingBalance,
+    reconciliationDifference: amount(cashBank.currentBalance) - closingBalance,
+    entries,
   };
 }
 
@@ -327,43 +337,53 @@ export async function getGeneralLedger(workspaceId: string, input: LedgerReportI
   if (!account) throw new AccountingDomainError("Account not found.");
   const [opening, entries] = await Promise.all([
     db.generalLedgerEntry.aggregate({ where: { workspaceId, accountId: account.id, date: { lt: from } }, _sum: { debit: true, credit: true } }),
-    db.generalLedgerEntry.findMany({ where: { workspaceId, accountId: account.id, date: { gte: from, lte: to } }, orderBy: [{ date: "asc" }, { createdAt: "asc" }] }),
+    db.generalLedgerEntry.findMany({ where: { workspaceId, accountId: account.id, date: { gte: from, lte: to } }, orderBy: [{ date: "asc" }, { createdAt: "asc" }, { id: "asc" }] }),
   ]);
   const openingBalance = account.normalBalance === "DEBIT" ? amount(opening._sum.debit) - amount(opening._sum.credit) : amount(opening._sum.credit) - amount(opening._sum.debit);
-  const rows = calculateRunningBalance(openingBalance, account.normalBalance, entries.map((entry) => ({ debit: amount(entry.debit), credit: amount(entry.credit) }))).map((entry, index) => ({ id: entries[index].id, date: entries[index].date.toISOString(), sourceType: entries[index].sourceType, documentNo: entries[index].documentNo, narration: entries[index].narration, debit: entry.debit, credit: entry.credit, runningBalance: entry.runningBalance }));
-  return { account: { id: account.id, code: account.code, name: account.name, category: account.category, normalBalance: account.normalBalance }, from: from.toISOString(), to: to.toISOString(), openingBalance, entries: rows, closingBalance: rows.at(-1)?.runningBalance ?? openingBalance };
+  const allRows = calculateRunningBalance(openingBalance, account.normalBalance, entries.map((entry) => ({ debit: amount(entry.debit), credit: amount(entry.credit) }))).map((entry, index) => ({ id: entries[index].id, sourceId: entries[index].sourceId, date: entries[index].date.toISOString(), sourceType: entries[index].sourceType, documentNo: entries[index].documentNo, narration: entries[index].narration, debit: entry.debit, credit: entry.credit, runningBalance: entry.runningBalance }));
+  const search = data.search?.toLowerCase();
+  const rows = search ? allRows.filter((entry) => entry.documentNo.toLowerCase().includes(search) || entry.narration.toLowerCase().includes(search)) : allRows;
+  return { account: { id: account.id, code: account.code, name: account.name, category: account.category, normalBalance: account.normalBalance }, from: from.toISOString(), to: to.toISOString(), openingBalance, entries: rows, closingBalance: allRows.at(-1)?.runningBalance ?? openingBalance };
 }
 
 export async function getProfitAndLoss(workspaceId: string, input: ProfitLossInput = {}) {
   const data = profitLossSchema.parse(input);
   const { from, to } = normalizeRange(data);
-  const [sales, returns, cogs, expenses] = await Promise.all([
-    db.salesOrder.aggregate({ where: { workspaceId, status: { not: "CANCELLED" }, orderDate: { gte: from, lte: to } }, _sum: { total: true } }),
+  const [sales, returns, expenses] = await Promise.all([
+    db.salesOrder.findMany({ where: { workspaceId, status: { not: "CANCELLED" }, orderDate: { gte: from, lte: to } }, select: { orderNumber: true, total: true } }),
     db.customerReturn.aggregate({ where: { workspaceId, date: { gte: from, lte: to } }, _sum: { totalAmount: true } }),
-    db.inventoryTransaction.findMany({ where: { workspaceId, type: "SALE", createdAt: { gte: from, lte: to } }, select: { quantityChanged: true, unitCost: true } }),
-    db.expense.aggregate({ where: { workspaceId, expenseDate: { gte: from, lte: to } }, _sum: { amount: true } }),
+    db.expense.findMany({ where: { workspaceId, expenseDate: { gte: from, lte: to } }, select: { amount: true, expenseAccount: { select: { id: true, code: true, name: true } } } }),
   ]);
+  const cogs = sales.length ? await db.inventoryTransaction.findMany({ where: { workspaceId, type: "SALE", reference: { in: sales.map((sale) => sale.orderNumber) }, createdAt: { gte: from, lte: to } }, select: { quantityChanged: true, unitCost: true } }) : [];
   const costOfGoodsSold = cogs.reduce((sum, row) => sum + Math.abs(row.quantityChanged) * amount(row.unitCost), 0);
-  const operatingExpenses = amount(expenses._sum.amount);
-  const totals = calculateProfitLossTotals({ grossSales: amount(sales._sum.total), salesReturns: amount(returns._sum.totalAmount), costOfGoodsSold, operatingExpenses });
-  return { from: from.toISOString(), to: to.toISOString(), ...totals, costingMethod: "Historical sale-time product cost snapshot from InventoryTransaction.unitCost. Existing customer returns before this accounting phase do not carry enough COGS reversal data for precise returned-COGS adjustment." };
+  const operatingExpenses = expenses.reduce((sum, expense) => sum + amount(expense.amount), 0);
+  const grossSales = sales.reduce((sum, sale) => sum + amount(sale.total), 0);
+  const salesReturns = amount(returns._sum.totalAmount);
+  const expenseMap = new Map<string, { id: string; code: string; name: string; amount: number }>();
+  for (const expense of expenses) {
+    const row = expenseMap.get(expense.expenseAccount.id) ?? { ...expense.expenseAccount, amount: 0 };
+    row.amount += amount(expense.amount);
+    expenseMap.set(row.id, row);
+  }
+  const totals = calculateProfitLossTotals({ grossSales, salesReturns, costOfGoodsSold, operatingExpenses });
+  return { from: from.toISOString(), to: to.toISOString(), grossSales, salesReturns, otherIncome: 0, expenseCategories: [...expenseMap.values()].sort((a, b) => a.code.localeCompare(b.code)), ...totals, costingMethod: "Historical sale-time Product.costPrice snapshots from InventoryTransaction.unitCost. Cancelled sales are excluded. Older customer returns may not contain enough historical cost data for precise returned-COGS adjustment." };
 }
 
 export async function getFinancialDashboard(workspaceId: string) {
-  const [receivables, payables, inventory, cashBank, salesMonth, purchasesMonth, expensesMonth, lowStock, profitLoss] = await Promise.all([
-    db.customer.aggregate({ where: { workspaceId }, _sum: { currentBalance: true } }),
-    db.supplier.aggregate({ where: { workspaceId }, _sum: { currentBalance: true } }),
+  const now = new Date();
+  const monthStart = startOfMonth(now);
+  const [receivables, payables, inventory, cashBank, purchasesMonth, lowStock, profitLoss] = await Promise.all([
+    getReceivablesAging(workspaceId),
+    getPayablesSummary(workspaceId),
     db.product.findMany({ where: { workspaceId }, select: { stockQuantity: true, costPrice: true, reorderLevel: true } }),
     db.cashBankAccount.aggregate({ where: { workspaceId, isActive: true }, _sum: { currentBalance: true } }),
-    db.salesOrder.aggregate({ where: { workspaceId, status: { not: "CANCELLED" }, orderDate: { gte: startOfMonth(new Date()) } }, _sum: { total: true } }),
-    db.purchaseOrder.aggregate({ where: { workspaceId, status: { not: "CANCELLED" }, orderDate: { gte: startOfMonth(new Date()) } }, _sum: { totalAmount: true } }),
-    db.expense.aggregate({ where: { workspaceId, expenseDate: { gte: startOfMonth(new Date()) } }, _sum: { amount: true } }),
+    db.goodReceivedNote.aggregate({ where: { workspaceId, receiptDate: { gte: monthStart, lte: now } }, _sum: { totalAmount: true } }),
     db.product.count({ where: { workspaceId, stockQuantity: { lte: db.product.fields.reorderLevel } } }),
-    getProfitAndLoss(workspaceId),
+    getProfitAndLoss(workspaceId, { from: monthStart, to: now }),
   ]);
   const inventoryValue = inventory.reduce((sum, product) => sum + product.stockQuantity * amount(product.costPrice), 0);
-  const receivableAmount = amount(receivables._sum.currentBalance);
-  const payableAmount = amount(payables._sum.currentBalance);
+  const receivableAmount = receivables.totalOutstanding;
+  const payableAmount = payables.totalOutstanding;
   const cashBankAmount = amount(cashBank._sum.currentBalance);
-  return { receivables: receivableAmount, payables: payableAmount, inventoryValue, cashBank: cashBankAmount, salesThisMonth: amount(salesMonth._sum.total), purchasesThisMonth: amount(purchasesMonth._sum.totalAmount), expensesThisMonth: amount(expensesMonth._sum.amount), grossProfit: profitLoss.grossProfit, netProfit: profitLoss.netProfit, lowStockCount: lowStock, netOperatingPosition: receivableAmount + inventoryValue + cashBankAmount - payableAmount };
+  return { receivables: receivableAmount, payables: payableAmount, inventoryValue, cashBank: cashBankAmount, salesThisMonth: profitLoss.grossSales, purchasesThisMonth: amount(purchasesMonth._sum.totalAmount), expensesThisMonth: profitLoss.operatingExpenses, grossProfit: profitLoss.grossProfit, netProfit: profitLoss.netProfit, lowStockCount: lowStock, netOperatingPosition: receivableAmount + inventoryValue + cashBankAmount - payableAmount };
 }

@@ -40,7 +40,7 @@ export type SupplierAging = {
 export type PayablesAgingReport = {
   asOfDate: string;
   totalOutstanding: number;
-  buckets: PayablesBucketTotals;
+  buckets: PayablesBucketTotals & { current: number };
   suppliers: SupplierAging[];
 };
 
@@ -70,8 +70,10 @@ export async function getPayablesAging(
   const asOf = filters.asOf ?? new Date();
   const asOfDate = toDateKey(asOf, timeZone);
 
+  const asOfEnd = new Date(asOf);
+  asOfEnd.setHours(23, 59, 59, 999);
   const purchases = await db.purchaseOrder.findMany({
-    where: { workspaceId, status: { in: ["PARTIALLY_RECEIVED", "RECEIVED"] }, balanceAmount: { gt: 0 }, ...(filters.supplierId ? { supplierId: filters.supplierId } : {}) },
+    where: { workspaceId, status: { in: ["PARTIALLY_RECEIVED", "RECEIVED"] }, balanceAmount: { gt: 0 }, orderDate: { lte: asOfEnd }, ...(filters.supplierId ? { supplierId: filters.supplierId } : {}) },
     select: {
       id: true,
       orderNumber: true,
@@ -136,13 +138,12 @@ export async function getPayablesAging(
     items: supplier.items.sort((a, b) => b.ageDays - a.ageDays),
   }));
 
-  const totals = toBucketTotals();
+  const totals = { current: 0, ...toBucketTotals() };
   let totalOutstanding = 0;
   for (const supplier of supplierRows) {
     totalOutstanding += supplier.totalOutstanding;
-    for (const bucket of Object.keys(totals) as PayablesBucket[]) {
-      totals[bucket] += supplier.buckets[bucket];
-    }
+    for (const bucket of Object.keys(supplier.buckets) as PayablesBucket[]) totals[bucket] += supplier.buckets[bucket];
+    totals.current += supplier.items.filter((item) => item.bucket === "current").reduce((sum, item) => sum + item.outstandingAmount, 0);
   }
 
   return {

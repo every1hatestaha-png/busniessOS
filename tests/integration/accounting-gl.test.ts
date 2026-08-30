@@ -10,6 +10,7 @@ let createSupplierReturn: typeof import("@/lib/server/purchases")["createSupplie
 let recordPayment: typeof import("@/lib/server/payments")["recordPayment"];
 let recordSupplierPayment: typeof import("@/lib/server/suppliers")["recordSupplierPayment"];
 let getPayablesAging: typeof import("@/lib/server/payables")["getPayablesAging"];
+let getReceivablesAging: typeof import("@/lib/server/receivables")["getReceivablesAging"];
 let ensureDefaultAccounts: typeof import("@/lib/server/accounting")["ensureDefaultAccounts"];
 
 const runId = randomUUID();
@@ -57,6 +58,7 @@ describe("accounting GL integration", () => {
     ({ recordPayment } = await import("@/lib/server/payments"));
     ({ recordSupplierPayment } = await import("@/lib/server/suppliers"));
     ({ getPayablesAging } = await import("@/lib/server/payables"));
+    ({ getReceivablesAging } = await import("@/lib/server/receivables"));
     ({ ensureDefaultAccounts } = await import("@/lib/server/accounting"));
     const user = await db.user.create({ data: { clerkId: `gl-${runId}`, email: `gl-${runId}@example.invalid` } });
     userId = user.id;
@@ -192,5 +194,7 @@ describe("accounting GL integration", () => {
 
     const payableAging = await getPayablesAging(workspaceId, { asOf: new Date(), timeZone: "Asia/Karachi" });
     expect(payableAging.totalOutstanding).toBe(Number(supplier.currentBalance));
+    const receivableAging = await getReceivablesAging(workspaceId, { asOf: new Date(), timeZone: "Asia/Karachi" });
+    expect(receivableAging.totalOutstanding).toBe(Number(customer.currentBalance));
   });
 });

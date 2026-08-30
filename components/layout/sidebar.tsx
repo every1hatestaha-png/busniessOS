@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { Role } from "@prisma/client";
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -13,7 +14,9 @@ import {
   Receipt,
   Landmark,
   Settings,
-  Sparkles
+  Sparkles,
+  ChartNoAxesCombined,
+  HandCoins,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -26,13 +29,15 @@ const routes = [
   { href: "/suppliers", label: "Suppliers", icon: Truck },
   { href: "/khata", label: "Khata", icon: BookOpen },
   { href: "/invoices", label: "Invoices", icon: Receipt },
-  { href: "/accounting/cash-bank", label: "Cash & Bank", icon: Landmark },
-  { href: "/payables", label: "Payables", icon: Landmark },
+  { href: "/receivables", label: "Receivables", icon: HandCoins, financial: true },
+  { href: "/accounting/cash-bank", label: "Cash & Bank", icon: Landmark, financial: true },
+  { href: "/payables", label: "Payables", icon: Landmark, financial: true },
+  { href: "/reports", label: "Reports", icon: ChartNoAxesCombined, financial: true },
   { href: "/ai", label: "AI Assistant", icon: Sparkles },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export function Sidebar({ workspaceName }: { workspaceName: string }) {
+export function Sidebar({ workspaceName, role }: { workspaceName: string; role: Role }) {
   const pathname = usePathname();
 
   return (
@@ -45,7 +50,7 @@ export function Sidebar({ workspaceName }: { workspaceName: string }) {
       </div>
       <div className="flex-1 overflow-y-auto py-4">
         <nav className="space-y-1 px-3">
-          {routes.map((route) => {
+          {routes.filter((route) => role !== "STAFF" || !route.financial).map((route) => {
             const isActive = pathname === route.href || pathname?.startsWith(`${route.href}/`);
             return (
               <Link

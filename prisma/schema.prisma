@@ -461,6 +461,7 @@ model GeneralLedgerEntry {
 
   @@unique([workspaceId, reversalOfId])
   @@index([workspaceId, accountId, date])
+  @@index([workspaceId, accountId, date, createdAt, id])
   @@index([workspaceId, sourceType, sourceId])
   @@map("general_ledger_entries")
 }
@@ -483,6 +484,7 @@ model InventoryTransaction {
   product   Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
 
   @@index([workspaceId, productId])
+  @@index([workspaceId, type, createdAt])
   @@map("inventory_transactions")
 }
 
@@ -516,6 +518,7 @@ model SalesOrder {
   @@unique([workspaceId, idempotencyKey])
   @@index([workspaceId, status])
   @@index([workspaceId, customerId])
+  @@index([workspaceId, orderDate, status])
   @@map("sales_orders")
 }
 
@@ -571,6 +574,7 @@ model PurchaseOrder {
   @@unique([workspaceId, idempotencyKey])
   @@index([workspaceId, status])
   @@index([workspaceId, supplierId])
+  @@index([workspaceId, supplierId, status, orderDate])
   @@map("purchase_orders")
 }
 
@@ -673,6 +677,7 @@ model Invoice {
   @@index([workspaceId, status])
   @@index([workspaceId, issuedAt])
   @@index([workspaceId, customerId])
+  @@index([workspaceId, customerId, status, dueDate])
   @@map("invoices")
 }
 
@@ -718,6 +723,8 @@ model Payment {
   @@index([workspaceId, supplierId])
   @@index([workspaceId, invoiceId])
   @@index([workspaceId, cashBankAccountId])
+  @@index([workspaceId, customerId, paymentDate])
+  @@index([workspaceId, supplierId, paymentDate])
   @@index([reversalOfId])
   @@map("payments")
 }
@@ -756,6 +763,8 @@ model LedgerEntry {
   @@index([workspaceId])
   @@index([workspaceId, customerId])
   @@index([workspaceId, supplierId])
+  @@index([workspaceId, customerId, date, createdAt])
+  @@index([workspaceId, supplierId, date, createdAt])
   @@map("ledger_entries")
 }
 
