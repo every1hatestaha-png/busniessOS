@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ApiError, apiData, apiHandler, parseApiBody, requireApiContext } from "@/lib/server/api";
+import { ApiError, apiData, apiHandler, parseApiBody, requireApiContext, requireIdempotencyKey } from "@/lib/server/api";
 import { createGoodsReceipt, listGoodsReceipts, PurchaseDomainError } from "@/lib/server/purchases";
 import { goodsReceiptSchema } from "@/lib/validation/purchase";
 
@@ -15,12 +15,12 @@ export const GET = apiHandler(async (request: Request) => {
 export const POST = apiHandler(async (request: Request) => {
   const context = await requireApiContext("financial.manage");
   const body = await request.clone().json().catch(() => ({}));
-  const key = request.headers.get("Idempotency-Key");
+  const key = requireIdempotencyKey(request);
   const input = await parseApiBody(
     new Request(request.url, {
       method: "POST",
       headers: request.headers,
-      body: JSON.stringify({ ...body, idempotencyKey: key ?? body.idempotencyKey }),
+      body: JSON.stringify({ ...body, idempotencyKey: key }),
     }),
     goodsReceiptSchema,
   );

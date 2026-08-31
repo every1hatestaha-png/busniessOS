@@ -5,6 +5,8 @@ import type { z } from "zod";
 
 import { requireWorkspace } from "@/lib/server/auth";
 import { db } from "@/lib/server/db";
+import { postInventoryAdjustmentToGeneralLedger, postOpeningAssetToGeneralLedger } from "@/lib/server/accounting";
+import { Prisma } from "@prisma/client";
 import { productEditSchema, productSchema } from "@/lib/validation/product";
 
 type ProductData = z.output<typeof productSchema>;
@@ -132,6 +134,7 @@ export async function createProduct(workspaceId: string, input: ProductData): Pr
         reference: "Opening stock",
       },
     });
+    if (input.stockQuantity > 0 && input.costPrice > 0) await postOpeningAssetToGeneralLedger(transaction, { workspaceId, sourceId: product.id, documentNo: `OPEN-STOCK-${product.id.slice(0, 8).toUpperCase()}`, date: new Date(), assetSystemCode: "INVENTORY", amount: new Prisma.Decimal(input.costPrice).mul(input.stockQuantity) });
 
     return product.id;
   });
@@ -142,6 +145,9 @@ export async function updateProduct(
   id: string,
   input: ProductEditData,
 ): Promise<void> {
+  const existing = await db.product.findFirst({ where: { id, workspaceId }, select: { stockQuantity: true, costPrice: true } });
+  if (!existing) throw new Error("Product could not be updated");
+  if (existing.stockQuantity !== 0 && !existing.costPrice.equals(input.costPrice)) throw new Error("Cost price cannot be changed while stock is on hand. Receive stock or adjust quantity through an auditable inventory transaction.");
   const result = await db.product.updateMany({
     where: { id, workspaceId },
     data: {
@@ -164,6 +170,8 @@ export class StockAdjustmentRejectedError extends Error {}
 
 export async function adjustProductStock(workspaceId: string, productId: string, quantity: number, reason: string) {
   return db.$transaction(async (transaction) => {
+    const productBefore = await transaction.product.findFirst({ where: { id: productId, workspaceId }, select: { costPrice: true } });
+    if (!productBefore) throw new StockAdjustmentRejectedError();
     const result = await transaction.product.updateMany({
       where: {
         id: productId,
@@ -181,9 +189,11 @@ export async function adjustProductStock(workspaceId: string, productId: string,
         productId,
         type: "ADJUSTMENT",
         quantityChanged: quantity,
+        unitCost: productBefore.costPrice,
         reference: reason,
       },
     });
+    await postInventoryAdjustmentToGeneralLedger(transaction, { workspaceId, sourceId: productId, documentNo: `ADJ-${Date.now()}`, date: new Date(), value: productBefore.costPrice.mul(quantity) });
 
     const product = await transaction.product.findFirstOrThrow({
       where: { id: productId, workspaceId },

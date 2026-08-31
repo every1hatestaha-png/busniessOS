@@ -8,6 +8,7 @@ import { withSerializableRetry } from "@/lib/server/tx-retry";
 import { saleSchema, type SaleInput } from "@/lib/validation/sale";
 import { writeAudit } from "@/lib/server/audit";
 import { customerReturnSchema, type CustomerReturnInput } from "@/lib/validation/returns";
+import { canPerformAction } from "@/lib/server/authorization";
 
 export type ServiceContext = { workspaceId: string; role: Role; userId?: string };
 export class SaleDomainError extends Error { constructor(public code: "CUSTOMER_NOT_FOUND" | "PRODUCT_NOT_FOUND" | "INSUFFICIENT_STOCK" | "INVALID_TOTAL" | "SALE_NOT_FOUND" | "INVALID_RETURN", message: string) { super(message); } }
@@ -17,7 +18,7 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
   return withSerializableRetry(async (tx) => {
     const existing = await tx.salesOrder.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true } });
     if (existing) return existing;
-    const customer = await tx.customer.findFirst({ where: { id: data.customerId, workspaceId: context.workspaceId, status: "ACTIVE" }, select: { id: true } });
+    const customer = await tx.customer.findFirst({ where: { id: data.customerId, workspaceId: context.workspaceId, status: "ACTIVE" }, select: { id: true, currentBalance: true, creditLimit: true } });
     if (!customer) throw new SaleDomainError("CUSTOMER_NOT_FOUND", "Customer is unavailable.");
     const products = await tx.product.findMany({ where: { workspaceId: context.workspaceId, id: { in: data.items.map((item) => item.productId) }, status: "ACTIVE" }, select: { id: true, name: true, sku: true, stockQuantity: true, costPrice: true } });
     if (products.length !== data.items.length) throw new SaleDomainError("PRODUCT_NOT_FOUND", "One or more products are unavailable.");
@@ -33,14 +34,19 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
     const total = subtotal.minus(discount);
     const paid = new Prisma.Decimal(data.paidAmount);
     if (total.isNegative() || paid.greaterThan(total)) throw new SaleDomainError("INVALID_TOTAL", "Payment or discount exceeds the order total.");
+    if (paid.greaterThan(0) && !canPerformAction(context.role, "payments.record")) throw new SaleDomainError("INVALID_TOTAL", "You do not have permission to record a payment with this sale.");
+    const additionalCredit = total.minus(paid);
+    if (customer.creditLimit.greaterThan(0) && customer.currentBalance.plus(additionalCredit).greaterThan(customer.creditLimit)) throw new SaleDomainError("INVALID_TOTAL", "This sale exceeds the customer's credit limit.");
 
     const orderNumber = await nextDocumentNumber(tx, context.workspaceId, "SALES_ORDER");
     const invoiceNumber = await nextDocumentNumber(tx, context.workspaceId, "INVOICE");
     const order = await tx.salesOrder.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, orderNumber, status: "CONFIRMED", subtotal, discount, total, paidAmount: paid, balanceAmount: total.minus(paid), notes: data.notes || null, idempotencyKey: data.idempotencyKey }, select: { id: true, orderDate: true } });
     const cashBankAccountId = data.cashBankAccountId && data.cashBankAccountId !== "" ? data.cashBankAccountId : null;
+    let receiptMethod: "CASH" | "BANK_TRANSFER" = "CASH";
     if (paid.greaterThan(0) && cashBankAccountId) {
-      const cashBankAccount = await tx.cashBankAccount.findFirst({ where: { id: cashBankAccountId, workspaceId: context.workspaceId, isActive: true }, select: { id: true } });
+      const cashBankAccount = await tx.cashBankAccount.findFirst({ where: { id: cashBankAccountId, workspaceId: context.workspaceId, isActive: true }, select: { id: true, isBank: true } });
       if (!cashBankAccount) throw new SaleDomainError("INVALID_TOTAL", "Cash/bank account is unavailable.");
+      receiptMethod = cashBankAccount.isBank ? "BANK_TRANSFER" : "CASH";
     }
     let costOfGoodsSold = new Prisma.Decimal(0);
 
@@ -59,7 +65,7 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
     await tx.customer.update({ where: { id: customer.id }, data: { currentBalance: { increment: total } } });
     if (paid.greaterThan(0)) {
       const paymentNumber = await nextDocumentNumber(tx, context.workspaceId, "PAYMENT_RECEIPT");
-      const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, invoiceId: invoice.id, cashBankAccountId, amount: paid, method: "CASH", reference: paymentNumber, notes: "Payment received with sale" }, select: { id: true } });
+      const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, invoiceId: invoice.id, cashBankAccountId, amount: paid, method: receiptMethod, reference: paymentNumber, notes: "Payment received with sale" }, select: { id: true } });
       await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, type: "PAYMENT_RECEIVED", credit: paid, description: `Payment ${paymentNumber}`, referenceId: payment.id } });
       await tx.customer.update({ where: { id: customer.id }, data: { currentBalance: { decrement: paid } } });
     }
@@ -81,11 +87,13 @@ export async function createCustomerReturn(context: ServiceContext, input: Custo
     const itemIds = data.items.map((item) => item.itemId);
     if (new Set(itemIds).size !== itemIds.length) throw new SaleDomainError("INVALID_RETURN", "Duplicate return items are not allowed.");
     const previous = await tx.customerReturnItem.groupBy({ by: ["salesOrderItemId"], where: { salesOrderItemId: { in: itemIds }, customerReturn: { workspaceId: context.workspaceId } }, _sum: { quantity: true } });
+    const refundableBase = order.items.reduce((sum, entry) => sum.plus(entry.totalPrice), new Prisma.Decimal(0));
     const lines = data.items.map((item) => {
       const source = order.items.find((entry) => entry.id === item.itemId);
       const returned = previous.find((entry) => entry.salesOrderItemId === item.itemId)?._sum.quantity ?? 0;
       if (!source || item.quantity > source.quantity - returned) throw new SaleDomainError("INVALID_RETURN", "Return quantity exceeds sold quantity.");
-      const unitPrice = source.totalPrice.div(source.quantity);
+      const allocatedLineTotal = refundableBase.isZero() ? new Prisma.Decimal(0) : source.totalPrice.mul(order.total).div(refundableBase);
+      const unitPrice = allocatedLineTotal.div(source.quantity);
       return { source, quantity: item.quantity, unitPrice, total: unitPrice.mul(item.quantity) };
     });
     const total = lines.reduce((sum, line) => sum.plus(line.total), new Prisma.Decimal(0));
@@ -100,8 +108,12 @@ export async function createCustomerReturn(context: ServiceContext, input: Custo
     for (const line of lines) {
       await tx.customerReturnItem.create({ data: { customerReturnId: customerReturn.id, salesOrderItemId: line.source.id, productId: line.source.productId, quantity: line.quantity, unitPrice: line.unitPrice, totalPrice: line.total } });
       if (data.restock) {
-        await tx.product.updateMany({ where: { id: line.source.productId, workspaceId: context.workspaceId }, data: { stockQuantity: { increment: line.quantity } } });
-        await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: line.source.productId, type: "RETURN_IN", quantityChanged: line.quantity, reference: number } });
+        const historicalCost = saleCosts.find((entry) => entry.productId === line.source.productId)?.unitCost ?? new Prisma.Decimal(0);
+        const product = await tx.product.findFirstOrThrow({ where: { id: line.source.productId, workspaceId: context.workspaceId }, select: { stockQuantity: true, costPrice: true } });
+        const resultingQuantity = product.stockQuantity + line.quantity;
+        const resultingCost = product.costPrice.mul(product.stockQuantity).plus(historicalCost.mul(line.quantity)).div(resultingQuantity);
+        await tx.product.updateMany({ where: { id: line.source.productId, workspaceId: context.workspaceId, stockQuantity: product.stockQuantity }, data: { stockQuantity: { increment: line.quantity }, costPrice: resultingCost } });
+        await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: line.source.productId, type: "RETURN_IN", quantityChanged: line.quantity, unitCost: historicalCost, reference: number } });
       }
     }
     await tx.creditNote.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, salesOrderId: order.id, customerReturnId: customerReturn.id, number: noteNumber, reason: data.reason || "Customer return", amount: total, appliedAmount: 0, remainingAmount: total, status: "OPEN", reference: number, notes: data.notes || null } });
@@ -115,7 +127,7 @@ export async function createCustomerReturn(context: ServiceContext, input: Custo
 
 export async function cancelSale(context: ServiceContext, id: string, reverseInitialPayment: boolean) {
   return withSerializableRetry(async (tx) => {
-    const order = await tx.salesOrder.findFirst({ where: { id, workspaceId: context.workspaceId }, include: { items: true, returns: { select: { id: true }, take: 1 }, invoices: { include: { payments: { where: { isReversed: false }, orderBy: { createdAt: "asc" } } } } } });
+    const order = await tx.salesOrder.findFirst({ where: { id, workspaceId: context.workspaceId }, include: { items: true, returns: { select: { id: true }, take: 1 }, invoices: { include: { payments: { where: { isReversed: false }, orderBy: { createdAt: "asc" } }, allocations: { where: { payment: { isReversed: false } }, select: { id: true } } } } } });
     if (!order) throw new SaleDomainError("CUSTOMER_NOT_FOUND", "Sale not found.");
     if (order.status === "CANCELLED") return { id: order.id };
     const invoice = order.invoices[0];
@@ -123,12 +135,18 @@ export async function cancelSale(context: ServiceContext, id: string, reverseIni
     const initial = activePayments.find((payment) => payment.notes === "Payment received with sale");
     const laterPayments = activePayments.filter((payment) => payment.id !== initial?.id);
     if (order.returns.length) throw new SaleDomainError("INVALID_RETURN", "Sale cannot be cancelled after customer returns have been recorded.");
-    if (laterPayments.length) throw new SaleDomainError("INVALID_TOTAL", "Sale cannot be cancelled after later payments have been recorded.");
+    if (laterPayments.length || (invoice?.allocations.length ?? 0) > 0) throw new SaleDomainError("INVALID_TOTAL", "Sale cannot be cancelled after later payments have been recorded.");
     if (initial && !reverseInitialPayment) throw new SaleDomainError("INVALID_TOTAL", "Explicitly confirm reversal of the initial sale payment.");
 
+    const saleCosts = await tx.inventoryTransaction.findMany({ where: { workspaceId: context.workspaceId, reference: order.orderNumber, type: "SALE" }, select: { productId: true, unitCost: true } });
     for (const item of order.items) {
-      await tx.product.updateMany({ where: { id: item.productId, workspaceId: context.workspaceId }, data: { stockQuantity: { increment: item.quantity } } });
-      await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: item.productId, type: "SALE_CANCELLATION", quantityChanged: item.quantity, reference: order.orderNumber } });
+      const historicalCost = saleCosts.find((entry) => entry.productId === item.productId)?.unitCost ?? new Prisma.Decimal(0);
+      const product = await tx.product.findFirstOrThrow({ where: { id: item.productId, workspaceId: context.workspaceId }, select: { stockQuantity: true, costPrice: true } });
+      const resultingQuantity = product.stockQuantity + item.quantity;
+      const resultingCost = product.costPrice.mul(product.stockQuantity).plus(historicalCost.mul(item.quantity)).div(resultingQuantity);
+      const changed = await tx.product.updateMany({ where: { id: item.productId, workspaceId: context.workspaceId, stockQuantity: product.stockQuantity }, data: { stockQuantity: { increment: item.quantity }, costPrice: resultingCost } });
+      if (changed.count !== 1) throw new SaleDomainError("INVALID_TOTAL", "Inventory changed while cancelling this sale. Retry the cancellation.");
+      await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: item.productId, type: "SALE_CANCELLATION", quantityChanged: item.quantity, unitCost: historicalCost, reference: order.orderNumber } });
     }
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, type: "REVERSAL", credit: order.total, description: `Cancelled sale ${order.orderNumber}`, referenceId: order.id } });
     await tx.customer.update({ where: { id: order.customerId }, data: { currentBalance: { decrement: order.total } } });

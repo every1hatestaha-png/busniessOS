@@ -2,6 +2,7 @@ import "server-only";
 
 import { db } from "@/lib/server/db";
 import { ageDays, payablesBucket, type PayablesBucket } from "@/lib/server/aging";
+import { businessDateKey, businessDayEnd } from "@/lib/server/business-time";
 
 export type { PayablesBucket };
 
@@ -68,19 +69,17 @@ export async function getPayablesAging(
 ): Promise<PayablesAgingReport> {
   const timeZone = filters.timeZone ?? "Asia/Karachi";
   const asOf = filters.asOf ?? new Date();
-  const asOfDate = toDateKey(asOf, timeZone);
-
-  const asOfEnd = new Date(asOf);
-  asOfEnd.setHours(23, 59, 59, 999);
+  const asOfDate = businessDateKey(asOf, timeZone);
+  const asOfEnd = businessDayEnd(asOf, timeZone);
   const purchases = await db.purchaseOrder.findMany({
-    where: { workspaceId, status: { in: ["PARTIALLY_RECEIVED", "RECEIVED"] }, balanceAmount: { gt: 0 }, orderDate: { lte: asOfEnd }, ...(filters.supplierId ? { supplierId: filters.supplierId } : {}) },
+    where: { workspaceId, goodsReceivedNotes: { some: { receiptDate: { lte: asOfEnd } } }, OR: [{ cancelledAt: null }, { cancelledAt: { gt: asOfEnd } }], ...(filters.supplierId ? { supplierId: filters.supplierId } : {}) },
     select: {
       id: true,
       orderNumber: true,
       supplierId: true,
-      orderDate: true,
-      totalAmount: true,
-      balanceAmount: true,
+      goodsReceivedNotes: { where: { receiptDate: { lte: asOfEnd } }, orderBy: { receiptDate: "asc" }, select: { receiptDate: true, totalAmount: true } },
+      paymentAllocations: { where: { payment: { paymentDate: { lte: asOfEnd }, OR: [{ isReversed: false }, { reversedAt: { gt: asOfEnd } }] } }, select: { amount: true } },
+      returns: { where: { date: { lte: asOfEnd } }, select: { totalAmount: true } },
       supplier: { select: { name: true, companyName: true } },
     },
   });
@@ -92,9 +91,13 @@ export async function getPayablesAging(
 
   const items: AgingItem[] = [];
   for (const purchase of purchases) {
-    const outstanding = Number(purchase.balanceAmount);
+    const originalAmount = purchase.goodsReceivedNotes.reduce((sum, grn) => sum + Number(grn.totalAmount), 0);
+    const paidAmount = purchase.paymentAllocations.reduce((sum, allocation) => sum + Number(allocation.amount), 0);
+    const returnedAmount = purchase.returns.reduce((sum, supplierReturn) => sum + Number(supplierReturn.totalAmount), 0);
+    const outstanding = originalAmount - paidAmount - returnedAmount;
     if (outstanding <= 0) continue;
-    const age = ageDays(purchase.orderDate, asOf, timeZone);
+    const liabilityDate = purchase.goodsReceivedNotes[0].receiptDate;
+    const age = ageDays(liabilityDate, asOf, timeZone);
     const bucket = payablesBucket(age);
     const supplierName = purchase.supplier.companyName ?? purchase.supplier.name;
     if (!isMatch(supplierName)) continue;
@@ -104,8 +107,8 @@ export async function getPayablesAging(
       documentNumber: purchase.orderNumber,
       supplierId: purchase.supplierId,
       supplierName,
-      purchaseDate: purchase.orderDate.toISOString(),
-      originalAmount: Number(purchase.totalAmount),
+      purchaseDate: liabilityDate.toISOString(),
+      originalAmount,
       outstandingAmount: outstanding,
       ageDays: age,
       bucket,
@@ -173,13 +176,4 @@ export async function getPayablesSummary(workspaceId: string, filters: PayablesF
       oldestAgeDays: supplier.oldestAgeDays,
     })),
   };
-}
-
-function toDateKey(date: Date, timeZone: string): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
 }

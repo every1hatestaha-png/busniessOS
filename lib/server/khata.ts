@@ -1,14 +1,14 @@
 import "server-only";
 
-import { startOfMonth } from "date-fns";
 import { db } from "@/lib/server/db";
+import { businessMonthStart } from "@/lib/server/business-time";
 import { getReceivablesAging } from "@/lib/server/receivables";
 import { getCreditStatus } from "@/lib/utils";
 
 export async function getKhataSummary(workspaceId: string) {
   const [customers, monthPayments, overdueInvoices, receivables] = await Promise.all([
-    db.customer.findMany({ where: { workspaceId }, orderBy: [{ currentBalance: "desc" }], include: { salesOrders: { select: { total: true } }, payments: { select: { amount: true } } } }),
-    db.payment.aggregate({ where: { workspaceId, customerId: { not: null }, paymentDate: { gte: startOfMonth(new Date()) } }, _sum: { amount: true } }),
+    db.customer.findMany({ where: { workspaceId }, orderBy: [{ currentBalance: "desc" }], include: { salesOrders: { where: { status: { not: "CANCELLED" } }, select: { total: true } }, payments: { where: { isReversed: false, reversalOfId: null }, select: { amount: true } } } }),
+    db.payment.aggregate({ where: { workspaceId, customerId: { not: null }, isReversed: false, reversalOfId: null, paymentDate: { gte: businessMonthStart(new Date()) } }, _sum: { amount: true } }),
     db.invoice.findMany({ where: { workspaceId, dueDate: { lt: new Date() }, status: { in: ["UNPAID", "PARTIALLY_PAID", "OVERDUE"] } }, select: { customerId: true, amount: true, paidAmount: true, creditApplied: true } }),
     getReceivablesAging(workspaceId),
   ]);

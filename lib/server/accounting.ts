@@ -1,8 +1,6 @@
 import "server-only";
 
 import { AccountCategory, AccountNormalBalance, AccountSystemCode, Prisma, type GeneralLedgerSourceType } from "@prisma/client";
-import { endOfDay, startOfMonth } from "date-fns";
-
 import { calculateProfitLossTotals, calculateRunningBalance } from "@/lib/accounting-math";
 import { writeAudit } from "@/lib/server/audit";
 import { db } from "@/lib/server/db";
@@ -10,6 +8,7 @@ import { nextDocumentNumber } from "@/lib/server/document-numbers";
 import { getPayablesSummary } from "@/lib/server/payables";
 import { getReceivablesAging } from "@/lib/server/receivables";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
+import { businessDayEnd, businessDayStart, businessMonthStart } from "@/lib/server/business-time";
 import { cashBankAccountSchema, expenseSchema, ledgerReportSchema, profitLossSchema, type CashBankAccountInput, type ExpenseInput, type LedgerReportInput, type ProfitLossInput } from "@/lib/validation/accounting";
 
 export class AccountingDomainError extends Error {}
@@ -43,15 +42,17 @@ function amount(value: Prisma.Decimal | number | null | undefined) {
 }
 
 function normalizeRange(input: ProfitLossInput | LedgerReportInput) {
-  const from = input.from ?? startOfMonth(new Date());
-  const to = endOfDay(input.to ?? new Date());
+  const now = new Date();
+  const from = input.from ? businessDayStart(input.from) : businessMonthStart(now);
+  const to = businessDayEnd(input.to ?? now);
   return { from, to };
 }
 
 const bootstrappedWorkspaces = new Set<string>();
 
 export async function ensureDefaultAccounts(workspaceId: string, tx: Prisma.TransactionClient = db) {
-  if (bootstrappedWorkspaces.has(workspaceId)) return;
+  const canUseCache = tx === db;
+  if (canUseCache && bootstrappedWorkspaces.has(workspaceId)) return;
 
   const existingDefaults = await tx.account.count({ where: { workspaceId, systemCode: { in: DEFAULT_ACCOUNTS.map((account) => account.systemCode) } } });
   if (existingDefaults < DEFAULT_ACCOUNTS.length) {
@@ -71,7 +72,7 @@ export async function ensureDefaultAccounts(workspaceId: string, tx: Prisma.Tran
     update: {},
   });
 
-  bootstrappedWorkspaces.add(workspaceId);
+  if (canUseCache) bootstrappedWorkspaces.add(workspaceId);
 }
 
 async function getSystemAccounts(tx: Prisma.TransactionClient, workspaceId: string, codes: AccountSystemCode[]) {
@@ -243,6 +244,32 @@ export async function postGoodsReceiptToGeneralLedger(tx: Prisma.TransactionClie
   ]);
 }
 
+export async function postOpeningAssetToGeneralLedger(tx: Prisma.TransactionClient, params: { workspaceId: string; sourceId: string; documentNo: string; date: Date; assetAccountId?: string; assetSystemCode?: "ACCOUNTS_RECEIVABLE" | "INVENTORY"; amount: Prisma.Decimal | number }) {
+  const equity = await getSystemAccounts(tx, params.workspaceId, ["OWNER_EQUITY"]);
+  const assetAccount = params.assetAccountId
+    ? await tx.account.findFirst({ where: { id: params.assetAccountId, workspaceId: params.workspaceId, category: "ASSET" }, select: { id: true } })
+    : (await getSystemAccounts(tx, params.workspaceId, [params.assetSystemCode!]))[params.assetSystemCode!];
+  if (!assetAccount) throw new AccountingDomainError("Opening-balance asset account is unavailable.");
+  await postBalancedEntries(tx, [
+    { workspaceId: params.workspaceId, accountId: assetAccount.id, sourceType: "ADJUSTMENT", sourceId: params.sourceId, documentNo: params.documentNo, date: params.date, narration: `Opening balance ${params.documentNo}`, debit: params.amount, credit: 0 },
+    { workspaceId: params.workspaceId, accountId: equity.OWNER_EQUITY.id, sourceType: "ADJUSTMENT", sourceId: params.sourceId, documentNo: params.documentNo, date: params.date, narration: `Opening balance ${params.documentNo}`, debit: 0, credit: params.amount },
+  ]);
+}
+
+export async function postInventoryAdjustmentToGeneralLedger(tx: Prisma.TransactionClient, params: { workspaceId: string; sourceId: string; documentNo: string; date: Date; value: Prisma.Decimal }) {
+  if (params.value.isZero()) return;
+  const accounts = await getSystemAccounts(tx, params.workspaceId, ["INVENTORY", "OTHER_INCOME", "OTHER_OPERATING_EXPENSE"]);
+  const gain = params.value.greaterThan(0);
+  const value = params.value.abs();
+  await postBalancedEntries(tx, gain ? [
+    { workspaceId: params.workspaceId, accountId: accounts.INVENTORY.id, sourceType: "ADJUSTMENT", sourceId: params.sourceId, documentNo: params.documentNo, date: params.date, narration: `Inventory adjustment ${params.documentNo}`, debit: value, credit: 0 },
+    { workspaceId: params.workspaceId, accountId: accounts.OTHER_INCOME.id, sourceType: "ADJUSTMENT", sourceId: params.sourceId, documentNo: params.documentNo, date: params.date, narration: `Inventory adjustment ${params.documentNo}`, debit: 0, credit: value },
+  ] : [
+    { workspaceId: params.workspaceId, accountId: accounts.OTHER_OPERATING_EXPENSE.id, sourceType: "ADJUSTMENT", sourceId: params.sourceId, documentNo: params.documentNo, date: params.date, narration: `Inventory adjustment ${params.documentNo}`, debit: value, credit: 0 },
+    { workspaceId: params.workspaceId, accountId: accounts.INVENTORY.id, sourceType: "ADJUSTMENT", sourceId: params.sourceId, documentNo: params.documentNo, date: params.date, narration: `Inventory adjustment ${params.documentNo}`, debit: 0, credit: value },
+  ]);
+}
+
 export async function getChartOfAccounts(workspaceId: string) {
   await ensureDefaultAccounts(workspaceId);
   const accounts = await db.account.findMany({ where: { workspaceId }, orderBy: [{ code: "asc" }] });
@@ -260,8 +287,10 @@ export async function getCashBankAccountLedger(workspaceId: string, cashBankAcco
   const cashBank = await db.cashBankAccount.findFirst({ where: { id: cashBankAccountId, workspaceId, isActive: true }, include: { account: true } });
   if (!cashBank) return null;
   const ledger = await getGeneralLedger(workspaceId, { accountId: cashBank.accountId, ...input });
-  const openingBalance = amount(cashBank.openingBalance) + ledger.openingBalance;
-  const entries = ledger.entries.map((entry) => ({ ...entry, runningBalance: entry.runningBalance + amount(cashBank.openingBalance) }));
+  const openingPosted = await db.generalLedgerEntry.count({ where: { workspaceId, sourceType: "ADJUSTMENT", sourceId: cashBank.accountId, documentNo: `OPEN-${cashBank.accountId.slice(0, 8).toUpperCase()}` } });
+  const legacyOpening = openingPosted ? 0 : amount(cashBank.openingBalance);
+  const openingBalance = legacyOpening + ledger.openingBalance;
+  const entries = ledger.entries.map((entry) => ({ ...entry, runningBalance: entry.runningBalance + legacyOpening }));
   const receipts = entries.reduce((sum, entry) => sum + entry.debit, 0);
   const payments = entries.reduce((sum, entry) => sum + entry.credit, 0);
   const closingBalance = entries.at(-1)?.runningBalance ?? openingBalance;
@@ -295,6 +324,7 @@ export async function createCashBankAccount(context: ServiceContext, input: Cash
     const code = data.isBank ? `10${20 + count}` : `10${10 + count}`;
     const account = await tx.account.create({ data: { workspaceId: context.workspaceId, code, name: data.name, category: "ASSET", normalBalance: "DEBIT", isActive: true } });
     await tx.cashBankAccount.create({ data: { workspaceId: context.workspaceId, accountId: account.id, name: data.name, openingBalance: data.openingBalance, currentBalance: data.openingBalance, isBank: data.isBank, bankName: data.bankName || null, accountTitle: data.accountTitle || null, accountNumber: data.accountNumber || null, notes: data.notes || null } });
+    if (data.openingBalance > 0) await postOpeningAssetToGeneralLedger(tx, { workspaceId: context.workspaceId, sourceId: account.id, documentNo: `OPEN-${account.id.slice(0, 8).toUpperCase()}`, date: new Date(), assetAccountId: account.id, amount: data.openingBalance });
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "cash_bank_account.created", entityType: "Account", entityId: account.id, metadata: { name: data.name, openingBalance: String(data.openingBalance) } });
     return { id: account.id };
   });
@@ -329,6 +359,11 @@ export async function createExpense(context: ServiceContext, input: ExpenseInput
   });
 }
 
+export async function listExpenses(workspaceId: string) {
+  const rows = await db.expense.findMany({ where: { workspaceId }, orderBy: [{ expenseDate: "desc" }, { createdAt: "desc" }], take: 500, include: { expenseAccount: { select: { name: true, code: true } }, paymentAccount: { select: { name: true, code: true } } } });
+  return rows.map((row) => ({ id: row.id, voucherNumber: row.voucherNumber, date: row.expenseDate.toISOString(), amount: amount(row.amount), payee: row.payee, reference: row.reference, notes: row.notes, expenseAccount: row.expenseAccount, paymentAccount: row.paymentAccount }));
+}
+
 export async function getGeneralLedger(workspaceId: string, input: LedgerReportInput) {
   const data = ledgerReportSchema.parse(input);
   const { from, to } = normalizeRange(data);
@@ -349,29 +384,29 @@ export async function getGeneralLedger(workspaceId: string, input: LedgerReportI
 export async function getProfitAndLoss(workspaceId: string, input: ProfitLossInput = {}) {
   const data = profitLossSchema.parse(input);
   const { from, to } = normalizeRange(data);
-  const [sales, returns, expenses] = await Promise.all([
+  const [sales, returns, profitAndLossEntries] = await Promise.all([
     db.salesOrder.findMany({ where: { workspaceId, status: { not: "CANCELLED" }, orderDate: { gte: from, lte: to } }, select: { orderNumber: true, total: true } }),
-    db.customerReturn.aggregate({ where: { workspaceId, date: { gte: from, lte: to } }, _sum: { totalAmount: true } }),
-    db.expense.findMany({ where: { workspaceId, expenseDate: { gte: from, lte: to } }, select: { amount: true, expenseAccount: { select: { id: true, code: true, name: true } } } }),
+    db.customerReturn.findMany({ where: { workspaceId, date: { gte: from, lte: to } }, select: { totalAmount: true } }),
+    db.generalLedgerEntry.findMany({ where: { workspaceId, date: { gte: from, lte: to }, account: { category: { in: ["COST_OF_SALES", "EXPENSE", "INCOME"] } } }, select: { debit: true, credit: true, account: { select: { id: true, code: true, name: true, category: true, systemCode: true } } } }),
   ]);
-  const cogs = sales.length ? await db.inventoryTransaction.findMany({ where: { workspaceId, type: "SALE", reference: { in: sales.map((sale) => sale.orderNumber) }, createdAt: { gte: from, lte: to } }, select: { quantityChanged: true, unitCost: true } }) : [];
-  const costOfGoodsSold = cogs.reduce((sum, row) => sum + Math.abs(row.quantityChanged) * amount(row.unitCost), 0);
-  const operatingExpenses = expenses.reduce((sum, expense) => sum + amount(expense.amount), 0);
+  const costOfGoodsSold = profitAndLossEntries.filter((entry) => entry.account.category === "COST_OF_SALES").reduce((sum, entry) => sum + amount(entry.debit) - amount(entry.credit), 0);
   const grossSales = sales.reduce((sum, sale) => sum + amount(sale.total), 0);
-  const salesReturns = amount(returns._sum.totalAmount);
+  const salesReturns = returns.reduce((sum, entry) => sum + amount(entry.totalAmount), 0);
   const expenseMap = new Map<string, { id: string; code: string; name: string; amount: number }>();
-  for (const expense of expenses) {
-    const row = expenseMap.get(expense.expenseAccount.id) ?? { ...expense.expenseAccount, amount: 0 };
-    row.amount += amount(expense.amount);
+  for (const entry of profitAndLossEntries.filter((row) => row.account.category === "EXPENSE")) {
+    const row = expenseMap.get(entry.account.id) ?? { id: entry.account.id, code: entry.account.code, name: entry.account.name, amount: 0 };
+    row.amount += amount(entry.debit) - amount(entry.credit);
     expenseMap.set(row.id, row);
   }
+  const operatingExpenses = [...expenseMap.values()].reduce((sum, expense) => sum + expense.amount, 0);
+  const otherIncome = profitAndLossEntries.filter((entry) => entry.account.systemCode === "OTHER_INCOME").reduce((sum, entry) => sum + amount(entry.credit) - amount(entry.debit), 0);
   const totals = calculateProfitLossTotals({ grossSales, salesReturns, costOfGoodsSold, operatingExpenses });
-  return { from: from.toISOString(), to: to.toISOString(), grossSales, salesReturns, otherIncome: 0, expenseCategories: [...expenseMap.values()].sort((a, b) => a.code.localeCompare(b.code)), ...totals, costingMethod: "Historical sale-time Product.costPrice snapshots from InventoryTransaction.unitCost. Cancelled sales are excluded. Older customer returns may not contain enough historical cost data for precise returned-COGS adjustment." };
+  return { from: from.toISOString(), to: to.toISOString(), grossSales, salesReturns, otherIncome, expenseCategories: [...expenseMap.values()].sort((a, b) => a.code.localeCompare(b.code)), ...totals, netProfit: totals.netProfit + otherIncome, costingMethod: "Historical sale-time cost and return/cancellation reversals from the authoritative Cost of Goods Sold general-ledger account." };
 }
 
 export async function getFinancialDashboard(workspaceId: string) {
   const now = new Date();
-  const monthStart = startOfMonth(now);
+  const monthStart = businessMonthStart(now);
   const [receivables, payables, inventory, cashBank, purchasesMonth, lowStock, profitLoss] = await Promise.all([
     getReceivablesAging(workspaceId),
     getPayablesSummary(workspaceId),

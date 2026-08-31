@@ -56,8 +56,13 @@ export async function recordSupplierPayment(context: ServiceContext, supplierId:
   const data = supplierPaymentSchema.parse(input); const amount = new Prisma.Decimal(data.amount); const withholdingTaxAmount = new Prisma.Decimal(data.withholdingTaxAmount ?? 0); const netAmount = amount.minus(withholdingTaxAmount);
   return withSerializableRetry(async (tx) => {
     if (data.idempotencyKey) {
-      const existing = await tx.payment.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true } });
-      if (existing) return existing;
+      const existing = await tx.payment.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true, customerId: true, supplierId: true, amount: true, withholdingTaxAmount: true, cashBankAccountId: true, method: true, allocations: { select: { purchaseOrderId: true, amount: true } } } });
+      if (existing) {
+        const requested = data.allocations ?? [];
+        const sameAllocations = requested.length === existing.allocations.length && requested.every((entry) => existing.allocations.some((allocation) => allocation.purchaseOrderId === entry.purchaseOrderId && allocation.amount.equals(entry.amount)));
+        if (existing.customerId || existing.supplierId !== supplierId || !existing.amount.equals(data.amount) || !existing.withholdingTaxAmount.equals(data.withholdingTaxAmount ?? 0) || existing.cashBankAccountId !== data.cashBankAccountId || existing.method !== data.method || !sameAllocations) throw new SupplierDomainError("This idempotency key was already used for a different payment request.");
+        return { id: existing.id };
+      }
     }
     const supplier = await tx.supplier.findFirst({ where: { id: supplierId, workspaceId: context.workspaceId }, select: { id: true, currentBalance: true } });
     if (!supplier) throw new SupplierDomainError("Supplier not found.");

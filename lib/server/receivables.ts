@@ -2,6 +2,7 @@ import "server-only";
 
 import { db } from "@/lib/server/db";
 import { ageDays, receivablesBucket, type ReceivablesBucket } from "@/lib/server/aging";
+import { businessDateKey, businessDayEnd } from "@/lib/server/business-time";
 
 export type { ReceivablesBucket };
 
@@ -26,6 +27,7 @@ export type ReceivablesAgingItem = {
   outstandingAmount: number;
   ageDays: number;
   bucket: ReceivablesBucket | "current";
+  isOpeningBalance?: boolean;
 };
 
 export type CustomerReceivablesAging = {
@@ -60,14 +62,13 @@ function toBucketTotals(): ReceivablesBucketTotals {
 export async function getReceivablesAging(workspaceId: string, filters: ReceivablesFilters = {}): Promise<ReceivablesAgingReport> {
   const timeZone = filters.timeZone ?? "Asia/Karachi";
   const asOf = filters.asOf ?? new Date();
-  const asOfDate = toDateKey(asOf, timeZone);
-  const asOfEnd = new Date(asOf);
-  asOfEnd.setHours(23, 59, 59, 999);
+  const asOfDate = businessDateKey(asOf, timeZone);
+  const asOfEnd = businessDayEnd(asOf, timeZone);
   const search = filters.search?.trim().toLowerCase();
 
-  const [invoices, credits, onAccountPayments] = await Promise.all([
+  const [invoices, credits, onAccountPayments, openingBalances] = await Promise.all([
     db.invoice.findMany({
-      where: { workspaceId, status: { notIn: ["CANCELLED", "DRAFT"] }, issuedAt: { lte: asOfEnd }, ...(filters.customerId ? { customerId: filters.customerId } : {}) },
+      where: { workspaceId, status: { not: "DRAFT" }, issuedAt: { lte: asOfEnd }, OR: [{ status: { not: "CANCELLED" } }, { salesOrder: { cancelledAt: { gt: asOfEnd } } }], ...(filters.customerId ? { customerId: filters.customerId } : {}) },
       select: {
         id: true,
         invoiceNumber: true,
@@ -78,33 +79,52 @@ export async function getReceivablesAging(workspaceId: string, filters: Receivab
         paidAmount: true,
         creditApplied: true,
         customer: { select: { name: true, companyName: true } },
-        allocations: { where: { createdAt: { lte: asOfEnd }, payment: { isReversed: false, paymentDate: { lte: asOfEnd } } }, select: { amount: true } },
-        payments: { where: { isReversed: false, paymentDate: { lte: asOfEnd }, allocations: { none: {} } }, select: { amount: true } },
+        allocations: { where: { payment: { paymentDate: { lte: asOfEnd }, OR: [{ isReversed: false }, { reversedAt: { gt: asOfEnd } }] } }, select: { amount: true } },
+        payments: { where: { paymentDate: { lte: asOfEnd }, allocations: { none: {} }, OR: [{ isReversed: false }, { reversedAt: { gt: asOfEnd } }] }, select: { amount: true } },
         creditAllocations: { where: { createdAt: { lte: asOfEnd } }, select: { amount: true } },
       },
     }),
     db.creditNote.findMany({
-      where: { workspaceId, status: { not: "CANCELLED" }, date: { lte: asOfEnd }, remainingAmount: { gt: 0 }, ...(filters.customerId ? { customerId: filters.customerId } : {}) },
-      select: { customerId: true, remainingAmount: true, customer: { select: { name: true, companyName: true } } },
+      where: { workspaceId, status: { not: "CANCELLED" }, date: { lte: asOfEnd }, ...(filters.customerId ? { customerId: filters.customerId } : {}) },
+      select: { customerId: true, amount: true, allocations: { where: { createdAt: { lte: asOfEnd } }, select: { amount: true } }, customer: { select: { name: true, companyName: true } } },
     }),
     db.payment.findMany({
-      where: { workspaceId, customerId: { not: null }, invoiceId: null, isReversed: false, reversalOfId: null, paymentDate: { lte: asOfEnd }, allocations: { none: {} }, ...(filters.customerId ? { customerId: filters.customerId } : {}) },
-      select: { customerId: true, amount: true, customer: { select: { name: true, companyName: true } } },
+      where: { workspaceId, customerId: { not: null }, invoiceId: null, reversalOfId: null, paymentDate: { lte: asOfEnd }, OR: [{ isReversed: false }, { reversedAt: { gt: asOfEnd } }], ...(filters.customerId ? { customerId: filters.customerId } : {}) },
+      select: { customerId: true, amount: true, allocations: { where: { createdAt: { lte: asOfEnd } }, select: { amount: true } }, customer: { select: { name: true, companyName: true } } },
+    }),
+    db.ledgerEntry.findMany({
+      where: { workspaceId, customerId: { not: null }, type: "OPENING_BALANCE", date: { lte: asOfEnd }, ...(filters.customerId ? { customerId: filters.customerId } : {}) },
+      select: { id: true, customerId: true, date: true, debit: true, credit: true, customer: { select: { name: true, companyName: true } } },
     }),
   ]);
 
   const unappliedCreditByCustomer = new Map<string, { amount: number; customerName: string }>();
   for (const credit of credits) {
+    const remainingAmount = Number(credit.amount) - credit.allocations.reduce((sum, allocation) => sum + Number(allocation.amount), 0);
+    if (remainingAmount <= 0) continue;
     const current = unappliedCreditByCustomer.get(credit.customerId);
-    unappliedCreditByCustomer.set(credit.customerId, { amount: (current?.amount ?? 0) + Number(credit.remainingAmount), customerName: current?.customerName ?? credit.customer.companyName ?? credit.customer.name });
+    unappliedCreditByCustomer.set(credit.customerId, { amount: (current?.amount ?? 0) + remainingAmount, customerName: current?.customerName ?? credit.customer.companyName ?? credit.customer.name });
   }
   const unappliedPaymentByCustomer = new Map<string, { amount: number; customerName: string }>();
   for (const payment of onAccountPayments) {
     if (!payment.customerId || !payment.customer) continue;
+    const unappliedAmount = Number(payment.amount) - payment.allocations.reduce((sum, allocation) => sum + Number(allocation.amount), 0);
+    if (unappliedAmount <= 0) continue;
     const current = unappliedPaymentByCustomer.get(payment.customerId);
-    unappliedPaymentByCustomer.set(payment.customerId, { amount: (current?.amount ?? 0) + Number(payment.amount), customerName: current?.customerName ?? payment.customer.companyName ?? payment.customer.name });
+    unappliedPaymentByCustomer.set(payment.customerId, { amount: (current?.amount ?? 0) + unappliedAmount, customerName: current?.customerName ?? payment.customer.companyName ?? payment.customer.name });
   }
   const items: ReceivablesAgingItem[] = [];
+  for (const opening of openingBalances) {
+    if (!opening.customerId || !opening.customer) continue;
+    const outstanding = Number(opening.debit) - Number(opening.credit);
+    if (outstanding <= 0) continue;
+    const customerName = opening.customer.companyName ?? opening.customer.name;
+    if (search && !customerName.toLowerCase().includes(search) && !"opening balance".includes(search)) continue;
+    const age = ageDays(opening.date, asOf, timeZone);
+    const bucket = receivablesBucket(age);
+    if (filters.bucket && bucket !== filters.bucket) continue;
+    items.push({ invoiceId: opening.id, documentNumber: "OPENING BALANCE", customerId: opening.customerId, customerName, invoiceDate: opening.date.toISOString(), dueDate: null, originalAmount: outstanding, paymentsApplied: 0, creditsApplied: 0, outstandingAmount: outstanding, ageDays: age, bucket, isOpeningBalance: true });
+  }
   for (const invoice of invoices) {
     const paymentsApplied = invoice.allocations.reduce((sum, allocation) => sum + Number(allocation.amount), 0)
       + invoice.payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
@@ -174,8 +194,4 @@ export async function getReceivablesAging(workspaceId: string, filters: Receivab
   }
 
   return { asOfDate, grossOutstanding, totalOutstanding: grossOutstanding - totalUnappliedCredit - totalUnappliedPayments, totalUnappliedCredit, totalUnappliedPayments, buckets: totals, customers: customerRows };
-}
-
-function toDateKey(date: Date, timeZone: string): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
 }

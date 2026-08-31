@@ -90,7 +90,7 @@ describe("sales and payments against Neon", () => {
   }, 30_000);
 
   it("creates a transactional sale, reduces stock, and isolates reads", async () => {
-    const result = await createSale(context(workspaceA), saleInput(customerA, productA));
+    const result = await createSale(context(workspaceA), saleInput(customerA, productA, { cashBankAccountId: cashBankAccountA }));
     const [order, product, customer, inventory, ledger, payments] = await Promise.all([
       db.salesOrder.findUniqueOrThrow({ where: { id: result.id }, include: { items: true, invoices: true } }),
       db.product.findUniqueOrThrow({ where: { id: productA } }),
@@ -144,8 +144,8 @@ describe("sales and payments against Neon", () => {
   it("rejects customers and products from another workspace", async () => {
     expect(await getCustomer(workspaceA, customerB)).toBeNull();
     expect(await getProduct(productB, workspaceA)).toBeNull();
-    await expect(createSale(context(workspaceA), saleInput(customerB, productA))).rejects.toMatchObject({ code: "CUSTOMER_NOT_FOUND" });
-    await expect(createSale(context(workspaceA), saleInput(customerA, productB))).rejects.toMatchObject({ code: "PRODUCT_NOT_FOUND" });
+    await expect(createSale(context(workspaceA), saleInput(customerB, productA, { cashBankAccountId: cashBankAccountA }))).rejects.toMatchObject({ code: "CUSTOMER_NOT_FOUND" });
+    await expect(createSale(context(workspaceA), saleInput(customerA, productB, { cashBankAccountId: cashBankAccountA }))).rejects.toMatchObject({ code: "PRODUCT_NOT_FOUND" });
   });
 
   it("posts paid-at-sale cash receipt to the selected cash/bank account", async () => {

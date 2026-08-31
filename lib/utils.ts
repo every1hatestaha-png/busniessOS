@@ -11,7 +11,7 @@ export function formatPKR(amount: number | string | undefined | null): string {
   if (isNaN(num)) return "Rs 0";
   return `Rs ${new Intl.NumberFormat("en-PK", {
     minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(num)}`;
 }
 

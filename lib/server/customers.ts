@@ -2,6 +2,8 @@ import "server-only";
 
 import type { CustomerEditInput, CustomerInput } from "@/lib/validation/customer";
 import { db } from "@/lib/server/db";
+import { postOpeningAssetToGeneralLedger } from "@/lib/server/accounting";
+import { Prisma } from "@prisma/client";
 
 export type CustomerListItem = {
   id: string;
@@ -105,7 +107,7 @@ export async function getCustomer(workspaceId: string, id: string): Promise<Cust
       payments: {
         where: { workspaceId },
         orderBy: { paymentDate: "desc" },
-        select: { id: true, paymentDate: true, reference: true, method: true, amount: true },
+        select: { id: true, paymentDate: true, reference: true, method: true, amount: true, isReversed: true, reversalOfId: true },
       },
       invoices: {
         where: { workspaceId },
@@ -136,6 +138,8 @@ export async function getCustomer(workspaceId: string, id: string): Promise<Cust
     reference: payment.reference ?? "-",
     method: payment.method,
     amount: Number(payment.amount),
+    isReversed: payment.isReversed,
+    isReversal: Boolean(payment.reversalOfId),
   }));
 
   return {
@@ -150,8 +154,8 @@ export async function getCustomer(workspaceId: string, id: string): Promise<Cust
     creditLimit: Number(customer.creditLimit),
     currentBalance: Number(customer.currentBalance),
     status: customer.status,
-    totalSales: orders.reduce((total, order) => total + order.total, 0),
-    totalPayments: payments.reduce((total, payment) => total + payment.amount, 0),
+    totalSales: orders.filter((order) => order.status !== "CANCELLED").reduce((total, order) => total + order.total, 0),
+    totalPayments: payments.filter((payment) => !payment.isReversed && !payment.isReversal).reduce((total, payment) => total + payment.amount, 0),
     orders,
     payments,
     invoices: customer.invoices.map((invoice) => ({
@@ -205,6 +209,7 @@ export async function createCustomer(workspaceId: string, input: CustomerInput):
           description: "Customer opening balance",
         },
       });
+      await postOpeningAssetToGeneralLedger(tx, { workspaceId, sourceId: customer.id, documentNo: `OPEN-CUST-${customer.id.slice(0, 8).toUpperCase()}`, date: new Date(), assetSystemCode: "ACCOUNTS_RECEIVABLE", amount: new Prisma.Decimal(openingBalance) });
     }
 
     return customer.id;

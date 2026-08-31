@@ -118,6 +118,12 @@ export async function parseApiBody<T>(request: Request, schema: ZodType<T>): Pro
   return schema.parse(body);
 }
 
+export function requireIdempotencyKey(request: Request) {
+  const key = request.headers.get("Idempotency-Key")?.trim();
+  if (!key || key.length < 8 || key.length > 200) throw new ApiError(422, "IDEMPOTENCY_KEY_REQUIRED", "A valid Idempotency-Key header is required for this financial operation.");
+  return key;
+}
+
 export function apiData<T>(data: T, status = 200) {
   return NextResponse.json({ data }, { status });
 }

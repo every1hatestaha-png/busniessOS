@@ -15,8 +15,13 @@ export async function recordPayment(context: ServiceContext, input: PaymentInput
   const amount = new Prisma.Decimal(data.amount);
   return withSerializableRetry(async (tx) => {
     if (data.idempotencyKey) {
-      const existing = await tx.payment.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true } });
-      if (existing) return existing;
+      const existing = await tx.payment.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true, customerId: true, supplierId: true, amount: true, cashBankAccountId: true, method: true, invoiceId: true, allocations: { select: { invoiceId: true, amount: true } } } });
+      if (existing) {
+        const requested = data.allocations?.length ? data.allocations : data.invoiceId ? [{ invoiceId: data.invoiceId, amount: data.amount }] : [];
+        const sameAllocations = requested.length === existing.allocations.length && requested.every((entry) => existing.allocations.some((allocation) => allocation.invoiceId === entry.invoiceId && allocation.amount.equals(entry.amount)));
+        if (existing.supplierId || existing.customerId !== data.customerId || !existing.amount.equals(data.amount) || existing.cashBankAccountId !== data.cashBankAccountId || existing.method !== data.method || !sameAllocations) throw new PaymentDomainError("This idempotency key was already used for a different payment request.");
+        return { id: existing.id };
+      }
     }
     const customer = await tx.customer.findFirst({ where: { id: data.customerId, workspaceId: context.workspaceId }, select: { id: true, currentBalance: true } });
     if (!customer) throw new PaymentDomainError("Customer not found.");

@@ -17,6 +17,8 @@ import {
   Sparkles,
   ChartNoAxesCombined,
   HandCoins,
+  CircleDollarSign,
+  PackageCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -26,11 +28,13 @@ const routes = [
   { href: "/customers", label: "Customers", icon: Users },
   { href: "/inventory", label: "Inventory", icon: Package },
   { href: "/purchases", label: "Purchases", icon: FileText },
+  { href: "/goods-receipts", label: "GRNs", icon: PackageCheck },
   { href: "/suppliers", label: "Suppliers", icon: Truck },
   { href: "/khata", label: "Khata", icon: BookOpen },
   { href: "/invoices", label: "Invoices", icon: Receipt },
   { href: "/receivables", label: "Receivables", icon: HandCoins, financial: true },
   { href: "/accounting/cash-bank", label: "Cash & Bank", icon: Landmark, financial: true },
+  { href: "/accounting/expenses", label: "Expenses", icon: CircleDollarSign, financial: true },
   { href: "/payables", label: "Payables", icon: Landmark, financial: true },
   { href: "/reports", label: "Reports", icon: ChartNoAxesCombined, financial: true },
   { href: "/ai", label: "AI Assistant", icon: Sparkles },

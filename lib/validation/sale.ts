@@ -19,6 +19,7 @@ export const saleSchema = z.object({
   sale.items.forEach((item, index) => {
     if (item.discount > item.quantity * item.unitPrice) context.addIssue({ code: "custom", path: ["items", index, "discount"], message: "Discount exceeds line value." });
   });
+  if (sale.paidAmount > 0 && !sale.cashBankAccountId) context.addIssue({ code: "custom", path: ["cashBankAccountId"], message: "Select the cash/bank account receiving this payment." });
 });
 
 export type SaleInput = z.infer<typeof saleSchema>;

@@ -64,7 +64,7 @@ export function PurchaseForm({ suppliers, products }: { suppliers: Array<{ id: s
             const item: Record<string, unknown> = {
               productId: line.productId,
               quantity: Number(line.quantity),
-              unitCost: pricingMode === "WEIGHT" && line.unitWeight && line.perKgRate ? Number(line.unitWeight) * Number(line.perKgRate) * Number(line.quantity) : Number(line.unitCost),
+              unitCost: pricingMode === "WEIGHT" && line.unitWeight && line.perKgRate ? Number(line.unitWeight) * Number(line.perKgRate) : Number(line.unitCost),
             };
             if (pricingMode === "WEIGHT" && line.unitWeight && line.perKgRate) {
               item.unitWeight = Number(line.unitWeight);

@@ -72,14 +72,18 @@ describe("payable aging service", () => {
     await db.$disconnect();
   }, 30_000);
 
-  function backdate(purchaseId: string, daysAgo: number) {
-    return db.purchaseOrder.update({ where: { id: purchaseId }, data: { orderDate: asOfPlusDays(-daysAgo) } });
+  async function backdate(purchaseId: string, daysAgo: number) {
+    const date = asOfPlusDays(-daysAgo);
+    await Promise.all([
+      db.purchaseOrder.update({ where: { id: purchaseId }, data: { orderDate: date } }),
+      db.goodReceivedNote.updateMany({ where: { purchaseOrderId: purchaseId }, data: { receiptDate: date } }),
+    ]);
   }
 
   it("ages only the remaining outstanding amount after a partial payment", async () => {
     const purchase = await createPOAndReceive(context(), supplierA, productId, 1, 500);
     await backdate(purchase.id, 48);
-    await recordSupplierPayment(context(), supplierA, { amount: 300, cashBankAccountId, allocations: [{ purchaseOrderId: purchase.id, amount: 300 }], method: "CASH", reference: "", notes: "", idempotencyKey: randomUUID(), paymentDate: new Date() });
+    await recordSupplierPayment(context(), supplierA, { amount: 300, cashBankAccountId, allocations: [{ purchaseOrderId: purchase.id, amount: 300 }], method: "CASH", reference: "", notes: "", idempotencyKey: randomUUID(), paymentDate: asOfPlusDays(-1) });
     const report = await getPayablesAging(workspaceId, { asOf: AS_OF, timeZone: TZ });
     const supplier = report.suppliers.find((entry) => entry.supplierId === supplierA)!;
     const item = supplier.items.find((entry) => entry.purchaseId === purchase.id)!;
@@ -93,7 +97,7 @@ describe("payable aging service", () => {
   it("drops a fully-paid purchase from the active aging report", async () => {
     const purchase = await createPOAndReceive(context(), supplierA, productId, 1, 100);
     await backdate(purchase.id, 61);
-    await recordSupplierPayment(context(), supplierA, { amount: 100, cashBankAccountId, allocations: [{ purchaseOrderId: purchase.id, amount: 100 }], method: "CASH", reference: "", notes: "", idempotencyKey: randomUUID(), paymentDate: new Date() });
+    await recordSupplierPayment(context(), supplierA, { amount: 100, cashBankAccountId, allocations: [{ purchaseOrderId: purchase.id, amount: 100 }], method: "CASH", reference: "", notes: "", idempotencyKey: randomUUID(), paymentDate: asOfPlusDays(-1) });
     const report = await getPayablesAging(workspaceId, { asOf: AS_OF, timeZone: TZ });
     const supplier = report.suppliers.find((entry) => entry.supplierId === supplierA)!;
     expect(supplier.items.some((entry) => entry.purchaseId === purchase.id)).toBe(false);
@@ -120,7 +124,8 @@ describe("payable aging service", () => {
     const purchase = await createPOAndReceive(context(), supplierA, productId, 4, 25);
     await backdate(purchase.id, 20);
     const item = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: purchase.id } });
-    await createSupplierReturn(context(), { purchaseOrderId: purchase.id, items: [{ itemId: item.id, quantity: 1 }], reason: "Defective", notes: "", idempotencyKey: randomUUID() });
+    const supplierReturn = await createSupplierReturn(context(), { purchaseOrderId: purchase.id, items: [{ itemId: item.id, quantity: 1 }], reason: "Defective", notes: "", idempotencyKey: randomUUID() });
+    await db.supplierReturn.update({ where: { id: supplierReturn.id }, data: { date: asOfPlusDays(-1) } });
     const report = await getPayablesAging(workspaceId, { asOf: AS_OF, timeZone: TZ });
     const supplier = report.suppliers.find((entry) => entry.supplierId === supplierA)!;
     const entry = supplier.items.find((row) => row.purchaseId === purchase.id);
@@ -133,6 +138,7 @@ describe("payable aging service", () => {
     const purchase = await createPOAndReceive(context(), supplierB, productId, 2, 60);
     await backdate(purchase.id, 10);
     await cancelPurchase(context(), purchase.id, true);
+    await db.purchaseOrder.update({ where: { id: purchase.id }, data: { cancelledAt: asOfPlusDays(-1) } });
     const report = await getPayablesAging(workspaceId, { asOf: AS_OF, timeZone: TZ });
     for (const supplier of report.suppliers) {
       expect(supplier.items.some((entry) => entry.purchaseId === purchase.id)).toBe(false);
@@ -179,7 +185,7 @@ describe("payable aging service", () => {
     const item = report.suppliers.flatMap((supplier) => supplier.items).find((entry) => entry.purchaseId === order.id);
 
     expect(item).toBeDefined();
-    expect(item!.originalAmount).toBe(1000);
+    expect(item!.originalAmount).toBe(540);
     expect(item!.outstandingAmount).toBe(540);
   });
 });

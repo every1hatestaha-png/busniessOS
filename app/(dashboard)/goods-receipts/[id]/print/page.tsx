@@ -5,14 +5,15 @@ import { formatDate, formatPKR } from "@/lib/utils";
 
 export default async function GoodsReceiptPrintPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { workspaceId } = await requireWorkspace();
+  const { workspaceId, workspace } = await requireWorkspace();
   const grn = await getGoodsReceipt(workspaceId, id);
   if (!grn) notFound();
 
   return (
     <div className="mx-auto max-w-[800px] bg-white p-8 text-black print:p-0 print:shadow-none" id="print-area">
       <div className="mb-6 border-b-2 pb-4 text-center">
-        <h1 className="text-xl font-bold">{grn.supplier.name}</h1>
+        <h1 className="text-xl font-bold">{workspace.name}</h1>
+        <p className="text-sm">{[workspace.address, workspace.city, workspace.country].filter(Boolean).join(", ")}</p>
         <p className="mt-2 text-lg font-bold tracking-wide">GOODS RECEIVED NOTE</p>
       </div>
 
@@ -33,7 +34,7 @@ export default async function GoodsReceiptPrintPage({ params }: { params: Promis
           <tr className="border-y bg-neutral-100">
             <th className="border px-2 py-1 text-left">Product</th>
             <th className="border px-2 py-1 text-right">Ordered</th>
-            <th className="border px-2 py-1 text-right">Prev. Received</th>
+            <th className="border px-2 py-1 text-right">Prev. Accepted</th>
             <th className="border px-2 py-1 text-right">Received Now</th>
             <th className="border px-2 py-1 text-right">Accepted</th>
             <th className="border px-2 py-1 text-right">Remaining</th>

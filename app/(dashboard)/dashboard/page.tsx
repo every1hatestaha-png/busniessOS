@@ -21,6 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { requireWorkspace } from "@/lib/server/auth";
 import { getFinancialDashboard } from "@/lib/server/accounting";
 import { getDashboardActivity } from "@/lib/server/dashboard";
+import { canPerformAction } from "@/lib/server/authorization";
 import { formatDate, formatPKR, getStockStatus } from "@/lib/utils";
 
 function FinancialMetric({ href, label, value, detail, icon: Icon, featured = false }: { href: string; label: string; value: string; detail: string; icon: LucideIcon; featured?: boolean }) {
@@ -41,9 +42,10 @@ function FinancialMetric({ href, label, value, detail, icon: Icon, featured = fa
 }
 
 export default async function DashboardPage() {
-  const { user, workspace } = await requireWorkspace();
+  const { user, workspace, role } = await requireWorkspace();
+  const canViewFinancials = canPerformAction(role, "financial.manage");
   const [financials, activity] = await Promise.all([
-    getFinancialDashboard(workspace.id),
+    canViewFinancials ? getFinancialDashboard(workspace.id) : Promise.resolve(null),
     getDashboardActivity(workspace.id),
   ]);
   const currentDate = new Intl.DateTimeFormat("en-PK", { timeZone: "Asia/Karachi", weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date());
@@ -63,7 +65,7 @@ export default async function DashboardPage() {
         </div>
       </section>
 
-      <section className="grid gap-3 xl:grid-cols-[1.2fr_2fr]">
+      {financials && <section className="grid gap-3 xl:grid-cols-[1.2fr_2fr]">
         <FinancialMetric href="/reports/profit-loss" label="Net Operating Position" value={formatPKR(financials.netOperatingPosition)} detail="Cash + receivables + stock - payables" icon={ChartNoAxesCombined} featured />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <FinancialMetric href="/receivables" label="Receivables" value={formatPKR(financials.receivables)} detail="Outstanding invoices" icon={HandCoins} />
@@ -71,16 +73,16 @@ export default async function DashboardPage() {
           <FinancialMetric href="/reports/current-stock" label="Inventory" value={formatPKR(financials.inventoryValue)} detail="Current stock at cost" icon={Boxes} />
           <FinancialMetric href="/accounting/cash-bank" label="Cash & Bank" value={formatPKR(financials.cashBank)} detail="Available account balances" icon={Landmark} />
         </div>
-      </section>
+      </section>}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+      {financials && <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <FinancialMetric href="/sales" label="Sales This Month" value={formatPKR(financials.salesThisMonth)} detail="Non-cancelled orders" icon={ShoppingBag} />
         <FinancialMetric href="/purchases" label="Goods Received This Month" value={formatPKR(financials.purchasesThisMonth)} detail="Accepted GRN value" icon={PackageCheck} />
         <FinancialMetric href="/reports/profit-loss" label="Expenses" value={formatPKR(financials.expensesThisMonth)} detail="This month" icon={ReceiptText} />
         <FinancialMetric href="/reports/profit-loss" label="Gross Profit" value={formatPKR(financials.grossProfit)} detail="This month" icon={TrendingUp} />
         <FinancialMetric href="/reports/profit-loss" label="Net Profit" value={formatPKR(financials.netProfit)} detail="After operating expenses" icon={CircleDollarSign} />
         <FinancialMetric href="/reports/current-stock?lowStock=true" label="Low Stock" value={String(financials.lowStockCount)} detail="Products at reorder level" icon={AlertTriangle} />
-      </section>
+      </section>}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,0.7fr)]">
         <Card className="shadow-none">

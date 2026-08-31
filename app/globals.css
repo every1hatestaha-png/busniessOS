@@ -160,4 +160,10 @@
   img {
     break-inside: avoid;
   }
+
+  table {
+    min-width: 0 !important;
+    width: 100% !important;
+    font-size: 9pt;
+  }
 }

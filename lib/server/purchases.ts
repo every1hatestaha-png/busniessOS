@@ -60,8 +60,11 @@ export async function createPurchase(context: ServiceContext, input: PurchaseInp
 
     const lines = data.items.map((item) => {
       const product = products.find((p) => p.id === item.productId)!;
-      const totalCost = new Prisma.Decimal(item.unitCost).mul(item.quantity);
-      return { ...item, totalCost, product };
+      const unitCost = data.pricingMode === "WEIGHT"
+        ? new Prisma.Decimal(item.unitWeight!).mul(item.perKgRate!)
+        : new Prisma.Decimal(item.unitCost);
+      const totalCost = unitCost.mul(item.quantity);
+      return { ...item, unitCost, totalCost, product };
     });
 
     const total = lines.reduce((sum, line) => sum.plus(line.totalCost), new Prisma.Decimal(0));
@@ -223,15 +226,21 @@ export async function createGoodsReceipt(context: ServiceContext, input: GoodsRe
 
       await tx.purchaseOrderItem.update({
         where: { id: item.purchaseOrderItem.id },
-        data: { receivedQuantity: { increment: item.receivedQuantity } },
+        // Rejected units remain open on the PO so replacements can be received.
+        data: { receivedQuantity: { increment: item.acceptedQuantity } },
       });
 
+      const product = await tx.product.findFirstOrThrow({
+        where: { id: item.purchaseOrderItem.productId, workspaceId: context.workspaceId },
+        select: { stockQuantity: true, costPrice: true },
+      });
+      const resultingQuantity = product.stockQuantity + item.acceptedQuantity;
+      const weightedCost = resultingQuantity > 0
+        ? product.costPrice.mul(product.stockQuantity).plus(item.unitCost.mul(item.acceptedQuantity)).div(resultingQuantity)
+        : item.unitCost;
       await tx.product.update({
         where: { id: item.purchaseOrderItem.productId },
-        data: {
-          stockQuantity: { increment: item.acceptedQuantity },
-          costPrice: item.unitCost,
-        },
+        data: { stockQuantity: { increment: item.acceptedQuantity }, costPrice: weightedCost },
       });
 
       await tx.inventoryTransaction.create({
@@ -271,9 +280,9 @@ export async function createGoodsReceipt(context: ServiceContext, input: GoodsRe
     });
 
     const allFullyReceived = grnItems.every(
-      (item) => item.purchaseOrderItem.receivedQuantity + item.receivedQuantity >= item.purchaseOrderItem.quantity,
+      (item) => item.purchaseOrderItem.receivedQuantity + item.acceptedQuantity >= item.purchaseOrderItem.quantity,
     );
-    const anyReceived = grnItems.some((item) => item.receivedQuantity > 0);
+    const anyReceived = grnItems.some((item) => item.acceptedQuantity > 0);
     const totalReceivedAllItems = await tx.purchaseOrderItem.aggregate({
       where: { purchaseOrderId: order.id },
       _sum: { receivedQuantity: true },
@@ -360,9 +369,16 @@ export async function cancelPurchase(context: ServiceContext, id: string, revers
         for (const item of order.items) {
           const acceptedQuantity = receiptByItem.get(item.id)?._sum.acceptedQuantity ?? 0;
           if (acceptedQuantity > 0) {
+            const cancelledValue = receiptByItem.get(item.id)?._sum.totalCost ?? new Prisma.Decimal(0);
+            const cancelledUnitCost = new Prisma.Decimal(cancelledValue).div(acceptedQuantity);
+            const product = await tx.product.findFirst({ where: { id: item.productId, workspaceId: context.workspaceId, stockQuantity: { gte: acceptedQuantity } }, select: { stockQuantity: true, costPrice: true } });
+            if (!product) throw new PurchaseDomainError("INSUFFICIENT_STOCK", `${item.productName ?? "Product"} has insufficient stock to cancel this purchase.`);
+            const remainingQuantity = product.stockQuantity - acceptedQuantity;
+            const remainingValue = product.costPrice.mul(product.stockQuantity).minus(cancelledValue);
+            if (remainingValue.isNegative()) throw new PurchaseDomainError("INSUFFICIENT_STOCK", `${item.productName ?? "Product"} carrying value is insufficient to cancel this purchase.`);
             const changed = await tx.product.updateMany({
-              where: { id: item.productId, workspaceId: context.workspaceId, stockQuantity: { gte: acceptedQuantity } },
-              data: { stockQuantity: { decrement: acceptedQuantity } },
+              where: { id: item.productId, workspaceId: context.workspaceId, stockQuantity: product.stockQuantity },
+              data: { stockQuantity: { decrement: acceptedQuantity }, ...(remainingQuantity > 0 ? { costPrice: remainingValue.div(remainingQuantity) } : {}) },
             });
             if (changed.count !== 1) {
               throw new PurchaseDomainError("INSUFFICIENT_STOCK", `${item.productName ?? "Product"} has insufficient stock to cancel this purchase.`);
@@ -373,7 +389,7 @@ export async function cancelPurchase(context: ServiceContext, id: string, revers
                 productId: item.productId,
                 type: "PURCHASE_CANCELLATION",
                 quantityChanged: -acceptedQuantity,
-                unitCost: item.unitCost,
+                unitCost: cancelledUnitCost,
                 reference: order.orderNumber,
               },
             });
@@ -471,11 +487,17 @@ export async function createSupplierReturn(context: ServiceContext, input: Suppl
       return { source, quantity: item.quantity, unitCost, total };
     });
     const total = lines.reduce((sum, line) => sum.plus(line.total), new Prisma.Decimal(0));
+    if (total.greaterThan(order.balanceAmount)) throw new PurchaseDomainError("INVALID_RETURN", "Supplier return exceeds the unpaid purchase balance. Returns requiring a supplier refund are not supported in V1.");
     const number = await nextDocumentNumber(tx, context.workspaceId, "SUPPLIER_RETURN");
     const noteNumber = await nextDocumentNumber(tx, context.workspaceId, "DEBIT_NOTE");
     const supplierReturn = await tx.supplierReturn.create({ data: { workspaceId: context.workspaceId, supplierId: order.supplierId, purchaseOrderId: order.id, idempotencyKey: data.idempotencyKey, number, reason: data.reason || null, totalAmount: total, notes: data.notes || null }, select: { id: true, date: true } });
     for (const line of lines) {
-      const changed = await tx.product.updateMany({ where: { id: line.source.productId, workspaceId: context.workspaceId, stockQuantity: { gte: line.quantity } }, data: { stockQuantity: { decrement: line.quantity } } });
+      const product = await tx.product.findFirst({ where: { id: line.source.productId, workspaceId: context.workspaceId, stockQuantity: { gte: line.quantity } }, select: { stockQuantity: true, costPrice: true } });
+      if (!product) throw new PurchaseDomainError("INSUFFICIENT_STOCK", `${line.source.productName ?? "Product"} has insufficient stock to return.`);
+      const remainingQuantity = product.stockQuantity - line.quantity;
+      const remainingValue = product.costPrice.mul(product.stockQuantity).minus(line.total);
+      if (remainingValue.isNegative()) throw new PurchaseDomainError("INVALID_RETURN", "Return value exceeds the current inventory carrying value.");
+      const changed = await tx.product.updateMany({ where: { id: line.source.productId, workspaceId: context.workspaceId, stockQuantity: product.stockQuantity }, data: { stockQuantity: { decrement: line.quantity }, ...(remainingQuantity > 0 ? { costPrice: remainingValue.div(remainingQuantity) } : {}) } });
       if (changed.count !== 1) throw new PurchaseDomainError("INSUFFICIENT_STOCK", `${line.source.productName ?? "Product"} has insufficient stock to return.`);
       await tx.supplierReturnItem.create({ data: { supplierReturnId: supplierReturn.id, purchaseOrderItemId: line.source.id, productId: line.source.productId, quantity: line.quantity, unitCost: line.unitCost, totalCost: line.total } });
       await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: line.source.productId, type: "RETURN_OUT", quantityChanged: -line.quantity, unitCost: line.unitCost, reference: number } });
@@ -641,6 +663,11 @@ export async function listGoodsReceipts(workspaceId: string, purchaseOrderId: st
   }));
 }
 
+export async function listAllGoodsReceipts(workspaceId: string) {
+  const rows = await db.goodReceivedNote.findMany({ where: { workspaceId }, orderBy: [{ receiptDate: "desc" }, { createdAt: "desc" }], take: 500, include: { supplier: { select: { name: true, companyName: true } }, purchaseOrder: { select: { orderNumber: true } }, items: { select: { acceptedQuantity: true } } } });
+  return rows.map((row) => ({ id: row.id, grnNumber: row.grnNumber, receiptDate: row.receiptDate.toISOString(), supplierName: row.supplier.companyName ?? row.supplier.name, orderNumber: row.purchaseOrder.orderNumber, totalAmount: Number(row.totalAmount), totalAccepted: row.items.reduce((sum, item) => sum + item.acceptedQuantity, 0) }));
+}
+
 export async function getGoodsReceipt(workspaceId: string, id: string) {
   const grn = await db.goodReceivedNote.findFirst({
     where: { id, workspaceId },
@@ -680,7 +707,7 @@ export async function getGoodsReceipt(workspaceId: string, id: string) {
       productName: item.product.name,
       sku: item.product.sku ?? "",
       orderedQuantity: item.purchaseOrderItem.quantity,
-      previouslyReceived: item.purchaseOrderItem.receivedQuantity - item.receivedQuantity,
+      previouslyReceived: item.purchaseOrderItem.receivedQuantity - item.acceptedQuantity,
       receivedNow: item.receivedQuantity,
       acceptedQuantity: item.acceptedQuantity,
       remainingQuantity: item.purchaseOrderItem.quantity - item.purchaseOrderItem.receivedQuantity,

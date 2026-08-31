@@ -26,6 +26,7 @@ export async function recordPaymentAction(
     method: formData.get("method"),
     reference: formData.get("reference") ?? "",
     notes: formData.get("notes") ?? "",
+    idempotencyKey: formData.get("idempotencyKey"),
   });
 
   if (!parsed.success) return { error: "Check the payment details and try again." };

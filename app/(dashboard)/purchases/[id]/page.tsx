@@ -7,14 +7,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { requireWorkspace } from "@/lib/server/auth";
 import { getPurchase } from "@/lib/server/purchases";
 import { formatDate, formatPKR } from "@/lib/utils";
+import { canPerformAction } from "@/lib/server/authorization";
+import { SupplierReturnForm } from "@/components/purchases/supplier-return-form";
+import { CancelPurchaseButton } from "@/components/purchases/cancel-purchase-button";
 
 export default async function PurchaseDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { workspaceId } = await requireWorkspace();
+  const { workspaceId, role } = await requireWorkspace();
   const purchase = await getPurchase(workspaceId, id);
   if (!purchase) notFound();
 
-  const canReceive = purchase.status !== "CANCELLED" && purchase.status !== "RECEIVED";
+  const canManageFinancials = canPerformAction(role, "financial.manage");
+  const canReceive = canManageFinancials && purchase.status !== "CANCELLED" && purchase.status !== "RECEIVED";
   const totalReceived = purchase.items.reduce((sum, item) => sum + item.receivedQuantity, 0);
   const totalOrdered = purchase.items.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -34,6 +38,7 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
           </p>
         </div>
         <div className="flex gap-2">
+          {canManageFinancials && purchase.status !== "CANCELLED" && <CancelPurchaseButton purchaseId={purchase.id} received={purchase.status === "RECEIVED" || purchase.status === "PARTIALLY_RECEIVED"} />}
           {canReceive && (
             <Link href={`/purchases/${id}/receive`} className="inline-flex h-9 items-center justify-center bg-neutral-950 px-4 text-sm font-semibold text-white hover:bg-neutral-800">
               <Truck className="mr-2 h-4 w-4" /> Receive Goods
@@ -61,6 +66,7 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
           </CardContent>
         </Card>
       )}
+      {canManageFinancials && purchase.status !== "CANCELLED" && totalReceived > 0 && <Card className="shadow-none"><CardContent className="pt-5"><SupplierReturnForm purchaseOrderId={purchase.id} items={purchase.items.map((item) => ({ id: item.id, productName: item.productName, receivedQuantity: item.receivedQuantity }))} /></CardContent></Card>}
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-6">

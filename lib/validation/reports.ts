@@ -6,7 +6,7 @@ export const periodQuerySchema = z.object({
   from: optionalDate,
   to: optionalDate,
   search: z.string().trim().max(120).optional(),
-});
+}).refine((period) => !period.from || !period.to || period.from <= period.to, { path: ["to"], message: "End date must be on or after start date." });
 
 export const agingQuerySchema = z.object({
   asOf: optionalDate,
@@ -31,5 +31,5 @@ export function parseDate(value: string | undefined, fallback: Date, endOfDay = 
 }
 
 export function dateInputValue(date: Date | string) {
-  return new Date(date).toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(date));
 }

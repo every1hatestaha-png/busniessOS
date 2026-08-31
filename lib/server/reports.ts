@@ -1,8 +1,7 @@
 import "server-only";
 
-import { endOfDay, startOfMonth } from "date-fns";
-
 import { db } from "@/lib/server/db";
+import { businessDayEnd, businessDayStart, businessMonthStart } from "@/lib/server/business-time";
 
 export type StatementFilters = { from?: Date; to?: Date; search?: string };
 
@@ -18,7 +17,8 @@ type StatementEntry = {
 };
 
 function statementRange(filters: StatementFilters) {
-  return { from: filters.from ?? startOfMonth(new Date()), to: endOfDay(filters.to ?? new Date()) };
+  const now = new Date();
+  return { from: filters.from ? businessDayStart(filters.from) : businessMonthStart(now), to: businessDayEnd(filters.to ?? now) };
 }
 
 function statementHref(type: string, referenceId: string | null) {
@@ -37,18 +37,20 @@ export async function getCustomerStatement(workspaceId: string, customerId: stri
   const [opening, rows] = await Promise.all([
     db.ledgerEntry.aggregate({ where: { workspaceId, customerId, date: { lt: from } }, _sum: { debit: true, credit: true } }),
     db.ledgerEntry.findMany({
-      where: { workspaceId, customerId, date: { gte: from, lte: to }, ...(filters.search ? { OR: [{ description: { contains: filters.search, mode: "insensitive" } }, { referenceId: { contains: filters.search, mode: "insensitive" } }] } : {}) },
+      where: { workspaceId, customerId, date: { gte: from, lte: to } },
       orderBy: [{ date: "asc" }, { createdAt: "asc" }, { id: "asc" }],
       select: { id: true, date: true, type: true, referenceId: true, description: true, debit: true, credit: true },
     }),
   ]);
   let runningBalance = Number(opening._sum.debit ?? 0) - Number(opening._sum.credit ?? 0);
-  const entries: StatementEntry[] = rows.map((row) => {
+  const allEntries: StatementEntry[] = rows.map((row) => {
     const debit = Number(row.debit);
     const credit = Number(row.credit);
     runningBalance += debit - credit;
     return { id: row.id, date: row.date.toISOString(), documentNo: row.referenceId ?? "-", description: row.description ?? row.type.replaceAll("_", " "), debit, credit, runningBalance, href: statementHref(row.type, row.referenceId) };
   });
+  const search = filters.search?.trim().toLowerCase();
+  const entries = search ? allEntries.filter((entry) => entry.documentNo.toLowerCase().includes(search) || entry.description.toLowerCase().includes(search)) : allEntries;
   return { party: { ...customer, displayName: customer.companyName ?? customer.name }, from: from.toISOString(), to: to.toISOString(), openingBalance: Number(opening._sum.debit ?? 0) - Number(opening._sum.credit ?? 0), closingBalance: runningBalance, entries };
 }
 
@@ -59,18 +61,20 @@ export async function getSupplierStatement(workspaceId: string, supplierId: stri
   const [opening, rows] = await Promise.all([
     db.ledgerEntry.aggregate({ where: { workspaceId, supplierId, date: { lt: from } }, _sum: { debit: true, credit: true } }),
     db.ledgerEntry.findMany({
-      where: { workspaceId, supplierId, date: { gte: from, lte: to }, ...(filters.search ? { OR: [{ description: { contains: filters.search, mode: "insensitive" } }, { referenceId: { contains: filters.search, mode: "insensitive" } }] } : {}) },
+      where: { workspaceId, supplierId, date: { gte: from, lte: to } },
       orderBy: [{ date: "asc" }, { createdAt: "asc" }, { id: "asc" }],
       select: { id: true, date: true, type: true, referenceId: true, description: true, debit: true, credit: true },
     }),
   ]);
   let runningBalance = Number(opening._sum.credit ?? 0) - Number(opening._sum.debit ?? 0);
-  const entries: StatementEntry[] = rows.map((row) => {
+  const allEntries: StatementEntry[] = rows.map((row) => {
     const debit = Number(row.debit);
     const credit = Number(row.credit);
     runningBalance += credit - debit;
     return { id: row.id, date: row.date.toISOString(), documentNo: row.referenceId ?? "-", description: row.description ?? row.type.replaceAll("_", " "), debit, credit, runningBalance, href: statementHref(row.type, row.referenceId) };
   });
+  const search = filters.search?.trim().toLowerCase();
+  const entries = search ? allEntries.filter((entry) => entry.documentNo.toLowerCase().includes(search) || entry.description.toLowerCase().includes(search)) : allEntries;
   return { party: { ...supplier, displayName: supplier.companyName ?? supplier.name }, from: from.toISOString(), to: to.toISOString(), openingBalance: Number(opening._sum.credit ?? 0) - Number(opening._sum.debit ?? 0), closingBalance: runningBalance, entries };
 }
 
@@ -97,13 +101,15 @@ export async function getStockMovementReport(workspaceId: string, filters: { fro
   const where = { workspaceId, ...(filters.productId ? { productId: filters.productId } : {}), ...(filters.type ? { type: filters.type as never } : {}), ...(productWhere ? { product: productWhere } : {}) };
   const [openingRows, movements] = await Promise.all([
     db.inventoryTransaction.groupBy({ by: ["productId"], where: { ...where, createdAt: { lt: from } }, _sum: { quantityChanged: true } }),
-    db.inventoryTransaction.findMany({ where: { ...where, createdAt: { gte: from, lte: to } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 2000, select: { id: true, productId: true, type: true, quantityChanged: true, unitCost: true, reference: true, createdAt: true, product: { select: { name: true, sku: true } } } }),
+    db.inventoryTransaction.findMany({ where: { ...where, createdAt: { gte: from, lte: to } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 2001, select: { id: true, productId: true, type: true, quantityChanged: true, unitCost: true, reference: true, createdAt: true, product: { select: { name: true, sku: true } } } }),
   ]);
+  const truncated = movements.length > 2000;
+  const visibleMovements = movements.slice(0, 2000);
   const balances = new Map(openingRows.map((row) => [row.productId, row._sum.quantityChanged ?? 0]));
-  const rows = movements.map((movement) => {
+  const rows = visibleMovements.map((movement) => {
     const runningQuantity = (balances.get(movement.productId) ?? 0) + movement.quantityChanged;
     balances.set(movement.productId, runningQuantity);
     return { id: movement.id, productId: movement.productId, productName: movement.product.name, sku: movement.product.sku ?? "", date: movement.createdAt.toISOString(), type: movement.type, document: movement.reference ?? "-", quantityIn: Math.max(0, movement.quantityChanged), quantityOut: Math.max(0, -movement.quantityChanged), runningQuantity, unitCost: movement.unitCost ? Number(movement.unitCost) : null };
   });
-  return { from: from.toISOString(), to: to.toISOString(), rows, truncated: movements.length === 2000 };
+  return { from: from.toISOString(), to: to.toISOString(), rows, truncated };
 }

@@ -26,12 +26,12 @@ export const ledgerReportSchema = z.object({
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
   search: z.string().trim().max(120).optional(),
-});
+}).refine((period) => !period.from || !period.to || period.from <= period.to, { path: ["to"], message: "End date must be on or after start date." });
 
 export const profitLossSchema = z.object({
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
-});
+}).refine((period) => !period.from || !period.to || period.from <= period.to, { path: ["to"], message: "End date must be on or after start date." });
 
 export type CashBankAccountInput = z.infer<typeof cashBankAccountSchema>;
 export type ExpenseInput = z.infer<typeof expenseSchema>;

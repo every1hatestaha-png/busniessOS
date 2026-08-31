@@ -19,6 +19,9 @@ export function SupplierPaymentForm({ supplierId, cashBankAccounts = [] }: { sup
   const [allocations, setAllocations] = useState<Record<string, number>>({});
   const [purchases, setPurchases] = useState<PurchaseOption[]>([]);
   const [loadingPurchases, setLoadingPurchases] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
   useEffect(() => {
     fetch(`/api/v1/suppliers/${supplierId}/purchases`)
@@ -45,32 +48,39 @@ export function SupplierPaymentForm({ supplierId, cashBankAccounts = [] }: { sup
       className="rounded-xl border border-neutral-200 bg-white p-4"
       onSubmit={async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
+        if (busy) return;
+        setBusy(true);
+        setMessage("");
         const form = new FormData(event.currentTarget);
         const allocEntries = Object.entries(allocations)
           .filter(([, v]) => v > 0)
           .map(([purchaseOrderId, amount]) => ({ purchaseOrderId, amount }));
-        const response = await fetch(`/api/v1/suppliers/${supplierId}/payments`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            amount: gross,
-            withholdingTaxAmount: form.get("withholdingTaxAmount"),
-            cashBankAccountId: form.get("cashBankAccountId"),
-            allocations: allocEntries,
-            method: form.get("method"),
-            reference: form.get("reference"),
-            notes: form.get("notes"),
-          }),
-        });
-        const body = await response.json();
-        setMessage(response.ok ? "Voucher recorded." : body.error?.message ?? "Payment could not be recorded.");
-        if (response.ok) {
-          event.currentTarget.reset();
-          setWht("0");
-          setAllocations({});
-          if (body.data?.id) router.push(`/accounting/payment-vouchers/${body.data.id}`);
-          else router.refresh();
+        try {
+          const response = await fetch(`/api/v1/suppliers/${supplierId}/payments`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+            body: JSON.stringify({
+              amount: gross,
+              withholdingTaxAmount: form.get("withholdingTaxAmount"),
+              cashBankAccountId: form.get("cashBankAccountId"),
+              allocations: allocEntries,
+              method: form.get("method"),
+              paymentDate: form.get("paymentDate"),
+              reference: form.get("reference"),
+              notes: form.get("notes"),
+            }),
+          });
+          const body = await response.json();
+          setMessage(response.ok ? "Voucher recorded." : body.error?.message ?? "Payment could not be recorded.");
+          if (response.ok) {
+            if (body.data?.id) router.push(`/accounting/payment-vouchers/${body.data.id}`);
+            else router.refresh();
+            return;
+          }
+        } catch {
+          setMessage("The result is unknown because the network request failed. Retry to safely reuse the same voucher key.");
         }
+        setBusy(false);
       }}
     >
       <div className="mb-4 flex items-start justify-between gap-4">
@@ -83,6 +93,7 @@ export function SupplierPaymentForm({ supplierId, cashBankAccounts = [] }: { sup
         <select name="cashBankAccountId" required className={`${fieldClass} lg:col-span-2`}><option value="">Pay from cash/bank</option>{cashBankAccounts.map((account) => <option key={account.cashBankAccountId} value={account.cashBankAccountId}>{account.name}{account.isBank && account.bankName ? ` · ${account.bankName}` : ""} · {formatPKR(account.currentBalance)}</option>)}</select>
         <select name="method" className={fieldClass}><option value="CASH">Cash</option><option value="BANK_TRANSFER">Bank transfer</option><option value="CHEQUE">Cheque</option><option value="JAZZCASH">JazzCash</option><option value="EASYPAISA">Easypaisa</option><option value="OTHER">Other</option></select>
         <Input name="reference" placeholder="Reference" />
+        <Input name="paymentDate" type="date" defaultValue={today} required />
       </div>
 
       <div className="mt-4">
@@ -136,7 +147,7 @@ export function SupplierPaymentForm({ supplierId, cashBankAccounts = [] }: { sup
       {cashBankAccounts.length === 0 && <p className="mt-3 text-sm text-red-600">Create a cash/bank account before recording supplier vouchers.</p>}
       {gross === 0 && purchases.length > 0 && <p className="mt-3 text-sm text-amber-600">Allocate at least one purchase bill before recording.</p>}
       {message && <p className="mt-3 text-sm text-neutral-700">{message}</p>}
-      <Button type="submit" disabled={cashBankAccounts.length === 0 || gross === 0} className="mt-3">Record voucher</Button>
+      <Button type="submit" disabled={busy || cashBankAccounts.length === 0 || gross === 0} className="mt-3">{busy ? "Recording..." : "Record voucher"}</Button>
     </form>
   );
 }

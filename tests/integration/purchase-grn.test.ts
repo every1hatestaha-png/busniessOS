@@ -393,7 +393,51 @@ describe("PO → GRN separation integration", () => {
     ).rejects.toThrow();
   });
 
-  it("11. historical RECEIVED purchase remains valid", async () => {
+  it("11. derives weight-priced PO and GRN values without multiplying quantity twice", async () => {
+    const supplierBefore = await db.supplier.findUniqueOrThrow({ where: { id: supplierId }, select: { currentBalance: true } });
+    const order = await createPurchase(context(), {
+      supplierId,
+      items: [{ productId: productIdA, quantity: 2, unitCost: 999999, unitWeight: 10, perKgRate: 100 }],
+      pricingMode: "WEIGHT",
+      idempotencyKey: `po-weight-${runId}`,
+    });
+    const purchase = await db.purchaseOrder.findUniqueOrThrow({ where: { id: order.id }, include: { items: true } });
+    expect(Number(purchase.totalAmount)).toBe(2000);
+    expect(purchase.items[0]).toMatchObject({ quantity: 2 });
+    expect(Number(purchase.items[0].unitCost)).toBe(1000);
+    expect(Number(purchase.items[0].totalWeight)).toBe(20);
+
+    const grn = await createGoodsReceipt(context(), {
+      purchaseOrderId: order.id,
+      items: [{ purchaseOrderItemId: purchase.items[0].id, receivedQuantity: 2, acceptedQuantity: 2, actualUnitCost: Number(purchase.items[0].unitCost) }],
+      idempotencyKey: `grn-weight-${runId}`,
+    });
+    expect(Number((await db.goodReceivedNote.findUniqueOrThrow({ where: { id: grn.id } })).totalAmount)).toBe(2000);
+    expect(Number((await db.supplier.findUniqueOrThrow({ where: { id: supplierId } })).currentBalance) - Number(supplierBefore.currentBalance)).toBe(2000);
+    expect(sum(await glLines(grn.id), "INVENTORY", "debit")).toBe(2000);
+  });
+
+  it("12. keeps rejected GRN quantities open for replacement receipt", async () => {
+    const order = await createPurchase(context(), { supplierId, items: [{ productId: productIdB, quantity: 10, unitCost: 50 }], idempotencyKey: `po-rejected-${runId}` });
+    const item = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: order.id } });
+    const first = await createGoodsReceipt(context(), {
+      purchaseOrderId: order.id,
+      items: [{ purchaseOrderItemId: item.id, receivedQuantity: 10, acceptedQuantity: 6, actualUnitCost: 50 }],
+      idempotencyKey: `grn-rejected-1-${runId}`,
+    });
+    expect(first.status).toBe("PARTIALLY_RECEIVED");
+    expect((await db.purchaseOrderItem.findUniqueOrThrow({ where: { id: item.id } })).receivedQuantity).toBe(6);
+
+    const second = await createGoodsReceipt(context(), {
+      purchaseOrderId: order.id,
+      items: [{ purchaseOrderItemId: item.id, receivedQuantity: 4, acceptedQuantity: 4, actualUnitCost: 50 }],
+      idempotencyKey: `grn-rejected-2-${runId}`,
+    });
+    expect(second.status).toBe("RECEIVED");
+    expect((await db.purchaseOrderItem.findUniqueOrThrow({ where: { id: item.id } })).receivedQuantity).toBe(10);
+  });
+
+  it("13. historical RECEIVED purchase remains valid", async () => {
     const historicalOrder = await db.purchaseOrder.create({
       data: {
         workspaceId,

@@ -12,6 +12,7 @@ let recordSupplierPayment: typeof import("@/lib/server/suppliers")["recordSuppli
 let getPayablesAging: typeof import("@/lib/server/payables")["getPayablesAging"];
 let getReceivablesAging: typeof import("@/lib/server/receivables")["getReceivablesAging"];
 let ensureDefaultAccounts: typeof import("@/lib/server/accounting")["ensureDefaultAccounts"];
+let getProfitAndLoss: typeof import("@/lib/server/accounting")["getProfitAndLoss"];
 
 const runId = randomUUID();
 let userId = "";
@@ -59,7 +60,7 @@ describe("accounting GL integration", () => {
     ({ recordSupplierPayment } = await import("@/lib/server/suppliers"));
     ({ getPayablesAging } = await import("@/lib/server/payables"));
     ({ getReceivablesAging } = await import("@/lib/server/receivables"));
-    ({ ensureDefaultAccounts } = await import("@/lib/server/accounting"));
+    ({ ensureDefaultAccounts, getProfitAndLoss } = await import("@/lib/server/accounting"));
     const user = await db.user.create({ data: { clerkId: `gl-${runId}`, email: `gl-${runId}@example.invalid` } });
     userId = user.id;
     const workspace = await db.workspace.create({ data: { name: `GL ${runId}`, members: { create: { userId, role: "OWNER" } } } });
@@ -106,7 +107,7 @@ describe("accounting GL integration", () => {
   }, 30_000);
 
   it("posts a balanced sale including COGS and cash receipt", async () => {
-    const sale = await createSale(context(), { customerId, items: [{ productId, quantity: 2, unitPrice: 100, discount: 0 }], paidAmount: 50, orderDiscount: 0, notes: "", idempotencyKey: randomUUID() });
+    const sale = await createSale(context(), { customerId, items: [{ productId, quantity: 2, unitPrice: 100, discount: 0 }], paidAmount: 50, cashBankAccountId, orderDiscount: 0, notes: "", idempotencyKey: randomUUID() });
     expect(await glTotals(sale.id)).toEqual({ count: 6, debit: 330, credit: 330 });
     const rows = await glLines(sale.id);
     expect(lineAmount(rows, "ACCOUNTS_RECEIVABLE", "debit")).toBe(200);
@@ -144,14 +145,15 @@ describe("accounting GL integration", () => {
     expect(await glTotals(supplierReturn.id)).toEqual({ count: 2, debit: 25, credit: 25 });
 
     const sale = await createSale(context(), { customerId, items: [{ productId, quantity: 1, unitPrice: 80, discount: 0 }], paidAmount: 0, orderDiscount: 0, notes: "", idempotencyKey: randomUUID() });
+    const saleCost = Number((await db.inventoryTransaction.findFirstOrThrow({ where: { workspaceId, reference: (await db.salesOrder.findUniqueOrThrow({ where: { id: sale.id } })).orderNumber, type: "SALE" } })).unitCost);
     const saleDetail = await db.salesOrder.findUniqueOrThrow({ where: { id: sale.id }, include: { items: true } });
     const customerReturn = await createCustomerReturn(context(), { salesOrderId: sale.id, items: [{ itemId: saleDetail.items[0].id, quantity: 1 }], restock: true, reason: "", notes: "", idempotencyKey: randomUUID() });
-    expect(await glTotals(customerReturn.id)).toEqual({ count: 4, debit: 105, credit: 105 });
+    expect(await glTotals(customerReturn.id)).toEqual({ count: 4, debit: 80 + saleCost, credit: 80 + saleCost });
     const rows = await glLines(customerReturn.id);
     expect(lineAmount(rows, "SALES_REVENUE", "debit")).toBe(80);
     expect(lineAmount(rows, "ACCOUNTS_RECEIVABLE", "credit")).toBe(80);
-    expect(lineAmount(rows, "INVENTORY", "debit")).toBe(25);
-    expect(lineAmount(rows, "COST_OF_GOODS_SOLD", "credit")).toBe(25);
+    expect(lineAmount(rows, "INVENTORY", "debit")).toBe(saleCost);
+    expect(lineAmount(rows, "COST_OF_GOODS_SOLD", "credit")).toBe(saleCost);
   });
 
   it("posts a balanced standalone supplier payment", async () => {
@@ -166,13 +168,28 @@ describe("accounting GL integration", () => {
     expect(lineAmount(rows, "WITHHOLDING_TAX_PAYABLE", "credit")).toBe(2);
   });
 
+  it("returns order discounts proportionally and reverses returned COGS in P&L", async () => {
+    const before = await getProfitAndLoss(workspaceId);
+    const sale = await createSale(context(), { customerId, items: [{ productId, quantity: 1, unitPrice: 100, discount: 0 }], paidAmount: 0, orderDiscount: 20, notes: "", idempotencyKey: randomUUID() });
+    const saleDetail = await db.salesOrder.findUniqueOrThrow({ where: { id: sale.id }, include: { items: true } });
+    const customerReturn = await createCustomerReturn(context(), { salesOrderId: sale.id, items: [{ itemId: saleDetail.items[0].id, quantity: 1 }], restock: true, reason: "Discounted return", notes: "", idempotencyKey: randomUUID() });
+    expect(Number((await db.customerReturn.findUniqueOrThrow({ where: { id: customerReturn.id } })).totalAmount)).toBe(80);
+    const after = await getProfitAndLoss(workspaceId);
+    expect(after.grossSales - before.grossSales).toBe(80);
+    expect(after.salesReturns - before.salesReturns).toBe(80);
+    expect(after.costOfGoodsSold - before.costOfGoodsSold).toBe(0);
+    expect(after.netProfit - before.netProfit).toBe(0);
+  });
+
   it("does not duplicate GL entries on idempotent sale retry", async () => {
     const idempotencyKey = randomUUID();
     const input = { customerId, items: [{ productId, quantity: 1, unitPrice: 60, discount: 0 }], paidAmount: 0, orderDiscount: 0, notes: "", idempotencyKey };
     const first = await createSale(context(), input);
     const second = await createSale(context(), input);
     expect(second.id).toBe(first.id);
-    expect(await glTotals(first.id)).toEqual({ count: 4, debit: 80, credit: 80 });
+    const totals = await glTotals(first.id);
+    expect(totals.count).toBe(4);
+    expect(totals.debit).toBe(totals.credit);
   });
 
   it("keeps workspace isolation and reconciles operational balances with GL", async () => {

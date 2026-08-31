@@ -128,7 +128,12 @@ describe("reports center integration", () => {
     ] });
     const expenseAccount = await db.account.findUniqueOrThrow({ where: { workspaceId_systemCode: { workspaceId, systemCode: "OFFICE_EXPENSE" } } });
     const cashAccount = await db.account.findUniqueOrThrow({ where: { workspaceId_systemCode: { workspaceId, systemCode: "CASH_IN_HAND" } } });
+    const cogsAccount = await db.account.findUniqueOrThrow({ where: { workspaceId_systemCode: { workspaceId, systemCode: "COST_OF_GOODS_SOLD" } } });
     await db.expense.create({ data: { workspaceId, expenseAccountId: expenseAccount.id, paymentAccountId: cashAccount.id, voucherNumber: `EXP-PNL-${runId}`, expenseDate: date("2026-08-07"), amount: 25 } });
+    await db.generalLedgerEntry.createMany({ data: [
+      { workspaceId, accountId: cogsAccount.id, sourceType: "SALE", sourceId: randomUUID(), documentNo: `SO-PNL-${runId}`, date: date("2026-08-05"), narration: "Historical COGS", debit: 60, credit: 0 },
+      { workspaceId, accountId: expenseAccount.id, sourceType: "EXPENSE", sourceId: randomUUID(), documentNo: `EXP-PNL-${runId}`, date: date("2026-08-07"), narration: "Office expense", debit: 25, credit: 0 },
+    ] });
     const report = await getProfitAndLoss(workspaceId, { from: date("2026-08-01"), to: date("2026-08-31") });
     expect(report).toMatchObject({ grossSales: 200, costOfGoodsSold: 60, grossProfit: 140, operatingExpenses: 25, netProfit: 115 });
     expect(report.expenseCategories).toEqual([expect.objectContaining({ name: "Office Expense", amount: 25 })]);
@@ -151,6 +156,10 @@ describe("reports center integration", () => {
     expect(customer?.entries.map((entry) => entry.runningBalance)).toEqual([140, 110]);
     expect(supplier).toMatchObject({ openingBalance: 20, closingBalance: 75 });
     expect(supplier?.entries.map((entry) => entry.runningBalance)).toEqual([100, 75]);
+    const searched = await getCustomerStatement(workspaceId, customerId, { from: date("2026-08-01"), to: date("2026-08-31"), search: "customer sale" });
+    expect(searched).toMatchObject({ openingBalance: 40, closingBalance: 110 });
+    expect(searched?.entries).toHaveLength(1);
+    expect(searched?.entries[0].runningBalance).toBe(140);
   }, 60_000);
 
   it("reports current-cost stock valuation and persisted movement running quantity", async () => {

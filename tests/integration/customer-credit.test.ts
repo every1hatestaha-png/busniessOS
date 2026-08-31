@@ -14,7 +14,7 @@ let userId = ""; let workspaceId = ""; let customerId = ""; let otherCustomerId 
 const context = () => ({ workspaceId, userId, role: "OWNER" as const });
 
 async function saleWithInvoice(total = 100, paidAmount = 0) {
-  const sale = await createSale(context(), { customerId, items: [{ productId, quantity: 1, unitPrice: total, discount: 0 }], orderDiscount: 0, paidAmount, notes: "", idempotencyKey: randomUUID() });
+  const sale = await createSale(context(), { customerId, items: [{ productId, quantity: 1, unitPrice: total, discount: 0 }], orderDiscount: 0, paidAmount, ...(paidAmount > 0 ? { cashBankAccountId } : {}), notes: "", idempotencyKey: randomUUID() });
   const invoice = await db.invoice.findUniqueOrThrow({ where: { salesOrderId: sale.id } });
   const item = await db.salesOrderItem.findFirstOrThrow({ where: { salesOrderId: sale.id } });
   return { sale, invoice, item };
@@ -190,7 +190,7 @@ describe("customer credit allocation and receivables", () => {
     const unappliedSource = await saleWithInvoice(40, 40);
     await returnFor(unappliedSource.item.id, unappliedSource.sale.id);
 
-    const report = await getReceivablesAging(workspaceId, { asOf: new Date("2026-08-30T12:00:00.000Z"), timeZone: "Asia/Karachi" });
+    const report = await getReceivablesAging(workspaceId, { asOf: new Date(Date.now() + 86_400_000), timeZone: "Asia/Karachi" });
     const item = report.customers.flatMap((customer) => customer.items).find((entry) => entry.invoiceId === old.invoice.id);
     expect(item).toMatchObject({ originalAmount: 120, paymentsApplied: 20, creditsApplied: 30, outstandingAmount: 70, bucket: "61+" });
     expect(report.totalOutstanding).toBeGreaterThanOrEqual(70);

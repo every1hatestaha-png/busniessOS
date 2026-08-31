@@ -65,7 +65,7 @@ export function ReceivablesTable({ report, customers, filters }: { report: Recei
             {items.map((item) => (
               <TableRow key={item.invoiceId}>
                 <TableCell className="font-medium"><Link href={`/customers/${item.customerId}`} className="hover:underline">{item.customerName}</Link></TableCell>
-                <TableCell className="font-mono"><Link href={`/invoices/${item.invoiceId}`} className="hover:underline">{item.documentNumber}</Link></TableCell>
+                <TableCell className="font-mono">{item.isOpeningBalance ? item.documentNumber : <Link href={`/invoices/${item.invoiceId}`} className="hover:underline">{item.documentNumber}</Link>}</TableCell>
                 <TableCell>{formatDate(item.invoiceDate)}</TableCell>
                 <TableCell className="text-right tabular-nums">{formatPKR(item.originalAmount)}</TableCell>
                 <TableCell className="text-right tabular-nums">{formatPKR(item.paymentsApplied)}</TableCell>
@@ -73,7 +73,7 @@ export function ReceivablesTable({ report, customers, filters }: { report: Recei
                 <TableCell className="text-right font-semibold tabular-nums">{formatPKR(item.outstandingAmount)}</TableCell>
                 <TableCell className="text-right tabular-nums">{item.ageDays}</TableCell>
                 <TableCell>{item.bucket === "current" ? "Current" : item.bucket}</TableCell>
-                <TableCell className="text-right print:hidden"><Link href={`/invoices/${item.invoiceId}`} className={cn(buttonVariants({ size: "xs" }), "whitespace-nowrap")}>Record Payment</Link></TableCell>
+                <TableCell className="text-right print:hidden"><Link href={item.isOpeningBalance ? `/customers/${item.customerId}` : `/invoices/${item.invoiceId}`} className={cn(buttonVariants({ size: "xs" }), "whitespace-nowrap")}>Record Payment</Link></TableCell>
               </TableRow>
             ))}
             {!items.length && <TableRow><TableCell colSpan={10} className="h-32 text-center text-neutral-500">No outstanding receivables match these filters.</TableCell></TableRow>}

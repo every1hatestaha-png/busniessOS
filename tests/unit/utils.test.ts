@@ -17,8 +17,8 @@ describe("formatPKR", () => {
     [null, "Rs 0"],
     ["not a number", "Rs 0"],
     [0, "Rs 0"],
-    [1234567.6, "Rs 1,234,568"],
-    ["2500.49", "Rs 2,500"],
+    [1234567.6, "Rs 1,234,567.6"],
+    ["2500.49", "Rs 2,500.49"],
   ])("formats %s as %s", (amount, expected) => {
     expect(formatPKR(amount)).toBe(expected);
   });

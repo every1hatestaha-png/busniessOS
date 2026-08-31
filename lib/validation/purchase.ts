@@ -16,6 +16,13 @@ export const purchaseSchema = z.object({
   department: z.string().trim().max(200).optional(),
   pricingMode: z.enum(["UNIT", "WEIGHT"]).optional(),
   idempotencyKey: z.string().trim().min(8).max(200),
+}).superRefine((purchase, context) => {
+  if (purchase.pricingMode !== "WEIGHT") return;
+  purchase.items.forEach((item, index) => {
+    if (!item.unitWeight || !item.perKgRate) {
+      context.addIssue({ code: "custom", path: ["items", index], message: "Unit weight and rate per kg are required for weight pricing." });
+    }
+  });
 });
 
 export type PurchaseInput = z.infer<typeof purchaseSchema>;

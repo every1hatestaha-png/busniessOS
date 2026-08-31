@@ -5,16 +5,18 @@ import { formatDate, formatPKR } from "@/lib/utils";
 
 export default async function PurchasePrintPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { workspaceId } = await requireWorkspace();
+  const { workspaceId, workspace } = await requireWorkspace();
   const purchase = await getPurchase(workspaceId, id);
   if (!purchase) notFound();
 
   return (
     <div className="mx-auto max-w-[800px] bg-white p-8 text-black print:p-0 print:shadow-none" id="print-area">
       <div className="mb-6 border-b-2 pb-4 text-center">
-        <h1 className="text-xl font-bold">{purchase.supplier.companyName || purchase.supplier.name}</h1>
+        <h1 className="text-xl font-bold">{workspace.name}</h1>
+        <p className="text-sm">{[workspace.address, workspace.city, workspace.country].filter(Boolean).join(", ")}</p>
         <p className="mt-2 text-lg font-bold tracking-wide">PURCHASE ORDER</p>
       </div>
+      {purchase.status === "CANCELLED" && <div className="mb-4 border-y-4 border-black p-2 text-center text-xl font-black tracking-[0.25em]">CANCELLED</div>}
 
       <div className="mb-4 grid grid-cols-2 gap-4 text-sm">
         <div>

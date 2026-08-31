@@ -19,14 +19,18 @@ export function RecordPaymentForm({ customers = [], invoice, cashBankAccounts = 
   const [state, action, pending] = useActionState(recordPaymentAction, initialState);
   const formRef = useRef<HTMLFormElement>(null);
   const [customerId, setCustomerId] = useState(invoice?.customerId ?? "");
+  const idempotencyKeyRef = useRef(crypto.randomUUID());
   const selectedCustomer = customers.find((customer) => customer.id === customerId);
   const maximum = invoice?.balance ?? selectedCustomer?.balance;
 
   useEffect(() => {
     if (state.successToken) {
       formRef.current?.reset();
+      idempotencyKeyRef.current = crypto.randomUUID();
+      const hidden = formRef.current?.elements.namedItem("idempotencyKey") as HTMLInputElement | null;
+      if (hidden) hidden.value = idempotencyKeyRef.current;
     }
-  }, [state.successToken, invoice]);
+  }, [state.successToken]);
 
   const today = new Date();
   const localDate = new Date(today.getTime() - today.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
@@ -34,6 +38,7 @@ export function RecordPaymentForm({ customers = [], invoice, cashBankAccounts = 
 
   return (
     <form ref={formRef} action={action} className="space-y-4">
+      <input type="hidden" name="idempotencyKey" ref={(el) => { if (el) el.value = idempotencyKeyRef.current; }} />
       {invoice ? (
         <div className="rounded-lg bg-neutral-50 p-3"><p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Applying to</p><p className="mt-1 font-semibold">{invoice.number}</p><p className="text-sm text-neutral-500">{invoice.customerName} · {formatPKR(invoice.balance)} due</p><input type="hidden" name="customerId" value={invoice.customerId} /><input type="hidden" name="invoiceId" value={invoice.id} /></div>
       ) : (
