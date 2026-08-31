@@ -5,8 +5,6 @@ import { calculateProfitLossTotals, calculateRunningBalance } from "@/lib/accoun
 import { writeAudit } from "@/lib/server/audit";
 import { db } from "@/lib/server/db";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";
-import { getPayablesSummary } from "@/lib/server/payables";
-import { getReceivablesAging } from "@/lib/server/receivables";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 import { businessDayEnd, businessDayStart, businessMonthStart } from "@/lib/server/business-time";
 import { cashBankAccountSchema, expenseSchema, ledgerReportSchema, profitLossSchema, type CashBankAccountInput, type ExpenseInput, type LedgerReportInput, type ProfitLossInput } from "@/lib/validation/accounting";
@@ -49,10 +47,13 @@ function normalizeRange(input: ProfitLossInput | LedgerReportInput) {
 }
 
 const bootstrappedWorkspaces = new Set<string>();
+const bootstrappedTransactionWorkspaces = new WeakMap<object, Set<string>>();
 
 export async function ensureDefaultAccounts(workspaceId: string, tx: Prisma.TransactionClient = db) {
   const canUseCache = tx === db;
   if (canUseCache && bootstrappedWorkspaces.has(workspaceId)) return;
+  const transactionCache = !canUseCache && typeof tx === "object" && tx !== null ? bootstrappedTransactionWorkspaces.get(tx) ?? new Set<string>() : null;
+  if (transactionCache?.has(workspaceId)) return;
 
   const existingDefaults = await tx.account.count({ where: { workspaceId, systemCode: { in: DEFAULT_ACCOUNTS.map((account) => account.systemCode) } } });
   if (existingDefaults < DEFAULT_ACCOUNTS.length) {
@@ -73,6 +74,10 @@ export async function ensureDefaultAccounts(workspaceId: string, tx: Prisma.Tran
   });
 
   if (canUseCache) bootstrappedWorkspaces.add(workspaceId);
+  if (transactionCache) {
+    transactionCache.add(workspaceId);
+    bootstrappedTransactionWorkspaces.set(tx, transactionCache);
+  }
 }
 
 async function getSystemAccounts(tx: Prisma.TransactionClient, workspaceId: string, codes: AccountSystemCode[]) {
@@ -385,21 +390,31 @@ export async function getProfitAndLoss(workspaceId: string, input: ProfitLossInp
   const data = profitLossSchema.parse(input);
   const { from, to } = normalizeRange(data);
   const [sales, returns, profitAndLossEntries] = await Promise.all([
-    db.salesOrder.findMany({ where: { workspaceId, status: { not: "CANCELLED" }, orderDate: { gte: from, lte: to } }, select: { orderNumber: true, total: true } }),
-    db.customerReturn.findMany({ where: { workspaceId, date: { gte: from, lte: to } }, select: { totalAmount: true } }),
-    db.generalLedgerEntry.findMany({ where: { workspaceId, date: { gte: from, lte: to }, account: { category: { in: ["COST_OF_SALES", "EXPENSE", "INCOME"] } } }, select: { debit: true, credit: true, account: { select: { id: true, code: true, name: true, category: true, systemCode: true } } } }),
+    db.salesOrder.aggregate({ where: { workspaceId, status: { not: "CANCELLED" }, orderDate: { gte: from, lte: to } }, _sum: { total: true } }),
+    db.customerReturn.aggregate({ where: { workspaceId, date: { gte: from, lte: to } }, _sum: { totalAmount: true } }),
+    db.generalLedgerEntry.groupBy({
+      by: ["accountId"],
+      where: { workspaceId, date: { gte: from, lte: to }, account: { category: { in: ["COST_OF_SALES", "EXPENSE", "INCOME"] } } },
+      _sum: { debit: true, credit: true },
+    }),
   ]);
-  const costOfGoodsSold = profitAndLossEntries.filter((entry) => entry.account.category === "COST_OF_SALES").reduce((sum, entry) => sum + amount(entry.debit) - amount(entry.credit), 0);
-  const grossSales = sales.reduce((sum, sale) => sum + amount(sale.total), 0);
-  const salesReturns = returns.reduce((sum, entry) => sum + amount(entry.totalAmount), 0);
+  const accounts = profitAndLossEntries.length
+    ? await db.account.findMany({ where: { workspaceId, id: { in: profitAndLossEntries.map((entry) => entry.accountId) } }, select: { id: true, code: true, name: true, category: true, systemCode: true } })
+    : [];
+  const accountById = new Map(accounts.map((account) => [account.id, account]));
+  const costOfGoodsSold = profitAndLossEntries.reduce((sum, entry) => accountById.get(entry.accountId)?.category === "COST_OF_SALES" ? sum + amount(entry._sum.debit) - amount(entry._sum.credit) : sum, 0);
+  const grossSales = amount(sales._sum.total);
+  const salesReturns = amount(returns._sum.totalAmount);
   const expenseMap = new Map<string, { id: string; code: string; name: string; amount: number }>();
-  for (const entry of profitAndLossEntries.filter((row) => row.account.category === "EXPENSE")) {
-    const row = expenseMap.get(entry.account.id) ?? { id: entry.account.id, code: entry.account.code, name: entry.account.name, amount: 0 };
-    row.amount += amount(entry.debit) - amount(entry.credit);
+  for (const entry of profitAndLossEntries) {
+    const account = accountById.get(entry.accountId);
+    if (account?.category !== "EXPENSE") continue;
+    const row = expenseMap.get(account.id) ?? { id: account.id, code: account.code, name: account.name, amount: 0 };
+    row.amount += amount(entry._sum.debit) - amount(entry._sum.credit);
     expenseMap.set(row.id, row);
   }
   const operatingExpenses = [...expenseMap.values()].reduce((sum, expense) => sum + expense.amount, 0);
-  const otherIncome = profitAndLossEntries.filter((entry) => entry.account.systemCode === "OTHER_INCOME").reduce((sum, entry) => sum + amount(entry.credit) - amount(entry.debit), 0);
+  const otherIncome = profitAndLossEntries.reduce((sum, entry) => accountById.get(entry.accountId)?.systemCode === "OTHER_INCOME" ? sum + amount(entry._sum.credit) - amount(entry._sum.debit) : sum, 0);
   const totals = calculateProfitLossTotals({ grossSales, salesReturns, costOfGoodsSold, operatingExpenses });
   return { from: from.toISOString(), to: to.toISOString(), grossSales, salesReturns, otherIncome, expenseCategories: [...expenseMap.values()].sort((a, b) => a.code.localeCompare(b.code)), ...totals, netProfit: totals.netProfit + otherIncome, costingMethod: "Historical sale-time cost and return/cancellation reversals from the authoritative Cost of Goods Sold general-ledger account." };
 }
@@ -407,18 +422,59 @@ export async function getProfitAndLoss(workspaceId: string, input: ProfitLossInp
 export async function getFinancialDashboard(workspaceId: string) {
   const now = new Date();
   const monthStart = businessMonthStart(now);
-  const [receivables, payables, inventory, cashBank, purchasesMonth, lowStock, profitLoss] = await Promise.all([
-    getReceivablesAging(workspaceId),
-    getPayablesSummary(workspaceId),
-    db.product.findMany({ where: { workspaceId }, select: { stockQuantity: true, costPrice: true, reorderLevel: true } }),
-    db.cashBankAccount.aggregate({ where: { workspaceId, isActive: true }, _sum: { currentBalance: true } }),
-    db.goodReceivedNote.aggregate({ where: { workspaceId, receiptDate: { gte: monthStart, lte: now } }, _sum: { totalAmount: true } }),
-    db.product.count({ where: { workspaceId, stockQuantity: { lte: db.product.fields.reorderLevel } } }),
-    getProfitAndLoss(workspaceId, { from: monthStart, to: now }),
-  ]);
-  const inventoryValue = inventory.reduce((sum, product) => sum + product.stockQuantity * amount(product.costPrice), 0);
-  const receivableAmount = receivables.totalOutstanding;
-  const payableAmount = payables.totalOutstanding;
-  const cashBankAmount = amount(cashBank._sum.currentBalance);
-  return { receivables: receivableAmount, payables: payableAmount, inventoryValue, cashBank: cashBankAmount, salesThisMonth: profitLoss.grossSales, purchasesThisMonth: amount(purchasesMonth._sum.totalAmount), expensesThisMonth: profitLoss.operatingExpenses, grossProfit: profitLoss.grossProfit, netProfit: profitLoss.netProfit, lowStockCount: lowStock, netOperatingPosition: receivableAmount + inventoryValue + cashBankAmount - payableAmount };
+  const [row] = await db.$queryRaw<Array<{
+    receivables: Prisma.Decimal | null;
+    payables: Prisma.Decimal | null;
+    inventoryValue: Prisma.Decimal | null;
+    cashBank: Prisma.Decimal | null;
+    purchasesThisMonth: Prisma.Decimal | null;
+    lowStockCount: bigint | number;
+    grossSales: Prisma.Decimal | null;
+    salesReturns: Prisma.Decimal | null;
+    costOfGoodsSold: Prisma.Decimal | null;
+    operatingExpenses: Prisma.Decimal | null;
+    otherIncome: Prisma.Decimal | null;
+  }>>`
+    WITH receivables AS (
+      SELECT COALESCE(SUM("currentBalance"), 0) AS total FROM "customers" WHERE "workspaceId" = ${workspaceId}
+    ), payables AS (
+      SELECT COALESCE(SUM("currentBalance"), 0) AS total FROM "suppliers" WHERE "workspaceId" = ${workspaceId}
+    ), inventory AS (
+      SELECT COALESCE(SUM("stockQuantity" * "costPrice"), 0) AS total FROM "products" WHERE "workspaceId" = ${workspaceId}
+    ), cash_bank AS (
+      SELECT COALESCE(SUM("currentBalance"), 0) AS total FROM "cash_bank_accounts" WHERE "workspaceId" = ${workspaceId} AND "isActive" = true
+    ), purchases_month AS (
+      SELECT COALESCE(SUM("totalAmount"), 0) AS total FROM "goods_received_notes" WHERE "workspaceId" = ${workspaceId} AND "receiptDate" >= ${monthStart} AND "receiptDate" <= ${now}
+    ), low_stock AS (
+      SELECT COUNT(*) AS total FROM "products" WHERE "workspaceId" = ${workspaceId} AND "stockQuantity" <= "reorderLevel"
+    ), sales_month AS (
+      SELECT COALESCE(SUM("total"), 0) AS total FROM "sales_orders" WHERE "workspaceId" = ${workspaceId} AND "status" <> 'CANCELLED' AND "orderDate" >= ${monthStart} AND "orderDate" <= ${now}
+    ), returns_month AS (
+      SELECT COALESCE(SUM("totalAmount"), 0) AS total FROM "customer_returns" WHERE "workspaceId" = ${workspaceId} AND "date" >= ${monthStart} AND "date" <= ${now}
+    ), pl AS (
+      SELECT
+        COALESCE(SUM(CASE WHEN a."category" = 'COST_OF_SALES' THEN gle."debit" - gle."credit" ELSE 0 END), 0) AS cogs,
+        COALESCE(SUM(CASE WHEN a."category" = 'EXPENSE' THEN gle."debit" - gle."credit" ELSE 0 END), 0) AS expenses,
+        COALESCE(SUM(CASE WHEN a."systemCode" = 'OTHER_INCOME' THEN gle."credit" - gle."debit" ELSE 0 END), 0) AS other_income
+      FROM "general_ledger_entries" gle
+      INNER JOIN "accounts" a ON a."id" = gle."accountId"
+      WHERE gle."workspaceId" = ${workspaceId}
+        AND gle."date" >= ${monthStart}
+        AND gle."date" <= ${now}
+        AND a."category" IN ('COST_OF_SALES', 'EXPENSE', 'INCOME')
+    )
+    SELECT receivables.total AS "receivables", payables.total AS "payables", inventory.total AS "inventoryValue", cash_bank.total AS "cashBank", purchases_month.total AS "purchasesThisMonth", low_stock.total AS "lowStockCount", sales_month.total AS "grossSales", returns_month.total AS "salesReturns", pl.cogs AS "costOfGoodsSold", pl.expenses AS "operatingExpenses", pl.other_income AS "otherIncome"
+    FROM receivables, payables, inventory, cash_bank, purchases_month, low_stock, sales_month, returns_month, pl
+  `;
+  const grossSales = amount(row?.grossSales);
+  const salesReturns = amount(row?.salesReturns);
+  const costOfGoodsSold = amount(row?.costOfGoodsSold);
+  const operatingExpenses = amount(row?.operatingExpenses);
+  const otherIncome = amount(row?.otherIncome);
+  const totals = calculateProfitLossTotals({ grossSales, salesReturns, costOfGoodsSold, operatingExpenses });
+  const inventoryValue = amount(row?.inventoryValue);
+  const receivableAmount = amount(row?.receivables);
+  const payableAmount = amount(row?.payables);
+  const cashBankAmount = amount(row?.cashBank);
+  return { receivables: receivableAmount, payables: payableAmount, inventoryValue, cashBank: cashBankAmount, salesThisMonth: grossSales, purchasesThisMonth: amount(row?.purchasesThisMonth), expensesThisMonth: operatingExpenses, grossProfit: totals.grossProfit, netProfit: totals.netProfit + otherIncome, lowStockCount: Number(row?.lowStockCount ?? 0), netOperatingPosition: receivableAmount + inventoryValue + cashBankAmount - payableAmount };
 }

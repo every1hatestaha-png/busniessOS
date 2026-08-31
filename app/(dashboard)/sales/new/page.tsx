@@ -9,7 +9,7 @@ export default async function NewSalePage() {
   const canRecordPayments = canPerformAction(role, "payments.record");
   const [customers, products, cashBankAccounts] = await Promise.all([
     listCustomers(workspaceId),
-    listProducts(),
+    listProducts(workspaceId),
     canRecordPayments ? getCashBankAccounts(workspaceId) : Promise.resolve([]),
   ]);
 

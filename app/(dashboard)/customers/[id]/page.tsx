@@ -16,8 +16,11 @@ import { formatPKR, getCreditStatus } from "@/lib/utils";
 export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { workspaceId, role } = await requireWorkspace();
-  const customer = await getCustomer(workspaceId, id);
-  const cashBankAccounts = canPerformAction(role, "payments.record") ? await getCashBankAccounts(workspaceId) : [];
+  const canRecordPayments = canPerformAction(role, "payments.record");
+  const [customer, cashBankAccounts] = await Promise.all([
+    getCustomer(workspaceId, id),
+    canRecordPayments ? getCashBankAccounts(workspaceId) : Promise.resolve([]),
+  ]);
   if (!customer) notFound();
   const usage = customer.creditLimit ? Math.round((customer.currentBalance / customer.creditLimit) * 100) : 0;
 
@@ -33,7 +36,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         <MetricCard label="Total sales" value={formatPKR(customer.totalSales)} detail="Lifetime sales" icon={ShoppingCart} />
         <MetricCard label="Total payments" value={formatPKR(customer.totalPayments)} detail="Lifetime receipts" icon={CircleDollarSign} />
       </div>
-      {customer.currentBalance > 0 && canPerformAction(role, "payments.record") && <div className="max-w-md rounded-xl border bg-white p-5"><h2 className="font-semibold">Record payment</h2><p className="mb-4 mt-1 text-sm text-neutral-500">Record an unallocated receipt against this customer account.</p><RecordPaymentForm customers={[{ id: customer.id, name: customer.companyName, balance: customer.currentBalance }]} cashBankAccounts={cashBankAccounts} /></div>}
+      {customer.currentBalance > 0 && canRecordPayments && <div className="max-w-md rounded-xl border bg-white p-5"><h2 className="font-semibold">Record payment</h2><p className="mb-4 mt-1 text-sm text-neutral-500">Record an unallocated receipt against this customer account.</p><RecordPaymentForm customers={[{ id: customer.id, name: customer.companyName, balance: customer.currentBalance }]} cashBankAccounts={cashBankAccounts} /></div>}
       <CustomerDetailsTabs customer={customer} />
     </div>
   );
