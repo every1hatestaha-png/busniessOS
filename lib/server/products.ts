@@ -137,7 +137,7 @@ export async function createProduct(workspaceId: string, input: ProductData): Pr
     if (input.stockQuantity > 0 && input.costPrice > 0) await postOpeningAssetToGeneralLedger(transaction, { workspaceId, sourceId: product.id, documentNo: `OPEN-STOCK-${product.id.slice(0, 8).toUpperCase()}`, date: new Date(), assetSystemCode: "INVENTORY", amount: new Prisma.Decimal(input.costPrice).mul(input.stockQuantity) });
 
     return product.id;
-  });
+  }, { timeout: 30_000 });
 }
 
 export async function updateProduct(
@@ -201,5 +201,5 @@ export async function adjustProductStock(workspaceId: string, productId: string,
     });
 
     return product.stockQuantity;
-  });
+  }, { timeout: 30_000 });
 }

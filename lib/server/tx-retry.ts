@@ -6,7 +6,7 @@ const BASE_DELAY_MS = 150;
 
 function isRetryableError(err: unknown): boolean {
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
-    return err.code === "P2034";
+    return err.code === "P2034" || err.code === "P2028";
   }
   if (err instanceof Error) {
     const msg = err.message ?? "";

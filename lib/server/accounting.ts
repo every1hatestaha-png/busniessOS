@@ -327,7 +327,7 @@ export async function createCashBankAccount(context: ServiceContext, input: Cash
     if (data.openingBalance > 0) await postOpeningAssetToGeneralLedger(tx, { workspaceId: context.workspaceId, sourceId: account.id, documentNo: `OPEN-${account.id.slice(0, 8).toUpperCase()}`, date: new Date(), assetAccountId: account.id, amount: data.openingBalance });
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "cash_bank_account.created", entityType: "Account", entityId: account.id, metadata: { name: data.name, openingBalance: String(data.openingBalance) } });
     return { id: account.id };
-  });
+  }, { timeout: 30_000 });
 }
 
 export async function createExpense(context: ServiceContext, input: ExpenseInput) {

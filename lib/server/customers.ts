@@ -213,7 +213,7 @@ export async function createCustomer(workspaceId: string, input: CustomerInput):
     }
 
     return customer.id;
-  });
+  }, { timeout: 30_000 });
 }
 
 export async function updateCustomer(
