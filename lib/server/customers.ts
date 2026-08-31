@@ -85,46 +85,55 @@ export async function listCustomers(workspaceId: string): Promise<CustomerListIt
 }
 
 export async function getCustomer(workspaceId: string, id: string): Promise<CustomerDetail | null> {
-  const customer = await db.customer.findFirst({
-    where: { id, workspaceId },
-    select: {
-      id: true,
-      name: true,
-      companyName: true,
-      phone: true,
-      email: true,
-      city: true,
-      address: true,
-      notes: true,
-      creditLimit: true,
-      currentBalance: true,
-      status: true,
-      salesOrders: {
-        where: { workspaceId },
-        orderBy: { orderDate: "desc" },
-        select: { id: true, orderNumber: true, orderDate: true, status: true, total: true, balanceAmount: true },
-      },
-      payments: {
-        where: { workspaceId },
-        orderBy: { paymentDate: "desc" },
-        select: { id: true, paymentDate: true, reference: true, method: true, amount: true, isReversed: true, reversalOfId: true },
-      },
-      invoices: {
-        where: { workspaceId },
-        orderBy: { issuedAt: "desc" },
-        select: { id: true, invoiceNumber: true, issuedAt: true, dueDate: true, status: true, amount: true, paidAmount: true, creditApplied: true },
-      },
-      ledgerEntries: {
-        where: { workspaceId },
-        orderBy: [{ date: "asc" }, { createdAt: "asc" }],
-        select: { id: true, date: true, referenceId: true, description: true, debit: true, credit: true },
-      },
-    },
-  });
+  const [customer] = await db.$queryRaw<Array<{
+    id: string;
+    name: string;
+    companyName: string | null;
+    phone: string | null;
+    email: string | null;
+    city: string | null;
+    address: string | null;
+    notes: string | null;
+    creditLimit: Prisma.Decimal;
+    currentBalance: Prisma.Decimal;
+    status: "ACTIVE" | "INACTIVE" | "BLACKLISTED";
+  }>>`
+    SELECT "id", "name", "companyName", "phone", "email", "city", "address", "notes", "creditLimit", "currentBalance", "status"
+    FROM "customers"
+    WHERE "id" = ${id} AND "workspaceId" = ${workspaceId}
+    LIMIT 1
+  `;
 
   if (!customer) return null;
 
-  const orders = customer.salesOrders.map((order) => ({
+  const [salesOrders, rawPayments, rawInvoices, rawLedgerEntries] = await Promise.all([
+    db.$queryRaw<Array<{ id: string; orderNumber: string; orderDate: Date; status: "DRAFT" | "CONFIRMED" | "PROCESSING" | "COMPLETED" | "CANCELLED"; total: Prisma.Decimal; balanceAmount: Prisma.Decimal }>>`
+      SELECT "id", "orderNumber", "orderDate", "status", "total", "balanceAmount"
+      FROM "sales_orders"
+      WHERE "workspaceId" = ${workspaceId} AND "customerId" = ${id}
+      ORDER BY "orderDate" DESC
+    `,
+    db.$queryRaw<Array<{ id: string; paymentDate: Date; reference: string | null; method: "CASH" | "BANK_TRANSFER" | "JAZZCASH" | "EASYPAISA" | "CHEQUE" | "CREDIT_CARD" | "MOBILE_WALLET" | "OTHER"; amount: Prisma.Decimal; isReversed: boolean; reversalOfId: string | null }>>`
+      SELECT "id", "paymentDate", "reference", "method", "amount", "isReversed", "reversalOfId"
+      FROM "payments"
+      WHERE "workspaceId" = ${workspaceId} AND "customerId" = ${id}
+      ORDER BY "paymentDate" DESC
+    `,
+    db.$queryRaw<Array<{ id: string; invoiceNumber: string; issuedAt: Date; dueDate: Date | null; status: "DRAFT" | "UNPAID" | "PARTIALLY_PAID" | "PAID" | "OVERDUE" | "CANCELLED"; amount: Prisma.Decimal; paidAmount: Prisma.Decimal; creditApplied: Prisma.Decimal }>>`
+      SELECT "id", "invoiceNumber", "issuedAt", "dueDate", "status", "amount", "paidAmount", "creditApplied"
+      FROM "invoices"
+      WHERE "workspaceId" = ${workspaceId} AND "customerId" = ${id}
+      ORDER BY "issuedAt" DESC
+    `,
+    db.$queryRaw<Array<{ id: string; date: Date; referenceId: string | null; description: string | null; debit: Prisma.Decimal; credit: Prisma.Decimal }>>`
+      SELECT "id", "date", "referenceId", "description", "debit", "credit"
+      FROM "ledger_entries"
+      WHERE "workspaceId" = ${workspaceId} AND "customerId" = ${id}
+      ORDER BY "date" ASC, "createdAt" ASC
+    `,
+  ]);
+
+  const orders = salesOrders.map((order) => ({
     id: order.id,
     orderNumber: order.orderNumber,
     date: order.orderDate.toISOString(),
@@ -132,7 +141,7 @@ export async function getCustomer(workspaceId: string, id: string): Promise<Cust
     total: Number(order.total),
     balanceAmount: Number(order.balanceAmount),
   }));
-  const payments = customer.payments.map((payment) => ({
+  const payments = rawPayments.map((payment) => ({
     id: payment.id,
     date: payment.paymentDate.toISOString(),
     reference: payment.reference ?? "-",
@@ -158,7 +167,7 @@ export async function getCustomer(workspaceId: string, id: string): Promise<Cust
     totalPayments: payments.filter((payment) => !payment.isReversed && !payment.isReversal).reduce((total, payment) => total + payment.amount, 0),
     orders,
     payments,
-    invoices: customer.invoices.map((invoice) => ({
+    invoices: rawInvoices.map((invoice) => ({
       id: invoice.id,
       invoiceNumber: invoice.invoiceNumber,
       date: invoice.issuedAt.toISOString(),
@@ -167,7 +176,7 @@ export async function getCustomer(workspaceId: string, id: string): Promise<Cust
       total: Number(invoice.amount),
       balance: Number(invoice.amount) - Number(invoice.paidAmount) - Number(invoice.creditApplied),
     })),
-    ledgerEntries: customer.ledgerEntries.map((entry) => ({
+    ledgerEntries: rawLedgerEntries.map((entry) => ({
       id: entry.id,
       date: entry.date.toISOString(),
       reference: entry.referenceId ?? "-",

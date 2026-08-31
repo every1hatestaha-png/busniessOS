@@ -1,5 +1,6 @@
 import "server-only";
 
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/server/db";
 import { ageDays, receivablesBucket, type ReceivablesBucket } from "@/lib/server/aging";
 import { businessDateKey, businessDayEnd } from "@/lib/server/business-time";
@@ -66,59 +67,114 @@ export async function getReceivablesAging(workspaceId: string, filters: Receivab
   const asOfEnd = businessDayEnd(asOf, timeZone);
   const search = filters.search?.trim().toLowerCase();
 
+  const customerFilter = filters.customerId ? Prisma.sql`AND c."id" = ${filters.customerId}` : Prisma.empty;
+  const invoiceCustomerFilter = filters.customerId ? Prisma.sql`AND i."customerId" = ${filters.customerId}` : Prisma.empty;
   const [invoices, credits, onAccountPayments, openingBalances] = await Promise.all([
-    db.invoice.findMany({
-      where: { workspaceId, status: { not: "DRAFT" }, issuedAt: { lte: asOfEnd }, OR: [{ status: { not: "CANCELLED" } }, { salesOrder: { cancelledAt: { gt: asOfEnd } } }], ...(filters.customerId ? { customerId: filters.customerId } : {}) },
-      select: {
-        id: true,
-        invoiceNumber: true,
-        customerId: true,
-        issuedAt: true,
-        dueDate: true,
-        amount: true,
-        paidAmount: true,
-        creditApplied: true,
-        customer: { select: { name: true, companyName: true } },
-        allocations: { where: { payment: { paymentDate: { lte: asOfEnd }, OR: [{ isReversed: false }, { reversedAt: { gt: asOfEnd } }] } }, select: { amount: true } },
-        payments: { where: { paymentDate: { lte: asOfEnd }, allocations: { none: {} }, OR: [{ isReversed: false }, { reversedAt: { gt: asOfEnd } }] }, select: { amount: true } },
-        creditAllocations: { where: { createdAt: { lte: asOfEnd } }, select: { amount: true } },
-      },
-    }),
-    db.creditNote.findMany({
-      where: { workspaceId, status: { not: "CANCELLED" }, date: { lte: asOfEnd }, ...(filters.customerId ? { customerId: filters.customerId } : {}) },
-      select: { customerId: true, amount: true, allocations: { where: { createdAt: { lte: asOfEnd } }, select: { amount: true } }, customer: { select: { name: true, companyName: true } } },
-    }),
-    db.payment.findMany({
-      where: { workspaceId, customerId: { not: null }, invoiceId: null, reversalOfId: null, paymentDate: { lte: asOfEnd }, OR: [{ isReversed: false }, { reversedAt: { gt: asOfEnd } }], ...(filters.customerId ? { customerId: filters.customerId } : {}) },
-      select: { customerId: true, amount: true, allocations: { where: { createdAt: { lte: asOfEnd } }, select: { amount: true } }, customer: { select: { name: true, companyName: true } } },
-    }),
-    db.ledgerEntry.findMany({
-      where: { workspaceId, customerId: { not: null }, type: "OPENING_BALANCE", date: { lte: asOfEnd }, ...(filters.customerId ? { customerId: filters.customerId } : {}) },
-      select: { id: true, customerId: true, date: true, debit: true, credit: true, customer: { select: { name: true, companyName: true } } },
-    }),
+    db.$queryRaw<Array<{ id: string; invoiceNumber: string; customerId: string; issuedAt: Date; dueDate: Date | null; amount: Prisma.Decimal; paymentsApplied: Prisma.Decimal; creditsApplied: Prisma.Decimal; customerName: string }>>`
+      SELECT i."id", i."invoiceNumber", i."customerId", i."issuedAt", i."dueDate", i."amount",
+        COALESCE(pa.total, 0) + COALESCE(ip.total, 0) AS "paymentsApplied",
+        COALESCE(ca.total, 0) AS "creditsApplied",
+        COALESCE(c."companyName", c."name") AS "customerName"
+      FROM "invoices" i
+      INNER JOIN "customers" c ON c."id" = i."customerId"
+      LEFT JOIN "sales_orders" so ON so."id" = i."salesOrderId"
+      LEFT JOIN (
+        SELECT a."invoiceId", SUM(a."amount") AS total
+        FROM "payment_allocations" a
+        INNER JOIN "payments" p ON p."id" = a."paymentId"
+        WHERE a."workspaceId" = ${workspaceId}
+          AND p."paymentDate" <= ${asOfEnd}
+          AND (p."isReversed" = false OR p."reversedAt" > ${asOfEnd})
+        GROUP BY a."invoiceId"
+      ) pa ON pa."invoiceId" = i."id"
+      LEFT JOIN (
+        SELECT p."invoiceId", SUM(p."amount") AS total
+        FROM "payments" p
+        WHERE p."workspaceId" = ${workspaceId}
+          AND p."invoiceId" IS NOT NULL
+          AND p."paymentDate" <= ${asOfEnd}
+          AND (p."isReversed" = false OR p."reversedAt" > ${asOfEnd})
+          AND NOT EXISTS (SELECT 1 FROM "payment_allocations" a WHERE a."paymentId" = p."id")
+        GROUP BY p."invoiceId"
+      ) ip ON ip."invoiceId" = i."id"
+      LEFT JOIN (
+        SELECT "invoiceId", SUM("amount") AS total
+        FROM "customer_credit_allocations"
+        WHERE "workspaceId" = ${workspaceId} AND "createdAt" <= ${asOfEnd}
+        GROUP BY "invoiceId"
+      ) ca ON ca."invoiceId" = i."id"
+      WHERE i."workspaceId" = ${workspaceId}
+        AND i."status" <> 'DRAFT'
+        AND i."issuedAt" <= ${asOfEnd}
+        AND (i."status" <> 'CANCELLED' OR so."cancelledAt" > ${asOfEnd})
+        ${invoiceCustomerFilter}
+    `,
+    db.$queryRaw<Array<{ customerId: string; amount: Prisma.Decimal; appliedAmount: Prisma.Decimal; customerName: string }>>`
+      SELECT cn."customerId", cn."amount", COALESCE(ca.total, 0) AS "appliedAmount", COALESCE(c."companyName", c."name") AS "customerName"
+      FROM "credit_notes" cn
+      INNER JOIN "customers" c ON c."id" = cn."customerId"
+      LEFT JOIN (
+        SELECT "creditNoteId", SUM("amount") AS total
+        FROM "customer_credit_allocations"
+        WHERE "workspaceId" = ${workspaceId} AND "createdAt" <= ${asOfEnd}
+        GROUP BY "creditNoteId"
+      ) ca ON ca."creditNoteId" = cn."id"
+      WHERE cn."workspaceId" = ${workspaceId}
+        AND cn."status" <> 'CANCELLED'
+        AND cn."date" <= ${asOfEnd}
+        ${customerFilter}
+    `,
+    db.$queryRaw<Array<{ customerId: string; amount: Prisma.Decimal; allocatedAmount: Prisma.Decimal; customerName: string }>>`
+      SELECT p."customerId", p."amount", COALESCE(pa.total, 0) AS "allocatedAmount", COALESCE(c."companyName", c."name") AS "customerName"
+      FROM "payments" p
+      INNER JOIN "customers" c ON c."id" = p."customerId"
+      LEFT JOIN (
+        SELECT "paymentId", SUM("amount") AS total
+        FROM "payment_allocations"
+        WHERE "workspaceId" = ${workspaceId} AND "createdAt" <= ${asOfEnd}
+        GROUP BY "paymentId"
+      ) pa ON pa."paymentId" = p."id"
+      WHERE p."workspaceId" = ${workspaceId}
+        AND p."customerId" IS NOT NULL
+        AND p."invoiceId" IS NULL
+        AND p."reversalOfId" IS NULL
+        AND p."paymentDate" <= ${asOfEnd}
+        AND (p."isReversed" = false OR p."reversedAt" > ${asOfEnd})
+        ${customerFilter}
+    `,
+    db.$queryRaw<Array<{ id: string; customerId: string; date: Date; debit: Prisma.Decimal; credit: Prisma.Decimal; customerName: string }>>`
+      SELECT le."id", le."customerId", le."date", le."debit", le."credit", COALESCE(c."companyName", c."name") AS "customerName"
+      FROM "ledger_entries" le
+      INNER JOIN "customers" c ON c."id" = le."customerId"
+      WHERE le."workspaceId" = ${workspaceId}
+        AND le."customerId" IS NOT NULL
+        AND le."type" = 'OPENING_BALANCE'
+        AND le."date" <= ${asOfEnd}
+        ${customerFilter}
+    `,
   ]);
 
   const unappliedCreditByCustomer = new Map<string, { amount: number; customerName: string }>();
   for (const credit of credits) {
-    const remainingAmount = Number(credit.amount) - credit.allocations.reduce((sum, allocation) => sum + Number(allocation.amount), 0);
+    const remainingAmount = Number(credit.amount) - Number(credit.appliedAmount);
     if (remainingAmount <= 0) continue;
     const current = unappliedCreditByCustomer.get(credit.customerId);
-    unappliedCreditByCustomer.set(credit.customerId, { amount: (current?.amount ?? 0) + remainingAmount, customerName: current?.customerName ?? credit.customer.companyName ?? credit.customer.name });
+    unappliedCreditByCustomer.set(credit.customerId, { amount: (current?.amount ?? 0) + remainingAmount, customerName: current?.customerName ?? credit.customerName });
   }
   const unappliedPaymentByCustomer = new Map<string, { amount: number; customerName: string }>();
   for (const payment of onAccountPayments) {
-    if (!payment.customerId || !payment.customer) continue;
-    const unappliedAmount = Number(payment.amount) - payment.allocations.reduce((sum, allocation) => sum + Number(allocation.amount), 0);
+    if (!payment.customerId) continue;
+    const unappliedAmount = Number(payment.amount) - Number(payment.allocatedAmount);
     if (unappliedAmount <= 0) continue;
     const current = unappliedPaymentByCustomer.get(payment.customerId);
-    unappliedPaymentByCustomer.set(payment.customerId, { amount: (current?.amount ?? 0) + unappliedAmount, customerName: current?.customerName ?? payment.customer.companyName ?? payment.customer.name });
+    unappliedPaymentByCustomer.set(payment.customerId, { amount: (current?.amount ?? 0) + unappliedAmount, customerName: current?.customerName ?? payment.customerName });
   }
   const items: ReceivablesAgingItem[] = [];
   for (const opening of openingBalances) {
-    if (!opening.customerId || !opening.customer) continue;
+    if (!opening.customerId) continue;
     const outstanding = Number(opening.debit) - Number(opening.credit);
     if (outstanding <= 0) continue;
-    const customerName = opening.customer.companyName ?? opening.customer.name;
+    const customerName = opening.customerName;
     if (search && !customerName.toLowerCase().includes(search) && !"opening balance".includes(search)) continue;
     const age = ageDays(opening.date, asOf, timeZone);
     const bucket = receivablesBucket(age);
@@ -126,12 +182,11 @@ export async function getReceivablesAging(workspaceId: string, filters: Receivab
     items.push({ invoiceId: opening.id, documentNumber: "OPENING BALANCE", customerId: opening.customerId, customerName, invoiceDate: opening.date.toISOString(), dueDate: null, originalAmount: outstanding, paymentsApplied: 0, creditsApplied: 0, outstandingAmount: outstanding, ageDays: age, bucket, isOpeningBalance: true });
   }
   for (const invoice of invoices) {
-    const paymentsApplied = invoice.allocations.reduce((sum, allocation) => sum + Number(allocation.amount), 0)
-      + invoice.payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
-    const creditsApplied = invoice.creditAllocations.reduce((sum, allocation) => sum + Number(allocation.amount), 0);
+    const paymentsApplied = Number(invoice.paymentsApplied);
+    const creditsApplied = Number(invoice.creditsApplied);
     const outstanding = Number(invoice.amount) - paymentsApplied - creditsApplied;
     if (outstanding <= 0) continue;
-    const customerName = invoice.customer.companyName ?? invoice.customer.name;
+    const customerName = invoice.customerName;
     if (search && !customerName.toLowerCase().includes(search) && !invoice.invoiceNumber.toLowerCase().includes(search)) continue;
     // BusinessOS does not yet persist explicit customer credit terms. Age from
     // the invoice date and do not present the auto-populated due date as a

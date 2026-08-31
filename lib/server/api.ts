@@ -65,29 +65,16 @@ export async function requireApiUser() {
 export async function requireApiContext(permission?: Permission): Promise<ApiContext> {
   const localUser = await requireApiUser();
   const activeWorkspaceId = (await cookies()).get("businessos_workspace")?.value;
-  const user = await db.user.findUnique({
-    where: { id: localUser.id },
+  const membership = await db.workspaceMember.findFirst({
+    where: { userId: localUser.id, ...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}) },
+    orderBy: { createdAt: "asc" },
     select: {
-      id: true,
-      email: true,
-      firstName: true,
-      lastName: true,
-      memberships: {
-        where: activeWorkspaceId ? { workspaceId: activeWorkspaceId } : undefined,
-        orderBy: { createdAt: "asc" },
-        take: 1,
-        select: {
-          workspaceId: true,
-          role: true,
-          workspace: true,
-        },
-      },
+      workspaceId: true,
+      role: true,
+      workspace: true,
     },
   });
 
-  if (!user) throw new ApiError(403, "USER_NOT_PROVISIONED", "The authenticated user is not provisioned.");
-
-  const membership = user.memberships[0];
   if (!membership) {
     throw new ApiError(403, "WORKSPACE_REQUIRED", "A workspace membership is required.");
   }
@@ -97,10 +84,10 @@ export async function requireApiContext(permission?: Permission): Promise<ApiCon
 
   return {
     user: {
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
+      id: localUser.id,
+      email: localUser.email,
+      firstName: localUser.firstName,
+      lastName: localUser.lastName,
     },
     workspace: membership.workspace,
     workspaceId: membership.workspaceId,

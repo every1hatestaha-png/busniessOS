@@ -11,6 +11,9 @@ export const getCurrentUser = cache(async () => {
   const session = await auth();
   if (!session.userId) redirect("/sign-in");
 
+  const existing = await db.user.findUnique({ where: { clerkId: session.userId } });
+  if (existing) return existing;
+
   const clerkUser = await currentUser();
   if (!clerkUser) redirect("/sign-in");
 
@@ -38,14 +41,20 @@ export const getCurrentUser = cache(async () => {
   });
 });
 
-export const getCurrentWorkspace = cache(async () => {
+const getCurrentUserWorkspaceMemberships = cache(async () => {
   const user = await getCurrentUser();
   const activeWorkspaceId = (await cookies()).get("businessos_workspace")?.value;
-  const membership = await db.workspaceMember.findFirst({
-    where: { userId: user.id, ...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}) },
+  const memberships = await db.workspaceMember.findMany({
+    where: { userId: user.id },
     orderBy: { createdAt: "asc" },
-    include: { workspace: true },
+    select: { workspaceId: true, role: true, workspace: true },
   });
+  return { user, activeWorkspaceId, memberships };
+});
+
+export const getCurrentWorkspace = cache(async () => {
+  const { user, activeWorkspaceId, memberships } = await getCurrentUserWorkspaceMemberships();
+  const membership = memberships.find((entry) => entry.workspaceId === activeWorkspaceId) ?? memberships[0];
 
   if (!membership) return null;
 
@@ -58,8 +67,8 @@ export const getCurrentWorkspace = cache(async () => {
 });
 
 export async function listCurrentUserWorkspaces() {
-  const user = await getCurrentUser();
-  return db.workspaceMember.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" }, select: { workspaceId: true, role: true, workspace: { select: { name: true } } } });
+  const { memberships } = await getCurrentUserWorkspaceMemberships();
+  return memberships.map((membership) => ({ workspaceId: membership.workspaceId, role: membership.role, workspace: { name: membership.workspace.name } }));
 }
 
 export async function requireWorkspace() {
