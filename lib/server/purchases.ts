@@ -681,7 +681,7 @@ export async function listGoodsReceipts(workspaceId: string, purchaseOrderId: st
 
 export async function listAllGoodsReceipts(workspaceId: string) {
   const rows = await db.goodReceivedNote.findMany({ where: { workspaceId }, orderBy: [{ receiptDate: "desc" }, { createdAt: "desc" }], take: 500, include: { supplier: { select: { name: true, companyName: true } }, purchaseOrder: { select: { orderNumber: true } }, items: { select: { acceptedQuantity: true } } } });
-  return rows.map((row) => ({ id: row.id, grnNumber: row.grnNumber, receiptDate: row.receiptDate.toISOString(), supplierName: row.supplier.companyName ?? row.supplier.name, orderNumber: row.purchaseOrder.orderNumber, totalAmount: Number(row.totalAmount), totalAccepted: row.items.reduce((sum, item) => sum + item.acceptedQuantity.toNumber(), 0) }));
+  return rows.map((row) => ({ id: row.id, grnNumber: row.grnNumber, receiptDate: row.receiptDate.toISOString(), status: row.status, supplierName: row.supplier.companyName ?? row.supplier.name, orderNumber: row.purchaseOrder.orderNumber, totalAmount: Number(row.totalAmount), totalAccepted: row.items.reduce((sum, item) => sum + item.acceptedQuantity.toNumber(), 0) }));
 }
 
 export async function getGoodsReceipt(workspaceId: string, id: string) {
@@ -690,6 +690,7 @@ export async function getGoodsReceipt(workspaceId: string, id: string) {
     include: {
       purchaseOrder: { select: { orderNumber: true, pricingMode: true } },
       supplier: { select: { name: true, companyName: true, phone: true } },
+      supplierReturns: { select: { id: true }, take: 1 },
       items: {
         include: {
           purchaseOrderItem: { select: { quantity: true, receivedQuantity: true, unitWeight: true, totalWeight: true, perKgRate: true } },
@@ -705,9 +706,11 @@ export async function getGoodsReceipt(workspaceId: string, id: string) {
     grnNumber: grn.grnNumber,
     receiptDate: grn.receiptDate.toISOString(),
     totalAmount: Number(grn.totalAmount),
+    status: grn.status,
     receivedBy: grn.receivedBy,
     checkedBy: grn.checkedBy,
     notes: grn.notes,
+    hasSupplierReturns: grn.supplierReturns.length > 0,
     purchaseOrder: {
       id: grn.purchaseOrderId,
       orderNumber: grn.purchaseOrder.orderNumber,
@@ -724,6 +727,7 @@ export async function getGoodsReceipt(workspaceId: string, id: string) {
       const accepted = item.acceptedQuantity.toNumber();
       return {
         id: item.id,
+        purchaseOrderItemId: item.purchaseOrderItemId,
         productName: item.product.name,
         sku: item.product.sku ?? "",
         orderedQuantity: poQty,

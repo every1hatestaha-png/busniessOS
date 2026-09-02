@@ -1,17 +1,28 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Printer } from "lucide-react";
+import { StatusBadge } from "@/components/business/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { requireWorkspace } from "@/lib/server/auth";
+import { canPerformAction } from "@/lib/server/authorization";
 import { getGoodsReceipt } from "@/lib/server/purchases";
 import { formatDate, formatPKR } from "@/lib/utils";
+import { EditGrnSheet } from "@/components/goods-receipts/edit-grn-sheet";
+import { VoidGrnButton } from "@/components/goods-receipts/void-grn-button";
+import { DeleteGrnButton } from "@/components/goods-receipts/delete-grn-button";
 
 export default async function GoodsReceiptDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { workspaceId } = await requireWorkspace();
+  const { workspaceId, role } = await requireWorkspace();
   const grn = await getGoodsReceipt(workspaceId, id);
   if (!grn) notFound();
+
+  const canAdjust = canPerformAction(role, "inventory.adjust");
+  const isActive = grn.status === "ACTIVE";
+  const canEdit = canAdjust && isActive && !grn.hasSupplierReturns;
+  const canVoid = canAdjust && isActive;
+  const canDelete = canAdjust && isActive && !grn.hasSupplierReturns;
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-6">
@@ -22,11 +33,14 @@ export default async function GoodsReceiptDetailPage({ params }: { params: Promi
           </Link>
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-bold tracking-tight text-neutral-950 md:text-3xl">{grn.grnNumber}</h1>
-            <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-800">POSTED</span>
+            <StatusBadge status={grn.status} />
           </div>
           <p className="mt-1 text-sm text-neutral-500">Received {formatDate(grn.receiptDate)} from {grn.supplier.name}</p>
         </div>
         <div className="flex gap-2">
+          {canEdit && <EditGrnSheet grn={grn} />}
+          {canVoid && <VoidGrnButton grnId={grn.id} />}
+          {canDelete && <DeleteGrnButton grnId={grn.id} />}
           <Link href={`/goods-receipts/${id}/print`} target="_blank" className="inline-flex h-9 items-center justify-center border px-4 text-sm font-semibold text-neutral-700 hover:bg-neutral-50">
             <Printer className="mr-2 h-4 w-4" /> Print GRN
           </Link>
