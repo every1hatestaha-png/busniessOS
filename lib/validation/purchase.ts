@@ -43,3 +43,30 @@ export const goodsReceiptSchema = z.object({
 });
 
 export type GoodsReceiptInput = z.infer<typeof goodsReceiptSchema>;
+
+export const updatePurchaseSchema = z.object({
+  notes: z.string().trim().max(1000).optional(),
+  expectedDeliveryDate: z.coerce.date().optional(),
+});
+
+export type UpdatePurchaseInput = z.infer<typeof updatePurchaseSchema>;
+
+export const voidGoodsReceiptSchema = z.object({
+  voidedReason: z.string().trim().min(1).max(1000),
+});
+
+export type VoidGoodsReceiptInput = z.infer<typeof voidGoodsReceiptSchema>;
+
+export const updateGoodsReceiptSchema = z.object({
+  notes: z.string().trim().max(1000).optional(),
+  receivedBy: z.string().trim().max(200).optional(),
+  checkedBy: z.string().trim().max(200).optional(),
+  items: z.array(z.object({
+    purchaseOrderItemId: z.uuid(),
+    receivedQuantity: z.coerce.number().nonnegative(),
+    acceptedQuantity: z.coerce.number().nonnegative(),
+    actualUnitCost: z.coerce.number().nonnegative().max(999_999_999),
+  })).min(1).max(100).optional(),
+});
+
+export type UpdateGoodsReceiptInput = z.infer<typeof updateGoodsReceiptSchema>;

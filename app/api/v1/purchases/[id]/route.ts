@@ -11,7 +11,7 @@ export const GET = apiHandler(async (_request: Request, { params }: { params: Pr
 });
 
 export const PATCH = apiHandler(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
-  const context = await requireApiContext("business.write");
+  const context = await requireApiContext("inventory.adjust");
   const { id } = z.object({ id: z.uuid() }).parse(await params);
   const body = await request.json();
 
@@ -21,7 +21,7 @@ export const PATCH = apiHandler(async (request: Request, { params }: { params: P
     return apiData(purchase);
   } catch (error) {
     if (error instanceof PurchaseDomainError) {
-      const status = error.code === "PURCHASE_NOT_FOUND" ? 404 : error.code === "CANNOT_EDIT_PO" ? 400 : 500;
+      const status = error.code === "PURCHASE_NOT_FOUND" ? 404 : 422;
       throw new ApiError(status, error.code, error.message);
     }
     throw error;
@@ -29,7 +29,7 @@ export const PATCH = apiHandler(async (request: Request, { params }: { params: P
 });
 
 export const DELETE = apiHandler(async (_request: Request, { params }: { params: Promise<{ id: string }> }) => {
-  const context = await requireApiContext("business.delete");
+  const context = await requireApiContext("inventory.adjust");
   const { id } = z.object({ id: z.uuid() }).parse(await params);
 
   try {
@@ -37,7 +37,7 @@ export const DELETE = apiHandler(async (_request: Request, { params }: { params:
     return apiData({ success: true, id: deleted.id, orderNumber: deleted.orderNumber });
   } catch (error) {
     if (error instanceof PurchaseDomainError) {
-      const status = error.code === "PURCHASE_NOT_FOUND" ? 404 : error.code === "CANNOT_DELETE_PO" ? 400 : 500;
+      const status = error.code === "PURCHASE_NOT_FOUND" ? 404 : 422;
       throw new ApiError(status, error.code, error.message);
     }
     throw error;

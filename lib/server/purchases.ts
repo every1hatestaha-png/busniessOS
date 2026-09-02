@@ -7,7 +7,7 @@ import { db } from "@/lib/server/db";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";
 import type { ServiceContext } from "@/lib/server/sales";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
-import { purchaseSchema, goodsReceiptSchema, updatePurchaseSchema, voidGoodsReceiptSchema, type PurchaseInput, type GoodsReceiptInput, type UpdatePurchaseInput, type VoidGoodsReceiptInput } from "@/lib/validation/purchase";
+import { purchaseSchema, goodsReceiptSchema, updatePurchaseSchema, voidGoodsReceiptSchema, updateGoodsReceiptSchema, type PurchaseInput, type GoodsReceiptInput, type UpdatePurchaseInput, type VoidGoodsReceiptInput, type UpdateGoodsReceiptInput } from "@/lib/validation/purchase";
 import { supplierReturnSchema, type SupplierReturnInput } from "@/lib/validation/returns";
 
 export class PurchaseDomainError extends Error {
@@ -848,10 +848,13 @@ export async function updatePurchase(context: ServiceContext, id: string, input:
       select: { id: true, orderNumber: true },
     });
 
-    await writeAudit(tx, context.workspaceId, "PurchaseOrderUpdated", {
-      orderId: id,
-      orderNumber: order.orderNumber,
-      changes: data,
+    await writeAudit(tx, {
+      workspaceId: context.workspaceId,
+      actorId: context.userId,
+      action: "purchase.updated",
+      entityType: "PurchaseOrder",
+      entityId: id,
+      metadata: { orderNumber: order.orderNumber, changes: data },
     });
 
     return updated;
@@ -887,12 +890,358 @@ export async function deletePurchase(context: ServiceContext, id: string) {
       select: { id: true, orderNumber: true },
     });
 
-    await writeAudit(tx, context.workspaceId, "PurchaseOrderDeleted", {
-      orderId: id,
-      orderNumber: deleted.orderNumber,
+    await writeAudit(tx, {
+      workspaceId: context.workspaceId,
+      actorId: context.userId,
+      action: "purchase.deleted",
+      entityType: "PurchaseOrder",
+      entityId: id,
+      metadata: { orderNumber: deleted.orderNumber },
     });
 
     return deleted;
+  });
+}
+
+/**
+ * Update a Goods Received Note (GRN).
+ * Supports editing header fields (notes, receivedBy, checkedBy) and line items
+ * (acceptedQuantity, unitCost) on an ACTIVE GRN.
+ *
+ * When line items change, the function reverses the old inventory/accounting effects
+ * and applies the new ones atomically, preserving WAC correctness and GL balance.
+ *
+ * Blocked if GRN is VOIDED or has linked SupplierReturns.
+ */
+export async function updateGoodsReceipt(context: ServiceContext, id: string, input: UpdateGoodsReceiptInput) {
+  const data = updateGoodsReceiptSchema.parse(input);
+  return withSerializableRetry(async (tx) => {
+    const grn = await tx.goodReceivedNote.findFirst({
+      where: { id, workspaceId: context.workspaceId },
+      include: {
+        items: true,
+        supplierReturns: { select: { id: true }, take: 1 },
+        purchaseOrder: { select: { id: true, orderNumber: true } },
+      },
+    });
+    if (!grn) throw new PurchaseDomainError("GRN_NOT_FOUND", "Goods receipt not found.");
+
+    if (grn.status === "VOIDED") {
+      throw new PurchaseDomainError("CANNOT_MODIFY_GRN", "Cannot modify a voided goods receipt.");
+    }
+
+    if (grn.supplierReturns.length > 0) {
+      throw new PurchaseDomainError("GRN_HAS_SUPPLIER_RETURNS", "Goods receipt cannot be modified because it has linked supplier returns.");
+    }
+
+    // Update header fields
+    const headerUpdate: { notes?: string | null; receivedBy?: string | null; checkedBy?: string | null } = {};
+    if (data.notes !== undefined) headerUpdate.notes = data.notes || null;
+    if (data.receivedBy !== undefined) headerUpdate.receivedBy = data.receivedBy || null;
+    if (data.checkedBy !== undefined) headerUpdate.checkedBy = data.checkedBy || null;
+
+    if (Object.keys(headerUpdate).length > 0) {
+      await tx.goodReceivedNote.update({
+        where: { id, workspaceId: context.workspaceId },
+        data: headerUpdate,
+      });
+    }
+
+    if (!data.items || data.items.length === 0) {
+      await writeAudit(tx, {
+        workspaceId: context.workspaceId,
+        actorId: context.userId,
+        action: "grn.updated",
+        entityType: "GoodReceivedNote",
+        entityId: grn.id,
+        metadata: { grnNumber: grn.grnNumber, changes: headerUpdate },
+      });
+      return { id: grn.id, grnNumber: grn.grnNumber, status: grn.status };
+    }
+
+    // Validate no duplicate PO items in the update
+    const updateIds = data.items.map((i) => i.purchaseOrderItemId);
+    if (new Set(updateIds).size !== updateIds.length) {
+      throw new PurchaseDomainError("INVALID_RECEIPT", "Duplicate purchase order items are not allowed.");
+    }
+
+    // Build map of existing GRN items by purchaseOrderItemId
+    const existingByPoItem = new Map(grn.items.map((item) => [item.purchaseOrderItemId, item]));
+
+    // Validate all referenced PO items exist in this GRN
+    for (const item of data.items) {
+      if (!existingByPoItem.has(item.purchaseOrderItemId)) {
+        throw new PurchaseDomainError("INVALID_RECEIPT", `Purchase order item ${item.purchaseOrderItemId} is not part of this goods receipt.`);
+      }
+    }
+
+    // Load PO items for receivedQuantity validation
+    const poItemIds = grn.items.map((i) => i.purchaseOrderItemId);
+    const poItems = await tx.purchaseOrderItem.findMany({
+      where: { id: { in: poItemIds } },
+    });
+    const poItemMap = new Map(poItems.map((p) => [p.id, p]));
+
+    let totalDelta = new Prisma.Decimal(0);
+
+    for (const item of data.items) {
+      const existing = existingByPoItem.get(item.purchaseOrderItemId)!;
+      const poItem = poItemMap.get(item.purchaseOrderItemId);
+      if (!poItem) throw new PurchaseDomainError("INVALID_RECEIPT", "Purchase order item not found.");
+
+      const oldAccepted = existing.acceptedQuantity.toNumber();
+      const newAccepted = item.acceptedQuantity;
+      const oldUnitCost = Number(existing.unitCost);
+      const newUnitCost = item.actualUnitCost;
+
+      if (newAccepted < 0 || newUnitCost < 0) {
+        throw new PurchaseDomainError("INVALID_RECEIPT", "Quantities and costs cannot be negative.");
+      }
+
+      const quantityDelta = newAccepted - oldAccepted;
+
+      // If quantity is decreasing, verify PO item receivedQuantity can absorb the decrease
+      if (quantityDelta < 0) {
+        const currentPoReceived = poItem.receivedQuantity.toNumber();
+        const newPoReceived = currentPoReceived + quantityDelta;
+        if (newPoReceived < 0) {
+          throw new PurchaseDomainError("INVALID_RECEIPT", `Cannot reduce accepted quantity below zero for ${existing.productId}.`);
+        }
+      }
+
+      // If quantity is increasing, verify PO has remaining ordered capacity
+      if (quantityDelta > 0) {
+        const poQuantity = poItem.quantity.toNumber();
+        const currentPoReceived = poItem.receivedQuantity.toNumber();
+        const remaining = poQuantity - currentPoReceived;
+        if (quantityDelta > remaining) {
+          throw new PurchaseDomainError("OVER_RECEIPT", `Cannot increase accepted quantity by ${quantityDelta}. Only ${remaining} remaining on the purchase order.`);
+        }
+      }
+
+      const oldTotalCost = existing.totalCost;
+      const newUnitCostDecimal = new Prisma.Decimal(newUnitCost);
+      const newTotalCost = newUnitCostDecimal.mul(newAccepted);
+      const totalCostDelta = newTotalCost.minus(oldTotalCost);
+      totalDelta = totalDelta.plus(totalCostDelta);
+
+      // === INVENTORY REVERSAL (old effect) ===
+      if (oldAccepted > 0) {
+        const product = await tx.product.findFirst({
+          where: { id: existing.productId, workspaceId: context.workspaceId },
+          select: { stockQuantity: true, costPrice: true },
+        });
+        if (!product) throw new PurchaseDomainError("PRODUCT_NOT_FOUND", "Product not found.");
+
+        const currentStock = product.stockQuantity.toNumber();
+        const currentValue = product.costPrice.mul(currentStock);
+        const remainingStock = currentStock - oldAccepted;
+        const remainingValue = currentValue.minus(oldTotalCost);
+
+        if (remainingStock < 0) {
+          throw new PurchaseDomainError("INSUFFICIENT_INVENTORY", "Insufficient stock to reverse old receipt quantity.");
+        }
+        if (remainingValue.isNegative()) {
+          throw new PurchaseDomainError("INSUFFICIENT_INVENTORY", "Insufficient inventory carrying value to reverse old receipt.");
+        }
+
+        const reversedCostPrice = remainingStock > 0 ? remainingValue.div(remainingStock) : new Prisma.Decimal(0);
+        await tx.product.update({
+          where: { id: existing.productId, workspaceId: context.workspaceId },
+          data: { stockQuantity: { decrement: oldAccepted }, costPrice: reversedCostPrice },
+        });
+      }
+
+      // === INVENTORY APPLICATION (new effect) ===
+      if (newAccepted > 0) {
+        const product = await tx.product.findFirst({
+          where: { id: existing.productId, workspaceId: context.workspaceId },
+          select: { stockQuantity: true, costPrice: true },
+        });
+        if (!product) throw new PurchaseDomainError("PRODUCT_NOT_FOUND", "Product not found.");
+
+        const currentStock = product.stockQuantity.toNumber();
+        const resultingQuantity = currentStock + newAccepted;
+        const weightedCost = resultingQuantity > 0
+          ? product.costPrice.mul(currentStock).plus(newUnitCostDecimal.mul(newAccepted)).div(resultingQuantity)
+          : newUnitCostDecimal;
+
+        await tx.product.update({
+          where: { id: existing.productId, workspaceId: context.workspaceId },
+          data: { stockQuantity: { increment: newAccepted }, costPrice: weightedCost },
+        });
+
+        // Reversal inventory transaction for old effect
+        if (oldAccepted > 0) {
+          await tx.inventoryTransaction.create({
+            data: {
+              workspaceId: context.workspaceId,
+              productId: existing.productId,
+              type: "PURCHASE_CANCELLATION",
+              quantityChanged: -oldAccepted,
+              unitCost: oldTotalCost.div(oldAccepted),
+              reference: grn.grnNumber,
+            },
+          });
+        }
+
+        // New inventory transaction
+        await tx.inventoryTransaction.create({
+          data: {
+            workspaceId: context.workspaceId,
+            productId: existing.productId,
+            type: "PURCHASE_RECEIPT",
+            quantityChanged: newAccepted,
+            unitCost: newUnitCostDecimal,
+            reference: grn.grnNumber,
+          },
+        });
+      } else if (oldAccepted > 0) {
+        // Quantity went to zero — only reversal transaction needed
+        await tx.inventoryTransaction.create({
+          data: {
+            workspaceId: context.workspaceId,
+            productId: existing.productId,
+            type: "PURCHASE_CANCELLATION",
+            quantityChanged: -oldAccepted,
+            unitCost: oldTotalCost.div(oldAccepted),
+            reference: grn.grnNumber,
+          },
+        });
+      }
+
+      // Update GRN item record
+      await tx.goodReceivedNoteItem.update({
+        where: { id: existing.id },
+        data: {
+          receivedQuantity: newAccepted,
+          acceptedQuantity: newAccepted,
+          unitCost: newUnitCostDecimal,
+          totalCost: newTotalCost,
+        },
+      });
+
+      // Update PO item receivedQuantity
+      const poItemCurrentReceived = poItem.receivedQuantity.toNumber();
+      const newPoReceived = poItemCurrentReceived + quantityDelta;
+      await tx.purchaseOrderItem.update({
+        where: { id: item.purchaseOrderItemId },
+        data: { receivedQuantity: newPoReceived },
+      });
+    }
+
+    // Update GRN totalAmount
+    const newGrnTotal = grn.totalAmount.plus(totalDelta);
+    await tx.goodReceivedNote.update({
+      where: { id, workspaceId: context.workspaceId },
+      data: { totalAmount: newGrnTotal },
+    });
+
+    // Update supplier balance by delta
+    if (!totalDelta.isZero()) {
+      if (totalDelta.greaterThan(0)) {
+        await tx.supplier.update({
+          where: { id: grn.supplierId, workspaceId: context.workspaceId },
+          data: { currentBalance: { increment: totalDelta } },
+        });
+      } else {
+        await tx.supplier.update({
+          where: { id: grn.supplierId, workspaceId: context.workspaceId },
+          data: { currentBalance: { decrement: totalDelta.abs() } },
+        });
+      }
+
+      // Ledger entry for the delta
+      if (totalDelta.greaterThan(0)) {
+        await tx.ledgerEntry.create({
+          data: {
+            workspaceId: context.workspaceId,
+            supplierId: grn.supplierId,
+            type: "GOODS_RECEIVED",
+            credit: totalDelta,
+            description: `GRN ${grn.grnNumber} adjusted (increase)`,
+            referenceId: grn.id,
+          },
+        });
+      } else {
+        await tx.ledgerEntry.create({
+          data: {
+            workspaceId: context.workspaceId,
+            supplierId: grn.supplierId,
+            type: "REVERSAL",
+            debit: totalDelta.abs(),
+            description: `GRN ${grn.grnNumber} adjusted (decrease)`,
+            referenceId: grn.id,
+          },
+        });
+      }
+
+      // Reverse old GL entries and post new ones
+      await reverseGeneralLedgerEntries(tx, {
+        workspaceId: context.workspaceId,
+        sources: [{ sourceType: "PURCHASE_RECEIPT", sourceId: grn.id }],
+        documentNo: grn.grnNumber,
+        date: new Date(),
+        reason: `GRN ${grn.grnNumber} updated`,
+        reversedById: context.userId,
+      });
+
+      await postGoodsReceiptToGeneralLedger(tx, {
+        workspaceId: context.workspaceId,
+        grnId: grn.id,
+        grnNumber: grn.grnNumber,
+        date: grn.receiptDate,
+        inventoryAmount: newGrnTotal,
+      });
+
+      // Update PO balanceAmount by delta
+      await tx.purchaseOrder.update({
+        where: { id: grn.purchaseOrderId, workspaceId: context.workspaceId },
+        data: { balanceAmount: { increment: totalDelta } },
+      });
+    }
+
+    // Recalculate PO status
+    const totalReceivedAllItems = await tx.purchaseOrderItem.aggregate({
+      where: { purchaseOrderId: grn.purchaseOrderId },
+      _sum: { receivedQuantity: true },
+    });
+    const totalOrderedAllItems = await tx.purchaseOrderItem.aggregate({
+      where: { purchaseOrderId: grn.purchaseOrderId },
+      _sum: { quantity: true },
+    });
+    const totalReceived = Number(totalReceivedAllItems._sum.receivedQuantity ?? 0);
+    const totalOrdered = Number(totalOrderedAllItems._sum.quantity ?? 0);
+
+    let newStatus: "ORDERED" | "PARTIALLY_RECEIVED" | "RECEIVED";
+    if (totalReceived <= 0) {
+      newStatus = "ORDERED";
+    } else if (totalReceived >= totalOrdered) {
+      newStatus = "RECEIVED";
+    } else {
+      newStatus = "PARTIALLY_RECEIVED";
+    }
+
+    await tx.purchaseOrder.update({
+      where: { id: grn.purchaseOrderId, workspaceId: context.workspaceId },
+      data: { status: newStatus },
+    });
+
+    await writeAudit(tx, {
+      workspaceId: context.workspaceId,
+      actorId: context.userId,
+      action: "grn.updated",
+      entityType: "GoodReceivedNote",
+      entityId: grn.id,
+      metadata: {
+        grnNumber: grn.grnNumber,
+        totalDelta: totalDelta.toString(),
+        newTotal: newGrnTotal.toString(),
+        itemsUpdated: data.items.length,
+      },
+    });
+
+    return { id: grn.id, grnNumber: grn.grnNumber, status: grn.status };
   });
 }
 
@@ -967,7 +1316,7 @@ export async function voidGoodsReceipt(context: ServiceContext, id: string, inpu
         data: {
           workspaceId: context.workspaceId,
           productId: item.productId,
-          type: "GRN_REVERSAL",
+          type: "PURCHASE_CANCELLATION",
           quantityChanged: -item.acceptedQuantity.toNumber(),
           unitCost: item.totalCost.div(item.acceptedQuantity),
           reference: grn.grnNumber,
@@ -982,7 +1331,14 @@ export async function voidGoodsReceipt(context: ServiceContext, id: string, inpu
     });
 
     if (glEntriesToReverse.length > 0) {
-      await reverseGeneralLedgerEntries(tx, context.workspaceId, grn.id, grn.grnNumber);
+      await reverseGeneralLedgerEntries(tx, {
+        workspaceId: context.workspaceId,
+        sources: [{ sourceType: "PURCHASE_RECEIPT", sourceId: grn.id }],
+        documentNo: grn.grnNumber,
+        date: new Date(),
+        reason: `Voided receipt ${grn.grnNumber}`,
+        reversedById: context.userId,
+      });
     }
 
     // Reverse supplier payable
@@ -1003,6 +1359,20 @@ export async function voidGoodsReceipt(context: ServiceContext, id: string, inpu
       data: { currentBalance: { decrement: grn.totalAmount } },
     });
 
+    // Update PO: decrement balanceAmount by reversed total
+    await tx.purchaseOrder.update({
+      where: { id: grn.purchaseOrderId, workspaceId: context.workspaceId },
+      data: { balanceAmount: { decrement: grn.totalAmount } },
+    });
+
+    // Decrement receivedQuantity on PO items for each voided GRN item
+    for (const item of grn.items) {
+      await tx.purchaseOrderItem.update({
+        where: { id: item.purchaseOrderItemId },
+        data: { receivedQuantity: { decrement: item.acceptedQuantity } },
+      });
+    }
+
     // Mark GRN as VOIDED
     const voided = await tx.goodReceivedNote.update({
       where: { id, workspaceId: context.workspaceId },
@@ -1014,26 +1384,39 @@ export async function voidGoodsReceipt(context: ServiceContext, id: string, inpu
       select: { id: true, grnNumber: true, status: true },
     });
 
-    // Update PO status if all GRNs are voided
-    const activeGrns = await tx.goodReceivedNote.count({
-      where: {
-        purchaseOrderId: grn.purchaseOrderId,
-        workspaceId: context.workspaceId,
-        status: "ACTIVE",
-      },
+    // Recalculate PO status based on aggregate received vs ordered
+    const totalReceivedAllItems = await tx.purchaseOrderItem.aggregate({
+      where: { purchaseOrderId: grn.purchaseOrderId },
+      _sum: { receivedQuantity: true },
     });
-    if (activeGrns === 0) {
-      await tx.purchaseOrder.update({
-        where: { id: grn.purchaseOrderId, workspaceId: context.workspaceId },
-        data: { status: "ORDERED" },
-      });
+    const totalOrderedAllItems = await tx.purchaseOrderItem.aggregate({
+      where: { purchaseOrderId: grn.purchaseOrderId },
+      _sum: { quantity: true },
+    });
+    const totalReceived = Number(totalReceivedAllItems._sum.receivedQuantity ?? 0);
+    const totalOrdered = Number(totalOrderedAllItems._sum.quantity ?? 0);
+
+    let newStatus: "ORDERED" | "PARTIALLY_RECEIVED" | "RECEIVED";
+    if (totalReceived <= 0) {
+      newStatus = "ORDERED";
+    } else if (totalReceived >= totalOrdered) {
+      newStatus = "RECEIVED";
+    } else {
+      newStatus = "PARTIALLY_RECEIVED";
     }
 
-    await writeAudit(tx, context.workspaceId, "GoodsReceiptVoided", {
-      grnId: grn.id,
-      grnNumber: grn.grnNumber,
-      voidedReason: data.voidedReason,
-      reverseTotal: grn.totalAmount.toString(),
+    await tx.purchaseOrder.update({
+      where: { id: grn.purchaseOrderId, workspaceId: context.workspaceId },
+      data: { status: newStatus },
+    });
+
+    await writeAudit(tx, {
+      workspaceId: context.workspaceId,
+      actorId: context.userId,
+      action: "grn.voided",
+      entityType: "GoodReceivedNote",
+      entityId: grn.id,
+      metadata: { grnNumber: grn.grnNumber, voidedReason: data.voidedReason, reverseTotal: grn.totalAmount.toString() },
     });
 
     return voided;
@@ -1105,7 +1488,7 @@ export async function deleteGoodsReceipt(context: ServiceContext, id: string) {
         data: {
           workspaceId: context.workspaceId,
           productId: item.productId,
-          type: "GRN_REVERSAL",
+          type: "PURCHASE_CANCELLATION",
           quantityChanged: -item.acceptedQuantity.toNumber(),
           unitCost: item.totalCost.div(item.acceptedQuantity),
           reference: grn.grnNumber,
@@ -1120,7 +1503,14 @@ export async function deleteGoodsReceipt(context: ServiceContext, id: string) {
     });
 
     if (glEntriesToReverse.length > 0) {
-      await reverseGeneralLedgerEntries(tx, context.workspaceId, grn.id, grn.grnNumber);
+      await reverseGeneralLedgerEntries(tx, {
+        workspaceId: context.workspaceId,
+        sources: [{ sourceType: "PURCHASE_RECEIPT", sourceId: grn.id }],
+        documentNo: grn.grnNumber,
+        date: new Date(),
+        reason: `Deleted receipt ${grn.grnNumber}`,
+        reversedById: context.userId,
+      });
     }
 
     // Reverse supplier payable
@@ -1141,30 +1531,59 @@ export async function deleteGoodsReceipt(context: ServiceContext, id: string) {
       data: { currentBalance: { decrement: grn.totalAmount } },
     });
 
+    // Update PO: decrement balanceAmount by reversed total
+    await tx.purchaseOrder.update({
+      where: { id: grn.purchaseOrderId, workspaceId: context.workspaceId },
+      data: { balanceAmount: { decrement: grn.totalAmount } },
+    });
+
+    // Decrement receivedQuantity on PO items for each deleted GRN item
+    for (const item of grn.items) {
+      await tx.purchaseOrderItem.update({
+        where: { id: item.purchaseOrderItemId },
+        data: { receivedQuantity: { decrement: item.acceptedQuantity } },
+      });
+    }
+
     // Delete GRN
     const deleted = await tx.goodReceivedNote.delete({
       where: { id, workspaceId: context.workspaceId },
       select: { id: true, grnNumber: true },
     });
 
-    // Update PO status if no GRNs remain
-    const activeGrns = await tx.goodReceivedNote.count({
-      where: {
-        purchaseOrderId: grn.purchaseOrderId,
-        workspaceId: context.workspaceId,
-      },
+    // Recalculate PO status based on aggregate received vs ordered
+    const totalReceivedAllItems = await tx.purchaseOrderItem.aggregate({
+      where: { purchaseOrderId: grn.purchaseOrderId },
+      _sum: { receivedQuantity: true },
     });
-    if (activeGrns === 0) {
-      await tx.purchaseOrder.update({
-        where: { id: grn.purchaseOrderId, workspaceId: context.workspaceId },
-        data: { status: "ORDERED" },
-      });
+    const totalOrderedAllItems = await tx.purchaseOrderItem.aggregate({
+      where: { purchaseOrderId: grn.purchaseOrderId },
+      _sum: { quantity: true },
+    });
+    const totalReceived = Number(totalReceivedAllItems._sum.receivedQuantity ?? 0);
+    const totalOrdered = Number(totalOrderedAllItems._sum.quantity ?? 0);
+
+    let newStatus: "ORDERED" | "PARTIALLY_RECEIVED" | "RECEIVED";
+    if (totalReceived <= 0) {
+      newStatus = "ORDERED";
+    } else if (totalReceived >= totalOrdered) {
+      newStatus = "RECEIVED";
+    } else {
+      newStatus = "PARTIALLY_RECEIVED";
     }
 
-    await writeAudit(tx, context.workspaceId, "GoodsReceiptDeleted", {
-      grnId: id,
-      grnNumber: deleted.grnNumber,
-      reverseTotal: grn.totalAmount.toString(),
+    await tx.purchaseOrder.update({
+      where: { id: grn.purchaseOrderId, workspaceId: context.workspaceId },
+      data: { status: newStatus },
+    });
+
+    await writeAudit(tx, {
+      workspaceId: context.workspaceId,
+      actorId: context.userId,
+      action: "grn.deleted",
+      entityType: "GoodReceivedNote",
+      entityId: id,
+      metadata: { grnNumber: deleted.grnNumber, reverseTotal: grn.totalAmount.toString() },
     });
 
     return deleted;
