@@ -156,23 +156,23 @@ export async function getReceivablesAging(workspaceId: string, filters: Receivab
 
   const unappliedCreditByCustomer = new Map<string, { amount: number; customerName: string }>();
   for (const credit of credits) {
-    const remainingAmount = Number(credit.amount) - Number(credit.appliedAmount);
-    if (remainingAmount <= 0) continue;
+    const remainingAmount = credit.amount.minus(credit.appliedAmount);
+    if (remainingAmount.lte(0)) continue;
     const current = unappliedCreditByCustomer.get(credit.customerId);
-    unappliedCreditByCustomer.set(credit.customerId, { amount: (current?.amount ?? 0) + remainingAmount, customerName: current?.customerName ?? credit.customerName });
+    unappliedCreditByCustomer.set(credit.customerId, { amount: new Prisma.Decimal(current?.amount ?? 0).plus(remainingAmount).toNumber(), customerName: current?.customerName ?? credit.customerName });
   }
   const unappliedPaymentByCustomer = new Map<string, { amount: number; customerName: string }>();
   for (const payment of onAccountPayments) {
     if (!payment.customerId) continue;
-    const unappliedAmount = Number(payment.amount) - Number(payment.allocatedAmount);
-    if (unappliedAmount <= 0) continue;
+    const unappliedAmount = payment.amount.minus(payment.allocatedAmount);
+    if (unappliedAmount.lte(0)) continue;
     const current = unappliedPaymentByCustomer.get(payment.customerId);
-    unappliedPaymentByCustomer.set(payment.customerId, { amount: (current?.amount ?? 0) + unappliedAmount, customerName: current?.customerName ?? payment.customerName });
+    unappliedPaymentByCustomer.set(payment.customerId, { amount: new Prisma.Decimal(current?.amount ?? 0).plus(unappliedAmount).toNumber(), customerName: current?.customerName ?? payment.customerName });
   }
   const items: ReceivablesAgingItem[] = [];
   for (const opening of openingBalances) {
     if (!opening.customerId) continue;
-    const outstanding = Number(opening.debit) - Number(opening.credit);
+    const outstanding = opening.debit.minus(opening.credit).toNumber();
     if (outstanding <= 0) continue;
     const customerName = opening.customerName;
     if (search && !customerName.toLowerCase().includes(search) && !"opening balance".includes(search)) continue;
@@ -182,9 +182,9 @@ export async function getReceivablesAging(workspaceId: string, filters: Receivab
     items.push({ invoiceId: opening.id, documentNumber: "OPENING BALANCE", customerId: opening.customerId, customerName, invoiceDate: opening.date.toISOString(), dueDate: null, originalAmount: outstanding, paymentsApplied: 0, creditsApplied: 0, outstandingAmount: outstanding, ageDays: age, bucket, isOpeningBalance: true });
   }
   for (const invoice of invoices) {
-    const paymentsApplied = Number(invoice.paymentsApplied);
-    const creditsApplied = Number(invoice.creditsApplied);
-    const outstanding = Number(invoice.amount) - paymentsApplied - creditsApplied;
+    const paymentsApplied = invoice.paymentsApplied.toNumber();
+    const creditsApplied = invoice.creditsApplied.toNumber();
+    const outstanding = invoice.amount.minus(invoice.paymentsApplied).minus(invoice.creditsApplied).toNumber();
     if (outstanding <= 0) continue;
     const customerName = invoice.customerName;
     if (search && !customerName.toLowerCase().includes(search) && !invoice.invoiceNumber.toLowerCase().includes(search)) continue;
@@ -217,8 +217,8 @@ export async function getReceivablesAging(workspaceId: string, filters: Receivab
       customer = { customerId: item.customerId, customerName: item.customerName, totalOutstanding: 0, unappliedCredit: unappliedCreditByCustomer.get(item.customerId)?.amount ?? 0, unappliedPayment: unappliedPaymentByCustomer.get(item.customerId)?.amount ?? 0, buckets: toBucketTotals(), oldestAgeDays: null, items: [] };
       customers.set(item.customerId, customer);
     }
-    customer.totalOutstanding += item.outstandingAmount;
-    if (item.bucket !== "current") customer.buckets[item.bucket] += item.outstandingAmount;
+    customer.totalOutstanding = new Prisma.Decimal(customer.totalOutstanding).plus(item.outstandingAmount).toNumber();
+    if (item.bucket !== "current") customer.buckets[item.bucket] = new Prisma.Decimal(customer.buckets[item.bucket]).plus(item.outstandingAmount).toNumber();
     customer.items.push(item);
     customer.oldestAgeDays = customer.oldestAgeDays === null ? item.ageDays : Math.max(customer.oldestAgeDays, item.ageDays);
   }
@@ -236,17 +236,17 @@ export async function getReceivablesAging(workspaceId: string, filters: Receivab
   }
 
   const totals = { current: 0, ...toBucketTotals() };
-  let grossOutstanding = 0;
-  let totalUnappliedCredit = 0;
-  let totalUnappliedPayments = 0;
+  let grossOutstanding = new Prisma.Decimal(0);
+  let totalUnappliedCredit = new Prisma.Decimal(0);
+  let totalUnappliedPayments = new Prisma.Decimal(0);
   const customerRows = [...customers.values()].map((customer) => ({ ...customer, items: customer.items.sort((a, b) => b.ageDays - a.ageDays) }));
   for (const customer of customerRows) {
-    grossOutstanding += customer.totalOutstanding;
-    totalUnappliedCredit += customer.unappliedCredit;
-    totalUnappliedPayments += customer.unappliedPayment;
-    for (const bucket of Object.keys(customer.buckets) as ReceivablesBucket[]) totals[bucket] += customer.buckets[bucket];
-    totals.current += customer.items.filter((item) => item.bucket === "current").reduce((sum, item) => sum + item.outstandingAmount, 0);
+    grossOutstanding = grossOutstanding.plus(customer.totalOutstanding);
+    totalUnappliedCredit = totalUnappliedCredit.plus(customer.unappliedCredit);
+    totalUnappliedPayments = totalUnappliedPayments.plus(customer.unappliedPayment);
+    for (const bucket of Object.keys(customer.buckets) as ReceivablesBucket[]) totals[bucket] = new Prisma.Decimal(totals[bucket]).plus(customer.buckets[bucket]).toNumber();
+    totals.current = new Prisma.Decimal(totals.current).plus(customer.items.filter((item) => item.bucket === "current").reduce((sum, item) => sum + item.outstandingAmount, 0)).toNumber();
   }
 
-  return { asOfDate, grossOutstanding, totalOutstanding: grossOutstanding - totalUnappliedCredit - totalUnappliedPayments, totalUnappliedCredit, totalUnappliedPayments, buckets: totals, customers: customerRows };
+  return { asOfDate, grossOutstanding: grossOutstanding.toNumber(), totalOutstanding: grossOutstanding.minus(totalUnappliedCredit).minus(totalUnappliedPayments).toNumber(), totalUnappliedCredit: totalUnappliedCredit.toNumber(), totalUnappliedPayments: totalUnappliedPayments.toNumber(), buckets: totals, customers: customerRows };
 }

@@ -36,7 +36,7 @@ export async function updateSupplier(context: ServiceContext, id: string, input:
   return db.$transaction(async (tx) => {
     const found = await tx.supplier.findFirst({ where: { id, workspaceId: context.workspaceId }, select: { id: true } });
     if (!found) throw new SupplierDomainError("Supplier not found.");
-    const supplier = await tx.supplier.update({ where: { id }, data: { ...data, companyName: data.companyName || null, phone: data.phone || null, email: data.email || null, address: data.address || null, city: data.city || null, notes: data.notes || null } });
+    const supplier = await tx.supplier.update({ where: { id, workspaceId: context.workspaceId }, data: { ...data, companyName: data.companyName || null, phone: data.phone || null, email: data.email || null, address: data.address || null, city: data.city || null, notes: data.notes || null } });
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "supplier.updated", entityType: "Supplier", entityId: id });
     return supplier;
   });
@@ -48,7 +48,7 @@ export async function deleteSupplier(context: ServiceContext, id: string) {
     if (!supplier) throw new SupplierDomainError("Supplier not found.");
     if (supplier._count.purchaseOrders || supplier._count.payments || supplier._count.ledgerEntries || !supplier.currentBalance.isZero()) throw new SupplierDomainError("Suppliers with financial history cannot be deleted.");
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "supplier.deleted", entityType: "Supplier", entityId: id });
-    await tx.supplier.delete({ where: { id } });
+    await tx.supplier.delete({ where: { id, workspaceId: context.workspaceId } });
   });
 }
 
@@ -87,12 +87,12 @@ export async function recordSupplierPayment(context: ServiceContext, supplierId:
     const number = await nextDocumentNumber(tx, context.workspaceId, "BANK_PAYMENT_VOUCHER");
     const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, supplierId, cashBankAccountId: cashBankAccount.id, documentNumber: number, idempotencyKey: data.idempotencyKey, amount, netAmount, withholdingTaxAmount, method: data.method, reference: data.reference || null, notes: data.notes || null, paymentDate: data.paymentDate } });
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, supplierId, type: "PAYMENT_MADE", debit: amount, description: `Supplier payment ${number}`, referenceId: payment.id, date: data.paymentDate } });
-    await tx.supplier.update({ where: { id: supplierId }, data: { currentBalance: { decrement: amount } } });
+    await tx.supplier.update({ where: { id: supplierId, workspaceId: context.workspaceId }, data: { currentBalance: { decrement: amount } } });
     await postSupplierPaymentToGeneralLedger(tx, { workspaceId: context.workspaceId, paymentId: payment.id, documentNo: number, date: data.paymentDate, amount, withholdingTaxAmount, cashBankAccountId: cashBankAccount.id });
     for (const allocation of requestedAllocations) {
       const allocationAmount = new Prisma.Decimal(allocation.amount);
       await tx.paymentAllocation.create({ data: { workspaceId: context.workspaceId, paymentId: payment.id, purchaseOrderId: allocation.purchaseOrderId, amount: allocationAmount } });
-      await tx.purchaseOrder.update({ where: { id: allocation.purchaseOrderId }, data: { paidAmount: { increment: allocationAmount }, balanceAmount: { decrement: allocationAmount } } });
+      await tx.purchaseOrder.update({ where: { id: allocation.purchaseOrderId, workspaceId: context.workspaceId }, data: { paidAmount: { increment: allocationAmount }, balanceAmount: { decrement: allocationAmount } } });
     }
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "supplier.payment_recorded", entityType: "Payment", entityId: payment.id, metadata: { supplierId, amount: data.amount, withholdingTaxAmount: withholdingTaxAmount.toString(), netAmount: netAmount.toString(), documentNumber: number, allocations: requestedAllocations.map((a) => ({ purchaseOrderId: a.purchaseOrderId, amount: a.amount })) } });
     return { id: payment.id };

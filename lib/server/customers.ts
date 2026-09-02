@@ -163,8 +163,8 @@ export async function getCustomer(workspaceId: string, id: string): Promise<Cust
     creditLimit: Number(customer.creditLimit),
     currentBalance: Number(customer.currentBalance),
     status: customer.status,
-    totalSales: orders.filter((order) => order.status !== "CANCELLED").reduce((total, order) => total + order.total, 0),
-    totalPayments: payments.filter((payment) => !payment.isReversed && !payment.isReversal).reduce((total, payment) => total + payment.amount, 0),
+    totalSales: orders.filter((order) => order.status !== "CANCELLED").reduce((total, order) => total.plus(new Prisma.Decimal(order.total)), new Prisma.Decimal(0)).toNumber(),
+    totalPayments: payments.filter((payment) => !payment.isReversed && !payment.isReversal).reduce((total, payment) => total.plus(new Prisma.Decimal(payment.amount)), new Prisma.Decimal(0)).toNumber(),
     orders,
     payments,
     invoices: rawInvoices.map((invoice) => ({
@@ -174,7 +174,7 @@ export async function getCustomer(workspaceId: string, id: string): Promise<Cust
       dueDate: invoice.dueDate?.toISOString() ?? null,
       status: invoice.status,
       total: Number(invoice.amount),
-      balance: Number(invoice.amount) - Number(invoice.paidAmount) - Number(invoice.creditApplied),
+      balance: new Prisma.Decimal(invoice.amount).minus(new Prisma.Decimal(invoice.paidAmount)).minus(new Prisma.Decimal(invoice.creditApplied)).toNumber(),
     })),
     ledgerEntries: rawLedgerEntries.map((entry) => ({
       id: entry.id,

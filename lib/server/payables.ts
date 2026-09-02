@@ -1,5 +1,6 @@
 import "server-only";
 
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/server/db";
 import { ageDays, payablesBucket, type PayablesBucket } from "@/lib/server/aging";
 import { businessDateKey, businessDayEnd } from "@/lib/server/business-time";
@@ -91,10 +92,10 @@ export async function getPayablesAging(
 
   const items: AgingItem[] = [];
   for (const purchase of purchases) {
-    const originalAmount = purchase.goodsReceivedNotes.reduce((sum, grn) => sum + Number(grn.totalAmount), 0);
-    const paidAmount = purchase.paymentAllocations.reduce((sum, allocation) => sum + Number(allocation.amount), 0);
-    const returnedAmount = purchase.returns.reduce((sum, supplierReturn) => sum + Number(supplierReturn.totalAmount), 0);
-    const outstanding = originalAmount - paidAmount - returnedAmount;
+    const originalAmount = purchase.goodsReceivedNotes.reduce((sum, grn) => sum.plus(grn.totalAmount), new Prisma.Decimal(0)).toNumber();
+    const paidAmount = purchase.paymentAllocations.reduce((sum, allocation) => sum.plus(allocation.amount), new Prisma.Decimal(0)).toNumber();
+    const returnedAmount = purchase.returns.reduce((sum, supplierReturn) => sum.plus(supplierReturn.totalAmount), new Prisma.Decimal(0)).toNumber();
+    const outstanding = new Prisma.Decimal(originalAmount).minus(paidAmount).minus(returnedAmount).toNumber();
     if (outstanding <= 0) continue;
     const liabilityDate = purchase.goodsReceivedNotes[0].receiptDate;
     const age = ageDays(liabilityDate, asOf, timeZone);
@@ -130,8 +131,8 @@ export async function getPayablesAging(
       };
       suppliers.set(item.supplierId, supplier);
     }
-    supplier.totalOutstanding += item.outstandingAmount;
-    if (item.bucket !== "current") supplier.buckets[item.bucket] += item.outstandingAmount;
+    supplier.totalOutstanding = new Prisma.Decimal(supplier.totalOutstanding).plus(item.outstandingAmount).toNumber();
+    if (item.bucket !== "current") supplier.buckets[item.bucket] = new Prisma.Decimal(supplier.buckets[item.bucket]).plus(item.outstandingAmount).toNumber();
     supplier.items.push(item);
     supplier.oldestAgeDays = supplier.oldestAgeDays === null ? item.ageDays : Math.max(supplier.oldestAgeDays, item.ageDays);
   }
@@ -142,16 +143,16 @@ export async function getPayablesAging(
   }));
 
   const totals = { current: 0, ...toBucketTotals() };
-  let totalOutstanding = 0;
+  let totalOutstanding = new Prisma.Decimal(0);
   for (const supplier of supplierRows) {
-    totalOutstanding += supplier.totalOutstanding;
-    for (const bucket of Object.keys(supplier.buckets) as PayablesBucket[]) totals[bucket] += supplier.buckets[bucket];
-    totals.current += supplier.items.filter((item) => item.bucket === "current").reduce((sum, item) => sum + item.outstandingAmount, 0);
+    totalOutstanding = totalOutstanding.plus(supplier.totalOutstanding);
+    for (const bucket of Object.keys(supplier.buckets) as PayablesBucket[]) totals[bucket] = new Prisma.Decimal(totals[bucket]).plus(supplier.buckets[bucket]).toNumber();
+    totals.current = new Prisma.Decimal(totals.current).plus(supplier.items.filter((item) => item.bucket === "current").reduce((sum, item) => sum + item.outstandingAmount, 0)).toNumber();
   }
 
   return {
     asOfDate,
-    totalOutstanding,
+    totalOutstanding: totalOutstanding.toNumber(),
     buckets: totals,
     suppliers: supplierRows,
   };

@@ -242,7 +242,7 @@ export async function createGoodsReceipt(context: ServiceContext, input: GoodsRe
         ? product.costPrice.mul(currentStock).plus(item.unitCost.mul(item.acceptedQuantity)).div(resultingQuantity)
         : item.unitCost;
       await tx.product.update({
-        where: { id: item.purchaseOrderItem.productId },
+        where: { id: item.purchaseOrderItem.productId, workspaceId: context.workspaceId },
         data: { stockQuantity: { increment: item.acceptedQuantity }, costPrice: weightedCost },
       });
 
@@ -270,7 +270,7 @@ export async function createGoodsReceipt(context: ServiceContext, input: GoodsRe
     });
 
     await tx.supplier.update({
-      where: { id: order.supplierId },
+      where: { id: order.supplierId, workspaceId: context.workspaceId },
       data: { currentBalance: { increment: totalAcceptedAmount } },
     });
 
@@ -305,7 +305,7 @@ export async function createGoodsReceipt(context: ServiceContext, input: GoodsRe
     }
 
     await tx.purchaseOrder.update({
-      where: { id: order.id },
+      where: { id: order.id, workspaceId: context.workspaceId },
       data: {
         status: newStatus,
         balanceAmount: { increment: totalAcceptedAmount },
@@ -412,7 +412,7 @@ export async function cancelPurchase(context: ServiceContext, id: string, revers
         });
 
         await tx.supplier.update({
-          where: { id: order.supplierId },
+          where: { id: order.supplierId, workspaceId: context.workspaceId },
           data: { currentBalance: { decrement: grnTotal.minus(order.paidAmount) } },
         });
 
@@ -429,7 +429,7 @@ export async function cancelPurchase(context: ServiceContext, id: string, revers
               reversalOfId: initial.id,
             },
           });
-          await tx.payment.update({ where: { id: initial.id }, data: { isReversed: true, reversedAt: new Date() } });
+          await tx.payment.update({ where: { id: initial.id, workspaceId: context.workspaceId }, data: { isReversed: true, reversedAt: new Date() } });
           await tx.ledgerEntry.create({
             data: {
               workspaceId: context.workspaceId,
@@ -447,7 +447,7 @@ export async function cancelPurchase(context: ServiceContext, id: string, revers
     }
 
     await tx.purchaseOrder.update({
-      where: { id: order.id },
+      where: { id: order.id, workspaceId: context.workspaceId },
       data: { status: "CANCELLED", paidAmount: 0, balanceAmount: 0, cancelledAt: new Date(), cancelledById: context.userId },
     });
 
@@ -511,8 +511,8 @@ export async function createSupplierReturn(context: ServiceContext, input: Suppl
     }
     await tx.debitNote.create({ data: { workspaceId: context.workspaceId, supplierId: order.supplierId, purchaseOrderId: order.id, number: noteNumber, reason: data.reason || "Supplier return", amount: total, reference: number, notes: data.notes || null } });
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, supplierId: order.supplierId, type: "PURCHASE_RETURN", debit: total, description: `Supplier return ${number}`, referenceId: supplierReturn.id } });
-    await tx.supplier.update({ where: { id: order.supplierId }, data: { currentBalance: { decrement: total } } });
-    await tx.purchaseOrder.update({ where: { id: order.id }, data: { balanceAmount: { decrement: total } } });
+    await tx.supplier.update({ where: { id: order.supplierId, workspaceId: context.workspaceId }, data: { currentBalance: { decrement: total } } });
+    await tx.purchaseOrder.update({ where: { id: order.id, workspaceId: context.workspaceId }, data: { balanceAmount: { decrement: total } } });
     await postSupplierReturnToGeneralLedger(tx, { workspaceId: context.workspaceId, returnId: supplierReturn.id, documentNo: number, date: supplierReturn.date, amount: total });
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "supplier_return.created", entityType: "SupplierReturn", entityId: supplierReturn.id, metadata: { purchaseOrderId: order.id, total: total.toString() } });
     return supplierReturn;

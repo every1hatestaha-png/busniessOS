@@ -62,12 +62,12 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
     const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + 30);
     const invoice = await tx.invoice.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, salesOrderId: order.id, invoiceNumber, amount: total, paidAmount: paid, status: paid.isZero() ? "UNPAID" : paid.equals(total) ? "PAID" : "PARTIALLY_PAID", dueDate }, select: { id: true } });
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, type: "SALE", debit: total, description: `Sale ${orderNumber}`, referenceId: order.id } });
-    await tx.customer.update({ where: { id: customer.id }, data: { currentBalance: { increment: total } } });
+    await tx.customer.update({ where: { id: customer.id, workspaceId: context.workspaceId }, data: { currentBalance: { increment: total } } });
     if (paid.greaterThan(0)) {
       const paymentNumber = await nextDocumentNumber(tx, context.workspaceId, "PAYMENT_RECEIPT");
       const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, invoiceId: invoice.id, cashBankAccountId, amount: paid, method: receiptMethod, reference: paymentNumber, notes: "Payment received with sale" }, select: { id: true } });
       await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, type: "PAYMENT_RECEIVED", credit: paid, description: `Payment ${paymentNumber}`, referenceId: payment.id } });
-      await tx.customer.update({ where: { id: customer.id }, data: { currentBalance: { decrement: paid } } });
+      await tx.customer.update({ where: { id: customer.id, workspaceId: context.workspaceId }, data: { currentBalance: { decrement: paid } } });
     }
     await postSaleToGeneralLedger(tx, { workspaceId: context.workspaceId, saleId: order.id, orderNumber, date: order.orderDate, revenue: total, costOfGoodsSold, cashReceived: paid, cashBankAccountId });
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "sale.created", entityType: "SalesOrder", entityId: order.id, metadata: { orderNumber, total: total.toString() } });
@@ -119,7 +119,7 @@ export async function createCustomerReturn(context: ServiceContext, input: Custo
     }
     await tx.creditNote.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, salesOrderId: order.id, customerReturnId: customerReturn.id, number: noteNumber, reason: data.reason || "Customer return", amount: total, appliedAmount: 0, remainingAmount: total, status: "OPEN", reference: number, notes: data.notes || null } });
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, type: "SALES_RETURN", credit: total, description: `Customer return ${number}`, referenceId: customerReturn.id } });
-    await tx.customer.update({ where: { id: order.customerId }, data: { currentBalance: { decrement: total } } });
+    await tx.customer.update({ where: { id: order.customerId, workspaceId: context.workspaceId }, data: { currentBalance: { decrement: total } } });
     await postCustomerReturnToGeneralLedger(tx, { workspaceId: context.workspaceId, returnId: customerReturn.id, documentNo: number, date: customerReturn.date, amount: total, inventoryCost });
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "customer_return.created", entityType: "CustomerReturn", entityId: customerReturn.id, metadata: { salesOrderId: order.id, total: total.toString() } });
     return customerReturn;
@@ -152,17 +152,17 @@ export async function cancelSale(context: ServiceContext, id: string, reverseIni
       await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: item.productId, type: "SALE_CANCELLATION", quantityChanged: itemQty, unitCost: historicalCost, reference: order.orderNumber } });
     }
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, type: "REVERSAL", credit: order.total, description: `Cancelled sale ${order.orderNumber}`, referenceId: order.id } });
-    await tx.customer.update({ where: { id: order.customerId }, data: { currentBalance: { decrement: order.total } } });
+    await tx.customer.update({ where: { id: order.customerId, workspaceId: context.workspaceId }, data: { currentBalance: { decrement: order.total } } });
     if (initial) {
       const reversal = await tx.payment.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, invoiceId: invoice?.id, cashBankAccountId: initial.cashBankAccountId, amount: initial.amount, method: initial.method, reference: `REV-${initial.reference ?? initial.id}`, notes: "Initial sale payment reversal", reversalOfId: initial.id } });
-      await tx.payment.update({ where: { id: initial.id }, data: { isReversed: true, reversedAt: new Date() } });
+      await tx.payment.update({ where: { id: initial.id, workspaceId: context.workspaceId }, data: { isReversed: true, reversedAt: new Date() } });
       await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, type: "REVERSAL", debit: initial.amount, description: `Reversed payment ${initial.reference ?? initial.id}`, referenceId: reversal.id } });
-      await tx.customer.update({ where: { id: order.customerId }, data: { currentBalance: { increment: initial.amount } } });
-      if (initial.cashBankAccountId) await tx.cashBankAccount.update({ where: { id: initial.cashBankAccountId }, data: { currentBalance: { decrement: initial.amount } } });
+      await tx.customer.update({ where: { id: order.customerId, workspaceId: context.workspaceId }, data: { currentBalance: { increment: initial.amount } } });
+      if (initial.cashBankAccountId) await tx.cashBankAccount.update({ where: { id: initial.cashBankAccountId, workspaceId: context.workspaceId }, data: { currentBalance: { decrement: initial.amount } } });
     }
     await reverseGeneralLedgerEntries(tx, { workspaceId: context.workspaceId, sources: [{ sourceType: "SALE", sourceId: order.id }, { sourceType: "RECEIPT", sourceId: order.id }], documentNo: `REV-${order.orderNumber}`, date: new Date(), reason: `Cancelled sale ${order.orderNumber}`, reversedById: context.userId });
-    if (invoice) await tx.invoice.update({ where: { id: invoice.id }, data: { status: "CANCELLED", paidAmount: 0 } });
-    await tx.salesOrder.update({ where: { id: order.id }, data: { status: "CANCELLED", paidAmount: 0, balanceAmount: 0, cancelledAt: new Date(), cancelledById: context.userId } });
+    if (invoice) await tx.invoice.update({ where: { id: invoice.id, workspaceId: context.workspaceId }, data: { status: "CANCELLED", paidAmount: 0 } });
+    await tx.salesOrder.update({ where: { id: order.id, workspaceId: context.workspaceId }, data: { status: "CANCELLED", paidAmount: 0, balanceAmount: 0, cancelledAt: new Date(), cancelledById: context.userId } });
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "sale.cancelled", entityType: "SalesOrder", entityId: order.id, metadata: { initialPaymentReversed: Boolean(initial) } });
     return { id: order.id };
   });

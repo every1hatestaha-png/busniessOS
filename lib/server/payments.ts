@@ -46,7 +46,7 @@ export async function recordPayment(context: ServiceContext, input: PaymentInput
     const paymentNumber = await nextDocumentNumber(tx, context.workspaceId, "PAYMENT_RECEIPT");
     const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, invoiceId: requestedAllocations.length === 1 ? requestedAllocations[0].invoiceId : null, cashBankAccountId: cashBankAccount.id, documentNumber: paymentNumber, idempotencyKey: data.idempotencyKey, amount, netAmount: amount, method: data.method, reference: data.reference || null, notes: data.notes || null, paymentDate: data.paymentDate }, select: { id: true } });
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, type: "PAYMENT_RECEIVED", credit: amount, description: `Payment ${paymentNumber}`, referenceId: payment.id, date: data.paymentDate } });
-    await tx.customer.update({ where: { id: customer.id }, data: { currentBalance: { decrement: amount } } });
+    await tx.customer.update({ where: { id: customer.id, workspaceId: context.workspaceId }, data: { currentBalance: { decrement: amount } } });
     await postCustomerPaymentToGeneralLedger(tx, { workspaceId: context.workspaceId, paymentId: payment.id, documentNo: paymentNumber, date: data.paymentDate, amount, cashBankAccountId: cashBankAccount.id });
     for (const allocation of requestedAllocations) {
       const invoice = invoices.find((entry) => entry.id === allocation.invoiceId)!;
@@ -54,8 +54,8 @@ export async function recordPayment(context: ServiceContext, input: PaymentInput
       await tx.paymentAllocation.create({ data: { workspaceId: context.workspaceId, paymentId: payment.id, invoiceId: invoice.id, amount: allocationAmount } });
       const paidAmount = invoice.paidAmount.plus(allocationAmount);
       const settledAmount = paidAmount.plus(invoice.creditApplied);
-      await tx.invoice.update({ where: { id: invoice.id }, data: { paidAmount, status: settledAmount.equals(invoice.amount) ? "PAID" : "PARTIALLY_PAID" } });
-      if (invoice.salesOrderId) await tx.salesOrder.update({ where: { id: invoice.salesOrderId }, data: { paidAmount: { increment: allocationAmount }, balanceAmount: { decrement: allocationAmount } } });
+      await tx.invoice.update({ where: { id: invoice.id, workspaceId: context.workspaceId }, data: { paidAmount, status: settledAmount.equals(invoice.amount) ? "PAID" : "PARTIALLY_PAID" } });
+      if (invoice.salesOrderId) await tx.salesOrder.update({ where: { id: invoice.salesOrderId, workspaceId: context.workspaceId }, data: { paidAmount: { increment: allocationAmount }, balanceAmount: { decrement: allocationAmount } } });
     }
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "customer.payment_recorded", entityType: "Payment", entityId: payment.id, metadata: { amount: data.amount } });
     return { id: payment.id };

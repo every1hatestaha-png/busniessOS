@@ -306,6 +306,7 @@ model Customer {
   returns       CustomerReturn[]
 
   @@index([workspaceId])
+  @@index([workspaceId, updatedAt])
   @@map("customers")
 }
 
@@ -360,6 +361,7 @@ model Product {
 
   @@unique([workspaceId, sku])
   @@index([workspaceId])
+  @@index([workspaceId, status])
   @@map("products")
 }
 
@@ -526,6 +528,7 @@ model SalesOrder {
   @@index([workspaceId, status])
   @@index([workspaceId, customerId])
   @@index([workspaceId, orderDate, status])
+  @@index([workspaceId, updatedAt])
   @@map("sales_orders")
 }
 
@@ -635,6 +638,7 @@ model GoodReceivedNote {
   @@unique([workspaceId, idempotencyKey])
   @@index([workspaceId, purchaseOrderId])
   @@index([workspaceId, supplierId])
+  @@index([workspaceId, receiptDate])
   @@map("goods_received_notes")
 }
 
@@ -687,6 +691,7 @@ model Invoice {
   @@index([workspaceId, issuedAt])
   @@index([workspaceId, customerId])
   @@index([workspaceId, customerId, status, dueDate])
+  @@index([workspaceId, updatedAt])
   @@map("invoices")
 }
 
@@ -889,6 +894,7 @@ model CustomerCreditAllocation {
   @@unique([workspaceId, idempotencyKey])
   @@index([workspaceId, creditNoteId])
   @@index([workspaceId, invoiceId])
+  @@index([workspaceId, createdAt])
   @@map("customer_credit_allocations")
 }
 

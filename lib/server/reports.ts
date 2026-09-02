@@ -2,6 +2,7 @@ import "server-only";
 
 import { db } from "@/lib/server/db";
 import { businessDayEnd, businessDayStart, businessMonthStart } from "@/lib/server/business-time";
+import { Prisma } from "@prisma/client";
 
 export type StatementFilters = { from?: Date; to?: Date; search?: string };
 
@@ -46,7 +47,7 @@ export async function getCustomerStatement(workspaceId: string, customerId: stri
   const allEntries: StatementEntry[] = rows.map((row) => {
     const debit = Number(row.debit);
     const credit = Number(row.credit);
-    runningBalance += debit - credit;
+    runningBalance = new Prisma.Decimal(runningBalance).plus(debit).minus(credit).toNumber();
     return { id: row.id, date: row.date.toISOString(), documentNo: row.referenceId ?? "-", description: row.description ?? row.type.replaceAll("_", " "), debit, credit, runningBalance, href: statementHref(row.type, row.referenceId) };
   });
   const search = filters.search?.trim().toLowerCase();
@@ -70,7 +71,7 @@ export async function getSupplierStatement(workspaceId: string, supplierId: stri
   const allEntries: StatementEntry[] = rows.map((row) => {
     const debit = Number(row.debit);
     const credit = Number(row.credit);
-    runningBalance += credit - debit;
+    runningBalance = new Prisma.Decimal(runningBalance).plus(credit).minus(debit).toNumber();
     return { id: row.id, date: row.date.toISOString(), documentNo: row.referenceId ?? "-", description: row.description ?? row.type.replaceAll("_", " "), debit, credit, runningBalance, href: statementHref(row.type, row.referenceId) };
   });
   const search = filters.search?.trim().toLowerCase();
@@ -87,12 +88,12 @@ export async function getCurrentStockReport(workspaceId: string, search?: string
     }),
     db.account.findUnique({ where: { workspaceId_systemCode: { workspaceId, systemCode: "INVENTORY" } }, select: { id: true } }),
   ]);
-  const rows = products.filter((product) => !lowStockOnly || product.stockQuantity.toNumber() <= product.reorderLevel.toNumber()).map((product) => ({ ...product, sku: product.sku ?? "", category: product.category ?? "Uncategorized", stockQuantity: product.stockQuantity.toNumber(), reorderLevel: product.reorderLevel.toNumber(), unitCost: Number(product.costPrice), stockValue: product.stockQuantity.toNumber() * Number(product.costPrice), stockStatus: product.stockQuantity.toNumber() <= 0 ? "Out of Stock" : product.stockQuantity.toNumber() <= product.reorderLevel.toNumber() ? "Low Stock" : "In Stock" }));
-  const totalValue = rows.reduce((sum, row) => sum + row.stockValue, 0);
+  const rows = products.filter((product) => !lowStockOnly || product.stockQuantity.toNumber() <= product.reorderLevel.toNumber()).map((product) => ({ ...product, sku: product.sku ?? "", category: product.category ?? "Uncategorized", stockQuantity: product.stockQuantity.toNumber(), reorderLevel: product.reorderLevel.toNumber(), unitCost: Number(product.costPrice), stockValue: new Prisma.Decimal(product.stockQuantity).mul(product.costPrice).toNumber(), stockStatus: product.stockQuantity.toNumber() <= 0 ? "Out of Stock" : product.stockQuantity.toNumber() <= product.reorderLevel.toNumber() ? "Low Stock" : "In Stock" }));
+  const totalValue = rows.reduce((sum, row) => sum.plus(new Prisma.Decimal(row.stockValue)), new Prisma.Decimal(0)).toNumber();
   const fullScope = !search && !lowStockOnly;
   const gl = fullScope && inventoryAccount ? await db.generalLedgerEntry.aggregate({ where: { workspaceId, accountId: inventoryAccount.id }, _sum: { debit: true, credit: true } }) : null;
-  const inventoryGlBalance = fullScope ? Number(gl?._sum.debit ?? 0) - Number(gl?._sum.credit ?? 0) : null;
-  return { rows, totalQuantity: rows.reduce((sum, row) => sum + row.stockQuantity, 0), totalValue, inventoryGlBalance, reconciliationDifference: inventoryGlBalance === null ? null : totalValue - inventoryGlBalance, valuationBasis: "Current Product.costPrice (existing BusinessOS current-cost basis)" };
+  const inventoryGlBalance = fullScope ? new Prisma.Decimal(gl?._sum.debit ?? 0).minus(gl?._sum.credit ?? 0).toNumber() : null;
+  return { rows, totalQuantity: rows.reduce((sum, row) => sum + row.stockQuantity, 0), totalValue, inventoryGlBalance, reconciliationDifference: inventoryGlBalance === null ? null : new Prisma.Decimal(totalValue).minus(inventoryGlBalance).toNumber(), valuationBasis: "Current Product.costPrice (existing BusinessOS current-cost basis)" };
 }
 
 export async function getStockMovementReport(workspaceId: string, filters: { from?: Date; to?: Date; productId?: string; type?: string; search?: string } = {}) {

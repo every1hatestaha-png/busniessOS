@@ -170,7 +170,7 @@ export async function postSaleToGeneralLedger(tx: Prisma.TransactionClient, para
       { workspaceId: params.workspaceId, accountId: cashBank!.accountId, sourceType: "RECEIPT", sourceId: params.saleId, documentNo: params.orderNumber, date: params.date, narration: `Cash received with ${params.orderNumber}`, debit: params.cashReceived, credit: 0 },
       { workspaceId: params.workspaceId, accountId: accounts.ACCOUNTS_RECEIVABLE.id, sourceType: "RECEIPT", sourceId: params.saleId, documentNo: params.orderNumber, date: params.date, narration: `Cash received with ${params.orderNumber}`, debit: 0, credit: params.cashReceived },
     );
-    await tx.cashBankAccount.update({ where: { id: cashBank!.id }, data: { currentBalance: { increment: params.cashReceived } } });
+    await tx.cashBankAccount.update({ where: { id: cashBank!.id, workspaceId: params.workspaceId }, data: { currentBalance: { increment: params.cashReceived } } });
   }
   await postBalancedEntries(tx, entries);
 }
@@ -188,7 +188,7 @@ export async function postPurchaseToGeneralLedger(tx: Prisma.TransactionClient, 
       { workspaceId: params.workspaceId, accountId: accounts.ACCOUNTS_PAYABLE.id, sourceType: "PAYMENT", sourceId: params.purchaseId, documentNo: params.orderNumber, date: params.date, narration: `Paid with ${params.orderNumber}`, debit: params.cashPaid, credit: 0 },
       { workspaceId: params.workspaceId, accountId: cashBank!.accountId, sourceType: "PAYMENT", sourceId: params.purchaseId, documentNo: params.orderNumber, date: params.date, narration: `Paid with ${params.orderNumber}`, debit: 0, credit: params.cashPaid },
     );
-    await tx.cashBankAccount.update({ where: { id: cashBank!.id }, data: { currentBalance: { decrement: params.cashPaid } } });
+    await tx.cashBankAccount.update({ where: { id: cashBank!.id, workspaceId: params.workspaceId }, data: { currentBalance: { decrement: params.cashPaid } } });
   }
   await postBalancedEntries(tx, entries);
 }
@@ -200,7 +200,7 @@ export async function postCustomerPaymentToGeneralLedger(tx: Prisma.TransactionC
     { workspaceId: params.workspaceId, accountId: cashBank.accountId, sourceType: "RECEIPT", sourceId: params.paymentId, documentNo: params.documentNo, date: params.date, narration: `Customer receipt ${params.documentNo}`, debit: params.amount, credit: 0 },
     { workspaceId: params.workspaceId, accountId: accounts.ACCOUNTS_RECEIVABLE.id, sourceType: "RECEIPT", sourceId: params.paymentId, documentNo: params.documentNo, date: params.date, narration: `Customer receipt ${params.documentNo}`, debit: 0, credit: params.amount },
   ]);
-  await tx.cashBankAccount.update({ where: { id: cashBank.id }, data: { currentBalance: { increment: params.amount } } });
+  await tx.cashBankAccount.update({ where: { id: cashBank.id, workspaceId: params.workspaceId }, data: { currentBalance: { increment: params.amount } } });
 }
 
 export async function postSupplierPaymentToGeneralLedger(tx: Prisma.TransactionClient, params: { workspaceId: string; paymentId: string; documentNo: string; date: Date; amount: Prisma.Decimal; withholdingTaxAmount?: Prisma.Decimal; cashBankAccountId?: string | null }) {
@@ -214,7 +214,7 @@ export async function postSupplierPaymentToGeneralLedger(tx: Prisma.TransactionC
   if (withholdingTaxAmount.greaterThan(0)) entries.push({ workspaceId: params.workspaceId, accountId: accounts.WITHHOLDING_TAX_PAYABLE.id, sourceType: "PAYMENT", sourceId: params.paymentId, documentNo: params.documentNo, date: params.date, narration: `WHT on ${params.documentNo}`, debit: 0, credit: withholdingTaxAmount });
   if (netAmount.greaterThan(0)) entries.push({ workspaceId: params.workspaceId, accountId: cashBank.accountId, sourceType: "PAYMENT", sourceId: params.paymentId, documentNo: params.documentNo, date: params.date, narration: `Supplier payment ${params.documentNo}`, debit: 0, credit: netAmount });
   await postBalancedEntries(tx, entries);
-  if (netAmount.greaterThan(0)) await tx.cashBankAccount.update({ where: { id: cashBank.id }, data: { currentBalance: { decrement: netAmount } } });
+  if (netAmount.greaterThan(0)) await tx.cashBankAccount.update({ where: { id: cashBank.id, workspaceId: params.workspaceId }, data: { currentBalance: { decrement: netAmount } } });
 }
 
 export async function postCustomerReturnToGeneralLedger(tx: Prisma.TransactionClient, params: { workspaceId: string; returnId: string; documentNo: string; date: Date; amount: Prisma.Decimal; inventoryCost?: Prisma.Decimal }) {
@@ -296,8 +296,8 @@ export async function getCashBankAccountLedger(workspaceId: string, cashBankAcco
   const legacyOpening = openingPosted ? 0 : amount(cashBank.openingBalance);
   const openingBalance = legacyOpening + ledger.openingBalance;
   const entries = ledger.entries.map((entry) => ({ ...entry, runningBalance: entry.runningBalance + legacyOpening }));
-  const receipts = entries.reduce((sum, entry) => sum + entry.debit, 0);
-  const payments = entries.reduce((sum, entry) => sum + entry.credit, 0);
+    const receipts = entries.reduce((sum, entry) => sum.plus(new Prisma.Decimal(entry.debit)), new Prisma.Decimal(0)).toNumber();
+    const payments = entries.reduce((sum, entry) => sum.plus(new Prisma.Decimal(entry.credit)), new Prisma.Decimal(0)).toNumber();
   const closingBalance = entries.at(-1)?.runningBalance ?? openingBalance;
   return {
     id: cashBank.id,
@@ -316,7 +316,7 @@ export async function getCashBankAccountLedger(workspaceId: string, cashBankAcco
     receipts,
     payments,
     closingBalance,
-    reconciliationDifference: amount(cashBank.currentBalance) - closingBalance,
+    reconciliationDifference: new Prisma.Decimal(amount(cashBank.currentBalance)).minus(new Prisma.Decimal(closingBalance)).toNumber(),
     entries,
   };
 }
@@ -358,7 +358,7 @@ export async function createExpense(context: ServiceContext, input: ExpenseInput
       { workspaceId: context.workspaceId, accountId: expenseAccount.id, sourceType: "EXPENSE", sourceId: expense.id, documentNo: voucherNumber, date: data.expenseDate, narration, debit: expenseAmount, credit: 0 },
       { workspaceId: context.workspaceId, accountId: paymentAccount.id, sourceType: "EXPENSE", sourceId: expense.id, documentNo: voucherNumber, date: data.expenseDate, narration, debit: 0, credit: expenseAmount },
     ] });
-    await tx.cashBankAccount.update({ where: { id: cashBank.id }, data: { currentBalance: { decrement: expenseAmount } } });
+    await tx.cashBankAccount.update({ where: { id: cashBank.id, workspaceId: context.workspaceId }, data: { currentBalance: { decrement: expenseAmount } } });
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "expense.created", entityType: "Expense", entityId: expense.id, metadata: { voucherNumber, amount: expenseAmount.toString() } });
     return { id: expense.id };
   });
@@ -402,7 +402,7 @@ export async function getProfitAndLoss(workspaceId: string, input: ProfitLossInp
     ? await db.account.findMany({ where: { workspaceId, id: { in: profitAndLossEntries.map((entry) => entry.accountId) } }, select: { id: true, code: true, name: true, category: true, systemCode: true } })
     : [];
   const accountById = new Map(accounts.map((account) => [account.id, account]));
-  const costOfGoodsSold = profitAndLossEntries.reduce((sum, entry) => accountById.get(entry.accountId)?.category === "COST_OF_SALES" ? sum + amount(entry._sum.debit) - amount(entry._sum.credit) : sum, 0);
+  const costOfGoodsSold = profitAndLossEntries.reduce((sum, entry) => accountById.get(entry.accountId)?.category === "COST_OF_SALES" ? sum.plus(new Prisma.Decimal(amount(entry._sum.debit)).minus(new Prisma.Decimal(amount(entry._sum.credit)))) : sum, new Prisma.Decimal(0)).toNumber();
   const grossSales = amount(sales._sum.total);
   const salesReturns = amount(returns._sum.totalAmount);
   const expenseMap = new Map<string, { id: string; code: string; name: string; amount: number }>();
@@ -410,13 +410,13 @@ export async function getProfitAndLoss(workspaceId: string, input: ProfitLossInp
     const account = accountById.get(entry.accountId);
     if (account?.category !== "EXPENSE") continue;
     const row = expenseMap.get(account.id) ?? { id: account.id, code: account.code, name: account.name, amount: 0 };
-    row.amount += amount(entry._sum.debit) - amount(entry._sum.credit);
+    row.amount = new Prisma.Decimal(row.amount).plus(new Prisma.Decimal(amount(entry._sum.debit)).minus(new Prisma.Decimal(amount(entry._sum.credit)))).toNumber();
     expenseMap.set(row.id, row);
   }
-  const operatingExpenses = [...expenseMap.values()].reduce((sum, expense) => sum + expense.amount, 0);
-  const otherIncome = profitAndLossEntries.reduce((sum, entry) => accountById.get(entry.accountId)?.systemCode === "OTHER_INCOME" ? sum + amount(entry._sum.credit) - amount(entry._sum.debit) : sum, 0);
+  const operatingExpenses = [...expenseMap.values()].reduce((sum, expense) => sum.plus(new Prisma.Decimal(expense.amount)), new Prisma.Decimal(0)).toNumber();
+  const otherIncome = profitAndLossEntries.reduce((sum, entry) => accountById.get(entry.accountId)?.systemCode === "OTHER_INCOME" ? sum.plus(new Prisma.Decimal(amount(entry._sum.credit)).minus(new Prisma.Decimal(amount(entry._sum.debit)))) : sum, new Prisma.Decimal(0)).toNumber();
   const totals = calculateProfitLossTotals({ grossSales, salesReturns, costOfGoodsSold, operatingExpenses });
-  return { from: from.toISOString(), to: to.toISOString(), grossSales, salesReturns, otherIncome, expenseCategories: [...expenseMap.values()].sort((a, b) => a.code.localeCompare(b.code)), ...totals, netProfit: totals.netProfit + otherIncome, costingMethod: "Historical sale-time cost and return/cancellation reversals from the authoritative Cost of Goods Sold general-ledger account." };
+  return { from: from.toISOString(), to: to.toISOString(), grossSales, salesReturns, otherIncome, expenseCategories: [...expenseMap.values()].sort((a, b) => a.code.localeCompare(b.code)), ...totals, netProfit: new Prisma.Decimal(totals.netProfit).plus(new Prisma.Decimal(otherIncome)).toNumber(), costingMethod: "Historical sale-time cost and return/cancellation reversals from the authoritative Cost of Goods Sold general-ledger account." };
 }
 
 export async function getFinancialDashboard(workspaceId: string) {
@@ -476,5 +476,5 @@ export async function getFinancialDashboard(workspaceId: string) {
   const receivableAmount = amount(row?.receivables);
   const payableAmount = amount(row?.payables);
   const cashBankAmount = amount(row?.cashBank);
-  return { receivables: receivableAmount, payables: payableAmount, inventoryValue, cashBank: cashBankAmount, salesThisMonth: grossSales, purchasesThisMonth: amount(row?.purchasesThisMonth), expensesThisMonth: operatingExpenses, grossProfit: totals.grossProfit, netProfit: totals.netProfit + otherIncome, lowStockCount: Number(row?.lowStockCount ?? 0), netOperatingPosition: receivableAmount + inventoryValue + cashBankAmount - payableAmount };
+  return { receivables: receivableAmount, payables: payableAmount, inventoryValue, cashBank: cashBankAmount, salesThisMonth: grossSales, purchasesThisMonth: amount(row?.purchasesThisMonth), expensesThisMonth: operatingExpenses, grossProfit: totals.grossProfit, netProfit: new Prisma.Decimal(totals.netProfit).plus(new Prisma.Decimal(otherIncome)).toNumber(), lowStockCount: Number(row?.lowStockCount ?? 0), netOperatingPosition: new Prisma.Decimal(receivableAmount).plus(new Prisma.Decimal(inventoryValue)).plus(new Prisma.Decimal(cashBankAmount)).minus(new Prisma.Decimal(payableAmount)).toNumber() };
 }
