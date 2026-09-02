@@ -16,6 +16,7 @@ type POItem = {
   unitWeight: number | null;
   totalWeight: number | null;
   perKgRate: number | null;
+  unit: string;
 };
 
 type ReceiptItem = {
@@ -128,6 +129,7 @@ export function GoodsReceiptForm({ purchaseOrderId, poNumber, items }: { purchas
         {items.map((item, index) => {
           const received = Number(receipts[index]?.receivedQuantity) || 0;
           const overRemaining = received > item.remainingQuantity;
+          const unitLabel = item.unit === "KG" ? "kg" : item.unit.toLowerCase();
 
           return (
             <div key={item.id} className="grid gap-2" style={{ gridTemplateColumns: "1fr 70px 70px 70px 70px 90px" }}>
@@ -135,11 +137,12 @@ export function GoodsReceiptForm({ purchaseOrderId, poNumber, items }: { purchas
                 {item.productName}
                 {item.sku && <span className="ml-1 font-mono text-xs text-neutral-400">{item.sku}</span>}
               </div>
-              <div className="h-8 flex items-center justify-end text-sm">{item.orderedQuantity}</div>
-              <div className="h-8 flex items-center justify-end text-sm font-semibold">{item.remainingQuantity}</div>
+              <div className="h-8 flex items-center justify-end text-sm">{item.orderedQuantity} <span className="ml-0.5 text-xs text-neutral-400">{unitLabel}</span></div>
+              <div className="h-8 flex items-center justify-end text-sm font-semibold">{item.remainingQuantity} <span className="ml-0.5 text-xs text-neutral-400">{unitLabel}</span></div>
               <Input
                 type="number"
                 min="0"
+                step="0.01"
                 max={item.remainingQuantity}
                 value={receipts[index]?.receivedQuantity || ""}
                 onChange={(e) => updateReceipt(index, "receivedQuantity", e.target.value)}
@@ -148,6 +151,7 @@ export function GoodsReceiptForm({ purchaseOrderId, poNumber, items }: { purchas
               <Input
                 type="number"
                 min="0"
+                step="0.01"
                 max={received}
                 value={receipts[index]?.acceptedQuantity || ""}
                 onChange={(e) => updateReceipt(index, "acceptedQuantity", e.target.value)}

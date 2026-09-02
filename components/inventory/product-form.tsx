@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AlertCircle } from "lucide-react";
-import { startTransition, useActionState } from "react";
+import { startTransition, useEffect, useRef, useActionState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { createProductAction, updateProductAction } from "@/app/(dashboard)/inventory/actions";
@@ -19,6 +19,7 @@ type ProductFormValues = z.output<typeof productSchema>;
 const fieldClass = "space-y-1.5";
 const labelClass = "text-sm font-medium text-neutral-800";
 const errorClass = "text-xs text-red-600";
+const DRAFT_KEY = "businessos-product-draft";
 
 type ProductFormProps = {
   product?: ProductEditInput & { id: string };
@@ -27,10 +28,43 @@ type ProductFormProps = {
 export function ProductForm({ product }: ProductFormProps) {
   const action = product ? updateProductAction.bind(null, product.id) : createProductAction;
   const [actionState, formAction, isPending] = useActionState(action, {});
-  const { register, handleSubmit, formState: { errors } } = useForm<ProductFormInput, unknown, ProductFormValues>({
+  const { register, handleSubmit, watch, reset, formState: { errors, isSubmitSuccessful } } = useForm<ProductFormInput, unknown, ProductFormValues>({
     resolver: zodResolver(productSchema),
     defaultValues: product ? { ...product, stockQuantity: 0 } : { unit: "PIECE", stockQuantity: 0, reorderLevel: 10 },
   });
+  const selectedUnit = watch("unit");
+  const isKgMode = selectedUnit === "KG";
+  const qtyStep = isKgMode ? "0.01" : "1";
+  const allValues = watch();
+  const draftKey = product ? `${DRAFT_KEY}-${product.id}` : DRAFT_KEY;
+  const restoreRef = useRef(false);
+
+  useEffect(() => {
+    if (product) return;
+    if (restoreRef.current) return;
+    restoreRef.current = true;
+    try {
+      const saved = localStorage.getItem(draftKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        reset(parsed, { keepDefaultValues: false });
+      }
+    } catch {}
+  }, [draftKey, product, reset]);
+
+  useEffect(() => {
+    if (product || isSubmitSuccessful) return;
+    const timeout = setTimeout(() => {
+      try { localStorage.setItem(draftKey, JSON.stringify(allValues)); } catch {}
+    }, 500);
+    return () => clearTimeout(timeout);
+  }, [allValues, draftKey, product, isSubmitSuccessful]);
+
+  useEffect(() => {
+    if (isSubmitSuccessful) {
+      try { localStorage.removeItem(draftKey); } catch {}
+    }
+  }, [isSubmitSuccessful, draftKey]);
 
   function submit(values: ProductFormValues) {
     const formData = new FormData();
@@ -43,7 +77,7 @@ export function ProductForm({ product }: ProductFormProps) {
       <Card className="shadow-none">
         <CardHeader className="border-b">
           <CardTitle>Product information</CardTitle>
-          <p className="text-sm text-neutral-500">{product ? "Update catalog and pricing details. Use stock adjustment to change quantity." : "Pricing is recorded in PKR. Stock quantities must be whole numbers."}</p>
+          <p className="text-sm text-neutral-500">{product ? "Update catalog and pricing details. Use stock adjustment to change quantity." : "Pricing is recorded in PKR. Kg products accept decimal quantities."}</p>
         </CardHeader>
         <CardContent className="grid gap-5 md:grid-cols-2">
           <div className={fieldClass}>
@@ -79,13 +113,13 @@ export function ProductForm({ product }: ProductFormProps) {
             {errors.sellingPrice && <p className={errorClass}>{errors.sellingPrice.message}</p>}
           </div>
           {!product && <div className={fieldClass}>
-            <label className={labelClass} htmlFor="stockQuantity">Opening stock</label>
-            <Input id="stockQuantity" type="number" min="0" step="1" aria-invalid={!!errors.stockQuantity} {...register("stockQuantity")} />
+            <label className={labelClass} htmlFor="stockQuantity">Opening stock{isKgMode ? " (kg)" : ""}</label>
+            <Input id="stockQuantity" type="number" min="0" step={qtyStep} aria-invalid={!!errors.stockQuantity} {...register("stockQuantity")} />
             {errors.stockQuantity && <p className={errorClass}>{errors.stockQuantity.message}</p>}
           </div>}
           <div className={fieldClass}>
-            <label className={labelClass} htmlFor="reorderLevel">Reorder level</label>
-            <Input id="reorderLevel" type="number" min="0" step="1" aria-invalid={!!errors.reorderLevel} {...register("reorderLevel")} />
+            <label className={labelClass} htmlFor="reorderLevel">Reorder level{isKgMode ? " (kg)" : ""}</label>
+            <Input id="reorderLevel" type="number" min="0" step={qtyStep} aria-invalid={!!errors.reorderLevel} {...register("reorderLevel")} />
             {errors.reorderLevel && <p className={errorClass}>{errors.reorderLevel.message}</p>}
           </div>
           <div className={`${fieldClass} md:col-span-2`}>
@@ -101,7 +135,7 @@ export function ProductForm({ product }: ProductFormProps) {
           )}
         </CardContent>
         <CardFooter className="justify-end gap-2">
-          <Link href={product ? `/inventory/${product.id}` : "/inventory"} className={buttonVariants({ variant: "outline" })}>Cancel</Link>
+          <Link href={product ? `/inventory/${product.id}` : "/inventory"} onClick={() => { try { localStorage.removeItem(draftKey); } catch {} }} className={buttonVariants({ variant: "outline" })}>Cancel</Link>
           <Button type="submit" disabled={isPending}>{isPending ? "Saving..." : product ? "Save changes" : "Save product"}</Button>
         </CardFooter>
       </Card>

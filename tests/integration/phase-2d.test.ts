@@ -81,7 +81,7 @@ describe("Phase 2D financial operations", () => {
       db.generalLedgerEntry.findMany({ where: { workspaceId, sourceType: "REVERSAL", reversalOfId: { not: null } } }),
     ]);
     expect(order.status).toBe("CANCELLED");
-    expect(product.stockQuantity).toBe(productBefore.stockQuantity - 3);
+    expect(product.stockQuantity.toNumber()).toBe(productBefore.stockQuantity.toNumber() - 3);
     expect(grnAfterCancel).not.toBeNull();
     expect(glReversals.length).toBeGreaterThan(0);
     expect(glReversals.reduce((sum, entry) => sum + Number(entry.debit), 0)).toBe(glReversals.reduce((sum, entry) => sum + Number(entry.credit), 0));

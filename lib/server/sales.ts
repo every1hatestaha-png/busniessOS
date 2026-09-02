@@ -90,8 +90,8 @@ export async function createCustomerReturn(context: ServiceContext, input: Custo
     const refundableBase = order.items.reduce((sum, entry) => sum.plus(entry.totalPrice), new Prisma.Decimal(0));
     const lines = data.items.map((item) => {
       const source = order.items.find((entry) => entry.id === item.itemId);
-      const returned = previous.find((entry) => entry.salesOrderItemId === item.itemId)?._sum.quantity ?? 0;
-      if (!source || item.quantity > source.quantity - returned) throw new SaleDomainError("INVALID_RETURN", "Return quantity exceeds sold quantity.");
+      const returned = Number(previous.find((entry) => entry.salesOrderItemId === item.itemId)?._sum.quantity ?? 0);
+      if (!source || item.quantity > source.quantity.toNumber() - returned) throw new SaleDomainError("INVALID_RETURN", "Return quantity exceeds sold quantity.");
       const allocatedLineTotal = refundableBase.isZero() ? new Prisma.Decimal(0) : source.totalPrice.mul(order.total).div(refundableBase);
       const unitPrice = allocatedLineTotal.div(source.quantity);
       return { source, quantity: item.quantity, unitPrice, total: unitPrice.mul(item.quantity) };
@@ -110,8 +110,9 @@ export async function createCustomerReturn(context: ServiceContext, input: Custo
       if (data.restock) {
         const historicalCost = saleCosts.find((entry) => entry.productId === line.source.productId)?.unitCost ?? new Prisma.Decimal(0);
         const product = await tx.product.findFirstOrThrow({ where: { id: line.source.productId, workspaceId: context.workspaceId }, select: { stockQuantity: true, costPrice: true } });
-        const resultingQuantity = product.stockQuantity + line.quantity;
-        const resultingCost = product.costPrice.mul(product.stockQuantity).plus(historicalCost.mul(line.quantity)).div(resultingQuantity);
+        const currentStock = product.stockQuantity.toNumber();
+        const resultingQuantity = currentStock + line.quantity;
+        const resultingCost = product.costPrice.mul(currentStock).plus(historicalCost.mul(line.quantity)).div(resultingQuantity);
         await tx.product.updateMany({ where: { id: line.source.productId, workspaceId: context.workspaceId, stockQuantity: product.stockQuantity }, data: { stockQuantity: { increment: line.quantity }, costPrice: resultingCost } });
         await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: line.source.productId, type: "RETURN_IN", quantityChanged: line.quantity, unitCost: historicalCost, reference: number } });
       }
@@ -142,11 +143,13 @@ export async function cancelSale(context: ServiceContext, id: string, reverseIni
     for (const item of order.items) {
       const historicalCost = saleCosts.find((entry) => entry.productId === item.productId)?.unitCost ?? new Prisma.Decimal(0);
       const product = await tx.product.findFirstOrThrow({ where: { id: item.productId, workspaceId: context.workspaceId }, select: { stockQuantity: true, costPrice: true } });
-      const resultingQuantity = product.stockQuantity + item.quantity;
-      const resultingCost = product.costPrice.mul(product.stockQuantity).plus(historicalCost.mul(item.quantity)).div(resultingQuantity);
-      const changed = await tx.product.updateMany({ where: { id: item.productId, workspaceId: context.workspaceId, stockQuantity: product.stockQuantity }, data: { stockQuantity: { increment: item.quantity }, costPrice: resultingCost } });
+      const currentStock = product.stockQuantity.toNumber();
+      const itemQty = item.quantity.toNumber();
+      const resultingQuantity = currentStock + itemQty;
+      const resultingCost = product.costPrice.mul(currentStock).plus(historicalCost.mul(itemQty)).div(resultingQuantity);
+      const changed = await tx.product.updateMany({ where: { id: item.productId, workspaceId: context.workspaceId, stockQuantity: product.stockQuantity }, data: { stockQuantity: { increment: itemQty }, costPrice: resultingCost } });
       if (changed.count !== 1) throw new SaleDomainError("INVALID_TOTAL", "Inventory changed while cancelling this sale. Retry the cancellation.");
-      await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: item.productId, type: "SALE_CANCELLATION", quantityChanged: item.quantity, unitCost: historicalCost, reference: order.orderNumber } });
+      await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: item.productId, type: "SALE_CANCELLATION", quantityChanged: itemQty, unitCost: historicalCost, reference: order.orderNumber } });
     }
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, type: "REVERSAL", credit: order.total, description: `Cancelled sale ${order.orderNumber}`, referenceId: order.id } });
     await tx.customer.update({ where: { id: order.customerId }, data: { currentBalance: { decrement: order.total } } });

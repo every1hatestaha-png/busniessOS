@@ -79,6 +79,12 @@ enum CreditNoteStatus {
   CANCELLED
 }
 
+enum SupplierReturnStatus {
+  DRAFT
+  POSTED
+  CANCELLED
+}
+
 enum PaymentMethod {
   CASH
   BANK_TRANSFER
@@ -338,8 +344,8 @@ model Product {
   category      String?
   costPrice     Decimal       @default(0) @db.Decimal(15, 2)
   sellingPrice  Decimal       @default(0) @db.Decimal(15, 2)
-  stockQuantity Int           @default(0)
-  reorderLevel  Int           @default(0)
+  stockQuantity Decimal       @default(0) @db.Decimal(15, 4)
+  reorderLevel  Decimal       @default(0) @db.Decimal(15, 4)
   unit          ProductUnit   @default(PIECE)
   status        ProductStatus @default(ACTIVE)
   createdAt     DateTime      @default(now())
@@ -350,6 +356,7 @@ model Product {
   salesOrderItems       SalesOrderItem[]
   purchaseOrderItems    PurchaseOrderItem[]
   goodReceivedNoteItems GoodReceivedNoteItem[]
+  supplierReturnItems   SupplierReturnItem[]
 
   @@unique([workspaceId, sku])
   @@index([workspaceId])
@@ -475,7 +482,7 @@ model InventoryTransaction {
   workspaceId     String
   productId       String
   type            InventoryTransactionType
-  quantityChanged Int
+  quantityChanged Decimal                  @db.Decimal(15, 4)
   unitCost        Decimal?                 @db.Decimal(15, 2)
   reference       String? // Order ID or adjustment reason
   createdAt       DateTime                 @default(now())
@@ -526,7 +533,7 @@ model SalesOrderItem {
   id           String   @id @default(uuid())
   salesOrderId String
   productId    String
-  quantity     Int
+  quantity     Decimal  @db.Decimal(15, 4)
   unitPrice    Decimal  @db.Decimal(15, 2)
   discount     Decimal  @default(0) @db.Decimal(15, 2)
   totalPrice   Decimal  @db.Decimal(15, 2)
@@ -582,10 +589,10 @@ model PurchaseOrderItem {
   id               String   @id @default(uuid())
   purchaseOrderId  String
   productId        String
-  quantity         Int
+  quantity         Decimal  @db.Decimal(15, 4)
   unitCost         Decimal  @db.Decimal(15, 2)
   totalCost        Decimal  @db.Decimal(15, 2)
-  receivedQuantity Int      @default(0)
+  receivedQuantity Decimal  @default(0) @db.Decimal(15, 4)
   unitWeight       Decimal? @db.Decimal(10, 3)
   totalWeight      Decimal? @db.Decimal(15, 3)
   perKgRate        Decimal? @db.Decimal(15, 2)
@@ -594,9 +601,10 @@ model PurchaseOrderItem {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  purchaseOrder      PurchaseOrder          @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  product            Product                @relation(fields: [productId], references: [id], onDelete: Restrict)
-  goodsReceivedItems GoodReceivedNoteItem[]
+  purchaseOrder       PurchaseOrder          @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product             Product                @relation(fields: [productId], references: [id], onDelete: Restrict)
+  goodsReceivedItems  GoodReceivedNoteItem[]
+  supplierReturnItems SupplierReturnItem[]
 
   @@index([purchaseOrderId])
   @@map("purchase_order_items")
@@ -617,10 +625,11 @@ model GoodReceivedNote {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  workspace     Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  supplier      Supplier               @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  purchaseOrder PurchaseOrder          @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
-  items         GoodReceivedNoteItem[]
+  workspace       Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  supplier        Supplier               @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  purchaseOrder   PurchaseOrder          @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  items           GoodReceivedNoteItem[]
+  supplierReturns SupplierReturn[]
 
   @@unique([workspaceId, grnNumber])
   @@unique([workspaceId, idempotencyKey])
@@ -634,9 +643,9 @@ model GoodReceivedNoteItem {
   goodReceivedNoteId  String
   purchaseOrderItemId String
   productId           String
-  orderedQuantity     Int
-  receivedQuantity    Int
-  acceptedQuantity    Int
+  orderedQuantity     Decimal  @db.Decimal(15, 4)
+  receivedQuantity    Decimal  @db.Decimal(15, 4)
+  acceptedQuantity    Decimal  @db.Decimal(15, 4)
   unitCost            Decimal  @db.Decimal(15, 2)
   totalCost           Decimal  @db.Decimal(15, 2)
   createdAt           DateTime @default(now())
@@ -939,7 +948,7 @@ model CustomerReturnItem {
   customerReturnId String
   salesOrderItemId String
   productId        String
-  quantity         Int
+  quantity         Decimal  @db.Decimal(15, 4)
   unitPrice        Decimal  @db.Decimal(15, 2)
   totalPrice       Decimal  @db.Decimal(15, 2)
   createdAt        DateTime @default(now())
@@ -952,23 +961,26 @@ model CustomerReturnItem {
 }
 
 model SupplierReturn {
-  id              String   @id @default(uuid())
-  workspaceId     String
-  supplierId      String
-  purchaseOrderId String
-  idempotencyKey  String?
-  number          String
-  reason          String?
-  totalAmount     Decimal  @db.Decimal(15, 2)
-  notes           String?
-  date            DateTime @default(now())
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                 String               @id @default(uuid())
+  workspaceId        String
+  supplierId         String
+  purchaseOrderId    String
+  goodReceivedNoteId String?
+  idempotencyKey     String?
+  number             String
+  status             SupplierReturnStatus @default(POSTED)
+  reason             String?
+  totalAmount        Decimal              @db.Decimal(15, 2)
+  notes              String?
+  date               DateTime             @default(now())
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 
-  workspace     Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  supplier      Supplier             @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  purchaseOrder PurchaseOrder        @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
-  items         SupplierReturnItem[]
+  workspace        Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  supplier         Supplier             @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  purchaseOrder    PurchaseOrder        @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  goodReceivedNote GoodReceivedNote?    @relation(fields: [goodReceivedNoteId], references: [id], onDelete: SetNull)
+  items            SupplierReturnItem[]
 
   @@unique([workspaceId, number])
   @@unique([workspaceId, idempotencyKey])
@@ -978,16 +990,19 @@ model SupplierReturn {
 }
 
 model SupplierReturnItem {
-  id                  String   @id @default(uuid())
-  supplierReturnId    String
-  purchaseOrderItemId String
-  productId           String
-  quantity            Int
-  unitCost            Decimal  @db.Decimal(15, 2)
-  totalCost           Decimal  @db.Decimal(15, 2)
-  createdAt           DateTime @default(now())
+  id                     String   @id @default(uuid())
+  supplierReturnId       String
+  purchaseOrderItemId    String
+  productId              String
+  goodReceivedNoteItemId String?
+  quantity               Decimal  @db.Decimal(15, 4)
+  unitCost               Decimal  @db.Decimal(15, 2)
+  totalCost              Decimal  @db.Decimal(15, 2)
+  createdAt              DateTime @default(now())
 
-  supplierReturn SupplierReturn @relation(fields: [supplierReturnId], references: [id], onDelete: Cascade)
+  supplierReturn    SupplierReturn    @relation(fields: [supplierReturnId], references: [id], onDelete: Cascade)
+  product           Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  purchaseOrderItem PurchaseOrderItem @relation(fields: [purchaseOrderItemId], references: [id], onDelete: Restrict)
 
   @@index([supplierReturnId])
   @@index([purchaseOrderItemId])

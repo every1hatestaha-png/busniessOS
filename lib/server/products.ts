@@ -49,8 +49,8 @@ function toProductDTO(product: {
   category: string | null;
   costPrice: { toNumber(): number };
   sellingPrice: { toNumber(): number };
-  stockQuantity: number;
-  reorderLevel: number;
+  stockQuantity: { toNumber(): number };
+  reorderLevel: { toNumber(): number };
   unit: ProductUnit;
   status: ProductStatus;
   createdAt: Date;
@@ -63,6 +63,8 @@ function toProductDTO(product: {
     category: product.category ?? "Uncategorized",
     costPrice: product.costPrice.toNumber(),
     sellingPrice: product.sellingPrice.toNumber(),
+    stockQuantity: product.stockQuantity.toNumber(),
+    reorderLevel: product.reorderLevel.toNumber(),
     createdAt: product.createdAt.toISOString(),
     updatedAt: product.updatedAt.toISOString(),
   };
@@ -89,17 +91,17 @@ export async function getProduct(id: string, authorizedWorkspaceId?: string): Pr
 
   if (!product) return null;
 
-  let balance = product.stockQuantity;
+  let balance = product.stockQuantity.toNumber();
   const movements = product.inventoryTransactions.map((movement) => {
     const movementDTO: StockMovementDTO = {
       id: movement.id,
       type: movement.type,
-      quantity: movement.quantityChanged,
+      quantity: movement.quantityChanged.toNumber(),
       reference: movement.reference,
       date: movement.createdAt.toISOString(),
       balance,
     };
-    balance -= movement.quantityChanged;
+    balance -= movement.quantityChanged.toNumber();
     return movementDTO;
   });
 
@@ -147,7 +149,7 @@ export async function updateProduct(
 ): Promise<void> {
   const existing = await db.product.findFirst({ where: { id, workspaceId }, select: { stockQuantity: true, costPrice: true } });
   if (!existing) throw new Error("Product could not be updated");
-  if (existing.stockQuantity !== 0 && !existing.costPrice.equals(input.costPrice)) throw new Error("Cost price cannot be changed while stock is on hand. Receive stock or adjust quantity through an auditable inventory transaction.");
+  if (existing.stockQuantity.toNumber() !== 0 && !existing.costPrice.equals(input.costPrice)) throw new Error("Cost price cannot be changed while stock is on hand. Receive stock or adjust quantity through an auditable inventory transaction.");
   const result = await db.product.updateMany({
     where: { id, workspaceId },
     data: {
@@ -170,13 +172,13 @@ export class StockAdjustmentRejectedError extends Error {}
 
 export async function adjustProductStock(workspaceId: string, productId: string, quantity: number, reason: string) {
   return db.$transaction(async (transaction) => {
-    const productBefore = await transaction.product.findFirst({ where: { id: productId, workspaceId }, select: { costPrice: true } });
+    const productBefore = await transaction.product.findFirst({ where: { id: productId, workspaceId }, select: { costPrice: true, stockQuantity: true } });
     if (!productBefore) throw new StockAdjustmentRejectedError();
+    if (quantity < 0 && productBefore.stockQuantity.toNumber() < -quantity) throw new StockAdjustmentRejectedError();
     const result = await transaction.product.updateMany({
       where: {
         id: productId,
         workspaceId,
-        ...(quantity < 0 ? { stockQuantity: { gte: -quantity } } : {}),
       },
       data: { stockQuantity: { increment: quantity } },
     });
@@ -200,6 +202,6 @@ export async function adjustProductStock(workspaceId: string, productId: string,
       select: { stockQuantity: true },
     });
 
-    return product.stockQuantity;
+    return product.stockQuantity.toNumber();
   }, { timeout: 30_000 });
 }

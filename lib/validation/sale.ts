@@ -4,7 +4,7 @@ export const saleSchema = z.object({
   customerId: z.string().uuid(),
   items: z.array(z.object({
     productId: z.string().uuid(),
-    quantity: z.number().int().positive(),
+    quantity: z.number().positive(),
     unitPrice: z.number().nonnegative().max(100000000),
     discount: z.number().nonnegative().max(100000000),
   })).min(1).max(100),

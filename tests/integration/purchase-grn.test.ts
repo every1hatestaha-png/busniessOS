@@ -90,7 +90,7 @@ describe("PO → GRN separation integration", () => {
     const productAfter = await db.product.findUnique({ where: { id: productIdA }, select: { stockQuantity: true } });
     const supplierAfter = await db.supplier.findUnique({ where: { id: supplierId }, select: { currentBalance: true } });
 
-    expect(productAfter!.stockQuantity).toBe(productBefore!.stockQuantity);
+    expect(productAfter!.stockQuantity.toNumber()).toBe(productBefore!.stockQuantity.toNumber());
     expect(Number(supplierAfter!.currentBalance)).toBe(Number(supplierBefore!.currentBalance));
 
     const gl = await db.generalLedgerEntry.findMany({ where: { workspaceId, sourceId: order.id } });
@@ -127,7 +127,7 @@ describe("PO → GRN separation integration", () => {
     expect(grn.status).toBe("RECEIVED");
 
     const productAfter = await db.product.findUnique({ where: { id: productIdA }, select: { stockQuantity: true, costPrice: true } });
-    expect(productAfter!.stockQuantity).toBe(productBefore!.stockQuantity + 60);
+    expect(productAfter!.stockQuantity.toNumber()).toBe(productBefore!.stockQuantity.toNumber() + 60);
     expect(Number(productAfter!.costPrice)).toBe(100);
 
     const supplierAfter = await db.supplier.findUnique({ where: { id: supplierId }, select: { currentBalance: true } });
@@ -142,10 +142,10 @@ describe("PO → GRN separation integration", () => {
     const invTx = await db.inventoryTransaction.findMany({ where: { workspaceId, reference: grn.grnNumber } });
     expect(invTx.length).toBe(1);
     expect(invTx[0].type).toBe("PURCHASE_RECEIPT");
-    expect(invTx[0].quantityChanged).toBe(60);
+    expect(invTx[0].quantityChanged.toNumber()).toBe(60);
 
     const poItem = await db.purchaseOrderItem.findFirst({ where: { purchaseOrderId: order.id } });
-    expect(poItem!.receivedQuantity).toBe(60);
+    expect(poItem!.receivedQuantity.toNumber()).toBe(60);
 
     const purchase = await db.purchaseOrder.findUnique({ where: { id: order.id } });
     expect(purchase!.status).toBe("RECEIVED");
@@ -174,7 +174,7 @@ describe("PO → GRN separation integration", () => {
     expect(purchaseAfter1!.status).toBe("PARTIALLY_RECEIVED");
 
     const poItemAfter1 = await db.purchaseOrderItem.findFirst({ where: { purchaseOrderId: order.id } });
-    expect(poItemAfter1!.receivedQuantity).toBe(60);
+    expect(poItemAfter1!.receivedQuantity.toNumber()).toBe(60);
 
     const grn2 = await createGoodsReceipt(context(), {
       purchaseOrderId: order.id,
@@ -187,7 +187,7 @@ describe("PO → GRN separation integration", () => {
     expect(purchaseAfter2!.status).toBe("RECEIVED");
 
     const poItemAfter2 = await db.purchaseOrderItem.findFirst({ where: { purchaseOrderId: order.id } });
-    expect(poItemAfter2!.receivedQuantity).toBe(100);
+    expect(poItemAfter2!.receivedQuantity.toNumber()).toBe(100);
 
     const allGrns = await db.goodReceivedNote.findMany({ where: { purchaseOrderId: order.id } });
     expect(allGrns.length).toBe(2);
@@ -260,8 +260,8 @@ describe("PO → GRN separation integration", () => {
       purchaseOrderId: order.id,
       items: items.map((item) => ({
         purchaseOrderItemId: item.id,
-        receivedQuantity: item.quantity,
-        acceptedQuantity: item.quantity,
+        receivedQuantity: item.quantity.toNumber(),
+        acceptedQuantity: item.quantity.toNumber(),
         actualUnitCost: Number(item.unitCost),
       })),
     });
@@ -271,8 +271,8 @@ describe("PO → GRN separation integration", () => {
     const productAfterA = await db.product.findUnique({ where: { id: productIdA }, select: { stockQuantity: true } });
     const productAfterB = await db.product.findUnique({ where: { id: productIdB }, select: { stockQuantity: true } });
 
-    expect(productAfterA!.stockQuantity).toBe(productBeforeA!.stockQuantity + 50);
-    expect(productAfterB!.stockQuantity).toBe(productBeforeB!.stockQuantity + 30);
+    expect(productAfterA!.stockQuantity.toNumber()).toBe(productBeforeA!.stockQuantity.toNumber() + 50);
+    expect(productAfterB!.stockQuantity.toNumber()).toBe(productBeforeB!.stockQuantity.toNumber() + 30);
   });
 
   it("7. cancel PO before GRN: no financial reversal needed", async () => {
@@ -352,7 +352,7 @@ describe("PO → GRN separation integration", () => {
     expect(await db.goodReceivedNote.count({ where: { purchaseOrderId: order.id } })).toBe(1);
     expect(await db.inventoryTransaction.count({ where: { workspaceId, reference: first.grnNumber } })).toBe(1);
     expect(await db.generalLedgerEntry.count({ where: { workspaceId, sourceId: first.id } })).toBe(2);
-    expect((await db.product.findUniqueOrThrow({ where: { id: productIdA } })).stockQuantity).toBe(productBefore.stockQuantity + 4);
+    expect((await db.product.findUniqueOrThrow({ where: { id: productIdA } })).stockQuantity.toNumber()).toBe(productBefore.stockQuantity.toNumber() + 4);
     expect(Number((await db.supplier.findUniqueOrThrow({ where: { id: supplierId } })).currentBalance)).toBe(Number(supplierBefore.currentBalance) + 80);
   });
 
@@ -403,7 +403,7 @@ describe("PO → GRN separation integration", () => {
     });
     const purchase = await db.purchaseOrder.findUniqueOrThrow({ where: { id: order.id }, include: { items: true } });
     expect(Number(purchase.totalAmount)).toBe(2000);
-    expect(purchase.items[0]).toMatchObject({ quantity: 2 });
+    expect(purchase.items[0].quantity.toNumber()).toBe(2);
     expect(Number(purchase.items[0].unitCost)).toBe(1000);
     expect(Number(purchase.items[0].totalWeight)).toBe(20);
 
@@ -426,7 +426,7 @@ describe("PO → GRN separation integration", () => {
       idempotencyKey: `grn-rejected-1-${runId}`,
     });
     expect(first.status).toBe("PARTIALLY_RECEIVED");
-    expect((await db.purchaseOrderItem.findUniqueOrThrow({ where: { id: item.id } })).receivedQuantity).toBe(6);
+    expect((await db.purchaseOrderItem.findUniqueOrThrow({ where: { id: item.id } })).receivedQuantity.toNumber()).toBe(6);
 
     const second = await createGoodsReceipt(context(), {
       purchaseOrderId: order.id,
@@ -434,7 +434,7 @@ describe("PO → GRN separation integration", () => {
       idempotencyKey: `grn-rejected-2-${runId}`,
     });
     expect(second.status).toBe("RECEIVED");
-    expect((await db.purchaseOrderItem.findUniqueOrThrow({ where: { id: item.id } })).receivedQuantity).toBe(10);
+    expect((await db.purchaseOrderItem.findUniqueOrThrow({ where: { id: item.id } })).receivedQuantity.toNumber()).toBe(10);
   });
 
   it("13. historical RECEIVED purchase remains valid", async () => {

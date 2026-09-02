@@ -30,6 +30,7 @@ const routes = [
   { href: "/purchases", label: "Purchases", icon: FileText },
   { href: "/goods-receipts", label: "GRNs", icon: PackageCheck },
   { href: "/suppliers", label: "Suppliers", icon: Truck },
+  { href: "/supplier-returns", label: "Supplier Returns", icon: Truck, financial: true },
   { href: "/khata", label: "Khata", icon: BookOpen },
   { href: "/invoices", label: "Invoices", icon: Receipt },
   { href: "/receivables", label: "Receivables", icon: HandCoins, financial: true },

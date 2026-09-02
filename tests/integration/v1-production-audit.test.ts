@@ -125,7 +125,7 @@ describe("BusinessOS V1 production-readiness company scenario", () => {
       db.generalLedgerEntry.count({ where: { workspaceId } }),
     ]);
     const po = await createPurchase(context(), { supplierId: suppliers.a, items: [{ productId: products.unitA, quantity: 100, unitCost: 100 }], pricingMode: "UNIT", idempotencyKey: randomUUID() });
-    expect((await db.product.findUniqueOrThrow({ where: { id: products.unitA } })).stockQuantity).toBe(before[0].stockQuantity);
+    expect((await db.product.findUniqueOrThrow({ where: { id: products.unitA } })).stockQuantity.toNumber()).toBe(before[0].stockQuantity.toNumber());
     expect(Number((await db.supplier.findUniqueOrThrow({ where: { id: suppliers.a } })).currentBalance)).toBe(Number(before[1].currentBalance));
     expect(await db.generalLedgerEntry.count({ where: { workspaceId } })).toBe(before[2]);
     expect(await db.ledgerEntry.count({ where: { workspaceId, referenceId: po.id } })).toBe(0);
@@ -137,7 +137,7 @@ describe("BusinessOS V1 production-readiness company scenario", () => {
     const second = await createGoodsReceipt(context(), { purchaseOrderId: po.id, items: [{ purchaseOrderItemId: item.id, receivedQuantity: 40, acceptedQuantity: 40, actualUnitCost: 100 }], idempotencyKey: secondKey });
     expect((await createGoodsReceipt(context(), { purchaseOrderId: po.id, items: [{ purchaseOrderItemId: item.id, receivedQuantity: 40, acceptedQuantity: 40, actualUnitCost: 100 }], idempotencyKey: secondKey })).id).toBe(second.id);
     expect(second.status).toBe("RECEIVED");
-    expect((await db.product.findUniqueOrThrow({ where: { id: products.unitA } })).stockQuantity).toBe(100);
+    expect((await db.product.findUniqueOrThrow({ where: { id: products.unitA } })).stockQuantity.toNumber()).toBe(100);
     expect(Number((await db.supplier.findUniqueOrThrow({ where: { id: suppliers.a } })).currentBalance)).toBe(10_000);
     await expect(createGoodsReceipt(context(), { purchaseOrderId: po.id, items: [{ purchaseOrderItemId: item.id, receivedQuantity: 1, acceptedQuantity: 1, actualUnitCost: 100 }], idempotencyKey: randomUUID() })).rejects.toThrow();
 
@@ -150,7 +150,7 @@ describe("BusinessOS V1 production-readiness company scenario", () => {
 
     const supplierReturn = await createSupplierReturn(context(), { purchaseOrderId: po.id, items: [{ itemId: item.id, quantity: 10 }], reason: "QA return", notes: "", idempotencyKey: randomUUID() });
     expect(Number((await db.supplierReturn.findUniqueOrThrow({ where: { id: supplierReturn.id } })).totalAmount)).toBe(1000);
-    expect((await db.product.findUniqueOrThrow({ where: { id: products.unitA } })).stockQuantity).toBe(90);
+    expect((await db.product.findUniqueOrThrow({ where: { id: products.unitA } })).stockQuantity.toNumber()).toBe(90);
   }, 120_000);
 
   it("settles supplier bills with WHT and posts sales, receipts, returns, and credits", async () => {
@@ -175,7 +175,7 @@ describe("BusinessOS V1 production-readiness company scenario", () => {
 
     expect(Number((await db.customer.findUniqueOrThrow({ where: { id: customers.a } })).currentBalance)).toBe(1300);
     expect(Number((await db.customer.findUniqueOrThrow({ where: { id: customers.b } })).currentBalance)).toBe(400);
-    expect((await db.product.findUniqueOrThrow({ where: { id: products.unitA } })).stockQuantity).toBe(72);
+    expect((await db.product.findUniqueOrThrow({ where: { id: products.unitA } })).stockQuantity.toNumber()).toBe(72);
   }, 180_000);
 
   it("posts operating expenses from selected accounts and reconciles every authoritative balance", async () => {

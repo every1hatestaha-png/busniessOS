@@ -66,7 +66,29 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
           </CardContent>
         </Card>
       )}
-      {canManageFinancials && purchase.status !== "CANCELLED" && totalReceived > 0 && <Card className="shadow-none"><CardContent className="pt-5"><SupplierReturnForm purchaseOrderId={purchase.id} items={purchase.items.map((item) => ({ id: item.id, productName: item.productName, receivedQuantity: item.receivedQuantity }))} /></CardContent></Card>}
+      {canManageFinancials && purchase.status !== "CANCELLED" && totalReceived > 0 && (
+        <Card className="shadow-none">
+          <CardContent className="pt-5">
+            <SupplierReturnForm
+              purchaseOrderId={purchase.id}
+              items={purchase.items.map((item) => ({ id: item.id, productName: item.productName, receivedQuantity: item.receivedQuantity, unit: item.unit }))}
+              grns={purchase.grns.map((grn) => ({
+                id: grn.id,
+                grnNumber: grn.grnNumber,
+                items: grn.items.map((gi) => ({
+                  id: gi.id,
+                  poItemId: gi.purchaseOrderItemId,
+                  productName: purchase.items.find((i) => i.id === gi.purchaseOrderItemId)?.productName ?? "Item",
+                  acceptedQuantity: gi.acceptedQuantity,
+                  returnedQuantity: 0,
+                  unitCost: gi.unitCost,
+                  unit: purchase.items.find((i) => i.id === gi.purchaseOrderItemId)?.unit ?? "PIECE",
+                })),
+              }))}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-6">

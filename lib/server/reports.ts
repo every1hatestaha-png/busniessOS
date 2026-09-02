@@ -87,7 +87,7 @@ export async function getCurrentStockReport(workspaceId: string, search?: string
     }),
     db.account.findUnique({ where: { workspaceId_systemCode: { workspaceId, systemCode: "INVENTORY" } }, select: { id: true } }),
   ]);
-  const rows = products.filter((product) => !lowStockOnly || product.stockQuantity <= product.reorderLevel).map((product) => ({ ...product, sku: product.sku ?? "", category: product.category ?? "Uncategorized", unitCost: Number(product.costPrice), stockValue: product.stockQuantity * Number(product.costPrice), stockStatus: product.stockQuantity <= 0 ? "Out of Stock" : product.stockQuantity <= product.reorderLevel ? "Low Stock" : "In Stock" }));
+  const rows = products.filter((product) => !lowStockOnly || product.stockQuantity.toNumber() <= product.reorderLevel.toNumber()).map((product) => ({ ...product, sku: product.sku ?? "", category: product.category ?? "Uncategorized", stockQuantity: product.stockQuantity.toNumber(), reorderLevel: product.reorderLevel.toNumber(), unitCost: Number(product.costPrice), stockValue: product.stockQuantity.toNumber() * Number(product.costPrice), stockStatus: product.stockQuantity.toNumber() <= 0 ? "Out of Stock" : product.stockQuantity.toNumber() <= product.reorderLevel.toNumber() ? "Low Stock" : "In Stock" }));
   const totalValue = rows.reduce((sum, row) => sum + row.stockValue, 0);
   const fullScope = !search && !lowStockOnly;
   const gl = fullScope && inventoryAccount ? await db.generalLedgerEntry.aggregate({ where: { workspaceId, accountId: inventoryAccount.id }, _sum: { debit: true, credit: true } }) : null;
@@ -105,11 +105,11 @@ export async function getStockMovementReport(workspaceId: string, filters: { fro
   ]);
   const truncated = movements.length > 2000;
   const visibleMovements = movements.slice(0, 2000);
-  const balances = new Map(openingRows.map((row) => [row.productId, row._sum.quantityChanged ?? 0]));
+  const balances = new Map(openingRows.map((row) => [row.productId, Number(row._sum.quantityChanged ?? 0)]));
   const rows = visibleMovements.map((movement) => {
-    const runningQuantity = (balances.get(movement.productId) ?? 0) + movement.quantityChanged;
+    const runningQuantity = (balances.get(movement.productId) ?? 0) + Number(movement.quantityChanged);
     balances.set(movement.productId, runningQuantity);
-    return { id: movement.id, productId: movement.productId, productName: movement.product.name, sku: movement.product.sku ?? "", date: movement.createdAt.toISOString(), type: movement.type, document: movement.reference ?? "-", quantityIn: Math.max(0, movement.quantityChanged), quantityOut: Math.max(0, -movement.quantityChanged), runningQuantity, unitCost: movement.unitCost ? Number(movement.unitCost) : null };
+    return { id: movement.id, productId: movement.productId, productName: movement.product.name, sku: movement.product.sku ?? "", date: movement.createdAt.toISOString(), type: movement.type, document: movement.reference ?? "-", quantityIn: Math.max(0, Number(movement.quantityChanged)), quantityOut: Math.max(0, -Number(movement.quantityChanged)), runningQuantity, unitCost: movement.unitCost ? Number(movement.unitCost) : null };
   });
   return { from: from.toISOString(), to: to.toISOString(), rows, truncated };
 }

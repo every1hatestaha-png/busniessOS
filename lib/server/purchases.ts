@@ -172,7 +172,9 @@ export async function createGoodsReceipt(context: ServiceContext, input: GoodsRe
         throw new PurchaseDomainError("INVALID_RECEIPT", "Accepted quantity cannot exceed received quantity.");
       }
 
-      const remainingOrdered = poItem.quantity - poItem.receivedQuantity;
+      const poQuantity = poItem.quantity.toNumber();
+      const poReceived = poItem.receivedQuantity.toNumber();
+      const remainingOrdered = poQuantity - poReceived;
       if (remainingOrdered <= 0) {
         throw new PurchaseDomainError("OVER_RECEIPT", `${poItem.productName ?? "Item"} has already been fully received.`);
       }
@@ -234,9 +236,10 @@ export async function createGoodsReceipt(context: ServiceContext, input: GoodsRe
         where: { id: item.purchaseOrderItem.productId, workspaceId: context.workspaceId },
         select: { stockQuantity: true, costPrice: true },
       });
-      const resultingQuantity = product.stockQuantity + item.acceptedQuantity;
+      const currentStock = product.stockQuantity.toNumber();
+      const resultingQuantity = currentStock + item.acceptedQuantity;
       const weightedCost = resultingQuantity > 0
-        ? product.costPrice.mul(product.stockQuantity).plus(item.unitCost.mul(item.acceptedQuantity)).div(resultingQuantity)
+        ? product.costPrice.mul(currentStock).plus(item.unitCost.mul(item.acceptedQuantity)).div(resultingQuantity)
         : item.unitCost;
       await tx.product.update({
         where: { id: item.purchaseOrderItem.productId },
@@ -280,7 +283,7 @@ export async function createGoodsReceipt(context: ServiceContext, input: GoodsRe
     });
 
     const allFullyReceived = grnItems.every(
-      (item) => item.purchaseOrderItem.receivedQuantity + item.acceptedQuantity >= item.purchaseOrderItem.quantity,
+      (item) => item.purchaseOrderItem.receivedQuantity.toNumber() + item.acceptedQuantity >= item.purchaseOrderItem.quantity.toNumber(),
     );
     const anyReceived = grnItems.some((item) => item.acceptedQuantity > 0);
     const totalReceivedAllItems = await tx.purchaseOrderItem.aggregate({
@@ -367,14 +370,15 @@ export async function cancelPurchase(context: ServiceContext, id: string, revers
         }
 
         for (const item of order.items) {
-          const acceptedQuantity = receiptByItem.get(item.id)?._sum.acceptedQuantity ?? 0;
+          const acceptedQuantity = Number(receiptByItem.get(item.id)?._sum.acceptedQuantity ?? 0);
           if (acceptedQuantity > 0) {
             const cancelledValue = receiptByItem.get(item.id)?._sum.totalCost ?? new Prisma.Decimal(0);
             const cancelledUnitCost = new Prisma.Decimal(cancelledValue).div(acceptedQuantity);
             const product = await tx.product.findFirst({ where: { id: item.productId, workspaceId: context.workspaceId, stockQuantity: { gte: acceptedQuantity } }, select: { stockQuantity: true, costPrice: true } });
             if (!product) throw new PurchaseDomainError("INSUFFICIENT_STOCK", `${item.productName ?? "Product"} has insufficient stock to cancel this purchase.`);
-            const remainingQuantity = product.stockQuantity - acceptedQuantity;
-            const remainingValue = product.costPrice.mul(product.stockQuantity).minus(cancelledValue);
+            const currentStock = product.stockQuantity.toNumber();
+            const remainingQuantity = currentStock - acceptedQuantity;
+            const remainingValue = product.costPrice.mul(currentStock).minus(cancelledValue);
             if (remainingValue.isNegative()) throw new PurchaseDomainError("INSUFFICIENT_STOCK", `${item.productName ?? "Product"} carrying value is insufficient to cancel this purchase.`);
             const changed = await tx.product.updateMany({
               where: { id: item.productId, workspaceId: context.workspaceId, stockQuantity: product.stockQuantity },
@@ -471,18 +475,21 @@ export async function createSupplierReturn(context: ServiceContext, input: Suppl
     if (!order) throw new PurchaseDomainError("PURCHASE_NOT_FOUND", "Purchase not found.");
     const itemIds = data.items.map((item) => item.itemId);
     if (new Set(itemIds).size !== itemIds.length) throw new PurchaseDomainError("INVALID_RETURN", "Duplicate return items are not allowed.");
+    const grnWhere = data.goodReceivedNoteId
+      ? { purchaseOrderItemId: { in: itemIds }, goodReceivedNote: { workspaceId: context.workspaceId, purchaseOrderId: order.id, id: data.goodReceivedNoteId } }
+      : { purchaseOrderItemId: { in: itemIds }, goodReceivedNote: { workspaceId: context.workspaceId, purchaseOrderId: order.id } };
     const [previous, received] = await Promise.all([
       tx.supplierReturnItem.groupBy({ by: ["purchaseOrderItemId"], where: { purchaseOrderItemId: { in: itemIds }, supplierReturn: { workspaceId: context.workspaceId } }, _sum: { quantity: true } }),
-      tx.goodReceivedNoteItem.groupBy({ by: ["purchaseOrderItemId"], where: { purchaseOrderItemId: { in: itemIds }, goodReceivedNote: { workspaceId: context.workspaceId, purchaseOrderId: order.id } }, _sum: { acceptedQuantity: true, totalCost: true } }),
+      tx.goodReceivedNoteItem.groupBy({ by: ["purchaseOrderItemId"], where: grnWhere, _sum: { acceptedQuantity: true, totalCost: true } }),
     ]);
     const lines = data.items.map((item) => {
       const source = order.items.find((entry) => entry.id === item.itemId);
-      const returned = previous.find((entry) => entry.purchaseOrderItemId === item.itemId)?._sum.quantity ?? 0;
+      const returned = Number(previous.find((entry) => entry.purchaseOrderItemId === item.itemId)?._sum.quantity ?? 0);
       const receipt = received.find((entry) => entry.purchaseOrderItemId === item.itemId);
-      const acceptedQuantity = receipt?._sum.acceptedQuantity ?? 0;
+      const acceptedQuantity = Number(receipt?._sum.acceptedQuantity ?? 0);
       if (!source || item.quantity > acceptedQuantity - returned) throw new PurchaseDomainError("INVALID_RETURN", "Return quantity exceeds received quantity.");
       const receivedTotalCost = receipt?._sum.totalCost ?? new Prisma.Decimal(0);
-      const unitCost = acceptedQuantity > 0 ? receivedTotalCost.div(acceptedQuantity) : source.unitCost;
+      const unitCost = acceptedQuantity > 0 ? new Prisma.Decimal(receivedTotalCost).div(acceptedQuantity) : source.unitCost;
       const total = unitCost.mul(item.quantity);
       return { source, quantity: item.quantity, unitCost, total };
     });
@@ -490,14 +497,14 @@ export async function createSupplierReturn(context: ServiceContext, input: Suppl
     if (total.greaterThan(order.balanceAmount)) throw new PurchaseDomainError("INVALID_RETURN", "Supplier return exceeds the unpaid purchase balance. Returns requiring a supplier refund are not supported in V1.");
     const number = await nextDocumentNumber(tx, context.workspaceId, "SUPPLIER_RETURN");
     const noteNumber = await nextDocumentNumber(tx, context.workspaceId, "DEBIT_NOTE");
-    const supplierReturn = await tx.supplierReturn.create({ data: { workspaceId: context.workspaceId, supplierId: order.supplierId, purchaseOrderId: order.id, idempotencyKey: data.idempotencyKey, number, reason: data.reason || null, totalAmount: total, notes: data.notes || null }, select: { id: true, date: true } });
+    const supplierReturn = await tx.supplierReturn.create({ data: { workspaceId: context.workspaceId, supplierId: order.supplierId, purchaseOrderId: order.id, goodReceivedNoteId: data.goodReceivedNoteId || null, idempotencyKey: data.idempotencyKey, number, reason: data.reason || null, totalAmount: total, notes: data.notes || null }, select: { id: true, date: true } });
     for (const line of lines) {
       const product = await tx.product.findFirst({ where: { id: line.source.productId, workspaceId: context.workspaceId, stockQuantity: { gte: line.quantity } }, select: { stockQuantity: true, costPrice: true } });
       if (!product) throw new PurchaseDomainError("INSUFFICIENT_STOCK", `${line.source.productName ?? "Product"} has insufficient stock to return.`);
-      const remainingQuantity = product.stockQuantity - line.quantity;
-      const remainingValue = product.costPrice.mul(product.stockQuantity).minus(line.total);
+      const currentStock = product.stockQuantity.toNumber();
+      const remainingValue = product.costPrice.mul(currentStock).minus(line.total);
       if (remainingValue.isNegative()) throw new PurchaseDomainError("INVALID_RETURN", "Return value exceeds the current inventory carrying value.");
-      const changed = await tx.product.updateMany({ where: { id: line.source.productId, workspaceId: context.workspaceId, stockQuantity: product.stockQuantity }, data: { stockQuantity: { decrement: line.quantity }, ...(remainingQuantity > 0 ? { costPrice: remainingValue.div(remainingQuantity) } : {}) } });
+      const changed = await tx.product.updateMany({ where: { id: line.source.productId, workspaceId: context.workspaceId, stockQuantity: product.stockQuantity }, data: { stockQuantity: { decrement: line.quantity } } });
       if (changed.count !== 1) throw new PurchaseDomainError("INSUFFICIENT_STOCK", `${line.source.productName ?? "Product"} has insufficient stock to return.`);
       await tx.supplierReturnItem.create({ data: { supplierReturnId: supplierReturn.id, purchaseOrderItemId: line.source.id, productId: line.source.productId, quantity: line.quantity, unitCost: line.unitCost, totalCost: line.total } });
       await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: line.source.productId, type: "RETURN_OUT", quantityChanged: -line.quantity, unitCost: line.unitCost, reference: number } });
@@ -541,7 +548,7 @@ export async function getPurchase(workspaceId: string, id: string) {
     include: {
       supplier: true,
       items: {
-        include: { product: { select: { name: true, sku: true } } },
+        include: { product: { select: { name: true, sku: true, unit: true } } },
       },
       goodsReceivedNotes: {
         include: {
@@ -558,11 +565,12 @@ export async function getPurchase(workspaceId: string, id: string) {
     productId: item.productId,
     productName: item.productName ?? item.product.name,
     sku: item.productSku ?? item.product.sku ?? "",
-    quantity: item.quantity,
+    unit: item.product.unit,
+    quantity: item.quantity.toNumber(),
     unitCost: Number(item.unitCost),
     total: Number(item.totalCost),
-    receivedQuantity: item.receivedQuantity,
-    remainingQuantity: item.quantity - item.receivedQuantity,
+    receivedQuantity: item.receivedQuantity.toNumber(),
+    remainingQuantity: item.quantity.toNumber() - item.receivedQuantity.toNumber(),
     unitWeight: item.unitWeight ? Number(item.unitWeight) : null,
     totalWeight: item.totalWeight ? Number(item.totalWeight) : null,
     perKgRate: item.perKgRate ? Number(item.perKgRate) : null,
@@ -579,7 +587,7 @@ export async function getPurchase(workspaceId: string, id: string) {
     items: grn.items.map((gi) => ({
       id: gi.id,
       purchaseOrderItemId: gi.purchaseOrderItemId,
-      acceptedQuantity: gi.acceptedQuantity,
+      acceptedQuantity: gi.acceptedQuantity.toNumber(),
       unitCost: Number(gi.unitCost),
       totalCost: Number(gi.totalCost),
     })),
@@ -618,7 +626,7 @@ export async function getOpenPOItemsForGRN(workspaceId: string, purchaseOrderId:
   const order = await db.purchaseOrder.findFirst({
     where: { id: purchaseOrderId, workspaceId, status: { not: "CANCELLED" } },
     include: {
-      items: { include: { product: { select: { name: true, sku: true } } } },
+      items: { include: { product: { select: { name: true, sku: true, unit: true } } } },
       supplier: { select: { name: true, companyName: true } },
     },
   });
@@ -629,19 +637,20 @@ export async function getOpenPOItemsForGRN(workspaceId: string, purchaseOrderId:
     orderNumber: order.orderNumber,
     supplier: { id: order.supplierId, name: order.supplier.companyName ?? order.supplier.name },
     items: order.items
-      .filter((item) => item.receivedQuantity < item.quantity)
+      .filter((item) => item.receivedQuantity.toNumber() < item.quantity.toNumber())
       .map((item) => ({
         id: item.id,
         productId: item.productId,
         productName: item.productName ?? item.product.name,
         sku: item.productSku ?? item.product.sku ?? "",
-        orderedQuantity: item.quantity,
-        receivedQuantity: item.receivedQuantity,
-        remainingQuantity: item.quantity - item.receivedQuantity,
+        orderedQuantity: item.quantity.toNumber(),
+        receivedQuantity: item.receivedQuantity.toNumber(),
+        remainingQuantity: item.quantity.toNumber() - item.receivedQuantity.toNumber(),
         unitCost: Number(item.unitCost),
         unitWeight: item.unitWeight ? Number(item.unitWeight) : null,
         totalWeight: item.totalWeight ? Number(item.totalWeight) : null,
         perKgRate: item.perKgRate ? Number(item.perKgRate) : null,
+        unit: item.product.unit,
       })),
   };
 }
@@ -659,13 +668,13 @@ export async function listGoodsReceipts(workspaceId: string, purchaseOrderId: st
     totalAmount: Number(grn.totalAmount),
     receivedBy: grn.receivedBy,
     itemsCount: grn.items.length,
-    totalAccepted: grn.items.reduce((sum, i) => sum + i.acceptedQuantity, 0),
+    totalAccepted: grn.items.reduce((sum, i) => sum + i.acceptedQuantity.toNumber(), 0),
   }));
 }
 
 export async function listAllGoodsReceipts(workspaceId: string) {
   const rows = await db.goodReceivedNote.findMany({ where: { workspaceId }, orderBy: [{ receiptDate: "desc" }, { createdAt: "desc" }], take: 500, include: { supplier: { select: { name: true, companyName: true } }, purchaseOrder: { select: { orderNumber: true } }, items: { select: { acceptedQuantity: true } } } });
-  return rows.map((row) => ({ id: row.id, grnNumber: row.grnNumber, receiptDate: row.receiptDate.toISOString(), supplierName: row.supplier.companyName ?? row.supplier.name, orderNumber: row.purchaseOrder.orderNumber, totalAmount: Number(row.totalAmount), totalAccepted: row.items.reduce((sum, item) => sum + item.acceptedQuantity, 0) }));
+  return rows.map((row) => ({ id: row.id, grnNumber: row.grnNumber, receiptDate: row.receiptDate.toISOString(), supplierName: row.supplier.companyName ?? row.supplier.name, orderNumber: row.purchaseOrder.orderNumber, totalAmount: Number(row.totalAmount), totalAccepted: row.items.reduce((sum, item) => sum + item.acceptedQuantity.toNumber(), 0) }));
 }
 
 export async function getGoodsReceipt(workspaceId: string, id: string) {
@@ -702,18 +711,104 @@ export async function getGoodsReceipt(workspaceId: string, id: string) {
       name: grn.supplier.companyName ?? grn.supplier.name,
       phone: grn.supplier.phone ?? "",
     },
-    items: grn.items.map((item) => ({
+    items: grn.items.map((item) => {
+      const poQty = item.purchaseOrderItem.quantity.toNumber();
+      const poReceived = item.purchaseOrderItem.receivedQuantity.toNumber();
+      const accepted = item.acceptedQuantity.toNumber();
+      return {
+        id: item.id,
+        productName: item.product.name,
+        sku: item.product.sku ?? "",
+        orderedQuantity: poQty,
+        previouslyReceived: poReceived - accepted,
+        receivedNow: item.receivedQuantity.toNumber(),
+        acceptedQuantity: accepted,
+        remainingQuantity: poQty - poReceived,
+        unitCost: Number(item.unitCost),
+        totalCost: Number(item.totalCost),
+        unitWeight: item.purchaseOrderItem.unitWeight ? Number(item.purchaseOrderItem.unitWeight) : null,
+      };
+    }),
+  };
+}
+
+export async function listSupplierReturns(workspaceId: string) {
+  const rows = await db.supplierReturn.findMany({
+    where: { workspaceId },
+    include: {
+      supplier: { select: { name: true, companyName: true } },
+      purchaseOrder: { select: { orderNumber: true } },
+      goodReceivedNote: { select: { grnNumber: true } },
+      _count: { select: { items: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    number: row.number,
+    date: row.date.toISOString(),
+    status: row.status,
+    supplierName: row.supplier.companyName ?? row.supplier.name,
+    orderNumber: row.purchaseOrder.orderNumber,
+    grnNumber: row.goodReceivedNote?.grnNumber ?? null,
+    itemCount: row._count.items,
+    total: Number(row.totalAmount),
+    reason: row.reason,
+  }));
+}
+
+export async function getSupplierReturn(workspaceId: string, id: string) {
+  const row = await db.supplierReturn.findFirst({
+    where: { id, workspaceId },
+    include: {
+      supplier: true,
+      purchaseOrder: { select: { id: true, orderNumber: true } },
+      goodReceivedNote: { select: { id: true, grnNumber: true } },
+      items: {
+        include: {
+          product: { select: { name: true, sku: true } },
+          purchaseOrderItem: { select: { productName: true } },
+        },
+      },
+    },
+  });
+  if (!row) return null;
+
+  const debitNote = await db.debitNote.findFirst({
+    where: { workspaceId, reference: row.number },
+    select: { id: true, number: true, amount: true },
+  });
+
+  return {
+    id: row.id,
+    number: row.number,
+    date: row.date.toISOString(),
+    status: row.status,
+    reason: row.reason,
+    notes: row.notes,
+    total: Number(row.totalAmount),
+    supplier: {
+      id: row.supplier.id,
+      name: row.supplier.companyName ?? row.supplier.name,
+    },
+    purchaseOrder: {
+      id: row.purchaseOrder.id,
+      orderNumber: row.purchaseOrder.orderNumber,
+    },
+    goodReceivedNote: row.goodReceivedNote
+      ? { id: row.goodReceivedNote.id, grnNumber: row.goodReceivedNote.grnNumber }
+      : null,
+    items: row.items.map((item) => ({
       id: item.id,
       productName: item.product.name,
       sku: item.product.sku ?? "",
-      orderedQuantity: item.purchaseOrderItem.quantity,
-      previouslyReceived: item.purchaseOrderItem.receivedQuantity - item.acceptedQuantity,
-      receivedNow: item.receivedQuantity,
-      acceptedQuantity: item.acceptedQuantity,
-      remainingQuantity: item.purchaseOrderItem.quantity - item.purchaseOrderItem.receivedQuantity,
+      poItemName: item.purchaseOrderItem.productName ?? item.product.name,
+      quantity: item.quantity.toNumber(),
       unitCost: Number(item.unitCost),
       totalCost: Number(item.totalCost),
-      unitWeight: item.purchaseOrderItem.unitWeight ? Number(item.purchaseOrderItem.unitWeight) : null,
     })),
+    debitNote: debitNote
+      ? { id: debitNote.id, number: debitNote.number, amount: Number(debitNote.amount) }
+      : null,
   };
 }

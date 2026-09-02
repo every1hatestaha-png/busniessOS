@@ -115,7 +115,7 @@ export default async function DashboardPage() {
             {activity.lowStock.map((product) => (
               <div key={product.id} className="flex items-center justify-between gap-4 border-b pb-4 last:border-0 last:pb-0">
                 <div className="min-w-0"><p className="truncate font-medium">{product.name}</p><p className="text-xs text-neutral-500">{product.sku}</p></div>
-                <div className="text-right"><p className="font-semibold tabular-nums">{product.stockQuantity} {product.unit.toLowerCase()}</p><p className="text-xs text-neutral-500">{getStockStatus(product.stockQuantity, product.reorderLevel)}</p></div>
+                <div className="text-right"><p className="font-semibold tabular-nums">{product.stockQuantity.toNumber()} {product.unit.toLowerCase()}</p><p className="text-xs text-neutral-500">{getStockStatus(product.stockQuantity.toNumber(), product.reorderLevel.toNumber())}</p></div>
               </div>
             ))}
             {!activity.lowStock.length && <p className="py-6 text-center text-sm text-neutral-500">All products are above reorder levels.</p>}

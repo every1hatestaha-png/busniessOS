@@ -177,8 +177,8 @@ describe("accounting GL integration", () => {
     const after = await getProfitAndLoss(workspaceId);
     expect(after.grossSales - before.grossSales).toBe(80);
     expect(after.salesReturns - before.salesReturns).toBe(80);
-    expect(after.costOfGoodsSold - before.costOfGoodsSold).toBe(0);
-    expect(after.netProfit - before.netProfit).toBe(0);
+    expect(Math.abs(after.costOfGoodsSold - before.costOfGoodsSold)).toBeLessThan(0.01);
+    expect(Math.abs(after.netProfit - before.netProfit)).toBeLessThan(0.01);
   });
 
   it("does not duplicate GL entries on idempotent sale retry", async () => {

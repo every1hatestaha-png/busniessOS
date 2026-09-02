@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const returnItemSchema = z.object({ itemId: z.uuid(), quantity: z.coerce.number().int().positive() });
+const returnItemSchema = z.object({ itemId: z.uuid(), quantity: z.coerce.number().positive() });
 
 export const customerReturnSchema = z.object({
   salesOrderId: z.uuid(),
@@ -13,6 +13,7 @@ export const customerReturnSchema = z.object({
 
 export const supplierReturnSchema = z.object({
   purchaseOrderId: z.uuid(),
+  goodReceivedNoteId: z.string().uuid().optional(),
   items: z.array(returnItemSchema).min(1).max(100),
   reason: z.string().trim().max(300).optional().default(""),
   notes: z.string().trim().max(1000).optional().default(""),

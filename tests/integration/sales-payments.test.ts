@@ -110,9 +110,12 @@ describe("sales and payments against Neon", () => {
     expect(order.invoices).toHaveLength(1);
     expect(order.invoices[0].status).toBe("PARTIALLY_PAID");
     expect(Number(order.invoices[0].paidAmount)).toBe(60);
-    expect(product.stockQuantity).toBe(18);
+    expect(product.stockQuantity.toNumber()).toBe(18);
     expect(Number(customer.currentBalance)).toBe(120);
-    expect(inventory).toEqual([expect.objectContaining({ productId: productA, type: "SALE", quantityChanged: -2 })]);
+    expect(inventory).toHaveLength(1);
+    expect(inventory[0].productId).toBe(productA);
+    expect(inventory[0].type).toBe("SALE");
+    expect(inventory[0].quantityChanged.toNumber()).toBe(-2);
     expect(ledger).toEqual([expect.objectContaining({ type: "SALE", debit: expect.anything() })]);
     expect(payments).toHaveLength(1);
 
@@ -136,7 +139,7 @@ describe("sales and payments against Neon", () => {
       db.salesOrder.findFirst({ where: { workspaceId: workspaceA, idempotencyKey: input.idempotencyKey } }),
       db.inventoryTransaction.count({ where: { workspaceId: workspaceA, productId: product.id } }),
     ]);
-    expect(unchangedProduct.stockQuantity).toBe(1);
+    expect(unchangedProduct.stockQuantity.toNumber()).toBe(1);
     expect(order).toBeNull();
     expect(inventoryCount).toBe(0);
   });

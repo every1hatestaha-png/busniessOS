@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const purchaseItemSchema = z.object({
   productId: z.uuid(),
-  quantity: z.coerce.number().int().positive(),
+  quantity: z.coerce.number().positive(),
   unitCost: z.coerce.number().nonnegative().max(999_999_999),
   unitWeight: z.coerce.number().nonnegative().optional(),
   perKgRate: z.coerce.number().nonnegative().optional(),
@@ -35,8 +35,8 @@ export const goodsReceiptSchema = z.object({
   checkedBy: z.string().trim().max(200).optional(),
   items: z.array(z.object({
     purchaseOrderItemId: z.uuid(),
-    receivedQuantity: z.coerce.number().int().nonnegative(),
-    acceptedQuantity: z.coerce.number().int().nonnegative(),
+    receivedQuantity: z.coerce.number().nonnegative(),
+    acceptedQuantity: z.coerce.number().nonnegative(),
     actualUnitCost: z.coerce.number().nonnegative().max(999_999_999),
   })).min(1).max(100),
   idempotencyKey: z.string().trim().min(8).max(200).optional(),

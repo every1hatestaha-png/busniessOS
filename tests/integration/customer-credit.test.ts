@@ -85,7 +85,7 @@ describe("customer credit allocation and receivables", () => {
     expect(credit.status).toBe("OPEN");
     expect(Number(invoiceAfter.amount.minus(invoiceAfter.paidAmount).minus(invoiceAfter.creditApplied))).toBe(100);
     expect(Number(customer.currentBalance)).toBe(0);
-    expect(productAfter.stockQuantity).toBe(productBefore.stockQuantity + 1);
+    expect(productAfter.stockQuantity.toNumber()).toBe(productBefore.stockQuantity.toNumber() + 1);
     expect(returnGl.reduce((sum, entry) => sum + Number(entry.debit), 0)).toBe(returnGl.reduce((sum, entry) => sum + Number(entry.credit), 0));
     expect(await db.creditNote.count({ where: { customerReturnId: customerReturn.id } })).toBe(1);
     expect(await db.inventoryTransaction.count({ where: { workspaceId, reference: savedReturn.number } })).toBe(1);
