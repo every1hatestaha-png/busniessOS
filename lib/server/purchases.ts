@@ -7,7 +7,7 @@ import { db } from "@/lib/server/db";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";
 import type { ServiceContext } from "@/lib/server/sales";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
-import { purchaseSchema, goodsReceiptSchema, type PurchaseInput, type GoodsReceiptInput } from "@/lib/validation/purchase";
+import { purchaseSchema, goodsReceiptSchema, updatePurchaseSchema, voidGoodsReceiptSchema, type PurchaseInput, type GoodsReceiptInput, type UpdatePurchaseInput, type VoidGoodsReceiptInput } from "@/lib/validation/purchase";
 import { supplierReturnSchema, type SupplierReturnInput } from "@/lib/validation/returns";
 
 export class PurchaseDomainError extends Error {
@@ -22,7 +22,14 @@ export class PurchaseDomainError extends Error {
       | "INVALID_RECEIPT"
       | "OVER_RECEIPT"
       | "CANCELLED_PO"
-      | "RECEIPT_NOT_ALLOWED",
+      | "RECEIPT_NOT_ALLOWED"
+      | "GRN_NOT_FOUND"
+      | "CANNOT_EDIT_PO"
+      | "CANNOT_DELETE_PO"
+      | "CANNOT_MODIFY_GRN"
+      | "GRN_HAS_SUPPLIER_RETURNS"
+      | "INSUFFICIENT_INVENTORY"
+      | "INVALID_GRN_STATUS",
     message: string,
   ) {
     super(message);
@@ -812,3 +819,355 @@ export async function getSupplierReturn(workspaceId: string, id: string) {
       : null,
   };
 }
+
+/**
+ * Update a Purchase Order (header fields only).
+ * Only allowed if status is DRAFT.
+ * Line items are locked once a GRN exists.
+ * Header fields (notes, expectedDeliveryDate) remain editable.
+ */
+export async function updatePurchase(context: ServiceContext, id: string, input: UpdatePurchaseInput) {
+  const data = updatePurchaseSchema.parse(input);
+  return withSerializableRetry(async (tx) => {
+    const order = await tx.purchaseOrder.findFirst({
+      where: { id, workspaceId: context.workspaceId },
+      select: { id: true, status: true, orderNumber: true },
+    });
+    if (!order) throw new PurchaseDomainError("PURCHASE_NOT_FOUND", "Purchase not found.");
+
+    if (order.status !== "DRAFT") {
+      throw new PurchaseDomainError("CANNOT_EDIT_PO", `Purchase order cannot be edited in ${order.status} status. Only DRAFT orders can be edited.`);
+    }
+
+    const updated = await tx.purchaseOrder.update({
+      where: { id, workspaceId: context.workspaceId },
+      data: {
+        notes: data.notes || null,
+        expectedDeliveryDate: data.expectedDeliveryDate || null,
+      },
+      select: { id: true, orderNumber: true },
+    });
+
+    await writeAudit(tx, context.workspaceId, "PurchaseOrderUpdated", {
+      orderId: id,
+      orderNumber: order.orderNumber,
+      changes: data,
+    });
+
+    return updated;
+  });
+}
+
+/**
+ * Delete a Purchase Order.
+ * Only allowed if status is DRAFT and no linked GRNs exist.
+ * Otherwise, must use cancelPurchase.
+ */
+export async function deletePurchase(context: ServiceContext, id: string) {
+  return withSerializableRetry(async (tx) => {
+    const order = await tx.purchaseOrder.findFirst({
+      where: { id, workspaceId: context.workspaceId },
+      select: { id: true, status: true, orderNumber: true },
+    });
+    if (!order) throw new PurchaseDomainError("PURCHASE_NOT_FOUND", "Purchase not found.");
+
+    if (order.status !== "DRAFT") {
+      throw new PurchaseDomainError("CANNOT_DELETE_PO", `Purchase order cannot be deleted in ${order.status} status. Only DRAFT orders can be deleted. For other statuses, use cancel purchase instead.`);
+    }
+
+    const grnCount = await tx.goodReceivedNote.count({
+      where: { purchaseOrderId: id, workspaceId: context.workspaceId },
+    });
+    if (grnCount > 0) {
+      throw new PurchaseDomainError("CANNOT_DELETE_PO", "Purchase order cannot be deleted because it has linked goods receipts. Use cancel purchase instead.");
+    }
+
+    const deleted = await tx.purchaseOrder.delete({
+      where: { id, workspaceId: context.workspaceId },
+      select: { id: true, orderNumber: true },
+    });
+
+    await writeAudit(tx, context.workspaceId, "PurchaseOrderDeleted", {
+      orderId: id,
+      orderNumber: deleted.orderNumber,
+    });
+
+    return deleted;
+  });
+}
+
+/**
+ * Void a Goods Received Note.
+ * Reverses inventory increments, recalculates weighted-average cost,
+ * and posts reversing General Ledger journal entries.
+ * Blocked if any linked SupplierReturn exists or if current stock for any item is less than the received quantity.
+ */
+export async function voidGoodsReceipt(context: ServiceContext, id: string, input: VoidGoodsReceiptInput) {
+  const data = voidGoodsReceiptSchema.parse(input);
+  return withSerializableRetry(async (tx) => {
+    const grn = await tx.goodReceivedNote.findFirst({
+      where: { id, workspaceId: context.workspaceId },
+      include: {
+        items: true,
+        supplierReturns: { select: { id: true }, take: 1 },
+        purchaseOrder: { select: { id: true, orderNumber: true } },
+      },
+    });
+    if (!grn) throw new PurchaseDomainError("GRN_NOT_FOUND", "Goods receipt not found.");
+
+    if (grn.status === "VOIDED") {
+      return { id: grn.id, grnNumber: grn.grnNumber };
+    }
+
+    if (grn.supplierReturns.length > 0) {
+      throw new PurchaseDomainError("GRN_HAS_SUPPLIER_RETURNS", "Goods receipt cannot be voided because it has linked supplier returns.");
+    }
+
+    // Validate sufficient inventory to reverse
+    for (const item of grn.items) {
+      const product = await tx.product.findFirst({
+        where: { id: item.productId, workspaceId: context.workspaceId },
+        select: { stockQuantity: true },
+      });
+      if (!product) {
+        throw new PurchaseDomainError("PRODUCT_NOT_FOUND", `Product ${item.productId} not found.`);
+      }
+      const currentStock = product.stockQuantity.toNumber();
+      const itemQuantity = item.acceptedQuantity.toNumber();
+      if (currentStock < itemQuantity) {
+        throw new PurchaseDomainError("INSUFFICIENT_INVENTORY", `Insufficient stock to void this receipt. Product has ${currentStock} in stock but receipt contains ${itemQuantity} units.`);
+      }
+    }
+
+    // Reverse inventory and recalculate weighted-average cost
+    for (const item of grn.items) {
+      const product = await tx.product.findFirst({
+        where: { id: item.productId, workspaceId: context.workspaceId },
+        select: { stockQuantity: true, costPrice: true },
+      });
+      if (!product) continue;
+
+      const currentStock = product.stockQuantity.toNumber();
+      const currentValue = product.costPrice.mul(currentStock);
+      const reversalValue = item.totalCost;
+      const remainingStock = currentStock - item.acceptedQuantity.toNumber();
+      const remainingValue = currentValue.minus(reversalValue);
+
+      const newCostPrice = remainingStock > 0 ? remainingValue.div(remainingStock) : new Prisma.Decimal(0);
+
+      await tx.product.update({
+        where: { id: item.productId, workspaceId: context.workspaceId },
+        data: {
+          stockQuantity: { decrement: item.acceptedQuantity.toNumber() },
+          costPrice: newCostPrice,
+        },
+      });
+
+      await tx.inventoryTransaction.create({
+        data: {
+          workspaceId: context.workspaceId,
+          productId: item.productId,
+          type: "GRN_REVERSAL",
+          quantityChanged: -item.acceptedQuantity.toNumber(),
+          unitCost: item.totalCost.div(item.acceptedQuantity),
+          reference: grn.grnNumber,
+        },
+      });
+    }
+
+    // Reverse GL entries
+    const glEntriesToReverse = await tx.generalLedgerEntry.findMany({
+      where: { workspaceId: context.workspaceId, sourceId: grn.id },
+      select: { id: true },
+    });
+
+    if (glEntriesToReverse.length > 0) {
+      await reverseGeneralLedgerEntries(tx, context.workspaceId, grn.id, grn.grnNumber);
+    }
+
+    // Reverse supplier payable
+    await tx.ledgerEntry.create({
+      data: {
+        workspaceId: context.workspaceId,
+        supplierId: grn.supplierId,
+        type: "REVERSAL",
+        credit: grn.totalAmount,
+        description: `Voided receipt ${grn.grnNumber}`,
+        referenceId: grn.id,
+      },
+    });
+
+    // Update supplier balance
+    await tx.supplier.update({
+      where: { id: grn.supplierId, workspaceId: context.workspaceId },
+      data: { currentBalance: { decrement: grn.totalAmount } },
+    });
+
+    // Mark GRN as VOIDED
+    const voided = await tx.goodReceivedNote.update({
+      where: { id, workspaceId: context.workspaceId },
+      data: {
+        status: "VOIDED",
+        voidedAt: new Date(),
+        voidedReason: data.voidedReason,
+      },
+      select: { id: true, grnNumber: true, status: true },
+    });
+
+    // Update PO status if all GRNs are voided
+    const activeGrns = await tx.goodReceivedNote.count({
+      where: {
+        purchaseOrderId: grn.purchaseOrderId,
+        workspaceId: context.workspaceId,
+        status: "ACTIVE",
+      },
+    });
+    if (activeGrns === 0) {
+      await tx.purchaseOrder.update({
+        where: { id: grn.purchaseOrderId, workspaceId: context.workspaceId },
+        data: { status: "ORDERED" },
+      });
+    }
+
+    await writeAudit(tx, context.workspaceId, "GoodsReceiptVoided", {
+      grnId: grn.id,
+      grnNumber: grn.grnNumber,
+      voidedReason: data.voidedReason,
+      reverseTotal: grn.totalAmount.toString(),
+    });
+
+    return voided;
+  });
+}
+
+/**
+ * Delete a Goods Received Note.
+ * Like void, but removes the record entirely.
+ * Same guards: no linked SupplierReturns and sufficient inventory.
+ */
+export async function deleteGoodsReceipt(context: ServiceContext, id: string) {
+  return withSerializableRetry(async (tx) => {
+    const grn = await tx.goodReceivedNote.findFirst({
+      where: { id, workspaceId: context.workspaceId },
+      include: {
+        items: true,
+        supplierReturns: { select: { id: true }, take: 1 },
+        purchaseOrder: { select: { id: true, orderNumber: true } },
+      },
+    });
+    if (!grn) throw new PurchaseDomainError("GRN_NOT_FOUND", "Goods receipt not found.");
+
+    if (grn.supplierReturns.length > 0) {
+      throw new PurchaseDomainError("GRN_HAS_SUPPLIER_RETURNS", "Goods receipt cannot be deleted because it has linked supplier returns.");
+    }
+
+    // Validate sufficient inventory to reverse
+    for (const item of grn.items) {
+      const product = await tx.product.findFirst({
+        where: { id: item.productId, workspaceId: context.workspaceId },
+        select: { stockQuantity: true },
+      });
+      if (!product) {
+        throw new PurchaseDomainError("PRODUCT_NOT_FOUND", `Product ${item.productId} not found.`);
+      }
+      const currentStock = product.stockQuantity.toNumber();
+      const itemQuantity = item.acceptedQuantity.toNumber();
+      if (currentStock < itemQuantity) {
+        throw new PurchaseDomainError("INSUFFICIENT_INVENTORY", `Insufficient stock to delete this receipt. Product has ${currentStock} in stock but receipt contains ${itemQuantity} units.`);
+      }
+    }
+
+    // Reverse inventory and recalculate weighted-average cost
+    for (const item of grn.items) {
+      const product = await tx.product.findFirst({
+        where: { id: item.productId, workspaceId: context.workspaceId },
+        select: { stockQuantity: true, costPrice: true },
+      });
+      if (!product) continue;
+
+      const currentStock = product.stockQuantity.toNumber();
+      const currentValue = product.costPrice.mul(currentStock);
+      const reversalValue = item.totalCost;
+      const remainingStock = currentStock - item.acceptedQuantity.toNumber();
+      const remainingValue = currentValue.minus(reversalValue);
+
+      const newCostPrice = remainingStock > 0 ? remainingValue.div(remainingStock) : new Prisma.Decimal(0);
+
+      await tx.product.update({
+        where: { id: item.productId, workspaceId: context.workspaceId },
+        data: {
+          stockQuantity: { decrement: item.acceptedQuantity.toNumber() },
+          costPrice: newCostPrice,
+        },
+      });
+
+      await tx.inventoryTransaction.create({
+        data: {
+          workspaceId: context.workspaceId,
+          productId: item.productId,
+          type: "GRN_REVERSAL",
+          quantityChanged: -item.acceptedQuantity.toNumber(),
+          unitCost: item.totalCost.div(item.acceptedQuantity),
+          reference: grn.grnNumber,
+        },
+      });
+    }
+
+    // Reverse GL entries
+    const glEntriesToReverse = await tx.generalLedgerEntry.findMany({
+      where: { workspaceId: context.workspaceId, sourceId: grn.id },
+      select: { id: true },
+    });
+
+    if (glEntriesToReverse.length > 0) {
+      await reverseGeneralLedgerEntries(tx, context.workspaceId, grn.id, grn.grnNumber);
+    }
+
+    // Reverse supplier payable
+    await tx.ledgerEntry.create({
+      data: {
+        workspaceId: context.workspaceId,
+        supplierId: grn.supplierId,
+        type: "REVERSAL",
+        credit: grn.totalAmount,
+        description: `Deleted receipt ${grn.grnNumber}`,
+        referenceId: grn.id,
+      },
+    });
+
+    // Update supplier balance
+    await tx.supplier.update({
+      where: { id: grn.supplierId, workspaceId: context.workspaceId },
+      data: { currentBalance: { decrement: grn.totalAmount } },
+    });
+
+    // Delete GRN
+    const deleted = await tx.goodReceivedNote.delete({
+      where: { id, workspaceId: context.workspaceId },
+      select: { id: true, grnNumber: true },
+    });
+
+    // Update PO status if no GRNs remain
+    const activeGrns = await tx.goodReceivedNote.count({
+      where: {
+        purchaseOrderId: grn.purchaseOrderId,
+        workspaceId: context.workspaceId,
+      },
+    });
+    if (activeGrns === 0) {
+      await tx.purchaseOrder.update({
+        where: { id: grn.purchaseOrderId, workspaceId: context.workspaceId },
+        data: { status: "ORDERED" },
+      });
+    }
+
+    await writeAudit(tx, context.workspaceId, "GoodsReceiptDeleted", {
+      grnId: id,
+      grnNumber: deleted.grnNumber,
+      reverseTotal: grn.totalAmount.toString(),
+    });
+
+    return deleted;
+  });
+}
+

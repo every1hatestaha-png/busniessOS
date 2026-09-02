@@ -85,6 +85,11 @@ enum SupplierReturnStatus {
   CANCELLED
 }
 
+enum GRNStatus {
+  ACTIVE
+  VOIDED
+}
+
 enum PaymentMethod {
   CASH
   BANK_TRANSFER
@@ -614,19 +619,22 @@ model PurchaseOrderItem {
 }
 
 model GoodReceivedNote {
-  id              String   @id @default(uuid())
+  id              String      @id @default(uuid())
   workspaceId     String
   supplierId      String
   purchaseOrderId String
   grnNumber       String
   idempotencyKey  String?
-  receiptDate     DateTime @default(now())
+  receiptDate     DateTime    @default(now())
   notes           String?
   receivedBy      String?
   checkedBy       String?
-  totalAmount     Decimal  @default(0) @db.Decimal(15, 2)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  totalAmount     Decimal     @default(0) @db.Decimal(15, 2)
+  status          GRNStatus   @default(ACTIVE)
+  voidedAt        DateTime?
+  voidedReason    String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
   workspace       Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   supplier        Supplier               @relation(fields: [supplierId], references: [id], onDelete: Restrict)
