@@ -27,6 +27,7 @@ export class PurchaseDomainError extends Error {
       | "CANNOT_EDIT_PO"
       | "CANNOT_DELETE_PO"
       | "CANNOT_MODIFY_GRN"
+      | "CANNOT_DELETE_POSTED_GRN"
       | "GRN_HAS_SUPPLIER_RETURNS"
       | "INSUFFICIENT_INVENTORY"
       | "INVALID_GRN_STATUS",
@@ -1269,7 +1270,7 @@ export async function voidGoodsReceipt(context: ServiceContext, id: string, inpu
     if (!grn) throw new PurchaseDomainError("GRN_NOT_FOUND", "Goods receipt not found.");
 
     if (grn.status === "VOIDED") {
-      return { id: grn.id, grnNumber: grn.grnNumber };
+      throw new PurchaseDomainError("INVALID_GRN_STATUS", "This goods receipt has already been voided.");
     }
 
     if (grn.supplierReturns.length > 0) {
@@ -1351,7 +1352,7 @@ export async function voidGoodsReceipt(context: ServiceContext, id: string, inpu
         workspaceId: context.workspaceId,
         supplierId: grn.supplierId,
         type: "REVERSAL",
-        credit: grn.totalAmount,
+        debit: grn.totalAmount,
         description: `Voided receipt ${grn.grnNumber}`,
         referenceId: grn.id,
       },
@@ -1429,168 +1430,15 @@ export async function voidGoodsReceipt(context: ServiceContext, id: string, inpu
 
 /**
  * Delete a Goods Received Note.
- * Like void, but removes the record entirely.
- * Same guards: no linked SupplierReturns and sufficient inventory.
+ * Posted financial documents cannot be physically deleted.
+ * Users must use voidGoodsReceipt instead.
  */
-export async function deleteGoodsReceipt(context: ServiceContext, id: string) {
-  return withSerializableRetry(async (tx) => {
-    const grn = await tx.goodReceivedNote.findFirst({
-      where: { id, workspaceId: context.workspaceId },
-      include: {
-        items: true,
-        supplierReturns: { select: { id: true }, take: 1 },
-        purchaseOrder: { select: { id: true, orderNumber: true } },
-      },
-    });
-    if (!grn) throw new PurchaseDomainError("GRN_NOT_FOUND", "Goods receipt not found.");
-
-    if (grn.supplierReturns.length > 0) {
-      throw new PurchaseDomainError("GRN_HAS_SUPPLIER_RETURNS", "Goods receipt cannot be deleted because it has linked supplier returns.");
-    }
-
-    // Validate sufficient inventory to reverse
-    for (const item of grn.items) {
-      const product = await tx.product.findFirst({
-        where: { id: item.productId, workspaceId: context.workspaceId },
-        select: { stockQuantity: true },
-      });
-      if (!product) {
-        throw new PurchaseDomainError("PRODUCT_NOT_FOUND", `Product ${item.productId} not found.`);
-      }
-      const currentStock = product.stockQuantity.toNumber();
-      const itemQuantity = item.acceptedQuantity.toNumber();
-      if (currentStock < itemQuantity) {
-        throw new PurchaseDomainError("INSUFFICIENT_INVENTORY", `Insufficient stock to delete this receipt. Product has ${currentStock} in stock but receipt contains ${itemQuantity} units.`);
-      }
-    }
-
-    // Reverse inventory and recalculate weighted-average cost
-    for (const item of grn.items) {
-      const product = await tx.product.findFirst({
-        where: { id: item.productId, workspaceId: context.workspaceId },
-        select: { stockQuantity: true, costPrice: true },
-      });
-      if (!product) continue;
-
-      const currentStock = product.stockQuantity.toNumber();
-      const currentValue = product.costPrice.mul(currentStock);
-      const reversalValue = item.totalCost;
-      const remainingStock = currentStock - item.acceptedQuantity.toNumber();
-      const remainingValue = currentValue.minus(reversalValue);
-
-      const newCostPrice = remainingStock > 0 ? remainingValue.div(remainingStock) : new Prisma.Decimal(0);
-
-      await tx.product.update({
-        where: { id: item.productId, workspaceId: context.workspaceId },
-        data: {
-          stockQuantity: { decrement: item.acceptedQuantity.toNumber() },
-          costPrice: newCostPrice,
-        },
-      });
-
-      await tx.inventoryTransaction.create({
-        data: {
-          workspaceId: context.workspaceId,
-          productId: item.productId,
-          type: "PURCHASE_CANCELLATION",
-          quantityChanged: -item.acceptedQuantity.toNumber(),
-          unitCost: item.totalCost.div(item.acceptedQuantity),
-          reference: grn.grnNumber,
-        },
-      });
-    }
-
-    // Reverse GL entries
-    const glEntriesToReverse = await tx.generalLedgerEntry.findMany({
-      where: { workspaceId: context.workspaceId, sourceId: grn.id },
-      select: { id: true },
-    });
-
-    if (glEntriesToReverse.length > 0) {
-      await reverseGeneralLedgerEntries(tx, {
-        workspaceId: context.workspaceId,
-        sources: [{ sourceType: "PURCHASE_RECEIPT", sourceId: grn.id }],
-        documentNo: grn.grnNumber,
-        date: new Date(),
-        reason: `Deleted receipt ${grn.grnNumber}`,
-        reversedById: context.userId,
-      });
-    }
-
-    // Reverse supplier payable
-    await tx.ledgerEntry.create({
-      data: {
-        workspaceId: context.workspaceId,
-        supplierId: grn.supplierId,
-        type: "REVERSAL",
-        credit: grn.totalAmount,
-        description: `Deleted receipt ${grn.grnNumber}`,
-        referenceId: grn.id,
-      },
-    });
-
-    // Update supplier balance
-    await tx.supplier.update({
-      where: { id: grn.supplierId, workspaceId: context.workspaceId },
-      data: { currentBalance: { decrement: grn.totalAmount } },
-    });
-
-    // Update PO: decrement balanceAmount by reversed total
-    await tx.purchaseOrder.update({
-      where: { id: grn.purchaseOrderId, workspaceId: context.workspaceId },
-      data: { balanceAmount: { decrement: grn.totalAmount } },
-    });
-
-    // Decrement receivedQuantity on PO items for each deleted GRN item
-    for (const item of grn.items) {
-      await tx.purchaseOrderItem.update({
-        where: { id: item.purchaseOrderItemId },
-        data: { receivedQuantity: { decrement: item.acceptedQuantity } },
-      });
-    }
-
-    // Delete GRN
-    const deleted = await tx.goodReceivedNote.delete({
-      where: { id, workspaceId: context.workspaceId },
-      select: { id: true, grnNumber: true },
-    });
-
-    // Recalculate PO status based on aggregate received vs ordered
-    const totalReceivedAllItems = await tx.purchaseOrderItem.aggregate({
-      where: { purchaseOrderId: grn.purchaseOrderId },
-      _sum: { receivedQuantity: true },
-    });
-    const totalOrderedAllItems = await tx.purchaseOrderItem.aggregate({
-      where: { purchaseOrderId: grn.purchaseOrderId },
-      _sum: { quantity: true },
-    });
-    const totalReceived = Number(totalReceivedAllItems._sum.receivedQuantity ?? 0);
-    const totalOrdered = Number(totalOrderedAllItems._sum.quantity ?? 0);
-
-    let newStatus: "ORDERED" | "PARTIALLY_RECEIVED" | "RECEIVED";
-    if (totalReceived <= 0) {
-      newStatus = "ORDERED";
-    } else if (totalReceived >= totalOrdered) {
-      newStatus = "RECEIVED";
-    } else {
-      newStatus = "PARTIALLY_RECEIVED";
-    }
-
-    await tx.purchaseOrder.update({
-      where: { id: grn.purchaseOrderId, workspaceId: context.workspaceId },
-      data: { status: newStatus },
-    });
-
-    await writeAudit(tx, {
-      workspaceId: context.workspaceId,
-      actorId: context.userId,
-      action: "grn.deleted",
-      entityType: "GoodReceivedNote",
-      entityId: id,
-      metadata: { grnNumber: deleted.grnNumber, reverseTotal: grn.totalAmount.toString() },
-    });
-
-    return deleted;
-  });
+export async function deleteGoodsReceipt(_context: ServiceContext, _id: string) {
+  void _context;
+  void _id;
+  throw new PurchaseDomainError(
+    "CANNOT_DELETE_POSTED_GRN",
+    "Posted goods receipts cannot be deleted. Use void receipt instead to preserve audit and accounting integrity.",
+  );
 }
 

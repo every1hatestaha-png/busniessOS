@@ -28,7 +28,8 @@ export async function recordPayment(context: ServiceContext, input: PaymentInput
     if (!data.cashBankAccountId) throw new PaymentDomainError("Select a cash/bank account for this receipt.");
     const cashBankAccount = await tx.cashBankAccount.findFirst({ where: { id: data.cashBankAccountId, workspaceId: context.workspaceId, isActive: true }, select: { id: true } });
     if (!cashBankAccount) throw new PaymentDomainError("Cash/bank account is unavailable.");
-    if (amount.greaterThan(customer.currentBalance)) throw new PaymentDomainError("Payment cannot exceed customer outstanding balance.");
+    // Advance / unallocated payments are allowed: a negative currentBalance means the customer
+    // holds credit on account that will be applied against future invoices.
     const requestedAllocations = data.allocations?.length ? data.allocations : data.invoiceId ? [{ invoiceId: data.invoiceId, amount: data.amount }] : [];
     let invoices: { id: string; amount: Prisma.Decimal; paidAmount: Prisma.Decimal; creditApplied: Prisma.Decimal; salesOrderId: string | null }[] = [];
     if (requestedAllocations.length) {

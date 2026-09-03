@@ -83,6 +83,9 @@ describe("credit status", () => {
     [999, 1000, "Near Limit"],
     [1000, 1000, "Over Limit"],
     [1200, 1000, "Over Limit"],
+    [0, 0, "Clear"],
+    [50000, 0, "Normal"],
+    [100000, -1, "Normal"],
   ] as const)("classifies balance %s against limit %s as %s", (balance, limit, expected) => {
     expect(getCreditStatus(balance, limit)).toBe(expected);
   });

@@ -54,6 +54,7 @@ export function getStockStatus(stock: number, reorderLevel: number): "In Stock" 
 
 export function getCreditStatus(balance: number, creditLimit: number): "Clear" | "Normal" | "Near Limit" | "Over Limit" {
   if (balance <= 0) return "Clear";
+  if (creditLimit <= 0) return "Normal";
   if (balance >= creditLimit) return "Over Limit";
   if (balance >= creditLimit * 0.8) return "Near Limit";
   return "Normal";

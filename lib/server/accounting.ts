@@ -261,6 +261,14 @@ export async function postOpeningAssetToGeneralLedger(tx: Prisma.TransactionClie
   ]);
 }
 
+export async function postSupplierOpeningBalanceToGeneralLedger(tx: Prisma.TransactionClient, params: { workspaceId: string; sourceId: string; documentNo: string; date: Date; amount: Prisma.Decimal | number }) {
+  const accounts = await getSystemAccounts(tx, params.workspaceId, ["OWNER_EQUITY", "ACCOUNTS_PAYABLE"]);
+  await postBalancedEntries(tx, [
+    { workspaceId: params.workspaceId, accountId: accounts.OWNER_EQUITY.id, sourceType: "ADJUSTMENT", sourceId: params.sourceId, documentNo: params.documentNo, date: params.date, narration: `Supplier opening balance ${params.documentNo}`, debit: params.amount, credit: 0 },
+    { workspaceId: params.workspaceId, accountId: accounts.ACCOUNTS_PAYABLE.id, sourceType: "ADJUSTMENT", sourceId: params.sourceId, documentNo: params.documentNo, date: params.date, narration: `Supplier opening balance ${params.documentNo}`, debit: 0, credit: params.amount },
+  ]);
+}
+
 export async function postInventoryAdjustmentToGeneralLedger(tx: Prisma.TransactionClient, params: { workspaceId: string; sourceId: string; documentNo: string; date: Date; value: Prisma.Decimal }) {
   if (params.value.isZero()) return;
   const accounts = await getSystemAccounts(tx, params.workspaceId, ["INVENTORY", "OTHER_INCOME", "OTHER_OPERATING_EXPENSE"]);
@@ -296,8 +304,8 @@ export async function getCashBankAccountLedger(workspaceId: string, cashBankAcco
   const legacyOpening = openingPosted ? 0 : amount(cashBank.openingBalance);
   const openingBalance = legacyOpening + ledger.openingBalance;
   const entries = ledger.entries.map((entry) => ({ ...entry, runningBalance: entry.runningBalance + legacyOpening }));
-    const receipts = entries.reduce((sum, entry) => sum.plus(new Prisma.Decimal(entry.debit)), new Prisma.Decimal(0)).toNumber();
-    const payments = entries.reduce((sum, entry) => sum.plus(new Prisma.Decimal(entry.credit)), new Prisma.Decimal(0)).toNumber();
+  const receipts = entries.reduce((sum, entry) => sum.plus(new Prisma.Decimal(entry.debit)), new Prisma.Decimal(0)).toNumber();
+  const payments = entries.reduce((sum, entry) => sum.plus(new Prisma.Decimal(entry.credit)), new Prisma.Decimal(0)).toNumber();
   const closingBalance = entries.at(-1)?.runningBalance ?? openingBalance;
   return {
     id: cashBank.id,

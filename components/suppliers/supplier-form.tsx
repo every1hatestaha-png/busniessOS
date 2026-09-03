@@ -30,8 +30,8 @@ export function SupplierForm({ supplier }: SupplierFormProps) {
   const { register, handleSubmit, formState: { errors } } = useForm<FormInput, unknown, SupplierInput>({
     resolver: zodResolver(supplierSchema),
     defaultValues: supplier
-      ? { name: supplier.name, companyName: supplier.companyName, phone: supplier.phone, email: supplier.email, address: supplier.address, city: supplier.city, notes: supplier.notes }
-      : { name: "", companyName: "", phone: "", email: "", address: "", city: "", notes: "" },
+      ? { name: supplier.name, companyName: supplier.companyName, phone: supplier.phone, email: supplier.email, address: supplier.address, city: supplier.city, notes: supplier.notes, openingBalance: 0 }
+      : { name: "", companyName: "", phone: "", email: "", address: "", city: "", notes: "", openingBalance: 0 },
   });
 
   function onSubmit(values: SupplierInput) {
@@ -53,6 +53,7 @@ export function SupplierForm({ supplier }: SupplierFormProps) {
           <div className={fieldClassName}><label className={labelClassName} htmlFor="phone">Phone</label><Input id="phone" {...register("phone")} aria-invalid={!!errors.phone} placeholder="0300 1234567" />{error("phone")}</div>
           <div className={fieldClassName}><label className={labelClassName} htmlFor="email">Email</label><Input id="email" type="email" {...register("email")} aria-invalid={!!errors.email} placeholder="accounts@supplier.pk" />{error("email")}</div>
           <div className={fieldClassName}><label className={labelClassName} htmlFor="city">City</label><Input id="city" {...register("city")} aria-invalid={!!errors.city} placeholder="Karachi" />{error("city")}</div>
+          {!supplier && <div className={fieldClassName}><label className={labelClassName} htmlFor="openingBalance">Opening payable balance</label><Input id="openingBalance" type="number" min="0" step="0.01" {...register("openingBalance")} aria-invalid={!!errors.openingBalance} />{error("openingBalance")}</div>}
           <div className={`${fieldClassName} md:col-span-2`}><label className={labelClassName} htmlFor="address">Address</label><Input id="address" {...register("address")} aria-invalid={!!errors.address} placeholder="Street, market, city" />{error("address")}</div>
           <div className={`${fieldClassName} md:col-span-2`}><label className={labelClassName} htmlFor="notes">Notes <span className="font-normal text-neutral-400">(optional)</span></label><textarea id="notes" {...register("notes")} rows={4} className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-200" placeholder="Payment terms, delivery lead time, or account notes" />{error("notes")}</div>
         </div>

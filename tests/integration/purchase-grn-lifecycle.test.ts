@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { randomUUID } from "crypto";
 
 let db: typeof import("@/lib/server/db")["db"];
@@ -18,18 +18,8 @@ let userId = "";
 let workspaceId = "";
 let supplierId = "";
 let productId = "";
-let productId2 = "";
 
 const context = () => ({ workspaceId, userId, role: "OWNER" as const });
-
-async function glLines(sourceId: string) {
-  return db.generalLedgerEntry.findMany({ where: { workspaceId, sourceId }, include: { account: true }, orderBy: { createdAt: "asc" } });
-}
-function journalBalanced(rows: Awaited<ReturnType<typeof glLines>>) {
-  const d = rows.reduce((a, r) => a + Number(r.debit), 0);
-  const c = rows.reduce((a, r) => a + Number(r.credit), 0);
-  return { debit: d, credit: c, balanced: Math.abs(d - c) < 0.001 };
-}
 
 describe("P1: Purchase Order & GRN Lifecycle", () => {
   beforeAll(async () => {
@@ -44,15 +34,12 @@ describe("P1: Purchase Order & GRN Lifecycle", () => {
     const workspace = await db.workspace.create({ data: { name: `P1 Test ${runId}`, members: { create: { userId, role: "OWNER" } } } });
     workspaceId = workspace.id;
 
-    const [supplier, product, product2] = await Promise.all([
+    const [supplier, product] = await Promise.all([
       db.supplier.create({ data: { workspaceId, name: "P1 Supplier" } }),
       db.product.create({ data: { workspaceId, name: "Widget A", sku: `wa-${runId}`, stockQuantity: 0, costPrice: 25, sellingPrice: 50 } }),
-      db.product.create({ data: { workspaceId, name: "Widget B", sku: `wb-${runId}`, stockQuantity: 0, costPrice: 30, sellingPrice: 60 } }),
     ]);
     supplierId = supplier.id;
     productId = product.id;
-    productId2 = product2.id;
-
     await ensureDefaultAccounts(workspaceId);
   }, 30_000);
 
@@ -245,7 +232,7 @@ describe("P1: Purchase Order & GRN Lifecycle", () => {
     await db.purchaseOrder.delete({ where: { id: po.id } });
   });
 
-  it("10. voidGoodsReceipt: idempotent — voiding already-voided GRN is a no-op", async () => {
+  it("10. voidGoodsReceipt: rejects voiding already-voided GRN", async () => {
     const po = await createPurchase(context(), {
       supplierId,
       items: [{ productId, quantity: 10, unitCost: 25 }],
@@ -261,8 +248,7 @@ describe("P1: Purchase Order & GRN Lifecycle", () => {
 
     await voidGoodsReceipt(context(), grn.id, { voidedReason: "First void" });
 
-    const result = await voidGoodsReceipt(context(), grn.id, { voidedReason: "Should be no-op" });
-    expect(result.id).toBe(grn.id);
+    await expect(voidGoodsReceipt(context(), grn.id, { voidedReason: "Should reject" })).rejects.toThrow(PurchaseDomainError);
 
     const grnAfter = await db.goodReceivedNote.findUnique({ where: { id: grn.id } });
     expect(grnAfter?.voidedReason).toBe("First void");
@@ -447,7 +433,7 @@ describe("P1: Purchase Order & GRN Lifecycle", () => {
 
   // ─── GRN DELETE ──────────────────────────────────────────────────────────────────
 
-  it("17. deleteGoodsReceipt: reverses everything and removes GRN record", async () => {
+  it("17. deleteGoodsReceipt: always rejects with CANNOT_DELETE_POSTED_GRN", async () => {
     const po = await createPurchase(context(), {
       supplierId,
       items: [{ productId, quantity: 10, unitCost: 25 }],
@@ -461,12 +447,10 @@ describe("P1: Purchase Order & GRN Lifecycle", () => {
       items: [{ purchaseOrderItemId: poItem!.id, receivedQuantity: 10, acceptedQuantity: 10, actualUnitCost: 25 }],
     });
 
-    const result = await deleteGoodsReceipt(context(), grn.id);
-    expect(result.id).toBe(grn.id);
+    await expect(deleteGoodsReceipt(context(), grn.id)).rejects.toThrow(PurchaseDomainError);
 
-    const grnAfter = await db.goodReceivedNote.findUnique({ where: { id: grn.id } });
-    expect(grnAfter).toBeNull();
-
+    await db.goodReceivedNoteItem.deleteMany({ where: { goodReceivedNoteId: grn.id } });
+    await db.goodReceivedNote.delete({ where: { id: grn.id } });
     await db.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: po.id } });
     await db.purchaseOrder.delete({ where: { id: po.id } });
   });
@@ -608,7 +592,7 @@ describe("P1: Purchase Order & GRN Lifecycle", () => {
     await db.purchaseOrder.delete({ where: { id: po.id } });
   });
 
-  it("23. deleteGoodsReceipt: GL net debit/credit remains balanced", async () => {
+  it("23. deleteGoodsReceipt: throws CANNOT_DELETE_POSTED_GRN (no GL impact)", async () => {
     const po = await createPurchase(context(), {
       supplierId,
       items: [{ productId, quantity: 100, unitCost: 30 }],
@@ -622,13 +606,16 @@ describe("P1: Purchase Order & GRN Lifecycle", () => {
       items: [{ purchaseOrderItemId: poItem!.id, receivedQuantity: 100, acceptedQuantity: 100, actualUnitCost: 30 }],
     });
 
-    await deleteGoodsReceipt(context(), grn.id);
+    await expect(deleteGoodsReceipt(context(), grn.id)).rejects.toThrow(PurchaseDomainError);
 
     const entries = await db.generalLedgerEntry.findMany({ where: { workspaceId, sourceId: grn.id }, select: { debit: true, credit: true } });
     const totalDebit = entries.reduce((sum: Prisma.Decimal, e: { debit: Prisma.Decimal }) => sum.add(e.debit), new Prisma.Decimal("0"));
     const totalCredit = entries.reduce((sum: Prisma.Decimal, e: { credit: Prisma.Decimal }) => sum.add(e.credit), new Prisma.Decimal("0"));
     expect(totalDebit.toString()).toBe(totalCredit.toString());
 
+    await db.generalLedgerEntry.deleteMany({ where: { workspaceId, sourceId: grn.id } });
+    await db.goodReceivedNoteItem.deleteMany({ where: { goodReceivedNoteId: grn.id } });
+    await db.goodReceivedNote.delete({ where: { id: grn.id } });
     await db.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: po.id } });
     await db.purchaseOrder.delete({ where: { id: po.id } });
   });
@@ -674,7 +661,7 @@ describe("P1: Purchase Order & GRN Lifecycle", () => {
     await db.purchaseOrder.delete({ where: { id: po.id } });
   });
 
-  it("25. deleteGoodsReceipt: creates PURCHASE_CANCELLATION inventory transaction", async () => {
+  it("25. deleteGoodsReceipt: throws CANNOT_DELETE_POSTED_GRN (no inventory impact)", async () => {
     const po = await createPurchase(context(), {
       supplierId,
       items: [{ productId, quantity: 25, unitCost: 25 }],
@@ -688,17 +675,18 @@ describe("P1: Purchase Order & GRN Lifecycle", () => {
       items: [{ purchaseOrderItemId: poItem!.id, receivedQuantity: 25, acceptedQuantity: 25, actualUnitCost: 25 }],
     });
 
-    await deleteGoodsReceipt(context(), grn.id);
+    await expect(deleteGoodsReceipt(context(), grn.id)).rejects.toThrow(PurchaseDomainError);
 
     const invTx = await db.inventoryTransaction.findMany({
       where: { workspaceId, productId, reference: grn.grnNumber },
       orderBy: { createdAt: "asc" },
     });
-    expect(invTx).toHaveLength(2);
+    expect(invTx).toHaveLength(1);
     expect(invTx[0].type).toBe("PURCHASE_RECEIPT");
-    expect(invTx[1].type).toBe("PURCHASE_CANCELLATION");
-    expect(Number(invTx[1].quantityChanged)).toBe(-25);
 
+    await db.inventoryTransaction.deleteMany({ where: { reference: grn.grnNumber } });
+    await db.goodReceivedNoteItem.deleteMany({ where: { goodReceivedNoteId: grn.id } });
+    await db.goodReceivedNote.delete({ where: { id: grn.id } });
     await db.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: po.id } });
     await db.purchaseOrder.delete({ where: { id: po.id } });
   });
@@ -772,7 +760,7 @@ describe("P1: Purchase Order & GRN Lifecycle", () => {
     await db.purchaseOrder.delete({ where: { id: po.id } });
   });
 
-  it("29. deleteGoodsReceipt writes audit log", async () => {
+  it("29. deleteGoodsReceipt: throws CANNOT_DELETE_POSTED_GRN (no audit log created)", async () => {
     const po = await createPurchase(context(), {
       supplierId,
       items: [{ productId, quantity: 10, unitCost: 25 }],
@@ -786,13 +774,15 @@ describe("P1: Purchase Order & GRN Lifecycle", () => {
       items: [{ purchaseOrderItemId: poItem!.id, receivedQuantity: 10, acceptedQuantity: 10, actualUnitCost: 25 }],
     });
 
-    await deleteGoodsReceipt(context(), grn.id);
+    await expect(deleteGoodsReceipt(context(), grn.id)).rejects.toThrow(PurchaseDomainError);
 
     const audit = await db.auditLog.findFirst({
       where: { workspaceId, entityType: "GoodReceivedNote", entityId: grn.id, action: "grn.deleted" },
     });
-    expect(audit).not.toBeNull();
+    expect(audit).toBeNull();
 
+    await db.goodReceivedNoteItem.deleteMany({ where: { goodReceivedNoteId: grn.id } });
+    await db.goodReceivedNote.delete({ where: { id: grn.id } });
     await db.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: po.id } });
     await db.purchaseOrder.delete({ where: { id: po.id } });
   });
@@ -874,7 +864,7 @@ describe("P1: Purchase Order & GRN Lifecycle", () => {
     await db.purchaseOrder.delete({ where: { id: po.id } });
   });
 
-  it("32. deleteGoodsReceipt: clears balanceAmount on PO", async () => {
+  it("32. deleteGoodsReceipt: throws CANNOT_DELETE_POSTED_GRN (PO balance unchanged)", async () => {
     const po = await createPurchase(context(), {
       supplierId,
       items: [{ productId, quantity: 10, unitCost: 25 }],
@@ -888,11 +878,16 @@ describe("P1: Purchase Order & GRN Lifecycle", () => {
       items: [{ purchaseOrderItemId: poItem!.id, receivedQuantity: 10, acceptedQuantity: 10, actualUnitCost: 25 }],
     });
 
-    await deleteGoodsReceipt(context(), grn.id);
+    const poBefore = await db.purchaseOrder.findUnique({ where: { id: po.id } });
+    const balanceBefore = poBefore?.balanceAmount.toString();
+
+    await expect(deleteGoodsReceipt(context(), grn.id)).rejects.toThrow(PurchaseDomainError);
 
     const poAfter = await db.purchaseOrder.findUnique({ where: { id: po.id } });
-    expect(poAfter?.balanceAmount.toString()).toBe("0");
+    expect(poAfter?.balanceAmount.toString()).toBe(balanceBefore);
 
+    await db.goodReceivedNoteItem.deleteMany({ where: { goodReceivedNoteId: grn.id } });
+    await db.goodReceivedNote.delete({ where: { id: grn.id } });
     await db.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: po.id } });
     await db.purchaseOrder.delete({ where: { id: po.id } });
   });

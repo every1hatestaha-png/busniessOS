@@ -10,7 +10,6 @@ import { getGoodsReceipt } from "@/lib/server/purchases";
 import { formatDate, formatPKR } from "@/lib/utils";
 import { EditGrnSheet } from "@/components/goods-receipts/edit-grn-sheet";
 import { VoidGrnButton } from "@/components/goods-receipts/void-grn-button";
-import { DeleteGrnButton } from "@/components/goods-receipts/delete-grn-button";
 
 export default async function GoodsReceiptDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -22,7 +21,6 @@ export default async function GoodsReceiptDetailPage({ params }: { params: Promi
   const isActive = grn.status === "ACTIVE";
   const canEdit = canAdjust && isActive && !grn.hasSupplierReturns;
   const canVoid = canAdjust && isActive;
-  const canDelete = canAdjust && isActive && !grn.hasSupplierReturns;
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-6">
@@ -40,7 +38,6 @@ export default async function GoodsReceiptDetailPage({ params }: { params: Promi
         <div className="flex gap-2">
           {canEdit && <EditGrnSheet grn={grn} />}
           {canVoid && <VoidGrnButton grnId={grn.id} />}
-          {canDelete && <DeleteGrnButton grnId={grn.id} />}
           <Link href={`/goods-receipts/${id}/print`} target="_blank" className="inline-flex h-9 items-center justify-center border px-4 text-sm font-semibold text-neutral-700 hover:bg-neutral-50">
             <Printer className="mr-2 h-4 w-4" /> Print GRN
           </Link>

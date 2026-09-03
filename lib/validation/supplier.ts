@@ -8,6 +8,7 @@ export const supplierSchema = z.object({
   address: z.string().trim().max(300).optional().default(""),
   city: z.string().trim().max(80).optional().default(""),
   notes: z.string().trim().max(1000).optional().default(""),
+  openingBalance: z.coerce.number().min(0).default(0),
 });
 
 export const supplierPaymentSchema = z.object({

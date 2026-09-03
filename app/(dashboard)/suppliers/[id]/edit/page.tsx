@@ -15,7 +15,7 @@ export default async function EditSupplierPage({ params }: { params: Promise<{ i
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div><Link href={`/suppliers/${id}`} className="mb-3 inline-flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-900"><ChevronLeft className="h-4 w-4" />Supplier details</Link><h1 className="text-2xl font-bold tracking-tight md:text-3xl">Edit supplier</h1><p className="mt-1 text-sm text-neutral-500">Update contact and account details. The payable balance is unaffected.</p></div>
-      <SupplierForm supplier={{ id: supplier.id, name: supplier.name, companyName: supplier.companyName ?? "", phone: supplier.phone ?? "", email: supplier.email ?? "", address: supplier.address ?? "", city: supplier.city ?? "", notes: supplier.notes ?? "" }} />
+      <SupplierForm supplier={{ id: supplier.id, name: supplier.name, companyName: supplier.companyName ?? "", phone: supplier.phone ?? "", email: supplier.email ?? "", address: supplier.address ?? "", city: supplier.city ?? "", notes: supplier.notes ?? "", openingBalance: 0 }} />
     </div>
   );
 }

@@ -49,8 +49,8 @@ export const DELETE = apiHandler(async (_request: Request, { params }: { params:
   const { id } = z.object({ id: z.uuid() }).parse(await params);
 
   try {
-    const deleted = await deleteGoodsReceipt(context, id);
-    return apiData({ success: true, id: deleted.id, grnNumber: deleted.grnNumber });
+    await deleteGoodsReceipt(context, id);
+    return apiData({ success: true });
   } catch (error) {
     if (error instanceof PurchaseDomainError) {
       const status = error.code === "GRN_NOT_FOUND" ? 404 : 422;

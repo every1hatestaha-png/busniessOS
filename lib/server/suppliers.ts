@@ -1,7 +1,7 @@
 import "server-only";
 
 import { Prisma } from "@prisma/client";
-import { postSupplierPaymentToGeneralLedger } from "@/lib/server/accounting";
+import { postSupplierOpeningBalanceToGeneralLedger, postSupplierPaymentToGeneralLedger } from "@/lib/server/accounting";
 import { writeAudit } from "@/lib/server/audit";
 import { db } from "@/lib/server/db";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";
@@ -24,15 +24,50 @@ export async function getSupplier(workspaceId: string, id: string) {
 
 export async function createSupplier(context: ServiceContext, input: SupplierInput) {
   const data = supplierSchema.parse(input);
+  const { openingBalance, ...supplierData } = data;
   return db.$transaction(async (tx) => {
-    const supplier = await tx.supplier.create({ data: { workspaceId: context.workspaceId, ...data, companyName: data.companyName || null, phone: data.phone || null, email: data.email || null, address: data.address || null, city: data.city || null, notes: data.notes || null } });
-    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "supplier.created", entityType: "Supplier", entityId: supplier.id });
+    const supplier = await tx.supplier.create({
+      data: {
+        workspaceId: context.workspaceId,
+        ...supplierData,
+        companyName: data.companyName || null,
+        phone: data.phone || null,
+        email: data.email || null,
+        address: data.address || null,
+        city: data.city || null,
+        notes: data.notes || null,
+        currentBalance: openingBalance,
+      },
+    });
+    if (openingBalance > 0) {
+      const openingAmount = new Prisma.Decimal(openingBalance);
+      const documentNo = `OPEN-SUP-${supplier.id.slice(0, 8).toUpperCase()}`;
+      // Supplier ledger entry: opening payable (we owe them)
+      await tx.ledgerEntry.create({
+        data: {
+          workspaceId: context.workspaceId,
+          supplierId: supplier.id,
+          type: "OPENING_BALANCE",
+          credit: openingAmount,
+          description: `Opening balance ${documentNo}`,
+          referenceId: supplier.id,
+        },
+      });
+      await postSupplierOpeningBalanceToGeneralLedger(tx, {
+        workspaceId: context.workspaceId,
+        sourceId: supplier.id,
+        documentNo,
+        date: new Date(),
+        amount: openingAmount,
+      });
+    }
+    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "supplier.created", entityType: "Supplier", entityId: supplier.id, metadata: { openingBalance: String(openingBalance) } });
     return supplier;
   });
 }
 
 export async function updateSupplier(context: ServiceContext, id: string, input: SupplierInput) {
-  const data = supplierSchema.parse(input);
+  const data = supplierSchema.omit({ openingBalance: true }).parse(input);
   return db.$transaction(async (tx) => {
     const found = await tx.supplier.findFirst({ where: { id, workspaceId: context.workspaceId }, select: { id: true } });
     if (!found) throw new SupplierDomainError("Supplier not found.");

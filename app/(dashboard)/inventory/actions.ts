@@ -67,7 +67,7 @@ export async function updateProductAction(
 
 const adjustmentSchema = z.object({
   productId: z.string().uuid(),
-  quantity: z.coerce.number().int().refine((value) => value !== 0),
+  quantity: z.coerce.number().refine((value) => value !== 0, { message: "Quantity must not be zero" }),
   reason: z.string().trim().min(3).max(160),
 });
 
