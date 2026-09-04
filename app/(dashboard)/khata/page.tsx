@@ -22,18 +22,18 @@ export default async function KhataPage() {
   const paymentCustomers = summary.customers.filter((customer) => customer.outstanding > 0).map((customer) => ({ id: customer.id, name: customer.name, balance: customer.outstanding }));
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-[1600px] space-y-6">
       <PageHeader title="Khata" description="Monitor customer receivables and record collections." />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard label="Total receivable" value={formatPKR(summary.totalReceivables)} detail="Across all customer accounts" icon={CircleDollarSign} />
         <MetricCard label="Collected this month" value={formatPKR(summary.paymentsThisMonth)} detail="Customer payments received" icon={CreditCard} />
         <MetricCard label="Open balances" value={String(summary.customersWithBalance)} detail={`of ${summary.customers.length} customers`} icon={Users} />
         <MetricCard label="Overdue" value={formatPKR(summary.overdueAmount)} detail="Past-due invoice balances" icon={AlertTriangle} />
       </div>
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
-          <div className="border-b border-neutral-200 px-4 py-4"><h2 className="font-semibold">Customer credit position</h2><p className="mt-1 text-sm text-neutral-500">Sales, collections, outstanding balance, and approved credit.</p></div>
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="overflow-hidden rounded-md border bg-white">
+          <div className="border-b px-4 py-3"><h2 className="text-sm font-semibold">Customer credit position</h2><p className="mt-0.5 text-[11px] text-muted-foreground">Sales, collections, outstanding balance, and approved credit.</p></div>
           {summary.customers.length > 0 ? (
             <div className="overflow-x-auto">
               <Table className="min-w-[850px]">
@@ -54,10 +54,9 @@ export default async function KhataPage() {
               </Table>
             </div>
           ) : <p className="px-4 py-12 text-center text-sm text-neutral-500">No customer accounts have been added yet.</p>}
-        </div>
-
-        </div>
-        <div className="rounded-xl border border-neutral-200 bg-white p-5 xl:sticky xl:top-6"><div className="mb-5"><h2 className="font-semibold">Record payment</h2><p className="mt-1 text-sm text-neutral-500">Unallocated receipts reduce the customer account balance.</p></div>{canRecordPayments ? <RecordPaymentForm customers={paymentCustomers} cashBankAccounts={cashBankAccounts} /> : <p className="text-sm text-neutral-500">Your role cannot record payments.</p>}</div>
+         </div>
+         <div className="rounded-md border bg-white p-4 xl:sticky xl:top-6"><div className="mb-4"><h2 className="text-sm font-semibold">Record payment</h2><p className="mt-0.5 text-[11px] text-muted-foreground">Unallocated receipts reduce the customer account balance.</p></div>{canRecordPayments ? <RecordPaymentForm customers={paymentCustomers} cashBankAccounts={cashBankAccounts} /> : <p className="text-xs text-muted-foreground">Your role cannot record payments.</p>}</div>
+       </div>
       </div>
   );
 }

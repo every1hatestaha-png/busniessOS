@@ -187,6 +187,17 @@ export async function updateProduct(
   });
 }
 
+export async function archiveProduct(context: ProductMutationContext, id: string): Promise<void> {
+  if (!canPerformAction(context.role, "products.write")) throw new ProductDomainError("PERMISSION_DENIED", "Unauthorized");
+  await withSerializableRetry(async (tx) => {
+    const existing = await tx.product.findFirst({ where: { id, workspaceId: context.workspaceId }, select: { id: true, name: true, status: true } });
+    if (!existing) throw new ProductDomainError("PRODUCT_NOT_FOUND", "Product not found.");
+    if (existing.status === "ARCHIVED") return;
+    await tx.product.update({ where: { id, workspaceId: context.workspaceId }, data: { status: "ARCHIVED" } });
+    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "product.archived", entityType: "Product", entityId: id, metadata: { name: existing.name, previousStatus: existing.status } });
+  });
+}
+
 export class StockAdjustmentRejectedError extends Error {}
 
 export async function adjustProductStock(context: ProductMutationContext, productId: string, quantity: number, reason: string) {
@@ -222,7 +233,17 @@ export async function adjustProductStock(context: ProductMutationContext, produc
       select: { stockQuantity: true },
     });
 
-    return product.stockQuantity.toNumber();
+    const newQuantity = product.stockQuantity.toNumber();
+    await writeAudit(transaction, {
+      workspaceId: context.workspaceId,
+      actorId: context.userId,
+      action: "stock.adjusted",
+      entityType: "Product",
+      entityId: productId,
+      metadata: { previousQuantity: productBefore.stockQuantity.toNumber(), adjustmentQuantity: quantity, newQuantity, reason },
+    });
+
+    return newQuantity;
   }, { timeout: 30_000 });
 }
 

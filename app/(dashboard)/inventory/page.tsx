@@ -21,13 +21,13 @@ export default async function InventoryPage() {
   ).length;
 
   return (
-    <main className="space-y-6 p-4 md:p-6 lg:p-8">
+    <main className="mx-auto max-w-[1600px] space-y-6">
       <PageHeader
         title="Inventory"
         description="Track stock levels, pricing, and products that need attention."
         action={canWriteProducts ? { label: "New product", href: "/inventory/new", icon: PackagePlus } : undefined}
       />
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <section className="grid gap-3 sm:grid-cols-3">
         <MetricCard label="Stock on hand" value={`${totalUnits} units`} detail={`${products.length} product lines`} icon={Boxes} />
         <MetricCard label="Inventory value" value={formatPKR(inventoryValue)} detail="Valued at current cost" icon={Warehouse} />
         <MetricCard label="Needs attention" value={`${lowStock} products`} detail="At or below reorder level" icon={AlertTriangle} />

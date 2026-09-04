@@ -15,12 +15,14 @@ type GRNInfo = {
     returnedQuantity: number;
     unitCost: number;
     unit: string;
+    acceptedWeightKg: number | null;
+    ratePerKg: number | null;
   }>;
 };
 
 type SupplierReturnFormProps = {
   purchaseOrderId: string;
-  items: Array<{ id: string; productName: string; receivedQuantity: number; unit: string }>;
+  items: Array<{ id: string; productName: string; receivedQuantity: number; unit: string; perKgRate: number | null; unitWeight: number | null }>;
   grns?: GRNInfo[];
 };
 
@@ -38,8 +40,22 @@ export function SupplierReturnForm({ purchaseOrderId, items, grns }: SupplierRet
         productName: gi.productName,
         receivedQuantity: gi.acceptedQuantity - gi.returnedQuantity,
         unit: items.find((i) => i.id === gi.poItemId)?.unit ?? "PIECE",
+        perKgRate: gi.ratePerKg,
+        acceptedWeightKg: gi.acceptedWeightKg,
       })) ?? []
-    : items.filter((item) => item.receivedQuantity > 0);
+    : items.filter((item) => item.receivedQuantity > 0).map((item) => ({
+        ...item,
+        perKgRate: item.perKgRate,
+        acceptedWeightKg: null,
+      }));
+
+  function getReturnedWeightKg(itemId: string, quantity: number): number | null {
+    const item = displayItems.find((i) => i.id === itemId);
+    if (!item?.perKgRate || !item.acceptedWeightKg) return null;
+    const totalAcceptedQty = displayItems.reduce((sum, i) => sum + i.receivedQuantity, 0);
+    if (totalAcceptedQty <= 0) return null;
+    return (quantity / totalAcceptedQty) * item.acceptedWeightKg;
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,8 +64,15 @@ export function SupplierReturnForm({ purchaseOrderId, items, grns }: SupplierRet
     setMessage("");
     const form = new FormData(event.currentTarget);
     const returnItems = displayItems
-      .map((item) => ({ itemId: item.id, quantity: quantities[item.id] ?? 0 }))
-      .filter((item) => item.quantity > 0);
+      .map((item) => {
+        const qty = quantities[item.id] ?? 0;
+        if (qty <= 0) return null;
+        const payload: { itemId: string; quantity: number; returnedWeightKg?: number } = { itemId: item.id, quantity: qty };
+        const wg = getReturnedWeightKg(item.id, qty);
+        if (wg != null) payload.returnedWeightKg = wg;
+        return payload;
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
     if (!returnItems.length) {
       setMessage("Enter at least one return quantity.");
       setBusy(false);
@@ -84,12 +107,12 @@ export function SupplierReturnForm({ purchaseOrderId, items, grns }: SupplierRet
 
   return (
     <form onSubmit={submit} className="space-y-3">
-      <h3 className="font-semibold">Supplier return</h3>
+      <div><h3 className="text-sm font-semibold">Supplier Return</h3><p className="mt-0.5 text-[11px] text-slate-500">Return accepted goods and record a supplier debit note.</p></div>
       {grns && grns.length > 0 && (
-        <label className="block text-sm">
-          <span className="text-neutral-500">Link to GRN (optional)</span>
+        <label className="block text-xs">
+          <span className="font-medium text-slate-700">Link to GRN <span className="font-normal text-slate-400">(optional)</span></span>
           <select
-            className="mt-1 h-9 w-full border px-3 text-sm"
+            className="mt-1 h-8 w-full rounded-md border px-2.5 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
             value={selectedGrnId}
             onChange={(e) => { setSelectedGrnId(e.target.value); setQuantities({}); }}
           >
@@ -102,9 +125,11 @@ export function SupplierReturnForm({ purchaseOrderId, items, grns }: SupplierRet
       )}
       {displayItems.map((item) => {
         const unitLabel = item.unit === "KG" ? "kg" : item.unit.toLowerCase();
+        const qty = quantities[item.id] ?? 0;
+        const wg = getReturnedWeightKg(item.id, qty);
         return (
-          <label key={item.id} className="grid grid-cols-[1fr_100px] items-center gap-3 text-sm">
-            <span>{item.productName} <span className="text-neutral-500">accepted {item.receivedQuantity} {unitLabel}</span></span>
+          <label key={item.id} className="grid min-h-10 grid-cols-[1fr_100px] items-center gap-3 rounded-md border px-3 py-1.5 text-xs">
+            <span className="font-medium">{item.productName} <span className="font-normal text-slate-500">· accepted {item.receivedQuantity} {unitLabel}{item.perKgRate ? ` · ${item.perKgRate}/kg` : ""}{wg != null ? ` · ${wg.toFixed(1)} kg` : ""}</span></span>
             <input
               type="number"
               min="0"
@@ -112,15 +137,15 @@ export function SupplierReturnForm({ purchaseOrderId, items, grns }: SupplierRet
               max={item.receivedQuantity}
               value={quantities[item.id] ?? ""}
               onChange={(event) => setQuantities((current) => ({ ...current, [item.id]: Number(event.target.value) }))}
-              className="h-8 border px-2 text-right"
+              className="h-8 rounded-md border px-2 text-right outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
             />
           </label>
         );
       })}
-      <input name="reason" required maxLength={300} placeholder="Return reason" className="h-9 w-full border px-3 text-sm" />
-      <textarea name="notes" maxLength={1000} rows={2} placeholder="Notes" className="w-full border px-3 py-2 text-sm" />
-      {message && <p className="text-sm text-neutral-700">{message}</p>}
-      <Button type="submit" disabled={busy}>{busy ? "Recording..." : "Record supplier return"}</Button>
+      <input name="reason" required maxLength={300} placeholder="Return reason" className="h-8 w-full rounded-md border px-2.5 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/15" />
+      <textarea name="notes" maxLength={1000} rows={2} placeholder="Notes" className="w-full rounded-md border px-2.5 py-2 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/15" />
+      {message && <p className="text-xs text-slate-700">{message}</p>}
+      <Button type="submit" size="sm" disabled={busy}>{busy ? "Recording..." : "Record Supplier Return"}</Button>
     </form>
   );
 }

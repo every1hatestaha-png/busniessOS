@@ -88,7 +88,7 @@ describe("BusinessOS V1 production-readiness company scenario", () => {
     suppliers.a = supplierA.id; suppliers.b = supplierB.id;
 
     for (const name of ["Customer A", "Customer B", "Customer C"]) {
-      customers[name.at(-1)!.toLowerCase()] = await createCustomer(workspaceId, { name, companyName: `${name} Company`, phone: "03001234567", email: `${name.replaceAll(" ", "-").toLowerCase()}@example.invalid`, city: "Karachi", address: "QA Industrial Area, Karachi", creditLimit: "1000000", openingBalance: "0", status: "ACTIVE", notes: "V1 audit" });
+      customers[name.at(-1)!.toLowerCase()] = await createCustomer({ workspaceId, userId, role: "OWNER" }, { name, companyName: `${name} Company`, phone: "03001234567", email: `${name.replaceAll(" ", "-").toLowerCase()}@example.invalid`, city: "Karachi", address: "QA Industrial Area, Karachi", creditLimit: "1000000", openingBalance: "0", status: "ACTIVE", notes: "V1 audit" });
     }
 
     products.unitA = await createProduct(workspaceId, { name: "Unit Product A", sku: `UNIT-A-${runId}`, category: "QA", costPrice: 0, sellingPrice: 200, stockQuantity: 0, reorderLevel: 20, unit: "PIECE", status: "ACTIVE", description: "Unit-priced QA product" });

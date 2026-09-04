@@ -2,5 +2,5 @@ import type { LucideIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
 export function MetricCard({ label, value, detail, icon: Icon }: { label: string; value: string; detail: string; icon: LucideIcon }) {
-  return <Card className="shadow-none"><CardContent className="p-5"><div className="flex items-start justify-between"><div><p className="text-sm font-medium text-neutral-500">{label}</p><p className="mt-2 text-2xl font-bold tracking-tight">{value}</p></div><span className="rounded-lg bg-neutral-100 p-2 text-neutral-600"><Icon className="h-4 w-4" /></span></div><p className="mt-2 text-xs text-neutral-500">{detail}</p></CardContent></Card>;
+  return <Card className="rounded-md border shadow-none ring-0"><CardContent className="p-4"><div className="flex items-center justify-between gap-3"><p className="text-xs font-medium text-muted-foreground">{label}</p><span className="flex size-7 items-center justify-center rounded border bg-muted text-muted-foreground"><Icon className="size-3.5" /></span></div><p className="mt-3 text-[22px] font-semibold tracking-tight tabular-nums">{value}</p><p className="mt-1 text-[11px] text-muted-foreground">{detail}</p></CardContent></Card>;
 }

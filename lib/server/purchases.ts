@@ -171,6 +171,10 @@ export async function createGoodsReceipt(context: ServiceContext, input: GoodsRe
       acceptedQuantity: number;
       unitCost: Prisma.Decimal;
       totalCost: Prisma.Decimal;
+      receivedWeightKg: Prisma.Decimal | null;
+      acceptedWeightKg: Prisma.Decimal | null;
+      ratePerKg: Prisma.Decimal | null;
+      lineAmount: Prisma.Decimal | null;
     }> = [];
 
     for (const item of data.items) {
@@ -196,8 +200,29 @@ export async function createGoodsReceipt(context: ServiceContext, input: GoodsRe
         throw new PurchaseDomainError("OVER_RECEIPT", `Cannot receive ${item.receivedQuantity} of ${poItem.productName ?? "Item"}. Only ${remainingOrdered} remaining.`);
       }
 
+      const isWeightPriced = poItem.perKgRate != null;
       const unitCost = new Prisma.Decimal(item.actualUnitCost);
-      const totalCost = unitCost.mul(item.acceptedQuantity);
+      let totalCost: Prisma.Decimal;
+      let receivedWeightKg: Prisma.Decimal | null = null;
+      let acceptedWeightKg: Prisma.Decimal | null = null;
+      let ratePerKg: Prisma.Decimal | null = null;
+      let lineAmount: Prisma.Decimal | null = null;
+
+      if (isWeightPriced) {
+        if (item.receivedWeightKg == null || item.acceptedWeightKg == null || item.ratePerKg == null) {
+          throw new PurchaseDomainError("INVALID_RECEIPT", "Weight fields are required for weight-priced items.");
+        }
+        if (item.acceptedWeightKg > item.receivedWeightKg) {
+          throw new PurchaseDomainError("INVALID_RECEIPT", "Accepted weight cannot exceed received weight.");
+        }
+        receivedWeightKg = new Prisma.Decimal(item.receivedWeightKg);
+        acceptedWeightKg = new Prisma.Decimal(item.acceptedWeightKg);
+        ratePerKg = new Prisma.Decimal(item.ratePerKg);
+        lineAmount = acceptedWeightKg.mul(ratePerKg);
+        totalCost = lineAmount;
+      } else {
+        totalCost = unitCost.mul(item.acceptedQuantity);
+      }
       totalAcceptedAmount = totalAcceptedAmount.plus(totalCost);
 
       grnItems.push({
@@ -206,6 +231,10 @@ export async function createGoodsReceipt(context: ServiceContext, input: GoodsRe
         acceptedQuantity: item.acceptedQuantity,
         unitCost,
         totalCost,
+        receivedWeightKg,
+        acceptedWeightKg,
+        ratePerKg,
+        lineAmount,
       });
     }
 
@@ -236,6 +265,10 @@ export async function createGoodsReceipt(context: ServiceContext, input: GoodsRe
           acceptedQuantity: item.acceptedQuantity,
           unitCost: item.unitCost,
           totalCost: item.totalCost,
+          receivedWeightKg: item.receivedWeightKg,
+          acceptedWeightKg: item.acceptedWeightKg,
+          ratePerKg: item.ratePerKg,
+          lineAmount: item.lineAmount,
         },
       });
 
@@ -460,20 +493,62 @@ export async function createSupplierReturn(context: ServiceContext, input: Suppl
     const grnWhere = data.goodReceivedNoteId
       ? { purchaseOrderItemId: { in: itemIds }, goodReceivedNote: { workspaceId: context.workspaceId, purchaseOrderId: order.id, id: data.goodReceivedNoteId, status: "ACTIVE" as const } }
       : { purchaseOrderItemId: { in: itemIds }, goodReceivedNote: { workspaceId: context.workspaceId, purchaseOrderId: order.id, status: "ACTIVE" as const } };
-    const [previous, received] = await Promise.all([
+    const [previous, received, previousWeight] = await Promise.all([
       tx.supplierReturnItem.groupBy({ by: ["purchaseOrderItemId"], where: { purchaseOrderItemId: { in: itemIds }, supplierReturn: { workspaceId: context.workspaceId, status: "POSTED" } }, _sum: { quantity: true } }),
       tx.goodReceivedNoteItem.groupBy({ by: ["purchaseOrderItemId"], where: grnWhere, _sum: { acceptedQuantity: true, totalCost: true } }),
+      tx.supplierReturnItem.groupBy({ by: ["purchaseOrderItemId"], where: { purchaseOrderItemId: { in: itemIds }, supplierReturn: { workspaceId: context.workspaceId, status: "POSTED" }, returnedWeightKg: { not: null } }, _sum: { returnedWeightKg: true } }),
     ]);
+
+    const grnItemWeightDetails = await tx.goodReceivedNoteItem.findMany({
+      where: grnWhere,
+      select: { purchaseOrderItemId: true, acceptedWeightKg: true, ratePerKg: true, totalCost: true, acceptedQuantity: true },
+    });
+    const weightDetailByPoItem = new Map<string, { totalAcceptedWeightKg: Prisma.Decimal; weightedRateSum: Prisma.Decimal; totalAcceptedQty: Prisma.Decimal }>();
+    for (const gi of grnItemWeightDetails) {
+      if (gi.ratePerKg == null || gi.acceptedWeightKg == null) continue;
+      const key = gi.purchaseOrderItemId;
+      const existing = weightDetailByPoItem.get(key);
+      if (existing) {
+        existing.totalAcceptedWeightKg = existing.totalAcceptedWeightKg.plus(gi.acceptedWeightKg);
+        existing.weightedRateSum = existing.weightedRateSum.plus(gi.acceptedWeightKg.mul(gi.ratePerKg));
+        existing.totalAcceptedQty = existing.totalAcceptedQty.plus(gi.acceptedQuantity);
+      } else {
+        weightDetailByPoItem.set(key, {
+          totalAcceptedWeightKg: gi.acceptedWeightKg,
+          weightedRateSum: gi.acceptedWeightKg.mul(gi.ratePerKg),
+          totalAcceptedQty: gi.acceptedQuantity,
+        });
+      }
+    }
+
     const lines = data.items.map((item) => {
       const source = order.items.find((entry) => entry.id === item.itemId);
       const returned = Number(previous.find((entry) => entry.purchaseOrderItemId === item.itemId)?._sum.quantity ?? 0);
       const receipt = received.find((entry) => entry.purchaseOrderItemId === item.itemId);
       const acceptedQuantity = Number(receipt?._sum.acceptedQuantity ?? 0);
       if (!source || item.quantity > acceptedQuantity - returned) throw new PurchaseDomainError("INVALID_RETURN", "Return quantity exceeds received quantity.");
+
+      const weightDetail = weightDetailByPoItem.get(item.itemId);
+      const previouslyReturnedWeight = Number(previousWeight.find((entry) => entry.purchaseOrderItemId === item.itemId)?._sum.returnedWeightKg ?? 0);
+
+      if (weightDetail) {
+        const totalAcceptedWeightKg = weightDetail.totalAcceptedWeightKg.toNumber();
+        const avgRatePerKg = weightDetail.totalAcceptedWeightKg.gt(0)
+          ? Number(weightDetail.weightedRateSum.div(weightDetail.totalAcceptedWeightKg))
+          : 0;
+        const returnedWeightKg = item.returnedWeightKg ?? (item.quantity / Number(weightDetail.totalAcceptedQty) * totalAcceptedWeightKg);
+        if (returnedWeightKg > totalAcceptedWeightKg - previouslyReturnedWeight) {
+          throw new PurchaseDomainError("INVALID_RETURN", `Return weight exceeds remaining received weight. ${totalAcceptedWeightKg - previouslyReturnedWeight} kg remaining.`);
+        }
+        const unitCost = new Prisma.Decimal(avgRatePerKg);
+        const total = unitCost.mul(returnedWeightKg);
+        return { source, quantity: item.quantity, unitCost, total, returnedWeightKg, ratePerKg: avgRatePerKg };
+      }
+
       const receivedTotalCost = receipt?._sum.totalCost ?? new Prisma.Decimal(0);
       const unitCost = acceptedQuantity > 0 ? new Prisma.Decimal(receivedTotalCost).div(acceptedQuantity) : source.unitCost;
       const total = unitCost.mul(item.quantity);
-      return { source, quantity: item.quantity, unitCost, total };
+      return { source, quantity: item.quantity, unitCost, total, returnedWeightKg: null, ratePerKg: null };
     });
     const total = lines.reduce((sum, line) => sum.plus(line.total), new Prisma.Decimal(0));
     if (total.greaterThan(order.balanceAmount)) throw new PurchaseDomainError("INVALID_RETURN", "Supplier return exceeds the unpaid purchase balance. Returns requiring a supplier refund are not supported in V1.");
@@ -489,7 +564,7 @@ export async function createSupplierReturn(context: ServiceContext, input: Suppl
       const remainingQuantity = currentStock - line.quantity;
       const changed = await tx.product.updateMany({ where: { id: line.source.productId, workspaceId: context.workspaceId, stockQuantity: product.stockQuantity }, data: { stockQuantity: { decrement: line.quantity }, ...(remainingQuantity > 0 ? { costPrice: remainingValue.div(remainingQuantity) } : {}) } });
       if (changed.count !== 1) throw new PurchaseDomainError("INSUFFICIENT_STOCK", `${line.source.productName ?? "Product"} has insufficient stock to return.`);
-      await tx.supplierReturnItem.create({ data: { supplierReturnId: supplierReturn.id, purchaseOrderItemId: line.source.id, productId: line.source.productId, quantity: line.quantity, unitCost: line.unitCost, totalCost: line.total } });
+      await tx.supplierReturnItem.create({ data: { supplierReturnId: supplierReturn.id, purchaseOrderItemId: line.source.id, productId: line.source.productId, quantity: line.quantity, unitCost: line.unitCost, totalCost: line.total, returnedWeightKg: line.returnedWeightKg, ratePerKg: line.ratePerKg } });
       await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: line.source.productId, type: "RETURN_OUT", quantityChanged: -line.quantity, unitCost: line.unitCost, reference: number } });
     }
     await tx.debitNote.create({ data: { workspaceId: context.workspaceId, supplierId: order.supplierId, purchaseOrderId: order.id, number: noteNumber, reason: data.reason || "Supplier return", amount: total, reference: number, notes: data.notes || null } });
@@ -576,6 +651,8 @@ export async function getPurchase(workspaceId: string, id: string) {
       acceptedQuantity: gi.acceptedQuantity.toNumber(),
       unitCost: Number(gi.unitCost),
       totalCost: Number(gi.totalCost),
+      acceptedWeightKg: gi.acceptedWeightKg ? Number(gi.acceptedWeightKg) : null,
+      ratePerKg: gi.ratePerKg ? Number(gi.ratePerKg) : null,
     })),
   }));
 
@@ -723,6 +800,11 @@ export async function getGoodsReceipt(workspaceId: string, id: string) {
         unitCost: Number(item.unitCost),
         totalCost: Number(item.totalCost),
         unitWeight: item.purchaseOrderItem.unitWeight ? Number(item.purchaseOrderItem.unitWeight) : null,
+        perKgRate: item.purchaseOrderItem.perKgRate ? Number(item.purchaseOrderItem.perKgRate) : null,
+        receivedWeightKg: item.receivedWeightKg ? Number(item.receivedWeightKg) : null,
+        acceptedWeightKg: item.acceptedWeightKg ? Number(item.acceptedWeightKg) : null,
+        ratePerKg: item.ratePerKg ? Number(item.ratePerKg) : null,
+        lineAmount: item.lineAmount ? Number(item.lineAmount) : null,
       };
     }),
   };
@@ -995,7 +1077,18 @@ if (!poItem) throw new PurchaseDomainError("INVALID_RECEIPT", "Purchase order it
       if (newTotalReceived > remainingPoQuantity) throw new PurchaseDomainError("OVER_RECEIPT", `Received weight cannot exceed the remaining PO quantity. Only ${remainingPoQuantity} remaining.`);
       const quantityDelta = item.acceptedQuantity - existing.acceptedQuantity.toNumber();
       if (quantityDelta > remainingPoQuantity) throw new PurchaseDomainError("OVER_RECEIPT", `Accepted quantity increase cannot exceed the remaining PO quantity. Only ${remainingPoQuantity} remaining.`);
-      projectedTotalDelta = projectedTotalDelta.plus(new Prisma.Decimal(item.actualUnitCost).mul(item.acceptedQuantity).minus(existing.totalCost));
+      const isWeightPriced = poItem.perKgRate != null;
+      let newLineTotal: Prisma.Decimal;
+      if (isWeightPriced) {
+        if (item.receivedWeightKg == null || item.acceptedWeightKg == null || item.ratePerKg == null) {
+          throw new PurchaseDomainError("INVALID_RECEIPT", "Weight fields are required for weight-priced items.");
+        }
+        if (item.acceptedWeightKg > item.receivedWeightKg) throw new PurchaseDomainError("INVALID_RECEIPT", "Accepted weight cannot exceed received weight.");
+        newLineTotal = new Prisma.Decimal(item.acceptedWeightKg).mul(new Prisma.Decimal(item.ratePerKg));
+      } else {
+        newLineTotal = new Prisma.Decimal(item.actualUnitCost).mul(item.acceptedQuantity);
+      }
+      projectedTotalDelta = projectedTotalDelta.plus(newLineTotal.minus(existing.totalCost));
     }
     if (grn.purchaseOrder.balanceAmount.plus(projectedTotalDelta).isNegative()) throw new PurchaseDomainError("PURCHASE_HAS_PAYMENTS", "Cannot reduce this GRN below the amount already settled by supplier payments or returns.");
 
@@ -1039,7 +1132,24 @@ if (!poItem) throw new PurchaseDomainError("INVALID_RECEIPT", "Purchase order it
 
       const oldTotalCost = existing.totalCost;
       const newUnitCostDecimal = new Prisma.Decimal(newUnitCost);
-      const newTotalCost = newUnitCostDecimal.mul(newAccepted);
+      const isWeightPricedUpdate = poItem.perKgRate != null;
+      let newTotalCost: Prisma.Decimal;
+      let newReceivedWeightKg: Prisma.Decimal | null = null;
+      let newAcceptedWeightKg: Prisma.Decimal | null = null;
+      let newRatePerKg: Prisma.Decimal | null = null;
+      let newLineAmount: Prisma.Decimal | null = null;
+      if (isWeightPricedUpdate) {
+        if (item.receivedWeightKg == null || item.acceptedWeightKg == null || item.ratePerKg == null) {
+          throw new PurchaseDomainError("INVALID_RECEIPT", "Weight fields are required for weight-priced items.");
+        }
+        newReceivedWeightKg = new Prisma.Decimal(item.receivedWeightKg);
+        newAcceptedWeightKg = new Prisma.Decimal(item.acceptedWeightKg);
+        newRatePerKg = new Prisma.Decimal(item.ratePerKg);
+        newLineAmount = newAcceptedWeightKg.mul(newRatePerKg);
+        newTotalCost = newLineAmount;
+      } else {
+        newTotalCost = newUnitCostDecimal.mul(newAccepted);
+      }
       const totalCostDelta = newTotalCost.minus(oldTotalCost);
       totalDelta = totalDelta.plus(totalCostDelta);
 
@@ -1136,6 +1246,10 @@ if (!poItem) throw new PurchaseDomainError("INVALID_RECEIPT", "Purchase order it
           acceptedQuantity: newAccepted,
           unitCost: newUnitCostDecimal,
           totalCost: newTotalCost,
+          receivedWeightKg: newReceivedWeightKg,
+          acceptedWeightKg: newAcceptedWeightKg,
+          ratePerKg: newRatePerKg,
+          lineAmount: newLineAmount,
         },
       });
 

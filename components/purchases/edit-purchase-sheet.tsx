@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 export function EditPurchaseSheet({ purchase }: { purchase: { id: string; orderNumber: string; notes: string; expectedDeliveryDate: string | null } }) {
   const router = useRouter();
@@ -42,13 +42,11 @@ export function EditPurchaseSheet({ purchase }: { purchase: { id: string; orderN
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger render={<Button type="button" variant="outline" size="sm"><Pencil className="h-3.5 w-3.5" /> Edit</Button>} />
-      <SheetContent side="right" className="w-full max-w-lg sm:max-w-lg">
-        <SheetHeader><SheetTitle>Edit {purchase.orderNumber}</SheetTitle></SheetHeader>
-        <form onSubmit={submit} className="space-y-5 px-4 pb-4">
-          <div><label className="text-sm font-medium" htmlFor="purchase-delivery-date">Expected delivery</label><Input id="purchase-delivery-date" name="expectedDeliveryDate" type="date" defaultValue={purchase.expectedDeliveryDate?.slice(0, 10) ?? ""} className="mt-1" /></div>
-          <div><label className="text-sm font-medium" htmlFor="purchase-notes">Notes</label><textarea id="purchase-notes" name="notes" defaultValue={purchase.notes} rows={5} maxLength={1000} className="mt-1 w-full border bg-white px-3 py-2 text-sm" /></div>
-          {message && <p className="text-sm text-red-700">{message}</p>}
-          <Button type="submit" disabled={busy}>{busy ? "Saving..." : "Save changes"}</Button>
+      <SheetContent side="right" className="w-full sm:max-w-md">
+        <SheetHeader className="border-b"><SheetTitle>Edit {purchase.orderNumber}</SheetTitle><SheetDescription>Update document notes and expected delivery. Supplier and line values remain unchanged.</SheetDescription></SheetHeader>
+        <form onSubmit={submit} className="flex flex-1 flex-col">
+          <div className="space-y-4 px-4"><div><label className="text-xs font-medium text-slate-700" htmlFor="purchase-delivery-date">Expected delivery</label><Input id="purchase-delivery-date" name="expectedDeliveryDate" type="date" defaultValue={purchase.expectedDeliveryDate?.slice(0, 10) ?? ""} className="mt-1" /></div><div><label className="text-xs font-medium text-slate-700" htmlFor="purchase-notes">Notes</label><textarea id="purchase-notes" name="notes" defaultValue={purchase.notes} rows={6} maxLength={1000} className="mt-1 w-full rounded-md border bg-white px-2.5 py-2 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/15" /></div>{message && <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700">{message}</p>}</div>
+          <SheetFooter className="border-t"><Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={busy}>Cancel</Button><Button type="submit" disabled={busy}>{busy ? "Saving..." : "Save Changes"}</Button></SheetFooter>
         </form>
       </SheetContent>
     </Sheet>

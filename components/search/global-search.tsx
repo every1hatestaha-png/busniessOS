@@ -36,7 +36,7 @@ export function GlobalSearch({ results, className, autoFocus = false, onNavigate
 
   return (
     <div ref={wrapperRef} className={cn("relative w-full", className)}>
-      <Search className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-neutral-400" />
+      <Search className="pointer-events-none absolute left-2.5 top-1/2 z-10 size-3.5 -translate-y-1/2 text-slate-400" />
       <Input
         type="search"
         value={query}
@@ -50,12 +50,12 @@ export function GlobalSearch({ results, className, autoFocus = false, onNavigate
           if (event.key === "Escape") setOpen(false);
         }}
         placeholder="Search customers, products, orders, invoices..."
-        className="h-10 bg-neutral-50 pl-9 pr-3"
+        className="h-8 rounded-md border-slate-200 bg-slate-50/80 pl-8 pr-3 text-xs shadow-none focus-visible:bg-white"
         aria-label="Global search"
         aria-expanded={open && query.length >= 2}
       />
       {open && query.trim().length >= 2 && (
-        <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-50 max-h-[min(420px,60vh)] overflow-y-auto rounded-xl border bg-white p-1.5 shadow-xl shadow-neutral-900/10">
+        <div className="absolute left-0 right-0 top-[calc(100%+0.375rem)] z-50 max-h-[min(420px,60vh)] overflow-y-auto rounded-md border bg-white p-1 shadow-sm">
           {matches.length ? matches.map((result, index) => {
             const Icon = icons[result.type];
             return (
@@ -64,9 +64,9 @@ export function GlobalSearch({ results, className, autoFocus = false, onNavigate
                 type="button"
                 onMouseEnter={() => setActiveIndex(index)}
                 onClick={() => navigate(result)}
-                className={cn("flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left", activeIndex === index ? "bg-neutral-100" : "hover:bg-neutral-50")}
+                className={cn("flex min-h-10 w-full items-center gap-2.5 rounded px-2 py-1.5 text-left", activeIndex === index ? "bg-slate-100" : "hover:bg-slate-50")}
               >
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-white text-neutral-500"><Icon className="size-4" /></span>
+                <span className="flex size-7 shrink-0 items-center justify-center rounded border bg-white text-slate-500"><Icon className="size-3.5" /></span>
                 <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-neutral-900">{result.title}</span><span className="block truncate text-xs text-neutral-500">{result.detail}</span></span>
                 <span className="text-[10px] font-semibold uppercase tracking-wide text-neutral-400">{result.type}</span>
               </button>

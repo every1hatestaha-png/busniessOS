@@ -1,17 +1,18 @@
 "use client";
 
-import { startTransition, useActionState } from "react";
 import Link from "next/link";
+import { startTransition, useActionState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AlertCircle, ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
+
 import { createSaleAction, type CreateSaleState } from "@/app/(dashboard)/sales/actions";
-import { calculateBalance, calculateOrderTotal, formatPKR } from "@/lib/utils";
-import { saleSchema, type SaleInput } from "@/lib/validation/sale";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { calculateBalance, calculateOrderTotal, formatPKR } from "@/lib/utils";
+import { saleSchema, type SaleInput } from "@/lib/validation/sale";
 
 const orderSchema = saleSchema.superRefine((order, context) => {
   const gross = order.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
@@ -23,30 +24,11 @@ const orderSchema = saleSchema.superRefine((order, context) => {
 
 type OrderFormInput = z.input<typeof orderSchema>;
 type OrderFormValues = z.output<typeof orderSchema>;
-
-type CustomerOption = {
-  id: string;
-  name: string;
-  companyName: string;
-  phone: string;
-  creditLimit: number;
-  currentBalance: number;
-  status: "ACTIVE" | "INACTIVE" | "BLACKLISTED";
-};
-
-type ProductOption = {
-  id: string;
-  name: string;
-  sku: string;
-  sellingPrice: number;
-  stockQuantity: number;
-  status: "ACTIVE" | "INACTIVE" | "ARCHIVED";
-  unit: string;
-};
-
-const fieldClass = "h-9 w-full rounded-lg border border-input bg-white px-3 text-sm outline-none transition focus:border-ring focus:ring-3 focus:ring-ring/50";
-
+type CustomerOption = { id: string; name: string; companyName: string; phone: string; creditLimit: number; currentBalance: number; status: "ACTIVE" | "INACTIVE" | "BLACKLISTED" };
+type ProductOption = { id: string; name: string; sku: string; sellingPrice: number; stockQuantity: number; status: "ACTIVE" | "INACTIVE" | "ARCHIVED"; unit: string };
 type CashBankOption = { cashBankAccountId: string; name: string; currentBalance: number; isBank: boolean; bankName?: string | null };
+
+const fieldClass = "h-8 w-full rounded-md border border-input bg-white px-2.5 text-xs outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15";
 
 export function SalesOrderForm({ customers, products, cashBankAccounts = [], canRecordPayments = true }: { customers: CustomerOption[]; products: ProductOption[]; cashBankAccounts?: CashBankOption[]; canRecordPayments?: boolean }) {
   const [actionState, submitAction, isPending] = useActionState(createSaleAction, {} as CreateSaleState);
@@ -78,60 +60,56 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
     startTransition(() => submitAction(input));
   }
 
-  return (
-    <form onSubmit={handleSubmit(submitOrder)} className="mx-auto max-w-[1500px] space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div><Link href="/sales" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-neutral-500 hover:text-neutral-950"><ArrowLeft className="h-4 w-4" /> Sales orders</Link><h1 className="text-2xl font-bold tracking-tight text-neutral-950 md:text-3xl">Create sales order</h1><p className="mt-1 text-sm text-neutral-500">Review the confirmed order before creating it.</p></div>
-        <div className="flex gap-2"><Button type="button" variant="outline" render={<Link href="/sales" />}>Cancel</Button><Button type="submit" disabled={isSubmitting || isPending}>{isPending ? "Creating..." : "Create order"}</Button></div>
-      </div>
+  return <form onSubmit={handleSubmit(submitOrder)} className="mx-auto max-w-[1600px] space-y-6">
+    <header className="flex items-end justify-between gap-4">
+      <div><Link href="/sales" className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-900"><ArrowLeft className="size-3.5" />Sales</Link><h1 className="text-xl font-semibold tracking-tight text-slate-950">New Sales Order</h1><p className="mt-0.5 text-xs text-slate-500">Creates a confirmed order, invoice, and stock movement.</p></div>
+      <div className="flex gap-2"><Button type="button" variant="outline" size="sm" render={<Link href="/sales" />}>Cancel</Button><Button type="submit" size="sm" disabled={isSubmitting || isPending}>{isPending ? "Creating..." : "Create Sale"}</Button></div>
+    </header>
 
-      {actionState.error && <div role="alert" className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0" /><p className="text-sm font-medium">{actionState.error}</p></div>}
+    {actionState.error && <div role="alert" className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2.5 text-red-800"><AlertCircle className="mt-0.5 size-4 shrink-0" /><p className="text-xs font-medium">{actionState.error}</p></div>}
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="space-y-6">
-          <Card className="shadow-none">
-            <CardHeader><CardTitle>Customer and order</CardTitle></CardHeader>
-            <CardContent className="grid gap-5">
-              <Field label="Customer" error={errors.customerId?.message}>
-                <select {...register("customerId")} className={fieldClass} aria-invalid={Boolean(errors.customerId)}><option value="">Choose a customer</option>{customers.filter((customer) => customer.status === "ACTIVE").map((customer) => <option key={customer.id} value={customer.id}>{customer.companyName} · {customer.name}</option>)}</select>
-              </Field>
-              {selectedCustomer && <div className="rounded-lg bg-neutral-50 p-4"><div className="grid gap-3 text-sm sm:grid-cols-3"><div><p className="text-xs text-neutral-500">Contact</p><p className="mt-1 font-medium">{selectedCustomer.phone || "No phone provided"}</p></div><div><p className="text-xs text-neutral-500">Current balance</p><p className="mt-1 font-medium">{formatPKR(selectedCustomer.currentBalance)}</p></div><div><p className="text-xs text-neutral-500">Available credit</p><p className="mt-1 font-medium">{selectedCustomer.creditLimit > 0 ? formatPKR(Math.max(0, selectedCustomer.creditLimit - selectedCustomer.currentBalance)) : "Not configured"}</p></div></div></div>}
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-none">
-            <CardHeader className="flex-row items-center justify-between"><div><CardTitle>Products</CardTitle><p className="mt-1 text-sm text-neutral-500">Discounts are fixed amounts per line.</p></div><Button type="button" variant="outline" size="sm" onClick={() => append({ productId: "", quantity: 1, unitPrice: 0, discount: 0 })}><Plus /> Add product</Button></CardHeader>
-            <CardContent className="space-y-4">
-              {fields.map((field, index) => {
-                const line = items[index];
-                const lineTotal = Math.max(0, (line?.quantity || 0) * (line?.unitPrice || 0) - (line?.discount || 0));
-                const selectedProduct = products.find((product) => product.id === line?.productId);
-                return <div key={field.id} className="rounded-xl border bg-neutral-50/50 p-4"><div className="mb-4 flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wider text-neutral-500">Line {index + 1}</p><Button type="button" variant="ghost" size="icon-sm" disabled={fields.length === 1} onClick={() => remove(index)} aria-label={`Remove line ${index + 1}`}><Trash2 className="text-red-600" /></Button></div><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-12"><div className="sm:col-span-2 lg:col-span-5"><Field label="Product" error={errors.items?.[index]?.productId?.message}><select value={line?.productId ?? ""} onChange={(event) => selectProduct(index, event.target.value)} className={fieldClass}><option value="">Select product</option>{products.filter((product) => product.status === "ACTIVE").map((product) => <option key={product.id} value={product.id}>{product.name} ({product.sku})</option>)}</select></Field></div><div className="lg:col-span-2"><Field label="Quantity" error={errors.items?.[index]?.quantity?.message}><Input type="number" min="1" step="1" className="h-9 bg-white" {...register(`items.${index}.quantity`, { valueAsNumber: true })} /></Field></div><div className="lg:col-span-2"><Field label="Unit price" error={errors.items?.[index]?.unitPrice?.message}><Input type="number" min="0" step="1" className="h-9 bg-white" {...register(`items.${index}.unitPrice`, { valueAsNumber: true })} /></Field></div><div className="lg:col-span-2"><Field label="Line discount" error={errors.items?.[index]?.discount?.message}><Input type="number" min="0" step="1" className="h-9 bg-white" {...register(`items.${index}.discount`, { valueAsNumber: true })} /></Field></div><div className="flex items-end lg:col-span-1"><div className="pb-2"><p className="text-xs text-neutral-500">Line total</p><p className="whitespace-nowrap font-semibold">{formatPKR(lineTotal)}</p></div></div></div>{selectedProduct && <p className="mt-3 text-xs text-neutral-500">{selectedProduct.stockQuantity} {selectedProduct.unit.toLowerCase()} in stock · Standard price {formatPKR(selectedProduct.sellingPrice)}</p>}</div>;
-              })}
-              {errors.items?.root?.message && <p className="text-xs font-medium text-red-600">{errors.items.root.message}</p>}
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-none"><CardHeader><CardTitle>Payment and notes</CardTitle></CardHeader><CardContent className="grid gap-5 md:grid-cols-2"><Field label="Order discount" hint="Applied after line discounts" error={errors.orderDiscount?.message}><Input type="number" min="0" step="1" className="h-9" {...register("orderDiscount", { valueAsNumber: true })} /></Field>{canRecordPayments && <Field label="Paid amount" hint="Amount received with this order" error={errors.paidAmount?.message}><Input type="number" min="0" step="1" className="h-9" {...register("paidAmount", { valueAsNumber: true })} /></Field>}{canRecordPayments && paidAmount > 0 && <Field label="Receive into" hint="Required for payments" error={errors.cashBankAccountId?.message}><select {...register("cashBankAccountId")} className={fieldClass} required><option value="">Select cash/bank</option>{cashBankAccounts.map((account) => <option key={account.cashBankAccountId} value={account.cashBankAccountId}>{account.name}{account.isBank && account.bankName ? ` · ${account.bankName}` : ""} · {formatPKR(account.currentBalance)}</option>)}</select>{cashBankAccounts.length === 0 && <span className="mt-1 block text-xs font-medium text-red-600">Create an active cash/bank account before receiving payment.</span>}</Field>}<div className="md:col-span-2"><Field label="Notes" error={errors.notes?.message}><textarea {...register("notes")} rows={4} placeholder="Dispatch, delivery, or payment instructions" className={`${fieldClass} h-auto resize-y py-2`} /></Field></div></CardContent></Card>
-        </div>
-
-        <Card className="shadow-none xl:sticky xl:top-6">
-          <CardHeader><CardTitle>Order summary</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-3 text-sm"><SummaryRow label="Subtotal" value={formatPKR(subtotal)} /><SummaryRow label="Line discounts" value={`- ${formatPKR(lineDiscounts)}`} /><SummaryRow label="Order discount" value={`- ${formatPKR(orderDiscount)}`} /><div className="flex items-center justify-between border-t pt-4 text-base"><span className="font-semibold">Total</span><span className="text-xl font-bold">{formatPKR(total)}</span></div><SummaryRow label="Paid" value={formatPKR(paidAmount)} /><div className="flex items-center justify-between rounded-lg bg-neutral-950 p-4 text-white"><span className="font-medium">Balance due</span><span className="text-lg font-bold">{formatPKR(balance)}</span></div></div>
-            <p className="border-t pt-4 text-xs leading-5 text-neutral-500">Creating this confirmed order updates stock, customer balance, and creates an invoice.</p>
-            <Button type="submit" className="w-full" disabled={isSubmitting || isPending}>{isPending ? "Creating..." : "Create confirmed order"}</Button>
+    <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="space-y-4">
+        <Card className="gap-0 rounded-md border py-0 shadow-none ring-0">
+          <CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm font-semibold">Customer & Order</CardTitle></CardHeader>
+          <CardContent className="p-4">
+            <Field label="Customer" error={errors.customerId?.message}><select {...register("customerId")} className={fieldClass} aria-invalid={Boolean(errors.customerId)}><option value="">Choose a customer</option>{customers.filter((customer) => customer.status === "ACTIVE").map((customer) => <option key={customer.id} value={customer.id}>{customer.companyName} · {customer.name}</option>)}</select></Field>
+            {selectedCustomer && <div className="mt-3 grid divide-x rounded-md border bg-slate-50 sm:grid-cols-3"><AccountFact label="Contact" value={selectedCustomer.phone || "No phone provided"} /><AccountFact label="Current balance" value={formatPKR(selectedCustomer.currentBalance)} /><AccountFact label="Available credit" value={selectedCustomer.creditLimit > 0 ? formatPKR(Math.max(0, selectedCustomer.creditLimit - selectedCustomer.currentBalance)) : "Not configured"} /></div>}
           </CardContent>
         </Card>
+
+        <Card className="gap-0 rounded-md border py-0 shadow-none ring-0">
+          <CardHeader className="flex-row items-center justify-between border-b px-4 py-3"><div><CardTitle className="text-sm font-semibold">Line Items</CardTitle><p className="mt-0.5 text-[11px] text-slate-500">Fixed discounts are applied per line.</p></div><Button type="button" variant="outline" size="xs" onClick={() => append({ productId: "", quantity: 1, unitPrice: 0, discount: 0 })}><Plus />Add line</Button></CardHeader>
+           <CardContent className="overflow-x-auto p-0">
+             <div className="min-w-[760px]"><div className="grid grid-cols-[minmax(220px,1fr)_90px_120px_110px_130px_36px] gap-2 border-b bg-slate-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500"><span>Product</span><span className="text-right">Qty</span><span className="text-right">Unit price</span><span className="text-right">Discount</span><span className="text-right">Line total</span><span /></div>
+            {fields.map((field, index) => {
+              const line = items[index];
+              const lineTotal = Math.max(0, (line?.quantity || 0) * (line?.unitPrice || 0) - (line?.discount || 0));
+              const selectedProduct = products.find((product) => product.id === line?.productId);
+              return <div key={field.id} className="grid grid-cols-[minmax(220px,1fr)_90px_120px_110px_130px_36px] items-start gap-2 border-b px-4 py-2.5 last:border-0">
+                <Field error={errors.items?.[index]?.productId?.message}><select value={line?.productId ?? ""} onChange={(event) => selectProduct(index, event.target.value)} className={fieldClass}><option value="">Select product</option>{products.filter((product) => product.status === "ACTIVE").map((product) => <option key={product.id} value={product.id}>{product.name} ({product.sku})</option>)}</select>{selectedProduct && <span className="mt-1 block text-[10px] text-slate-500">Available {selectedProduct.stockQuantity} {selectedProduct.unit.toLowerCase()}</span>}</Field>
+                <Field error={errors.items?.[index]?.quantity?.message}><Input type="number" min="1" step="1" className="text-right text-xs" {...register(`items.${index}.quantity`, { valueAsNumber: true })} /></Field>
+                <Field error={errors.items?.[index]?.unitPrice?.message}><Input type="number" min="0" step="1" className="text-right text-xs" {...register(`items.${index}.unitPrice`, { valueAsNumber: true })} /></Field>
+                <Field error={errors.items?.[index]?.discount?.message}><Input type="number" min="0" step="1" className="text-right text-xs" {...register(`items.${index}.discount`, { valueAsNumber: true })} /></Field>
+                <div className="flex h-8 items-center justify-end text-xs font-semibold tabular-nums">{formatPKR(lineTotal)}</div>
+                <Button type="button" variant="ghost" size="icon" disabled={fields.length === 1} onClick={() => remove(index)} aria-label={`Remove line ${index + 1}`}><Trash2 className="text-red-600" /></Button>
+              </div>;
+            })}
+             {errors.items?.root?.message && <p className="border-t px-4 py-2 text-xs font-medium text-red-600">{errors.items.root.message}</p>}</div>
+          </CardContent>
+        </Card>
+
+        <Card className="gap-0 rounded-md border py-0 shadow-none ring-0"><CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm font-semibold">Payment & Notes</CardTitle></CardHeader><CardContent className="grid gap-4 p-4 md:grid-cols-2"><Field label="Order discount" hint="After line discounts" error={errors.orderDiscount?.message}><Input type="number" min="0" step="1" {...register("orderDiscount", { valueAsNumber: true })} /></Field>{canRecordPayments && <Field label="Paid now" hint="Optional initial receipt" error={errors.paidAmount?.message}><Input type="number" min="0" step="1" {...register("paidAmount", { valueAsNumber: true })} /></Field>}{canRecordPayments && paidAmount > 0 && <Field label="Receive into" hint="Required" error={errors.cashBankAccountId?.message}><select {...register("cashBankAccountId")} className={fieldClass} required><option value="">Select cash/bank account</option>{cashBankAccounts.map((account) => <option key={account.cashBankAccountId} value={account.cashBankAccountId}>{account.name}{account.isBank && account.bankName ? ` · ${account.bankName}` : ""} · {formatPKR(account.currentBalance)}</option>)}</select>{cashBankAccounts.length === 0 && <span className="mt-1 block text-[10px] font-medium text-red-600">Create an active cash/bank account before receiving payment.</span>}</Field>}<div className={canRecordPayments && paidAmount > 0 ? "" : "md:col-span-2"}><Field label="Notes" error={errors.notes?.message}><textarea {...register("notes")} rows={3} placeholder="Dispatch, delivery, or payment instructions" className={`${fieldClass} h-auto resize-y py-2`} /></Field></div></CardContent></Card>
       </div>
-    </form>
-  );
+
+      <Card className="sticky top-6 gap-0 rounded-md border py-0 shadow-none ring-0"><CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm font-semibold">Order Summary</CardTitle></CardHeader><CardContent className="space-y-3 p-4 text-xs"><SummaryRow label="Subtotal" value={formatPKR(subtotal)} /><SummaryRow label="Line discounts" value={`- ${formatPKR(lineDiscounts)}`} /><SummaryRow label="Order discount" value={`- ${formatPKR(orderDiscount)}`} /><div className="flex items-center justify-between border-t pt-3"><span className="font-semibold">Total</span><span className="text-lg font-semibold tabular-nums">{formatPKR(total)}</span></div><SummaryRow label="Paid now" value={formatPKR(paidAmount)} /><div className="flex items-center justify-between rounded-md border border-blue-200 bg-blue-50 p-3 text-blue-950"><span className="font-medium">New receivable</span><span className="text-base font-semibold tabular-nums">{formatPKR(balance)}</span></div>{selectedCustomer && <SummaryRow label="Available credit" value={selectedCustomer.creditLimit > 0 ? formatPKR(Math.max(0, selectedCustomer.creditLimit - selectedCustomer.currentBalance)) : "Not configured"} />}<p className="border-t pt-3 text-[10px] leading-relaxed text-slate-500">Creating this confirmed order updates stock and customer balance, and creates an invoice. A paid amount also records a receipt.</p><Button type="submit" className="w-full" disabled={isSubmitting || isPending}>{isPending ? "Creating..." : "Create Confirmed Sale"}</Button></CardContent></Card>
+    </div>
+  </form>;
 }
 
-function Field({ label, hint, error, children }: { label: string; hint?: string; error?: string; children: React.ReactNode }) {
-  return <label className="block"><span className="mb-1.5 flex items-center justify-between gap-2 text-sm font-medium text-neutral-800"><span>{label}</span>{hint && <span className="text-xs font-normal text-neutral-400">{hint}</span>}</span>{children}{error && <span className="mt-1 block text-xs font-medium text-red-600">{error}</span>}</label>;
+function Field({ label, hint, error, children }: { label?: string; hint?: string; error?: string; children: React.ReactNode }) {
+  return <label className="block">{label && <span className="mb-1 flex items-center justify-between gap-2 text-xs font-medium text-slate-700"><span>{label}</span>{hint && <span className="text-[10px] font-normal text-slate-400">{hint}</span>}</span>}{children}{error && <span className="mt-1 block text-[10px] font-medium text-red-600">{error}</span>}</label>;
 }
 
-function SummaryRow({ label, value }: { label: string; value: string }) {
-  return <div className="flex items-center justify-between gap-4"><span className="text-neutral-500">{label}</span><span className="font-medium">{value}</span></div>;
-}
+function AccountFact({ label, value }: { label: string; value: string }) { return <div className="px-3 py-2.5"><p className="text-[10px] text-slate-500">{label}</p><p className="mt-0.5 truncate text-xs font-medium">{value}</p></div>; }
+function SummaryRow({ label, value }: { label: string; value: string }) { return <div className="flex items-center justify-between gap-4"><span className="text-slate-500">{label}</span><span className="font-medium tabular-nums">{value}</span></div>; }

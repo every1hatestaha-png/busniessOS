@@ -200,13 +200,13 @@ export async function getCustomer(workspaceId: string, id: string): Promise<Cust
   };
 }
 
-export async function createCustomer(workspaceId: string, input: CustomerInput): Promise<string> {
+export async function createCustomer(context: CustomerMutationContext, input: CustomerInput): Promise<string> {
   const openingBalance = input.openingBalance;
 
   return db.$transaction(async (tx) => {
     const customer = await tx.customer.create({
       data: {
-        workspaceId,
+        workspaceId: context.workspaceId,
         name: input.name,
         companyName: input.companyName,
         phone: input.phone,
@@ -224,15 +224,17 @@ export async function createCustomer(workspaceId: string, input: CustomerInput):
     if (Number(openingBalance) > 0) {
       await tx.ledgerEntry.create({
         data: {
-          workspaceId,
+          workspaceId: context.workspaceId,
           customerId: customer.id,
           type: "OPENING_BALANCE",
           debit: openingBalance,
           description: "Customer opening balance",
         },
       });
-      await postOpeningAssetToGeneralLedger(tx, { workspaceId, sourceId: customer.id, documentNo: `OPEN-CUST-${customer.id.slice(0, 8).toUpperCase()}`, date: new Date(), assetSystemCode: "ACCOUNTS_RECEIVABLE", amount: new Prisma.Decimal(openingBalance) });
+      await postOpeningAssetToGeneralLedger(tx, { workspaceId: context.workspaceId, sourceId: customer.id, documentNo: `OPEN-CUST-${customer.id.slice(0, 8).toUpperCase()}`, date: new Date(), assetSystemCode: "ACCOUNTS_RECEIVABLE", amount: new Prisma.Decimal(openingBalance) });
     }
+
+    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "customer.created", entityType: "Customer", entityId: customer.id, metadata: { name: input.name, status: input.status } });
 
     return customer.id;
   }, { timeout: 30_000 });

@@ -9,8 +9,8 @@ export default async function SalesPage() {
   const sales = await listSales(workspaceId);
 
   return (
-    <div className="mx-auto max-w-[1500px] space-y-6">
-      <PageHeader title="Sales orders" description="Track orders, collections, and customer balances." action={{ label: "New order", href: "/sales/new", icon: Plus }} />
+    <div className="mx-auto max-w-[1600px] space-y-6">
+      <PageHeader title="Sales" description="Sales orders, collections, and customer balances." action={{ label: "New Sale", href: "/sales/new", icon: Plus }} />
       <SalesList sales={sales} />
     </div>
   );

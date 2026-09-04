@@ -25,7 +25,7 @@ export function CustomerTable({ customers }: { customers: CustomerListItem[] }) 
 
   return (
     <div>
-      <div className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center">
+      <div className="flex flex-col gap-3 p-3 lg:flex-row lg:items-center">
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
           <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name, company, phone, email, or city" className="pl-9" aria-label="Search customers" />
@@ -46,23 +46,23 @@ export function CustomerTable({ customers }: { customers: CustomerListItem[] }) 
       </div>
       <div className="border-t border-neutral-200">
         <Table className="min-w-[860px]">
-          <TableHeader><TableRow><TableHead>Customer</TableHead><TableHead>Contact</TableHead><TableHead>City</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Balance</TableHead><TableHead className="text-right">Credit limit</TableHead></TableRow></TableHeader>
+          <TableHeader className="bg-neutral-50/80"><TableRow><TableHead>Customer</TableHead><TableHead className="text-right">Receivable</TableHead><TableHead className="text-right">Credit limit</TableHead><TableHead>Status</TableHead><TableHead>Contact</TableHead><TableHead>City</TableHead></TableRow></TableHeader>
           <TableBody>
             {filtered.map((customer) => (
               <TableRow key={customer.id}>
                 <TableCell><Link href={`/customers/${customer.id}`} className="font-medium text-neutral-950 hover:underline">{customer.companyName}</Link><p className="text-xs text-neutral-500">{customer.name}</p></TableCell>
+                <TableCell className="text-right"><p className="font-semibold tabular-nums">{formatPKR(customer.currentBalance)}</p><StatusBadge status={getCreditStatus(customer.currentBalance, customer.creditLimit)} /></TableCell>
+                <TableCell className="text-right tabular-nums">{customer.creditLimit > 0 ? formatPKR(customer.creditLimit) : "Not configured"}</TableCell>
+                <TableCell><StatusBadge status={customer.status} /></TableCell>
                 <TableCell><p>{customer.phone}</p><p className="text-xs text-neutral-500">{customer.email}</p></TableCell>
                 <TableCell>{customer.city}</TableCell>
-                <TableCell><StatusBadge status={customer.status} /></TableCell>
-                <TableCell className="text-right"><p className="font-medium">{formatPKR(customer.currentBalance)}</p><StatusBadge status={getCreditStatus(customer.currentBalance, customer.creditLimit)} /></TableCell>
-                <TableCell className="text-right">{customer.creditLimit > 0 ? formatPKR(customer.creditLimit) : "Not configured"}</TableCell>
               </TableRow>
             ))}
             {filtered.length === 0 && <TableRow><TableCell colSpan={6} className="h-28 text-center text-neutral-500">No customers match these filters.</TableCell></TableRow>}
           </TableBody>
         </Table>
       </div>
-      <p className="border-t border-neutral-200 px-4 py-3 text-xs text-neutral-500">Showing {filtered.length} of {customers.length} customers</p>
+      <p className="border-t border-neutral-200 px-4 py-2.5 text-xs text-neutral-500">Showing {filtered.length} of {customers.length} customers</p>
     </div>
   );
 }

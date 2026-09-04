@@ -651,17 +651,21 @@ model GoodReceivedNote {
 }
 
 model GoodReceivedNoteItem {
-  id                  String   @id @default(uuid())
+  id                  String    @id @default(uuid())
   goodReceivedNoteId  String
   purchaseOrderItemId String
   productId           String
-  orderedQuantity     Decimal  @db.Decimal(15, 4)
-  receivedQuantity    Decimal  @db.Decimal(15, 4)
-  acceptedQuantity    Decimal  @db.Decimal(15, 4)
-  unitCost            Decimal  @db.Decimal(15, 2)
-  totalCost           Decimal  @db.Decimal(15, 2)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  orderedQuantity     Decimal   @db.Decimal(15, 4)
+  receivedQuantity    Decimal   @db.Decimal(15, 4)
+  acceptedQuantity    Decimal   @db.Decimal(15, 4)
+  unitCost            Decimal   @db.Decimal(15, 2)
+  totalCost           Decimal   @db.Decimal(15, 2)
+  receivedWeightKg    Decimal?  @db.Decimal(15, 3)
+  acceptedWeightKg    Decimal?  @db.Decimal(15, 3)
+  ratePerKg           Decimal?  @db.Decimal(15, 2)
+  lineAmount          Decimal?  @db.Decimal(15, 2)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   goodReceivedNote  GoodReceivedNote  @relation(fields: [goodReceivedNoteId], references: [id], onDelete: Cascade)
   purchaseOrderItem PurchaseOrderItem @relation(fields: [purchaseOrderItemId], references: [id], onDelete: Restrict)
@@ -1004,15 +1008,17 @@ model SupplierReturn {
 }
 
 model SupplierReturnItem {
-  id                     String   @id @default(uuid())
+  id                     String    @id @default(uuid())
   supplierReturnId       String
   purchaseOrderItemId    String
   productId              String
   goodReceivedNoteItemId String?
-  quantity               Decimal  @db.Decimal(15, 4)
-  unitCost               Decimal  @db.Decimal(15, 2)
-  totalCost              Decimal  @db.Decimal(15, 2)
-  createdAt              DateTime @default(now())
+  quantity               Decimal   @db.Decimal(15, 4)
+  unitCost               Decimal   @db.Decimal(15, 2)
+  totalCost              Decimal   @db.Decimal(15, 2)
+  returnedWeightKg       Decimal?  @db.Decimal(15, 3)
+  ratePerKg              Decimal?  @db.Decimal(15, 2)
+  createdAt              DateTime  @default(now())
 
   supplierReturn    SupplierReturn    @relation(fields: [supplierReturnId], references: [id], onDelete: Cascade)
   product           Product           @relation(fields: [productId], references: [id], onDelete: Restrict)

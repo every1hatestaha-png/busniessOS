@@ -38,11 +38,17 @@ export const goodsReceiptSchema = z.object({
     receivedQuantity: z.coerce.number().positive("Weight or quantity must be greater than zero."),
     acceptedQuantity: z.coerce.number().nonnegative(),
     actualUnitCost: z.coerce.number().nonnegative().max(999_999_999),
+    receivedWeightKg: z.coerce.number().nonnegative().optional(),
+    acceptedWeightKg: z.coerce.number().nonnegative().optional(),
+    ratePerKg: z.coerce.number().nonnegative().optional(),
   })).min(1).max(100),
   idempotencyKey: z.string().trim().min(8).max(200).optional(),
 }).superRefine((receipt, context) => {
   receipt.items.forEach((item, index) => {
     if (item.acceptedQuantity > item.receivedQuantity) context.addIssue({ code: "custom", path: ["items", index, "acceptedQuantity"], message: "Accepted quantity cannot exceed received quantity." });
+    if (item.receivedWeightKg !== undefined && item.acceptedWeightKg !== undefined && item.acceptedWeightKg > item.receivedWeightKg) {
+      context.addIssue({ code: "custom", path: ["items", index, "acceptedWeightKg"], message: "Accepted weight cannot exceed received weight." });
+    }
   });
   if (!receipt.items.some((item) => item.acceptedQuantity > 0)) context.addIssue({ code: "custom", path: ["items"], message: "Accept at least one received item." });
 });
@@ -71,10 +77,16 @@ export const updateGoodsReceiptSchema = z.object({
     receivedQuantity: z.coerce.number().positive("Weight or quantity must be greater than zero."),
     acceptedQuantity: z.coerce.number().nonnegative(),
     actualUnitCost: z.coerce.number().nonnegative().max(999_999_999),
+    receivedWeightKg: z.coerce.number().nonnegative().optional(),
+    acceptedWeightKg: z.coerce.number().nonnegative().optional(),
+    ratePerKg: z.coerce.number().nonnegative().optional(),
   })).min(1).max(100).optional(),
 }).superRefine((receipt, context) => {
   receipt.items?.forEach((item, index) => {
     if (item.acceptedQuantity > item.receivedQuantity) context.addIssue({ code: "custom", path: ["items", index, "acceptedQuantity"], message: "Accepted quantity cannot exceed received quantity." });
+    if (item.receivedWeightKg !== undefined && item.acceptedWeightKg !== undefined && item.acceptedWeightKg > item.receivedWeightKg) {
+      context.addIssue({ code: "custom", path: ["items", index, "acceptedWeightKg"], message: "Accepted weight cannot exceed received weight." });
+    }
   });
 });
 

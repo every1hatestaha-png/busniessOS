@@ -35,7 +35,7 @@ export async function createCustomerAction(
 
   let customerId: string;
   try {
-    customerId = await createCustomer(context.workspaceId, parsed.data);
+    customerId = await createCustomer({ ...context, userId: context.user.id }, parsed.data);
   } catch {
     return { message: "We could not save this customer. Please try again." };
   }

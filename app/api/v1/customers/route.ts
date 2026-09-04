@@ -8,8 +8,8 @@ export const GET = apiHandler(async () => {
 });
 
 export const POST = apiHandler(async (request: Request) => {
-  const { workspaceId } = await requireApiContext("customers.write");
+  const context = await requireApiContext("customers.write");
   const input = await parseApiBody(request, customerSchema);
-  const id = await createCustomer(workspaceId, input);
+  const id = await createCustomer({ ...context, userId: context.user.id }, input);
   return apiData({ id }, 201);
 });

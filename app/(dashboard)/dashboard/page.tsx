@@ -5,38 +5,60 @@ import {
   ArrowRight,
   Banknote,
   Boxes,
-  ChartNoAxesCombined,
-  CircleDollarSign,
-  HandCoins,
   Landmark,
   PackageCheck,
+  Plus,
   ReceiptText,
-  ShoppingBag,
-  TrendingUp,
-  WalletCards,
+  ShoppingCart,
+  Truck,
+  Users,
 } from "lucide-react";
+
 import { StatusBadge } from "@/components/business/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { requireWorkspace } from "@/lib/server/auth";
 import { getFinancialDashboard } from "@/lib/server/accounting";
-import { getDashboardActivity } from "@/lib/server/dashboard";
 import { canPerformAction } from "@/lib/server/authorization";
+import { requireWorkspace } from "@/lib/server/auth";
+import { getDashboardActivity } from "@/lib/server/dashboard";
 import { formatDate, formatPKR, getStockStatus } from "@/lib/utils";
 
-function FinancialMetric({ href, label, value, detail, icon: Icon, featured = false }: { href: string; label: string; value: string; detail: string; icon: LucideIcon; featured?: boolean }) {
+function KpiCard({ href, label, value, detail, icon: Icon }: { href: string; label: string; value: string; detail: string; icon: LucideIcon }) {
   return (
-    <Link href={href} className={featured ? "group border border-neutral-700 bg-neutral-900 p-5 text-white transition hover:bg-neutral-800" : "group border bg-white p-4 transition hover:border-neutral-400 hover:bg-neutral-50"}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className={featured ? "text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400" : "text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500"}>{label}</p>
-          <p className={featured ? "mt-3 text-3xl font-bold tracking-tight tabular-nums" : "mt-2 text-xl font-bold tracking-tight tabular-nums"}>{value}</p>
-        </div>
-        <span className={featured ? "border border-neutral-700 p-2 text-neutral-300" : "bg-neutral-100 p-2 text-neutral-600 group-hover:bg-white"}><Icon className="h-4 w-4" /></span>
+    <Link href={href} className="group rounded-md border bg-white p-4 transition-colors hover:border-slate-300 hover:bg-slate-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-medium text-slate-500">{label}</p>
+        <span className="flex size-7 items-center justify-center rounded border bg-slate-50 text-slate-500 group-hover:bg-white"><Icon className="size-3.5" /></span>
       </div>
-      <div className={featured ? "mt-5 flex items-center justify-between border-t border-neutral-700 pt-3 text-xs text-neutral-400" : "mt-3 flex items-center justify-between text-xs text-neutral-500"}>
-        <span>{detail}</span><ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+      <p className="mt-3 text-[22px] font-semibold tracking-tight text-foreground tabular-nums">{value}</p>
+      <p className="mt-1 text-[11px] text-slate-500">{detail}</p>
+    </Link>
+  );
+}
+
+function PanelHeading({ title, description, href, linkLabel = "View all" }: { title: string; description: string; href?: string; linkLabel?: string }) {
+  return (
+    <CardHeader className="flex-row items-center justify-between border-b px-4 py-3">
+      <div>
+        <CardTitle className="text-sm font-semibold text-slate-900">{title}</CardTitle>
+        <p className="mt-0.5 text-[11px] text-slate-500">{description}</p>
       </div>
+      {href && <Link href={href} className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:text-blue-900 focus-visible:outline-none focus-visible:underline">{linkLabel}<ArrowRight className="size-3" /></Link>}
+    </CardHeader>
+  );
+}
+
+function QuickAction({ href, label, detail, icon: Icon, primary = false }: { href: string; label: string; detail: string; icon: LucideIcon; primary?: boolean }) {
+  return (
+    <Link href={href} className={primary
+      ? "flex min-h-12 items-center gap-3 rounded-md bg-primary px-3 text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+      : "flex min-h-12 items-center gap-3 rounded-md border bg-white px-3 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"}
+    >
+      <span className={primary ? "flex size-7 items-center justify-center rounded bg-white/15" : "flex size-7 items-center justify-center rounded bg-slate-100 text-slate-600"}><Icon className="size-3.5" /></span>
+      <span className="min-w-0">
+        <span className="block text-xs font-semibold">{label}</span>
+        <span className={primary ? "block truncate text-[10px] text-blue-100" : "block truncate text-[10px] text-slate-500"}>{detail}</span>
+      </span>
     </Link>
   );
 }
@@ -51,78 +73,125 @@ export default async function DashboardPage() {
   const currentDate = new Intl.DateTimeFormat("en-PK", { timeZone: "Asia/Karachi", weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date());
 
   return (
-    <div className="mx-auto max-w-[1500px] space-y-5">
-      <section className="overflow-hidden border bg-neutral-950 px-5 py-5 text-white md:px-7">
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">{currentDate}</p>
-            <h1 className="mt-2 text-2xl font-bold tracking-tight md:text-3xl">Financial command center</h1>
-            <p className="mt-1.5 text-sm text-neutral-400">{workspace.name} operating position for {user.firstName ?? "your team"}.</p>
-          </div>
-          <Link href="/sales/new" className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-neutral-950 transition hover:bg-neutral-200">
-            New sales order <ArrowRight className="h-4 w-4" />
-          </Link>
+    <div className="mx-auto max-w-[1600px] space-y-6">
+      <header className="flex items-end justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 text-xs text-slate-500"><span>{workspace.name}</span><span aria-hidden="true">/</span><span>{currentDate}</span></div>
+          <h1 className="mt-1 text-xl font-semibold tracking-tight text-foreground">Dashboard</h1>
+          <p className="mt-0.5 text-xs text-slate-500">Welcome back, {user.firstName ?? "team"}. Here is today&apos;s operating view.</p>
         </div>
-      </section>
+        <Link href="/sales/new" className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30">
+          <Plus className="size-3.5" />New sales order
+        </Link>
+      </header>
 
-      {financials && <section className="grid gap-3 xl:grid-cols-[1.2fr_2fr]">
-        <FinancialMetric href="/reports/profit-loss" label="Net Operating Position" value={formatPKR(financials.netOperatingPosition)} detail="Cash + receivables + stock - payables" icon={ChartNoAxesCombined} featured />
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <FinancialMetric href="/receivables" label="Receivables" value={formatPKR(financials.receivables)} detail="Outstanding invoices" icon={HandCoins} />
-          <FinancialMetric href="/payables" label="Payables" value={formatPKR(financials.payables)} detail="Accepted GRN liability" icon={Banknote} />
-          <FinancialMetric href="/reports/current-stock" label="Inventory" value={formatPKR(financials.inventoryValue)} detail="Current stock at cost" icon={Boxes} />
-          <FinancialMetric href="/accounting/cash-bank" label="Cash & Bank" value={formatPKR(financials.cashBank)} detail="Available account balances" icon={Landmark} />
-        </div>
-      </section>}
+      {financials && (
+        <section aria-label="Financial overview" className="grid gap-3 lg:grid-cols-4">
+          <KpiCard href="/receivables" label="Receivables" value={formatPKR(financials.receivables)} detail="Customer account balances" icon={ReceiptText} />
+          <KpiCard href="/payables" label="Payables" value={formatPKR(financials.payables)} detail="Supplier account balances" icon={Banknote} />
+          <KpiCard href="/accounting/cash-bank" label="Cash & Bank" value={formatPKR(financials.cashBank)} detail="Active account balances" icon={Landmark} />
+          <KpiCard href="/reports/current-stock" label="Inventory Value" value={formatPKR(financials.inventoryValue)} detail="Current stock valued at cost" icon={Boxes} />
+        </section>
+      )}
 
-      {financials && <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        <FinancialMetric href="/sales" label="Sales This Month" value={formatPKR(financials.salesThisMonth)} detail="Non-cancelled orders" icon={ShoppingBag} />
-        <FinancialMetric href="/purchases" label="Goods Received This Month" value={formatPKR(financials.purchasesThisMonth)} detail="Accepted GRN value" icon={PackageCheck} />
-        <FinancialMetric href="/reports/profit-loss" label="Expenses" value={formatPKR(financials.expensesThisMonth)} detail="This month" icon={ReceiptText} />
-        <FinancialMetric href="/reports/profit-loss" label="Gross Profit" value={formatPKR(financials.grossProfit)} detail="This month" icon={TrendingUp} />
-        <FinancialMetric href="/reports/profit-loss" label="Net Profit" value={formatPKR(financials.netProfit)} detail="After operating expenses" icon={CircleDollarSign} />
-        <FinancialMetric href="/reports/current-stock?lowStock=true" label="Low Stock" value={String(financials.lowStockCount)} detail="Products at reorder level" icon={AlertTriangle} />
-      </section>}
-
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,0.7fr)]">
-        <Card className="shadow-none">
-          <CardHeader className="flex-row items-center justify-between">
-            <div><CardTitle>Recent sales</CardTitle><p className="mt-1 text-sm text-neutral-500">Latest customer orders, limited to six</p></div>
-            <Link href="/sales" className="text-sm font-semibold text-neutral-700 hover:text-neutral-950">View all</Link>
-          </CardHeader>
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(260px,0.65fr)]">
+        <Card className="gap-0 rounded-md border py-0 shadow-none ring-0">
+          <PanelHeading title="Recent Sales" description="Latest non-cancelled customer orders" href="/sales" />
           <CardContent className="px-0">
             <Table>
-              <TableHeader><TableRow><TableHead className="pl-4">Order</TableHead><TableHead>Customer</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Balance</TableHead><TableHead className="pr-4 text-right">Total</TableHead></TableRow></TableHeader>
+              <TableHeader>
+                <TableRow className="h-9 bg-slate-50/80 hover:bg-slate-50/80">
+                  <TableHead className="h-9 pl-4 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Order</TableHead>
+                  <TableHead className="h-9 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Customer</TableHead>
+                  <TableHead className="h-9 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Status</TableHead>
+                  <TableHead className="h-9 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-500">Balance</TableHead>
+                  <TableHead className="h-9 pr-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-500">Total</TableHead>
+                </TableRow>
+              </TableHeader>
               <TableBody>
                 {activity.sales.map((sale) => (
-                  <TableRow key={sale.id}>
-                    <TableCell className="pl-4"><Link href={`/sales/${sale.id}`} className="font-semibold text-neutral-950 hover:underline">{sale.orderNumber}</Link><p className="text-xs text-neutral-500">{formatDate(sale.date)}</p></TableCell>
-                    <TableCell>{sale.customerName}</TableCell>
-                    <TableCell><StatusBadge status={sale.status} /></TableCell>
-                    <TableCell className="text-right text-neutral-600 tabular-nums">{formatPKR(sale.balance)}</TableCell>
-                    <TableCell className="pr-4 text-right font-semibold tabular-nums">{formatPKR(sale.total)}</TableCell>
+                  <TableRow key={sale.id} className="h-11">
+                    <TableCell className="py-1.5 pl-4">
+                      <Link href={`/sales/${sale.id}`} className="text-xs font-semibold text-slate-900 hover:text-blue-700 hover:underline">{sale.orderNumber}</Link>
+                      <p className="text-[10px] text-slate-500">{formatDate(sale.date)}</p>
+                    </TableCell>
+                    <TableCell className="py-1.5 text-xs text-slate-700">{sale.customerName}</TableCell>
+                    <TableCell className="py-1.5"><StatusBadge status={sale.status} /></TableCell>
+                    <TableCell className="py-1.5 text-right text-xs text-slate-600 tabular-nums">{formatPKR(sale.balance)}</TableCell>
+                    <TableCell className="py-1.5 pr-4 text-right text-xs font-semibold text-slate-900 tabular-nums">{formatPKR(sale.total)}</TableCell>
                   </TableRow>
                 ))}
-                {!activity.sales.length && <TableRow><TableCell colSpan={5} className="h-24 text-center text-neutral-500">No sales orders yet.</TableCell></TableRow>}
+                {!activity.sales.length && <TableRow><TableCell colSpan={5} className="h-32 text-center text-xs text-slate-500">No sales orders yet.</TableCell></TableRow>}
               </TableBody>
             </Table>
           </CardContent>
         </Card>
 
-        <Card className="shadow-none">
-          <CardHeader className="flex-row items-center justify-between"><div><CardTitle>Stock watch</CardTitle><p className="mt-1 text-sm text-neutral-500">Lowest stock requiring action</p></div><WalletCards className="h-4 w-4 text-neutral-400" /></CardHeader>
-          <CardContent className="space-y-4">
-            {activity.lowStock.map((product) => (
-              <div key={product.id} className="flex items-center justify-between gap-4 border-b pb-4 last:border-0 last:pb-0">
-                <div className="min-w-0"><p className="truncate font-medium">{product.name}</p><p className="text-xs text-neutral-500">{product.sku}</p></div>
-                <div className="text-right"><p className="font-semibold tabular-nums">{product.stockQuantity.toNumber()} {product.unit.toLowerCase()}</p><p className="text-xs text-neutral-500">{getStockStatus(product.stockQuantity.toNumber(), product.reorderLevel.toNumber())}</p></div>
-              </div>
-            ))}
-            {!activity.lowStock.length && <p className="py-6 text-center text-sm text-neutral-500">All products are above reorder levels.</p>}
-            <Link href="/reports/current-stock?lowStock=true" className="flex items-center justify-between border-t pt-4 text-sm font-semibold text-neutral-700 hover:text-neutral-950"><span>Review low stock</span><ArrowRight className="h-4 w-4" /></Link>
+        <Card className="gap-0 rounded-md border py-0 shadow-none ring-0">
+          <PanelHeading title="Quick Actions" description="Common workspace tasks" />
+          <CardContent className="grid gap-2 p-3">
+            <QuickAction href="/sales/new" label="New sales order" detail="Create a customer order" icon={ShoppingCart} primary />
+            {canViewFinancials && <QuickAction href="/purchases/new" label="New purchase order" detail="Order from a supplier" icon={Truck} />}
+            <QuickAction href="/customers" label="Customer accounts" detail="Review balances and activity" icon={Users} />
+            <QuickAction href="/inventory" label="Inventory" detail="Review products and stock" icon={Boxes} />
           </CardContent>
         </Card>
-      </div>
+      </section>
+
+      <section className={financials ? "grid gap-4 xl:grid-cols-3" : "grid gap-4"}>
+        {financials && (
+          <Card className="gap-0 rounded-md border py-0 shadow-none ring-0">
+            <PanelHeading title="Purchases & GRNs" description="Current receiving and supplier position" href="/purchases" linkLabel="Open purchases" />
+            <CardContent className="space-y-3 p-4">
+              <div className="flex items-center justify-between gap-4">
+                <span className="flex items-center gap-2 text-xs text-slate-600"><PackageCheck className="size-3.5 text-slate-400" />Goods received this month</span>
+                <span className="text-sm font-semibold text-slate-900 tabular-nums">{formatPKR(financials.purchasesThisMonth)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-4 border-t pt-3">
+                <span className="flex items-center gap-2 text-xs text-slate-600"><Banknote className="size-3.5 text-slate-400" />Supplier account balances</span>
+                <span className="text-sm font-semibold text-slate-900 tabular-nums">{formatPKR(financials.payables)}</span>
+              </div>
+              <Link href="/goods-receipts" className="flex h-8 items-center justify-between rounded border bg-slate-50 px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-100">Review goods receipts<ArrowRight className="size-3" /></Link>
+            </CardContent>
+          </Card>
+        )}
+
+        {financials && (
+          <Card className="gap-0 rounded-md border py-0 shadow-none ring-0">
+            <PanelHeading title="Receivables Attention" description="Customer balance and aging entry point" href="/receivables" linkLabel="Review aging" />
+            <CardContent className="space-y-3 p-4">
+              <div>
+                <p className="text-[11px] text-slate-500">Open customer account balances</p>
+                 <p className="mt-1 text-xl font-semibold tracking-tight text-foreground tabular-nums">{formatPKR(financials.receivables)}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 border-t pt-3">
+                <div className="rounded border bg-slate-50 p-2.5"><p className="text-[10px] text-slate-500">Sales this month</p><p className="mt-1 text-xs font-semibold tabular-nums">{formatPKR(financials.salesThisMonth)}</p></div>
+                <div className="rounded border bg-slate-50 p-2.5"><p className="text-[10px] text-slate-500">Operating position</p><p className="mt-1 text-xs font-semibold tabular-nums">{formatPKR(financials.netOperatingPosition)}</p></div>
+              </div>
+              <p className="text-[10px] leading-relaxed text-slate-500">Open the aging report for overdue invoice detail.</p>
+            </CardContent>
+          </Card>
+        )}
+
+        <Card className="gap-0 rounded-md border py-0 shadow-none ring-0">
+          <PanelHeading title="Stock Attention" description="Products at or below reorder level" href="/reports/current-stock?lowStock=true" linkLabel="Stock report" />
+          <CardContent className="px-4 py-1">
+            {activity.lowStock.map((product) => {
+              const status = getStockStatus(product.stockQuantity.toNumber(), product.reorderLevel.toNumber());
+              return (
+                <div key={product.id} className="flex min-h-11 items-center justify-between gap-3 border-b last:border-0">
+                  <div className="min-w-0"><p className="truncate text-xs font-medium text-slate-800">{product.name}</p><p className="text-[10px] text-slate-500">{product.sku}</p></div>
+                  <div className="flex items-center gap-3">
+                    <StatusBadge status={status} />
+                    <p className="min-w-16 text-right text-xs font-semibold text-slate-900 tabular-nums">{product.stockQuantity.toString()} <span className="font-normal text-slate-500">{product.unit.toLowerCase()}</span></p>
+                  </div>
+                </div>
+              );
+            })}
+            {!activity.lowStock.length && <div className="flex min-h-32 flex-col items-center justify-center text-center"><AlertTriangle className="mb-2 size-5 text-green-700" /><p className="text-xs font-medium text-slate-700">Stock levels are clear</p><p className="mt-1 text-[10px] text-slate-500">All products are above reorder levels.</p></div>}
+          </CardContent>
+        </Card>
+      </section>
     </div>
   );
 }

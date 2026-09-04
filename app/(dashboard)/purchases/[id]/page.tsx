@@ -21,38 +21,40 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
 
   const canManageFinancials = canPerformAction(role, "financial.manage");
   const canReceive = canManageFinancials && purchase.status !== "CANCELLED" && purchase.status !== "RECEIVED";
+  const canEdit = canManageFinancials && (purchase.status === "DRAFT" || purchase.status === "ORDERED");
+  const canDelete = canManageFinancials && purchase.status === "DRAFT";
 
   return (
-    <div className="mx-auto max-w-[1500px] space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="mx-auto max-w-[1600px] space-y-6">
+      <div className="flex items-end justify-between gap-4">
         <div>
-          <Link href="/purchases" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-neutral-500 hover:text-neutral-950">
-            <ArrowLeft className="h-4 w-4" /> Purchases
+           <Link href="/purchases" className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="size-3.5" /> Purchases
           </Link>
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight text-neutral-950 md:text-3xl">{purchase.orderNumber}</h1>
+             <h1 className="font-mono text-xl font-semibold tracking-tight text-foreground">{purchase.orderNumber}</h1>
             <StatusBadge status={purchase.status} />
           </div>
-          <p className="mt-1 text-sm text-neutral-500">
+          <p className="mt-0.5 text-xs text-slate-500">
             {purchase.status.replaceAll("_", " ")} · {formatDate(purchase.date)} · {purchase.supplier.companyName}
           </p>
         </div>
-        <div className="flex gap-2">
-          {canManageFinancials && <EditPurchaseSheet purchase={purchase} />}
-          {canManageFinancials && <DeletePurchaseButton purchaseId={purchase.id} orderNumber={purchase.orderNumber} />}
+        <div className="flex items-center gap-2">
+          {canEdit && <EditPurchaseSheet purchase={purchase} />}
+          {canDelete && <DeletePurchaseButton purchaseId={purchase.id} orderNumber={purchase.orderNumber} />}
           {canManageFinancials && purchase.status !== "CANCELLED" && <CancelPurchaseButton purchaseId={purchase.id} orderNumber={purchase.orderNumber} received={purchase.status === "RECEIVED" || purchase.status === "PARTIALLY_RECEIVED"} />}
           {canReceive && (
-            <Link href={`/purchases/${id}/receive`} className="inline-flex h-9 items-center justify-center bg-neutral-950 px-4 text-sm font-semibold text-white hover:bg-neutral-800">
-              <Truck className="mr-2 h-4 w-4" /> Receive Goods
+            <Link href={`/purchases/${id}/receive`} className="inline-flex h-7 items-center justify-center rounded-md bg-primary px-2.5 text-xs font-medium text-white hover:bg-primary/90">
+              <Truck className="mr-1 size-3.5" /> Receive Goods
             </Link>
           )}
-          <Link href={`/purchases/${id}/print`} target="_blank" className="inline-flex h-9 items-center justify-center border px-4 text-sm font-semibold text-neutral-700 hover:bg-neutral-50">
-            <Printer className="mr-2 h-4 w-4" /> Print PO
+          <Link href={`/purchases/${id}/print`} target="_blank" className="inline-flex h-7 items-center justify-center rounded-md border px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
+            <Printer className="mr-1 size-3.5" /> Print PO
           </Link>
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid overflow-hidden rounded-md border bg-white sm:grid-cols-2 sm:divide-x lg:grid-cols-4">
         <InfoCard icon={CalendarDays} label="Order date" value={formatDate(purchase.date)} />
         <InfoCard icon={ReceiptText} label="Line items" value={`${purchase.items.length} product${purchase.items.length === 1 ? "" : "s"}`} />
         <InfoCard icon={Boxes} label="Goods received value" value={formatPKR(purchase.goodsReceivedValue)} />
@@ -60,20 +62,20 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
       </div>
 
       {purchase.expectedDeliveryDate && (
-        <Card className="shadow-none">
-          <CardContent className="flex items-center gap-3 py-3">
-            <Truck className="h-4 w-4 text-neutral-400" />
-            <span className="text-sm text-neutral-600">Expected delivery: <strong>{formatDate(purchase.expectedDeliveryDate)}</strong></span>
-            {purchase.department && <span className="ml-4 text-sm text-neutral-600">Department: <strong>{purchase.department}</strong></span>}
+        <Card className="gap-0 rounded-md border py-0 shadow-none ring-0">
+           <CardContent className="flex items-center gap-3 px-4 py-3">
+             <Truck className="h-4 w-4 text-neutral-400" />
+             <span className="text-xs text-slate-600">Expected delivery: <strong>{formatDate(purchase.expectedDeliveryDate)}</strong></span>
+             {purchase.department && <span className="ml-4 text-xs text-slate-600">Department: <strong>{purchase.department}</strong></span>}
           </CardContent>
         </Card>
       )}
       {canManageFinancials && purchase.status !== "CANCELLED" && purchase.goodsReceivedValue > 0 && (
-        <Card className="shadow-none">
-          <CardContent className="pt-5">
+         <Card className="gap-0 rounded-md border py-0 shadow-none ring-0">
+           <CardContent className="p-4">
             <SupplierReturnForm
               purchaseOrderId={purchase.id}
-              items={purchase.items.map((item) => ({ id: item.id, productName: item.productName, receivedQuantity: item.receivedQuantity, unit: item.unit }))}
+              items={purchase.items.map((item) => ({ id: item.id, productName: item.productName, receivedQuantity: item.receivedQuantity, unit: item.unit, perKgRate: item.perKgRate, unitWeight: item.unitWeight }))}
               grns={purchase.grns.filter((grn) => grn.status === "ACTIVE").map((grn) => ({
                 id: grn.id,
                 grnNumber: grn.grnNumber,
@@ -85,6 +87,8 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
                   returnedQuantity: 0,
                   unitCost: gi.unitCost,
                   unit: purchase.items.find((i) => i.id === gi.purchaseOrderItemId)?.unit ?? "PIECE",
+                  acceptedWeightKg: gi.acceptedWeightKg,
+                  ratePerKg: gi.ratePerKg,
                 })),
               }))}
             />
@@ -92,14 +96,14 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
         </Card>
       )}
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="space-y-6">
-          <Card className="shadow-none">
-            <CardHeader><CardTitle>Line items</CardTitle></CardHeader>
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="space-y-4">
+          <Card className="gap-0 rounded-md border py-0 shadow-none ring-0">
+            <CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm font-semibold">Purchase Order Lines</CardTitle></CardHeader>
             <CardContent className="px-0">
               <Table>
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="h-9 bg-slate-50/80 hover:bg-slate-50/80">
                     <TableHead className="pl-4">Product</TableHead>
                     <TableHead className="text-right">Ordered</TableHead>
                     <TableHead className="text-right">Received</TableHead>
@@ -110,16 +114,16 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
                 </TableHeader>
                 <TableBody>
                   {purchase.items.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell className="pl-4 font-medium">
+                    <TableRow key={item.id} className="h-11">
+                      <TableCell className="py-1.5 pl-4 text-xs font-medium">
                         {item.productName}
                         {item.sku && <span className="ml-2 font-mono text-xs text-neutral-400">{item.sku}</span>}
                       </TableCell>
-                      <TableCell className="text-right">{item.quantity}</TableCell>
-                      <TableCell className="text-right">{item.receivedQuantity}</TableCell>
-                      <TableCell className="text-right font-semibold">{item.remainingQuantity}</TableCell>
-                      <TableCell className="text-right">{formatPKR(item.unitCost)}</TableCell>
-                      <TableCell className="pr-4 text-right font-semibold">{formatPKR(item.total)}</TableCell>
+                      <TableCell className="py-1.5 text-right text-xs tabular-nums">{item.quantity} {item.unit.toLowerCase()}</TableCell>
+                      <TableCell className="py-1.5 text-right text-xs tabular-nums">{item.receivedQuantity} {item.unit.toLowerCase()}</TableCell>
+                      <TableCell className="py-1.5 text-right text-xs font-semibold tabular-nums">{item.remainingQuantity} {item.unit.toLowerCase()}</TableCell>
+                      <TableCell className="py-1.5 text-right text-xs tabular-nums">{formatPKR(item.unitCost)}</TableCell>
+                      <TableCell className="py-1.5 pr-4 text-right text-xs font-semibold tabular-nums">{formatPKR(item.total)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -128,12 +132,12 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
           </Card>
 
           {purchase.grns.length > 0 && (
-            <Card className="shadow-none">
-              <CardHeader><CardTitle>Goods Receipt History</CardTitle></CardHeader>
+            <Card className="gap-0 rounded-md border py-0 shadow-none ring-0">
+              <CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm font-semibold">Goods Receipt History</CardTitle></CardHeader>
               <CardContent className="px-0">
                 <Table>
                   <TableHeader>
-                    <TableRow>
+                      <TableRow className="h-9 bg-slate-50/80 hover:bg-slate-50/80">
                       <TableHead className="pl-4">GRN No</TableHead>
                       <TableHead>Date</TableHead>
                       <TableHead>Status</TableHead>
@@ -144,12 +148,12 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
                   </TableHeader>
                   <TableBody>
                     {purchase.grns.map((grn) => (
-                      <TableRow key={grn.id}>
+                      <TableRow key={grn.id} className="h-11">
                         <TableCell className="pl-4 font-mono text-xs">{grn.grnNumber}</TableCell>
                         <TableCell>{formatDate(grn.receiptDate)}</TableCell>
                         <TableCell><StatusBadge status={grn.status} /></TableCell>
-                        <TableCell className="text-right">{grn.items.length}</TableCell>
-                        <TableCell className="text-right">{formatPKR(grn.totalAmount)}</TableCell>
+                         <TableCell className="py-1.5 text-right tabular-nums">{grn.items.length}</TableCell>
+                         <TableCell className="py-1.5 text-right font-semibold tabular-nums">{formatPKR(grn.totalAmount)}</TableCell>
                         <TableCell className="pr-4 text-right">
                           <Link href={`/goods-receipts/${grn.id}`} className="text-xs font-medium underline-offset-4 hover:underline">View</Link>
                         </TableCell>
@@ -161,15 +165,15 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
             </Card>
           )}
 
-          <Card className="shadow-none">
-            <CardHeader><CardTitle>Supplier</CardTitle></CardHeader>
-            <CardContent>
+           <Card className="gap-0 rounded-md border py-0 shadow-none ring-0">
+             <CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm font-semibold">Supplier</CardTitle></CardHeader>
+             <CardContent className="p-4">
               <div className="grid gap-5 sm:grid-cols-2">
                 <div>
-                  <p className="font-semibold text-neutral-950">{purchase.supplier.companyName}</p>
-                  <p className="mt-1 text-sm text-neutral-500">{purchase.supplier.name}</p>
+                   <p className="text-xs font-semibold text-foreground">{purchase.supplier.companyName}</p>
+                   <p className="mt-0.5 text-[11px] text-slate-500">{purchase.supplier.name}</p>
                 </div>
-                <div className="space-y-2 text-sm text-neutral-600">
+                 <div className="space-y-2 text-xs text-slate-600">
                   <p className="flex items-center gap-2"><Phone className="h-4 w-4 text-neutral-400" />{purchase.supplier.phone || "No phone provided"}</p>
                   <p className="flex items-center gap-2"><PackageCheck className="h-4 w-4 text-neutral-400" />{purchase.status === "CANCELLED" ? "Reversed" : purchase.status === "RECEIVED" ? "Fully received" : "Pending receipt"}</p>
                 </div>
@@ -181,18 +185,18 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
             </CardContent>
           </Card>
 
-          <Card className="shadow-none">
-            <CardHeader><CardTitle>Notes</CardTitle></CardHeader>
-            <CardContent>
-              <p className="text-sm leading-6 text-neutral-600">{purchase.notes || "No notes were added to this purchase."}</p>
+           <Card className="gap-0 rounded-md border py-0 shadow-none ring-0">
+             <CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm font-semibold">Notes</CardTitle></CardHeader>
+             <CardContent className="p-4">
+               <p className="text-xs leading-relaxed text-slate-600">{purchase.notes || "No notes were added to this purchase."}</p>
             </CardContent>
           </Card>
         </div>
 
         <div className="space-y-4 xl:sticky xl:top-6">
-          <Card className="shadow-none"><CardHeader><CardTitle>Purchase summary</CardTitle></CardHeader><CardContent className="space-y-3 text-sm"><SummaryRow label="Subtotal" value={formatPKR(purchase.subtotal)} />{purchase.discount > 0 && <SummaryRow label="Discount" value={`- ${formatPKR(purchase.discount)}`} />}<SummaryRow label="PO total" value={formatPKR(purchase.total)} /></CardContent></Card>
-          <Card className="shadow-none"><CardHeader><CardTitle>Receiving summary</CardTitle></CardHeader><CardContent className="space-y-3 text-sm"><SummaryRow label="Goods received value" value={formatPKR(purchase.goodsReceivedValue)} /><SummaryRow label="Remaining value to receive" value={formatPKR(purchase.remainingValueToReceive)} /></CardContent></Card>
-          <Card className="shadow-none"><CardHeader><CardTitle>Payment summary</CardTitle></CardHeader><CardContent className="space-y-3 text-sm"><SummaryRow label="Paid to supplier" value={formatPKR(purchase.paid)} /><div className="flex items-center justify-between bg-neutral-950 p-4 text-white"><span className="font-medium">Outstanding payable</span><span className="text-lg font-bold">{formatPKR(purchase.outstanding)}</span></div><Link href={`/suppliers/${purchase.supplier.id}`} className="inline-flex w-full items-center justify-center border px-3 py-2 font-semibold text-neutral-700 hover:bg-neutral-50">View supplier khata</Link></CardContent></Card>
+          <SummaryCard title="Purchase Order Summary"><SummaryRow label="Subtotal" value={formatPKR(purchase.subtotal)} />{purchase.discount > 0 && <SummaryRow label="Discount" value={`- ${formatPKR(purchase.discount)}`} />}<SummaryRow label="Ordered value" value={formatPKR(purchase.total)} strong /></SummaryCard>
+          <SummaryCard title="Receiving Summary"><SummaryRow label="Accepted GRN value" value={formatPKR(purchase.goodsReceivedValue)} /><SummaryRow label="Remaining order value" value={formatPKR(purchase.remainingValueToReceive)} strong /></SummaryCard>
+          <SummaryCard title="Payment Summary"><SummaryRow label="Paid to supplier" value={formatPKR(purchase.paid)} /><div className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-950"><span className="text-xs font-medium">Outstanding payable</span><span className="text-base font-semibold tabular-nums">{formatPKR(purchase.outstanding)}</span></div><Link href={`/suppliers/${purchase.supplier.id}`} className="inline-flex h-8 w-full items-center justify-center rounded-md border text-xs font-medium text-slate-700 hover:bg-slate-50">View Supplier Khata</Link></SummaryCard>
         </div>
       </div>
     </div>
@@ -201,18 +205,20 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
 
 function InfoCard({ icon: Icon, label, value }: { icon: typeof CalendarDays; label: string; value: string }) {
   return (
-    <Card size="sm" className="shadow-none">
-      <CardContent className="flex items-center gap-3">
-        <span className="rounded-lg bg-neutral-100 p-2 text-neutral-600"><Icon className="h-4 w-4" /></span>
+    <div className="flex items-center gap-2.5 px-4 py-3">
+        <span className="text-slate-400"><Icon className="size-3.5" /></span>
         <div>
-          <p className="text-xs text-neutral-500">{label}</p>
-          <p className="mt-0.5 font-semibold">{value}</p>
+          <p className="text-[10px] text-slate-500">{label}</p>
+          <p className="mt-0.5 text-xs font-semibold tabular-nums">{value}</p>
         </div>
-      </CardContent>
-    </Card>
+    </div>
   );
 }
 
-function SummaryRow({ label, value }: { label: string; value: string }) {
-  return <div className="flex items-center justify-between gap-4"><span className="text-neutral-500">{label}</span><span className="font-medium">{value}</span></div>;
+function SummaryCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return <Card className="gap-0 rounded-md border py-0 shadow-none ring-0"><CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm font-semibold">{title}</CardTitle></CardHeader><CardContent className="space-y-3 p-4 text-xs">{children}</CardContent></Card>;
+}
+
+function SummaryRow({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+  return <div className={`flex items-center justify-between gap-4 ${strong ? "border-t pt-3" : ""}`}><span className="text-slate-500">{label}</span><span className={`${strong ? "font-semibold" : "font-medium"} tabular-nums`}>{value}</span></div>;
 }

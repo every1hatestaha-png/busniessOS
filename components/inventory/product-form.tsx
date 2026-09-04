@@ -74,12 +74,13 @@ export function ProductForm({ product }: ProductFormProps) {
 
   return (
     <form onSubmit={handleSubmit(submit)} noValidate>
-      <Card className="shadow-none">
-        <CardHeader className="border-b">
+      <Card className="gap-0 py-0 shadow-none">
+        <CardHeader className="border-b px-5 py-4">
           <CardTitle>Product information</CardTitle>
-          <p className="text-sm text-neutral-500">{product ? "Update catalog and pricing details. Use stock adjustment to change quantity." : "Pricing is recorded in PKR. Kg products accept decimal quantities."}</p>
+          <p className="text-xs text-neutral-500">{product ? "Update catalog and pricing details. Use stock adjustment to change quantity." : "Pricing is recorded in PKR. Kg products accept decimal quantities."}</p>
         </CardHeader>
-        <CardContent className="grid gap-5 md:grid-cols-2">
+        <CardContent className="grid gap-x-5 gap-y-4 px-5 py-5 md:grid-cols-2">
+          <div className="md:col-span-2"><p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Catalog identity</p></div>
           <div className={fieldClass}>
             <label className={labelClass} htmlFor="name">Product name</label>
             <Input id="name" placeholder="e.g. Front Hub 150cc" aria-invalid={!!errors.name} {...register("name")} />
@@ -102,6 +103,7 @@ export function ProductForm({ product }: ProductFormProps) {
             </select>
           </div>
           {product && <div className={fieldClass}><label className={labelClass} htmlFor="status">Status</label><select id="status" className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm" {...register("status")}><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option><option value="ARCHIVED">Archived</option></select></div>}
+          <div className="border-t pt-4 md:col-span-2"><p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Pricing and stock controls</p></div>
           <div className={fieldClass}>
             <label className={labelClass} htmlFor="costPrice">Cost price</label>
             <Input id="costPrice" type="number" min="0" step="1" placeholder="0" aria-invalid={!!errors.costPrice} {...register("costPrice")} />
@@ -122,6 +124,7 @@ export function ProductForm({ product }: ProductFormProps) {
             <Input id="reorderLevel" type="number" min="0" step={qtyStep} aria-invalid={!!errors.reorderLevel} {...register("reorderLevel")} />
             {errors.reorderLevel && <p className={errorClass}>{errors.reorderLevel.message}</p>}
           </div>
+          <div className="border-t pt-4 md:col-span-2"><p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Product notes</p></div>
           <div className={`${fieldClass} md:col-span-2`}>
             <label className={labelClass} htmlFor="description">Description</label>
             <textarea id="description" rows={4} placeholder="Compatibility, specifications, or handling notes..." aria-invalid={!!errors.description} className="w-full resize-none rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-3 focus:ring-ring/50 aria-invalid:border-red-500" {...register("description")} />
@@ -134,9 +137,9 @@ export function ProductForm({ product }: ProductFormProps) {
             </div>
           )}
         </CardContent>
-        <CardFooter className="justify-end gap-2">
-          <Link href={product ? `/inventory/${product.id}` : "/inventory"} onClick={() => { try { localStorage.removeItem(draftKey); } catch {} }} className={buttonVariants({ variant: "outline" })}>Cancel</Link>
-          <Button type="submit" disabled={isPending}>{isPending ? "Saving..." : product ? "Save changes" : "Save product"}</Button>
+        <CardFooter className="justify-end gap-2 border-t px-5 py-4">
+          <Link href={product ? `/inventory/${product.id}` : "/inventory"} onClick={() => { try { localStorage.removeItem(draftKey); } catch {} }} className={buttonVariants({ variant: "outline", size: "sm" })}>Cancel</Link>
+          <Button type="submit" size="sm" disabled={isPending}>{isPending ? "Saving..." : product ? "Save changes" : "Save product"}</Button>
         </CardFooter>
       </Card>
     </form>

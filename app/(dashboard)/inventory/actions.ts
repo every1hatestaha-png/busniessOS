@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import {
   adjustProductStock,
+  archiveProduct,
   createProduct,
   ProductDomainError,
   StockAdjustmentRejectedError,
@@ -60,6 +61,23 @@ export async function updateProductAction(
     }
     if (error instanceof ProductDomainError) return { error: error.message };
     return { error: "The product could not be updated. Please try again." };
+  }
+
+  revalidatePath("/inventory");
+  revalidatePath(`/inventory/${id}`);
+  redirect(`/inventory/${id}`);
+}
+
+export async function archiveProductAction(
+  id: string,
+): Promise<ProductActionState> {
+  const context = await requirePermission("products.write");
+
+  try {
+    await archiveProduct({ ...context, userId: context.user.id }, id);
+  } catch (error) {
+    if (error instanceof ProductDomainError) return { error: error.message };
+    return { error: "The product could not be archived. Please try again." };
   }
 
   revalidatePath("/inventory");

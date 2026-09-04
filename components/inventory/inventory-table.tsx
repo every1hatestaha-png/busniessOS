@@ -13,17 +13,17 @@ import { cn, formatPKR, getStockStatus } from "@/lib/utils";
 
 export function InventoryTable({ products, canCreate = false }: { products: ProductDTO[]; canCreate?: boolean }) {
   const [query, setQuery] = useState("");
-  const [stockFilter, setStockFilter] = useState("ALL");
+  const [categoryFilter, setCategoryFilter] = useState("ALL");
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
   const categories = Array.from(new Set(products.map((product) => product.category)));
   const visibleProducts = products.filter((product) => {
     const matchesQuery = `${product.name} ${product.sku} ${product.category}`.toLowerCase().includes(deferredQuery);
-    return matchesQuery && (stockFilter === "ALL" || product.category === stockFilter);
+    return matchesQuery && (categoryFilter === "ALL" || product.category === categoryFilter);
   });
 
   if (products.length === 0) {
     return (
-      <Card className="items-center py-12 text-center shadow-none">
+      <Card className="items-center py-10 text-center shadow-none">
         <CardContent className="flex max-w-md flex-col items-center">
           <span className="mb-4 flex size-12 items-center justify-center rounded-xl bg-neutral-100 text-neutral-600"><PackagePlus className="size-5" /></span>
           <h2 className="font-semibold">Add your first product</h2>
@@ -36,10 +36,10 @@ export function InventoryTable({ products, canCreate = false }: { products: Prod
 
   return (
     <Card className="gap-0 py-0 shadow-none">
-      <CardHeader className="gap-3 border-b py-4 md:flex md:flex-row md:items-center md:justify-between">
+        <CardHeader className="gap-3 border-b px-4 py-3 md:flex md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="font-semibold">Product catalog</h2>
-          <p className="text-sm text-neutral-500">{visibleProducts.length} of {products.length} products</p>
+          <p className="text-xs text-neutral-500">{visibleProducts.length} of {products.length} products</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <label className="relative min-w-0 sm:w-72">
@@ -49,8 +49,8 @@ export function InventoryTable({ products, canCreate = false }: { products: Prod
           </label>
           <select
             aria-label="Filter by category"
-            value={stockFilter}
-            onChange={(event) => setStockFilter(event.target.value)}
+            value={categoryFilter}
+            onChange={(event) => setCategoryFilter(event.target.value)}
             className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/50"
           >
             <option value="ALL">All categories</option>
@@ -59,14 +59,15 @@ export function InventoryTable({ products, canCreate = false }: { products: Prod
         </div>
       </CardHeader>
       <CardContent className="p-0">
-        <Table>
+        <div className="overflow-x-auto"><Table className="min-w-[860px]">
           <TableHeader className="bg-neutral-50/80">
             <TableRow>
               <TableHead className="pl-4">Product</TableHead>
-              <TableHead className="hidden md:table-cell">Category</TableHead>
+              <TableHead>Category</TableHead>
               <TableHead className="text-right">Stock</TableHead>
-              <TableHead className="hidden text-right sm:table-cell">Selling price</TableHead>
-              <TableHead className="hidden lg:table-cell">Status</TableHead>
+              <TableHead className="text-right">Cost</TableHead>
+              <TableHead className="text-right">Selling</TableHead>
+              <TableHead>Status</TableHead>
               <TableHead className="w-12"><span className="sr-only">Open</span></TableHead>
             </TableRow>
           </TableHeader>
@@ -79,14 +80,14 @@ export function InventoryTable({ products, canCreate = false }: { products: Prod
                     <Link href={`/inventory/${product.id}`} className="font-medium text-neutral-950 hover:underline">{product.name}</Link>
                     <p className="mt-0.5 font-mono text-xs text-neutral-500">{product.sku}</p>
                   </TableCell>
-                  <TableCell className="hidden text-neutral-600 md:table-cell">{product.category}</TableCell>
+                   <TableCell className="text-neutral-600">{product.category}</TableCell>
                   <TableCell className="text-right">
                     <span className="font-semibold tabular-nums">{product.stockQuantity}</span>
                     <span className="ml-1 text-xs text-neutral-500">{product.unit.toLowerCase()}</span>
-                    <div className="mt-1 lg:hidden"><StatusBadge status={stockStatus} /></div>
-                  </TableCell>
-                  <TableCell className="hidden text-right font-medium tabular-nums sm:table-cell">{formatPKR(product.sellingPrice)}</TableCell>
-                  <TableCell className="hidden lg:table-cell"><div className="flex flex-wrap gap-1"><StatusBadge status={product.status} /><StatusBadge status={stockStatus} /></div></TableCell>
+                   </TableCell>
+                   <TableCell className="text-right tabular-nums text-neutral-600">{formatPKR(product.costPrice)}</TableCell>
+                   <TableCell className="text-right font-medium tabular-nums">{formatPKR(product.sellingPrice)}</TableCell>
+                   <TableCell><div className="flex flex-wrap gap-1"><StatusBadge status={product.status} /><StatusBadge status={stockStatus} /></div></TableCell>
                   <TableCell className="pr-3 text-right">
                     <Link href={`/inventory/${product.id}`} aria-label={`View ${product.name}`} className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "inline-flex")}><ArrowUpRight className="h-4 w-4" /></Link>
                   </TableCell>
@@ -94,10 +95,10 @@ export function InventoryTable({ products, canCreate = false }: { products: Prod
               );
             })}
             {visibleProducts.length === 0 && (
-              <TableRow><TableCell colSpan={6} className="h-32 text-center text-neutral-500">No products match your search.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="h-28 text-center text-neutral-500">No products match the current filters.</TableCell></TableRow>
             )}
           </TableBody>
-        </Table>
+        </Table></div>
       </CardContent>
     </Card>
   );

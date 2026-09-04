@@ -84,7 +84,7 @@ export function SupplierPaymentForm({ supplierId, cashBankAccounts = [] }: { sup
       }}
     >
       <div className="mb-4 flex items-start justify-between gap-4">
-        <div><h2 className="font-semibold">Bank payment voucher</h2><p className="mt-1 text-sm text-neutral-500">Allocate gross settlement against open purchase bills. WHT is deducted from the net bank payment.</p></div>
+        <div><h2 className="font-semibold">Supplier payment voucher</h2><p className="mt-1 text-xs text-neutral-500">Allocate gross settlement against open purchase bills. WHT is deducted from the net cash/bank payment.</p></div>
         <div className="rounded-lg bg-neutral-950 px-3 py-2 text-right text-white"><p className="text-xs text-neutral-300">Net payment</p><p className="font-semibold tabular-nums">{formatPKR(net)}</p></div>
       </div>
       <div className="grid gap-3 lg:grid-cols-6">
@@ -146,8 +146,8 @@ export function SupplierPaymentForm({ supplierId, cashBankAccounts = [] }: { sup
       <textarea name="notes" rows={2} className="mt-3 w-full rounded-md border border-neutral-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-200" placeholder="Voucher notes" />
       {cashBankAccounts.length === 0 && <p className="mt-3 text-sm text-red-600">Create a cash/bank account before recording supplier vouchers.</p>}
       {gross === 0 && purchases.length > 0 && <p className="mt-3 text-sm text-amber-600">Allocate at least one purchase bill before recording.</p>}
-      {message && <p className="mt-3 text-sm text-neutral-700">{message}</p>}
-      <Button type="submit" disabled={busy || cashBankAccounts.length === 0 || gross === 0} className="mt-3">{busy ? "Recording..." : "Record voucher"}</Button>
+       {message && <p role={message === "Voucher recorded." ? "status" : "alert"} className="mt-3 text-sm text-neutral-700">{message}</p>}
+       <Button type="submit" size="sm" disabled={busy || cashBankAccounts.length === 0 || gross === 0} className="mt-3">{busy ? "Recording..." : "Record voucher"}</Button>
     </form>
   );
 }

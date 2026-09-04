@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 import { PurchaseForm } from "@/components/purchases/purchase-form";
 import { requirePermission } from "@/lib/server/authorization";
@@ -12,13 +12,13 @@ export default async function NewPurchasePage() {
     db.product.findMany({ where: { workspaceId, status: "ACTIVE" }, select: { id: true, name: true, unit: true }, orderBy: { name: "asc" } }),
   ]);
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-[1600px] space-y-6">
       <div>
-        <Link href="/purchases" className="mb-3 inline-flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-900">
-          <ChevronLeft className="h-4 w-4" />Purchases
+        <Link href="/purchases" className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-900">
+          <ArrowLeft className="size-3.5" />Purchases
         </Link>
-        <h1 className="text-2xl font-bold tracking-tight md:text-3xl">New Purchase Order</h1>
-        <p className="mt-1 text-sm text-neutral-500">Create a commercial purchase order. Goods receipt and inventory are recorded separately.</p>
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">New Purchase Order</h1>
+        <p className="mt-0.5 text-xs text-slate-500">Creates an order commitment only. Inventory and payable are recorded through a GRN.</p>
       </div>
       <PurchaseForm suppliers={suppliers} products={products} />
     </div>

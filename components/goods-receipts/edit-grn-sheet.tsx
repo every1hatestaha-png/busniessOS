@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { formatPKR } from "@/lib/utils";
 
 type GrnItem = {
@@ -21,6 +21,11 @@ type GrnItem = {
   unitCost: number;
   totalCost: number;
   unit: string;
+  perKgRate: number | null;
+  receivedWeightKg: number | null;
+  acceptedWeightKg: number | null;
+  ratePerKg: number | null;
+  lineAmount: number | null;
 };
 
 type EditableGrn = {
@@ -45,15 +50,33 @@ export function EditGrnSheet({ grn }: { grn: EditableGrn }) {
       receivedQuantity: String(item.receivedNow),
       acceptedQuantity: String(item.acceptedQuantity),
       actualUnitCost: String(item.unitCost),
+      receivedWeightKg: item.receivedWeightKg != null ? String(item.receivedWeightKg) : "",
+      acceptedWeightKg: item.acceptedWeightKg != null ? String(item.acceptedWeightKg) : "",
+      ratePerKg: item.ratePerKg != null ? String(item.ratePerKg) : "",
     }))
   );
 
   function updateItem(index: number, field: string, value: string) {
-    setItems((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
+    setItems((prev) => prev.map((r, i) => {
+      if (i !== index) return r;
+      const updated = { ...r, [field]: value };
+      const item = grn.items[index];
+      if (item?.perKgRate != null) {
+        if (field === "receivedQuantity") updated.receivedWeightKg = value;
+        if (field === "acceptedQuantity") updated.acceptedWeightKg = value;
+      }
+      return updated;
+    }));
   }
 
   function computeTotal(): number {
-    return items.reduce((sum, r) => {
+    return items.reduce((sum, r, index) => {
+      const item = grn.items[index];
+      if (item?.perKgRate) {
+        const acceptedWeight = Number(r.acceptedWeightKg) || 0;
+        const rate = Number(r.ratePerKg) || 0;
+        return sum + acceptedWeight * rate;
+      }
       const accepted = Number(r.acceptedQuantity) || 0;
       const cost = Number(r.actualUnitCost);
       return sum + accepted * cost;
@@ -70,12 +93,20 @@ export function EditGrnSheet({ grn }: { grn: EditableGrn }) {
       notes: form.get("notes") || "",
       receivedBy: form.get("receivedBy") || "",
       checkedBy: form.get("checkedBy") || "",
-      items: items.map((r) => ({
-        purchaseOrderItemId: r.purchaseOrderItemId,
-        receivedQuantity: Number(r.receivedQuantity),
-        acceptedQuantity: Number(r.acceptedQuantity),
-        actualUnitCost: Number(r.actualUnitCost),
-      })),
+      items: items.map((r, index) => {
+        const item = grn.items[index];
+        const isWeighted = item?.perKgRate != null;
+        const base = {
+          purchaseOrderItemId: r.purchaseOrderItemId,
+          receivedQuantity: Number(r.receivedQuantity),
+          acceptedQuantity: Number(r.acceptedQuantity),
+          actualUnitCost: Number(r.actualUnitCost),
+        };
+        if (isWeighted) {
+          return { ...base, receivedWeightKg: Number(r.receivedWeightKg) || 0, acceptedWeightKg: Number(r.acceptedWeightKg) || 0, ratePerKg: Number(r.ratePerKg) || 0 };
+        }
+        return base;
+      }),
     };
 
     try {
@@ -108,35 +139,40 @@ export function EditGrnSheet({ grn }: { grn: EditableGrn }) {
           </Button>
         }
       />
-      <SheetContent side="right" className="w-full max-w-2xl overflow-y-auto sm:max-w-2xl">
-        <SheetHeader>
+      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-3xl">
+        <SheetHeader className="border-b">
           <SheetTitle>Edit {grn.grnNumber}</SheetTitle>
+          <SheetDescription>Adjust receipt metadata and quantities. Inventory, payable, and General Ledger differences are applied atomically.</SheetDescription>
         </SheetHeader>
         <form onSubmit={handleSubmit} className="space-y-4 px-4 pb-4">
           <div className="grid gap-3 md:grid-cols-2">
             <div>
-              <label className="text-xs text-neutral-500">Received by</label>
+              <label className="text-xs font-medium text-slate-700">Received by</label>
               <Input name="receivedBy" defaultValue={grn.receivedBy ?? ""} placeholder="Received by" className="mt-1" />
             </div>
             <div>
-              <label className="text-xs text-neutral-500">Checked by</label>
+              <label className="text-xs font-medium text-slate-700">Checked by</label>
               <Input name="checkedBy" defaultValue={grn.checkedBy ?? ""} placeholder="Checked by" className="mt-1" />
             </div>
           </div>
 
           <div className="space-y-2">
-            <h4 className="text-sm font-semibold">Line Items</h4>
-            <div className="grid gap-2 text-xs font-medium text-neutral-500" style={{ gridTemplateColumns: "1fr 80px 80px 100px" }}>
-              <span>Product</span>
+            <div><h4 className="text-sm font-semibold">Receipt Lines</h4><p className="mt-0.5 text-[11px] text-slate-500">Accepted cannot exceed physically received quantity. The server remains authoritative for PO capacity.</p></div>
+            <div className="grid grid-cols-[minmax(170px,1fr)_90px_90px_90px_110px] gap-2 rounded-t-md border bg-slate-50 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              <span>Product / Capacity</span>
               <span className="text-right">Received</span>
               <span className="text-right">Accepted</span>
               <span className="text-right">Rate / Cost</span>
+              <span className="text-right">Accepted value</span>
             </div>
-            {grn.items.map((item, index) => (
-              <div key={item.purchaseOrderItemId} className="grid gap-2" style={{ gridTemplateColumns: "1fr 80px 80px 100px" }}>
-                <div className="flex h-8 items-center text-sm">
-                  {item.productName}
-                  {item.sku && <span className="ml-1 font-mono text-xs text-neutral-400">{item.sku}</span>}
+            {grn.items.map((item, index) => {
+              const isWeighted = item.perKgRate != null;
+              return (
+              <div key={item.purchaseOrderItemId} className="grid grid-cols-[minmax(170px,1fr)_90px_90px_90px_110px] items-start gap-2 border-x border-b px-3 py-2.5 last:rounded-b-md">
+                <div className="text-xs">
+                  <p className="font-medium">{item.productName}</p>
+                  <p className="mt-0.5 text-[10px] text-slate-500">Ordered {item.orderedQuantity} · prev. accepted {item.previouslyReceived} · remaining {item.remainingQuantity} {item.unit.toLowerCase()}</p>
+                  {isWeighted && <p className="text-[10px] text-slate-500">{item.ratePerKg != null ? `${formatPKR(item.ratePerKg)}/kg` : ""}</p>}
                 </div>
                 <Input
                   type="number"
@@ -153,45 +189,60 @@ export function EditGrnSheet({ grn }: { grn: EditableGrn }) {
                   value={items[index]?.acceptedQuantity ?? ""}
                   onChange={(e) => updateItem(index, "acceptedQuantity", e.target.value)}
                   className="text-right"
+                  max={Number(items[index]?.receivedQuantity || 0)}
                 />
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={items[index]?.actualUnitCost ?? ""}
-                  onChange={(e) => updateItem(index, "actualUnitCost", e.target.value)}
-                  className="text-right"
-                />
+                {isWeighted ? (
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={items[index]?.ratePerKg ?? ""}
+                    onChange={(e) => updateItem(index, "ratePerKg", e.target.value)}
+                    className="text-right"
+                  />
+                ) : (
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={items[index]?.actualUnitCost ?? ""}
+                    onChange={(e) => updateItem(index, "actualUnitCost", e.target.value)}
+                    className="text-right"
+                  />
+                )}
+                <div className="flex h-8 items-center justify-end text-xs font-semibold tabular-nums">
+                  {isWeighted
+                    ? formatPKR((Number(items[index]?.acceptedWeightKg) || 0) * (Number(items[index]?.ratePerKg) || 0))
+                    : formatPKR((Number(items[index]?.acceptedQuantity) || 0) * (Number(items[index]?.actualUnitCost) || 0))
+                  }
+                </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           <div>
-            <label className="text-xs text-neutral-500">Notes</label>
+            <label className="text-xs font-medium text-slate-700">Notes</label>
             <textarea
               name="notes"
               defaultValue={grn.notes ?? ""}
               placeholder="Notes (optional)"
               rows={2}
-              className="mt-1 w-full border bg-white px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-md border bg-white px-2.5 py-2 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
               maxLength={1000}
             />
           </div>
 
           <div className="flex items-center justify-between border-t pt-4">
             <div>
-              <span className="text-sm text-neutral-500">Updated total:</span>
-              <span className="ml-2 text-lg font-bold">
+              <span className="text-xs text-slate-500">Updated accepted value:</span>
+              <span className="ml-2 text-lg font-semibold tabular-nums">
                 {formatPKR(computeTotal())}
               </span>
             </div>
-            <div className="flex items-center gap-3">
-              {message && <p className="text-sm text-red-600">{message}</p>}
-              <Button type="submit" disabled={busy}>
-                {busy ? "Saving..." : "Save Changes"}
-              </Button>
-            </div>
+            {message && <p className="text-xs text-red-600">{message}</p>}
           </div>
+          <SheetFooter className="-mx-4 -mb-4 border-t"><Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={busy}>Cancel</Button><Button type="submit" disabled={busy}>{busy ? "Saving..." : "Save Changes"}</Button></SheetFooter>
         </form>
       </SheetContent>
     </Sheet>

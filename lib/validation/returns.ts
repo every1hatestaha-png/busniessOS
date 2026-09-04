@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const returnItemSchema = z.object({ itemId: z.uuid(), quantity: z.coerce.number().positive() });
+const returnItemSchema = z.object({ itemId: z.uuid(), quantity: z.coerce.number().positive(), returnedWeightKg: z.coerce.number().nonnegative().optional() });
 
 export const customerReturnSchema = z.object({
   salesOrderId: z.uuid(),

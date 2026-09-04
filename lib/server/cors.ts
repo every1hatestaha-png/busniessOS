@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 const ALLOWED_METHODS = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
-const ALLOWED_HEADERS = "Authorization, Content-Type";
+const ALLOWED_HEADERS = "Authorization, Content-Type, Idempotency-Key";
 const EXPO_WEB_DEV_PORTS = new Set(["8081", "8082", "8083", "19006"]);
 
 export function isApiV1Request(pathname: string) {

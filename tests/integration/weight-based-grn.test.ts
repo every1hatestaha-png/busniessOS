@@ -6,6 +6,10 @@ let createPurchase: typeof import("@/lib/server/purchases")["createPurchase"];
 let createGoodsReceipt: typeof import("@/lib/server/purchases")["createGoodsReceipt"];
 let cancelPurchase: typeof import("@/lib/server/purchases")["cancelPurchase"];
 let getOpenPOItemsForGRN: typeof import("@/lib/server/purchases")["getOpenPOItemsForGRN"];
+let getGoodsReceipt: typeof import("@/lib/server/purchases")["getGoodsReceipt"];
+let updateGoodsReceipt: typeof import("@/lib/server/purchases")["updateGoodsReceipt"];
+let voidGoodsReceipt: typeof import("@/lib/server/purchases")["voidGoodsReceipt"];
+let createSupplierReturn: typeof import("@/lib/server/purchases")["createSupplierReturn"];
 let ensureDefaultAccounts: typeof import("@/lib/server/accounting")["ensureDefaultAccounts"];
 
 const runId = randomUUID();
@@ -38,6 +42,10 @@ describe("Weight-based GRN and decimal quantity integration", () => {
     ({ createGoodsReceipt } = await import("@/lib/server/purchases"));
     ({ cancelPurchase } = await import("@/lib/server/purchases"));
     ({ getOpenPOItemsForGRN } = await import("@/lib/server/purchases"));
+    ({ getGoodsReceipt } = await import("@/lib/server/purchases"));
+    ({ updateGoodsReceipt } = await import("@/lib/server/purchases"));
+    ({ voidGoodsReceipt } = await import("@/lib/server/purchases"));
+    ({ createSupplierReturn } = await import("@/lib/server/purchases"));
     ({ ensureDefaultAccounts } = await import("@/lib/server/accounting"));
 
     const user = await db.user.create({ data: { clerkId: `wt-${runId}`, email: `wt-${runId}@example.invalid` } });
@@ -61,11 +69,12 @@ describe("Weight-based GRN and decimal quantity integration", () => {
     if (!db) return;
     await db.generalLedgerEntry.deleteMany({ where: { workspaceId } });
     await db.ledgerEntry.deleteMany({ where: { workspaceId } });
+    await db.debitNote.deleteMany({ where: { workspaceId } });
     await db.inventoryTransaction.deleteMany({ where: { workspaceId } });
-    await db.goodReceivedNoteItem.deleteMany({ where: { goodReceivedNote: { workspaceId } } });
-    await db.goodReceivedNote.deleteMany({ where: { workspaceId } });
     await db.supplierReturnItem.deleteMany({ where: { supplierReturn: { workspaceId } } });
     await db.supplierReturn.deleteMany({ where: { workspaceId } });
+    await db.goodReceivedNoteItem.deleteMany({ where: { goodReceivedNote: { workspaceId } } });
+    await db.goodReceivedNote.deleteMany({ where: { workspaceId } });
     await db.purchaseOrderItem.deleteMany({ where: { purchaseOrder: { workspaceId } } });
     await db.purchaseOrder.deleteMany({ where: { workspaceId } });
     await db.product.deleteMany({ where: { workspaceId } });
@@ -312,5 +321,449 @@ describe("Weight-based GRN and decimal quantity integration", () => {
     const stockAfter = await db.product.findUniqueOrThrow({ where: { id: kgProductId }, select: { stockQuantity: true } });
 
     expect(stockAfter.stockQuantity.toNumber()).toBe(stockBefore.stockQuantity.toNumber());
+  });
+
+  describe("GRN weight fields lifecycle", () => {
+    it("persists weight fields on GRN item for weighted receipt", async () => {
+      const order = await createPurchase(context(), {
+        supplierId,
+        items: [{ productId: kgProductId, quantity: 10, unitCost: 286, perKgRate: 286, unitWeight: 1 }],
+        pricingMode: "WEIGHT",
+        idempotencyKey: `wt-fields-po-${runId}`,
+      });
+      const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: order.id } });
+
+      const grn = await createGoodsReceipt(context(), {
+        purchaseOrderId: order.id,
+        items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 4.6, acceptedQuantity: 4.6, actualUnitCost: 286, receivedWeightKg: 4.6, acceptedWeightKg: 4.6, ratePerKg: 286 }],
+        idempotencyKey: `wt-fields-grn-${runId}`,
+      });
+
+      const grnItem = await db.goodReceivedNoteItem.findFirstOrThrow({ where: { goodReceivedNoteId: grn.id } });
+      expect(grnItem.receivedWeightKg?.toNumber()).toBeCloseTo(4.6, 3);
+      expect(grnItem.acceptedWeightKg?.toNumber()).toBeCloseTo(4.6, 3);
+      expect(grnItem.ratePerKg?.toNumber()).toBeCloseTo(286, 2);
+      expect(grnItem.lineAmount?.toNumber()).toBeCloseTo(4.6 * 286, 2);
+    });
+
+    it("lineAmount = acceptedWeightKg x ratePerKg for weighted GRN", async () => {
+      const order = await createPurchase(context(), {
+        supplierId,
+        items: [{ productId: kgProductId, quantity: 20, unitCost: 200, perKgRate: 200, unitWeight: 1 }],
+        pricingMode: "WEIGHT",
+        idempotencyKey: `wt-line-po-${runId}`,
+      });
+      const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: order.id } });
+
+      const grn = await createGoodsReceipt(context(), {
+        purchaseOrderId: order.id,
+        items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 7.25, acceptedQuantity: 7, actualUnitCost: 200, receivedWeightKg: 7.25, acceptedWeightKg: 7, ratePerKg: 200 }],
+        idempotencyKey: `wt-line-grn-${runId}`,
+      });
+
+      const grnItem = await db.goodReceivedNoteItem.findFirstOrThrow({ where: { goodReceivedNoteId: grn.id } });
+      expect(grnItem.lineAmount?.toNumber()).toBeCloseTo(1400, 2);
+      expect(grnItem.totalCost.toNumber()).toBeCloseTo(1400, 2);
+
+      const grnRecord = await db.goodReceivedNote.findUniqueOrThrow({ where: { id: grn.id } });
+      expect(grnRecord.totalAmount.toNumber()).toBeCloseTo(1400, 2);
+    });
+
+    it("weighted GRN edit recalculates lineAmount correctly", async () => {
+      const order = await createPurchase(context(), {
+        supplierId,
+        items: [{ productId: kgProductId, quantity: 30, unitCost: 150, perKgRate: 150, unitWeight: 1 }],
+        pricingMode: "WEIGHT",
+        idempotencyKey: `wt-edit-po-${runId}`,
+      });
+      const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: order.id } });
+
+      const grn = await createGoodsReceipt(context(), {
+        purchaseOrderId: order.id,
+        items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 10, acceptedQuantity: 10, actualUnitCost: 150, receivedWeightKg: 10, acceptedWeightKg: 10, ratePerKg: 150 }],
+        idempotencyKey: `wt-edit-grn-${runId}`,
+      });
+
+      const grnItemBefore = await db.goodReceivedNoteItem.findFirstOrThrow({ where: { goodReceivedNoteId: grn.id } });
+      expect(grnItemBefore.lineAmount?.toNumber()).toBeCloseTo(1500, 2);
+
+      await updateGoodsReceipt(context(), grn.id, {
+        items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 12, acceptedQuantity: 12, actualUnitCost: 150, receivedWeightKg: 12, acceptedWeightKg: 12, ratePerKg: 150 }],
+      });
+
+      const grnItemAfter = await db.goodReceivedNoteItem.findFirstOrThrow({ where: { goodReceivedNoteId: grn.id } });
+      expect(grnItemAfter.lineAmount?.toNumber()).toBeCloseTo(1800, 2);
+      expect(grnItemAfter.totalCost.toNumber()).toBeCloseTo(1800, 2);
+    });
+
+    it("weighted GRN getGoodsReceipt returns weight fields", async () => {
+      const order = await createPurchase(context(), {
+        supplierId,
+        items: [{ productId: kgProductId, quantity: 15, unitCost: 300, perKgRate: 300, unitWeight: 1 }],
+        pricingMode: "WEIGHT",
+        idempotencyKey: `wt-get-po-${runId}`,
+      });
+      const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: order.id } });
+
+      const grn = await createGoodsReceipt(context(), {
+        purchaseOrderId: order.id,
+        items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 5.5, acceptedQuantity: 5.5, actualUnitCost: 300, receivedWeightKg: 5.5, acceptedWeightKg: 5.5, ratePerKg: 300 }],
+        idempotencyKey: `wt-get-grn-${runId}`,
+      });
+
+      const detail = await getGoodsReceipt(workspaceId, grn.id);
+      expect(detail).not.toBeNull();
+      const item = detail!.items[0];
+      expect(item.receivedWeightKg).toBeCloseTo(5.5, 3);
+      expect(item.acceptedWeightKg).toBeCloseTo(5.5, 3);
+      expect(item.ratePerKg).toBeCloseTo(300, 2);
+      expect(item.lineAmount).toBeCloseTo(1650, 2);
+    });
+
+    it("weighted GRN void reverses inventory and GL correctly", async () => {
+      const order = await createPurchase(context(), {
+        supplierId,
+        items: [{ productId: kgProductId, quantity: 25, unitCost: 250, perKgRate: 250, unitWeight: 1 }],
+        pricingMode: "WEIGHT",
+        idempotencyKey: `wt-void-po-${runId}`,
+      });
+      const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: order.id } });
+
+      const stockBefore = await db.product.findUniqueOrThrow({ where: { id: kgProductId }, select: { stockQuantity: true } });
+      const supplierBefore = await db.supplier.findUniqueOrThrow({ where: { id: supplierId }, select: { currentBalance: true } });
+
+      const grn = await createGoodsReceipt(context(), {
+        purchaseOrderId: order.id,
+        items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 8, acceptedQuantity: 8, actualUnitCost: 250, receivedWeightKg: 8, acceptedWeightKg: 8, ratePerKg: 250 }],
+        idempotencyKey: `wt-void-grn-${runId}`,
+      });
+
+      const glBefore = await glLines(grn.id);
+      expect(journalBalanced(glBefore).balanced).toBe(true);
+
+      await voidGoodsReceipt(context(), grn.id, { voidedReason: "Test void" });
+
+      const stockAfter = await db.product.findUniqueOrThrow({ where: { id: kgProductId }, select: { stockQuantity: true } });
+      expect(stockAfter.stockQuantity.toNumber()).toBeCloseTo(stockBefore.stockQuantity.toNumber(), 4);
+
+      const supplierAfter = await db.supplier.findUniqueOrThrow({ where: { id: supplierId }, select: { currentBalance: true } });
+      expect(Number(supplierAfter.currentBalance)).toBeCloseTo(Number(supplierBefore.currentBalance), 2);
+
+      const grnAfter = await db.goodReceivedNote.findUniqueOrThrow({ where: { id: grn.id } });
+      expect(grnAfter.status).toBe("VOIDED");
+    });
+
+    it("weighted GRN with partial rejection calculates lineAmount on accepted weight only", async () => {
+      const order = await createPurchase(context(), {
+        supplierId,
+        items: [{ productId: kgProductId, quantity: 20, unitCost: 180, perKgRate: 180, unitWeight: 1 }],
+        pricingMode: "WEIGHT",
+        idempotencyKey: `wt-reject-po-${runId}`,
+      });
+      const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: order.id } });
+
+      const stockBefore = await db.product.findUniqueOrThrow({ where: { id: kgProductId }, select: { stockQuantity: true } });
+
+      const grn = await createGoodsReceipt(context(), {
+        purchaseOrderId: order.id,
+        items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 10, acceptedQuantity: 8, actualUnitCost: 180, receivedWeightKg: 10, acceptedWeightKg: 8, ratePerKg: 180 }],
+        idempotencyKey: `wt-reject-grn-${runId}`,
+      });
+
+      const grnItem = await db.goodReceivedNoteItem.findFirstOrThrow({ where: { goodReceivedNoteId: grn.id } });
+      expect(grnItem.receivedWeightKg?.toNumber()).toBeCloseTo(10, 3);
+      expect(grnItem.acceptedWeightKg?.toNumber()).toBeCloseTo(8, 3);
+      expect(grnItem.lineAmount?.toNumber()).toBeCloseTo(1440, 2);
+      expect(grnItem.totalCost.toNumber()).toBeCloseTo(1440, 2);
+
+      const stockAfter = await db.product.findUniqueOrThrow({ where: { id: kgProductId }, select: { stockQuantity: true } });
+      expect(stockAfter.stockQuantity.toNumber() - stockBefore.stockQuantity.toNumber()).toBeCloseTo(8, 4);
+    });
+
+    it("GL entries, supplier balance, and PO balance use acceptedWeightKg x ratePerKg when weights differ", async () => {
+      const order = await createPurchase(context(), {
+        supplierId,
+        items: [{ productId: kgProductId, quantity: 30, unitCost: 420, perKgRate: 420, unitWeight: 1 }],
+        pricingMode: "WEIGHT",
+        idempotencyKey: randomUUID(),
+      });
+      const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: order.id } });
+
+      const supplierBefore = await db.supplier.findUniqueOrThrow({ where: { id: supplierId }, select: { currentBalance: true } });
+      const poBefore = await db.purchaseOrder.findUniqueOrThrow({ where: { id: order.id }, select: { balanceAmount: true } });
+
+      const grn = await createGoodsReceipt(context(), {
+        purchaseOrderId: order.id,
+        items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 20, acceptedQuantity: 20, actualUnitCost: 420, receivedWeightKg: 25, acceptedWeightKg: 20, ratePerKg: 420 }],
+        idempotencyKey: randomUUID(),
+      });
+
+      const expectedFinancial = 20 * 420;
+      const rejectedFinancial = 25 * 420;
+
+      const grnItem = await db.goodReceivedNoteItem.findFirstOrThrow({ where: { goodReceivedNoteId: grn.id } });
+      expect(grnItem.lineAmount?.toNumber()).toBeCloseTo(expectedFinancial, 2);
+      expect(grnItem.totalCost.toNumber()).toBeCloseTo(expectedFinancial, 2);
+
+      const grnRecord = await db.goodReceivedNote.findUniqueOrThrow({ where: { id: grn.id } });
+      expect(grnRecord.totalAmount.toNumber()).toBeCloseTo(expectedFinancial, 2);
+
+      const gl = await db.generalLedgerEntry.findMany({ where: { sourceType: "PURCHASE_RECEIPT", sourceId: grn.id }, include: { account: true } });
+      const totalDebit = gl.reduce((sum, e) => sum + Number(e.debit), 0);
+      const totalCredit = gl.reduce((sum, e) => sum + Number(e.credit), 0);
+      expect(totalDebit).toBeCloseTo(expectedFinancial, 2);
+      expect(totalCredit).toBeCloseTo(expectedFinancial, 2);
+      expect(Math.abs(totalDebit - totalCredit)).toBeLessThan(0.01);
+
+      const inventoryEntry = gl.find((e) => e.account?.category === "ASSET");
+      expect(inventoryEntry).toBeDefined();
+      expect(Number(inventoryEntry!.debit)).toBeCloseTo(expectedFinancial, 2);
+
+      const supplierAfter = await db.supplier.findUniqueOrThrow({ where: { id: supplierId }, select: { currentBalance: true } });
+      expect(supplierAfter.currentBalance.toNumber() - supplierBefore.currentBalance.toNumber()).toBeCloseTo(expectedFinancial, 2);
+
+      const poAfter = await db.purchaseOrder.findUniqueOrThrow({ where: { id: order.id }, select: { balanceAmount: true } });
+      expect(poAfter.balanceAmount.toNumber() - poBefore.balanceAmount.toNumber()).toBeCloseTo(expectedFinancial, 2);
+
+      expect(rejectedFinancial).not.toBe(expectedFinancial);
+    });
+  });
+
+  describe("Weighted supplier return valuation", () => {
+    it("A: partial supplier return from weighted GRN uses ratePerKg", async () => {
+      const order = await createPurchase(context(), {
+        supplierId,
+        items: [{ productId: kgProductId, quantity: 50, unitCost: 300, perKgRate: 300, unitWeight: 1 }],
+        pricingMode: "WEIGHT",
+        idempotencyKey: `wt-sr-a-po-${runId}`,
+      });
+      const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: order.id } });
+      const grn = await createGoodsReceipt(context(), {
+        purchaseOrderId: order.id,
+        items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 50, acceptedQuantity: 50, actualUnitCost: 300, receivedWeightKg: 50, acceptedWeightKg: 50, ratePerKg: 300 }],
+        idempotencyKey: `wt-sr-a-grn-${runId}`,
+      });
+      const supplierBefore = await db.supplier.findUniqueOrThrow({ where: { id: supplierId }, select: { currentBalance: true } });
+      const stockBefore = await db.product.findUniqueOrThrow({ where: { id: kgProductId }, select: { stockQuantity: true } });
+
+      const ret = await createSupplierReturn(context(), {
+        purchaseOrderId: order.id,
+        goodReceivedNoteId: grn.id,
+        items: [{ itemId: poItem.id, quantity: 20, returnedWeightKg: 20 }],
+        reason: "Partial return test",
+        notes: "",
+        idempotencyKey: `wt-sr-a-ret-${runId}`,
+      });
+
+      const retItem = await db.supplierReturnItem.findFirstOrThrow({ where: { supplierReturnId: ret.id } });
+      expect(retItem.returnedWeightKg?.toNumber()).toBeCloseTo(20, 3);
+      expect(retItem.ratePerKg?.toNumber()).toBeCloseTo(300, 2);
+      expect(retItem.totalCost.toNumber()).toBeCloseTo(6000, 2);
+
+      const supplierAfter = await db.supplier.findUniqueOrThrow({ where: { id: supplierId }, select: { currentBalance: true } });
+      expect(Number(supplierBefore.currentBalance) - Number(supplierAfter.currentBalance)).toBeCloseTo(6000, 2);
+
+      const stockAfter = await db.product.findUniqueOrThrow({ where: { id: kgProductId }, select: { stockQuantity: true } });
+      expect(stockBefore.stockQuantity.toNumber() - stockAfter.stockQuantity.toNumber()).toBeCloseTo(20, 4);
+
+      const gl = await glLines(ret.id);
+      expect(journalBalanced(gl).balanced).toBe(true);
+      expect(sum(gl, "ACCOUNTS_PAYABLE", "debit")).toBeCloseTo(6000, 2);
+    });
+
+    it("B: returned quantity differs from returned kilograms", async () => {
+      const order = await createPurchase(context(), {
+        supplierId,
+        items: [{ productId: kgProductId, quantity: 100, unitCost: 420, perKgRate: 420, unitWeight: 2.5 }],
+        pricingMode: "WEIGHT",
+        idempotencyKey: `wt-sr-b-po-${runId}`,
+      });
+      const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: order.id } });
+      const grn = await createGoodsReceipt(context(), {
+        purchaseOrderId: order.id,
+        items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 100, acceptedQuantity: 100, actualUnitCost: 420, receivedWeightKg: 250, acceptedWeightKg: 250, ratePerKg: 420 }],
+        idempotencyKey: `wt-sr-b-grn-${runId}`,
+      });
+
+      const ret = await createSupplierReturn(context(), {
+        purchaseOrderId: order.id,
+        goodReceivedNoteId: grn.id,
+        items: [{ itemId: poItem.id, quantity: 20, returnedWeightKg: 50 }],
+        reason: "Weight differs from qty",
+        notes: "",
+        idempotencyKey: `wt-sr-b-ret-${runId}`,
+      });
+
+      const retItem = await db.supplierReturnItem.findFirstOrThrow({ where: { supplierReturnId: ret.id } });
+      expect(retItem.quantity.toNumber()).toBeCloseTo(20, 4);
+      expect(retItem.returnedWeightKg?.toNumber()).toBeCloseTo(50, 3);
+      expect(retItem.ratePerKg?.toNumber()).toBeCloseTo(420, 2);
+      expect(retItem.totalCost.toNumber()).toBeCloseTo(21000, 2);
+    });
+
+    it("C: correct supplier payable reversal", async () => {
+      const order = await createPurchase(context(), {
+        supplierId,
+        items: [{ productId: kgProductId, quantity: 30, unitCost: 500, perKgRate: 500, unitWeight: 1 }],
+        pricingMode: "WEIGHT",
+        idempotencyKey: `wt-sr-c-po-${runId}`,
+      });
+      const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: order.id } });
+      await createGoodsReceipt(context(), {
+        purchaseOrderId: order.id,
+        items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 30, acceptedQuantity: 30, actualUnitCost: 500, receivedWeightKg: 30, acceptedWeightKg: 30, ratePerKg: 500 }],
+        idempotencyKey: `wt-sr-c-grn-${runId}`,
+      });
+      const supplierBefore = await db.supplier.findUniqueOrThrow({ where: { id: supplierId }, select: { currentBalance: true } });
+
+      await createSupplierReturn(context(), {
+        purchaseOrderId: order.id,
+        items: [{ itemId: poItem.id, quantity: 10, returnedWeightKg: 10 }],
+        reason: "Payable test",
+        notes: "",
+        idempotencyKey: `wt-sr-c-ret-${runId}`,
+      });
+
+      const supplierAfter = await db.supplier.findUniqueOrThrow({ where: { id: supplierId }, select: { currentBalance: true } });
+      const expectedReturn = 10 * 500;
+      expect(Number(supplierBefore.currentBalance) - Number(supplierAfter.currentBalance)).toBeCloseTo(expectedReturn, 2);
+
+      const poAfter = await db.purchaseOrder.findUniqueOrThrow({ where: { id: order.id } });
+      expect(Number(poAfter.balanceAmount)).toBeCloseTo(30 * 500 - expectedReturn, 2);
+    });
+
+    it("D+E: correct inventory quantity and value reversal", async () => {
+      const order = await createPurchase(context(), {
+        supplierId,
+        items: [{ productId: kgProductId, quantity: 40, unitCost: 250, perKgRate: 250, unitWeight: 1 }],
+        pricingMode: "WEIGHT",
+        idempotencyKey: `wt-sr-de-po-${runId}`,
+      });
+      const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: order.id } });
+      await createGoodsReceipt(context(), {
+        purchaseOrderId: order.id,
+        items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 40, acceptedQuantity: 40, actualUnitCost: 250, receivedWeightKg: 40, acceptedWeightKg: 40, ratePerKg: 250 }],
+        idempotencyKey: `wt-sr-de-grn-${runId}`,
+      });
+
+      const stockBefore = await db.product.findUniqueOrThrow({ where: { id: kgProductId }, select: { stockQuantity: true, costPrice: true } });
+      const invValueBefore = stockBefore.stockQuantity.toNumber() * Number(stockBefore.costPrice);
+
+      await createSupplierReturn(context(), {
+        purchaseOrderId: order.id,
+        items: [{ itemId: poItem.id, quantity: 15, returnedWeightKg: 15 }],
+        reason: "Inventory test",
+        notes: "",
+        idempotencyKey: `wt-sr-de-ret-${runId}`,
+      });
+
+      const stockAfter = await db.product.findUniqueOrThrow({ where: { id: kgProductId }, select: { stockQuantity: true, costPrice: true } });
+      const invValueAfter = stockAfter.stockQuantity.toNumber() * Number(stockAfter.costPrice);
+      expect(stockBefore.stockQuantity.toNumber() - stockAfter.stockQuantity.toNumber()).toBeCloseTo(15, 4);
+
+      const returnItem = await db.supplierReturnItem.findFirst({ where: { purchaseOrderItem: { productId: kgProductId }, supplierReturn: { workspaceId, status: "POSTED" } }, orderBy: { createdAt: "desc" } });
+      expect(returnItem).toBeDefined();
+      const returnValue = Number(returnItem!.totalCost);
+      expect(Math.abs((invValueBefore - invValueAfter) - returnValue)).toBeLessThan(1);
+
+      const invTx = await db.inventoryTransaction.findFirst({ where: { workspaceId, productId: kgProductId, type: "RETURN_OUT" }, orderBy: { createdAt: "desc" } });
+      expect(invTx).toBeDefined();
+      expect(invTx!.quantityChanged.toNumber()).toBeCloseTo(-15, 4);
+    });
+
+    it("F: correct GL reversal", async () => {
+      const order = await createPurchase(context(), {
+        supplierId,
+        items: [{ productId: kgProductId, quantity: 25, unitCost: 350, perKgRate: 350, unitWeight: 1 }],
+        pricingMode: "WEIGHT",
+        idempotencyKey: `wt-sr-f-po-${runId}`,
+      });
+      const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: order.id } });
+      await createGoodsReceipt(context(), {
+        purchaseOrderId: order.id,
+        items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 25, acceptedQuantity: 25, actualUnitCost: 350, receivedWeightKg: 25, acceptedWeightKg: 25, ratePerKg: 350 }],
+        idempotencyKey: `wt-sr-f-grn-${runId}`,
+      });
+
+      const ret = await createSupplierReturn(context(), {
+        purchaseOrderId: order.id,
+        items: [{ itemId: poItem.id, quantity: 10, returnedWeightKg: 10 }],
+        reason: "GL test",
+        notes: "",
+        idempotencyKey: `wt-sr-f-ret-${runId}`,
+      });
+
+      const gl = await glLines(ret.id);
+      expect(journalBalanced(gl).balanced).toBe(true);
+      expect(sum(gl, "ACCOUNTS_PAYABLE", "debit")).toBeCloseTo(3500, 2);
+    });
+
+    it("G: full weighted return returns entire accepted weight", async () => {
+      const order = await createPurchase(context(), {
+        supplierId,
+        items: [{ productId: kgProductId, quantity: 15, unitCost: 200, perKgRate: 200, unitWeight: 1 }],
+        pricingMode: "WEIGHT",
+        idempotencyKey: `wt-sr-g-po-${runId}`,
+      });
+      const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: order.id } });
+      await createGoodsReceipt(context(), {
+        purchaseOrderId: order.id,
+        items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 15, acceptedQuantity: 15, actualUnitCost: 200, receivedWeightKg: 15, acceptedWeightKg: 15, ratePerKg: 200 }],
+        idempotencyKey: `wt-sr-g-grn-${runId}`,
+      });
+
+      const ret = await createSupplierReturn(context(), {
+        purchaseOrderId: order.id,
+        items: [{ itemId: poItem.id, quantity: 15, returnedWeightKg: 15 }],
+        reason: "Full return",
+        notes: "",
+        idempotencyKey: `wt-sr-g-ret-${runId}`,
+      });
+
+      const retItem = await db.supplierReturnItem.findFirstOrThrow({ where: { supplierReturnId: ret.id } });
+      expect(retItem.returnedWeightKg?.toNumber()).toBeCloseTo(15, 3);
+      expect(retItem.totalCost.toNumber()).toBeCloseTo(3000, 2);
+    });
+
+    it("H: multiple partial returns cannot exceed accepted weight", async () => {
+      const order = await createPurchase(context(), {
+        supplierId,
+        items: [{ productId: kgProductId, quantity: 20, unitCost: 280, perKgRate: 280, unitWeight: 1 }],
+        pricingMode: "WEIGHT",
+        idempotencyKey: `wt-sr-h-po-${runId}`,
+      });
+      const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: order.id } });
+      await createGoodsReceipt(context(), {
+        purchaseOrderId: order.id,
+        items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 20, acceptedQuantity: 20, actualUnitCost: 280, receivedWeightKg: 20, acceptedWeightKg: 20, ratePerKg: 280 }],
+        idempotencyKey: `wt-sr-h-grn-${runId}`,
+      });
+
+      await createSupplierReturn(context(), {
+        purchaseOrderId: order.id,
+        items: [{ itemId: poItem.id, quantity: 12, returnedWeightKg: 12 }],
+        reason: "Partial 1",
+        notes: "",
+        idempotencyKey: `wt-sr-h-ret1-${runId}`,
+      });
+
+      await createSupplierReturn(context(), {
+        purchaseOrderId: order.id,
+        items: [{ itemId: poItem.id, quantity: 5, returnedWeightKg: 5 }],
+        reason: "Partial 2",
+        notes: "",
+        idempotencyKey: `wt-sr-h-ret2-${runId}`,
+      });
+
+      await expect(
+        createSupplierReturn(context(), {
+          purchaseOrderId: order.id,
+          items: [{ itemId: poItem.id, quantity: 5, returnedWeightKg: 5 }],
+          reason: "Exceeds",
+          notes: "",
+          idempotencyKey: `wt-sr-h-ret3-${runId}`,
+        })
+      ).rejects.toThrow();
+    });
   });
 });

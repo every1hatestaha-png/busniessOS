@@ -2,7 +2,7 @@
 
 import { useDeferredValue, useState } from "react";
 import Link from "next/link";
-import { Search, ShoppingCart } from "lucide-react";
+import { ArrowRight, Search, ShoppingCart } from "lucide-react";
 import { formatDate, formatPKR } from "@/lib/utils";
 import { StatusBadge } from "@/components/business/status-badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -35,32 +35,36 @@ export function SalesList({ sales }: { sales: SaleListItem[] }) {
   const balance = filteredSales.reduce((sum, sale) => sum + sale.balanceAmount, 0);
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Card size="sm" className="shadow-none"><CardContent><p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Orders shown</p><p className="mt-1 text-2xl font-bold">{filteredSales.length}</p></CardContent></Card>
-        <Card size="sm" className="shadow-none"><CardContent><p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Sales value</p><p className="mt-1 text-2xl font-bold">{formatPKR(total)}</p></CardContent></Card>
-        <Card size="sm" className="shadow-none"><CardContent><p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Balance due</p><p className="mt-1 text-2xl font-bold">{formatPKR(balance)}</p></CardContent></Card>
+    <div className="space-y-3">
+      <div className="grid overflow-hidden rounded-md border bg-white sm:grid-cols-3 sm:divide-x">
+        <SummaryMetric label="Orders shown" value={String(filteredSales.length)} />
+        <SummaryMetric label="Sales value" value={formatPKR(total)} />
+        <SummaryMetric label="Balance due" value={formatPKR(balance)} attention={balance > 0} />
       </div>
 
-      <Card className="shadow-none">
-        <CardContent className="space-y-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="relative w-full lg:max-w-sm"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search order or customer" aria-label="Search sales" className="h-9 pl-9" /></div>
-            <div className="flex gap-2 overflow-x-auto pb-1 lg:pb-0" aria-label="Filter by status">
-              {statuses.map((option) => <button key={option} type="button" onClick={() => setStatus(option)} className={`h-8 shrink-0 rounded-lg px-3 text-xs font-semibold transition ${status === option ? "bg-neutral-950 text-white" : "border bg-white text-neutral-600 hover:bg-neutral-50"}`}>{option === "ALL" ? "All orders" : option.charAt(0) + option.slice(1).toLowerCase()}</button>)}
+      <Card className="gap-0 rounded-md border py-0 shadow-none ring-0">
+        <CardContent className="p-0">
+          <div className="flex items-center justify-between gap-3 border-b p-3">
+            <div className="relative w-full max-w-xs"><Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sale or customer" aria-label="Search sales" className="pl-8" /></div>
+            <div className="flex gap-1" aria-label="Filter by status">
+              {statuses.map((option) => <button key={option} type="button" onClick={() => setStatus(option)} className={`h-7 shrink-0 rounded px-2.5 text-[11px] font-medium transition-colors ${status === option ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"}`}>{option === "ALL" ? "All" : option.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase())}</button>)}
             </div>
           </div>
 
           {filteredSales.length ? (
             <Table>
-              <TableHeader><TableRow><TableHead>Order</TableHead><TableHead>Customer</TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Paid</TableHead><TableHead className="text-right">Balance</TableHead><TableHead className="text-right">Total</TableHead></TableRow></TableHeader>
-              <TableBody>{filteredSales.map((sale) => <TableRow key={sale.id}><TableCell><Link href={`/sales/${sale.id}`} className="font-semibold text-neutral-950 hover:underline">{sale.orderNumber}</Link><p className="text-xs text-neutral-500">{sale.items} line{sale.items === 1 ? "" : "s"}</p></TableCell><TableCell className="font-medium">{sale.customerName}</TableCell><TableCell className="text-neutral-600">{formatDate(sale.date)}</TableCell><TableCell><StatusBadge status={sale.status} /></TableCell><TableCell className="text-right text-neutral-600">{formatPKR(sale.paidAmount)}</TableCell><TableCell className="text-right text-neutral-600">{formatPKR(sale.balanceAmount)}</TableCell><TableCell className="text-right font-semibold">{formatPKR(sale.total)}</TableCell></TableRow>)}</TableBody>
+              <TableHeader><TableRow className="h-9 bg-slate-50/80 hover:bg-slate-50/80"><TableHead className="h-9 pl-4 text-[11px] uppercase tracking-wide text-slate-500">Sale No</TableHead><TableHead className="h-9 text-[11px] uppercase tracking-wide text-slate-500">Date</TableHead><TableHead className="h-9 text-[11px] uppercase tracking-wide text-slate-500">Customer</TableHead><TableHead className="h-9 text-[11px] uppercase tracking-wide text-slate-500">Status</TableHead><TableHead className="h-9 text-right text-[11px] uppercase tracking-wide text-slate-500">Total</TableHead><TableHead className="h-9 text-right text-[11px] uppercase tracking-wide text-slate-500">Paid</TableHead><TableHead className="h-9 text-right text-[11px] uppercase tracking-wide text-slate-500">Balance</TableHead><TableHead className="h-9 pr-4 text-right text-[11px] uppercase tracking-wide text-slate-500">Action</TableHead></TableRow></TableHeader>
+              <TableBody>{filteredSales.map((sale) => <TableRow key={sale.id} className="h-11"><TableCell className="py-1.5 pl-4"><Link href={`/sales/${sale.id}`} className="font-mono text-xs font-semibold text-slate-900 hover:text-blue-700 hover:underline">{sale.orderNumber}</Link><p className="text-[10px] text-slate-500">{sale.items} line{sale.items === 1 ? "" : "s"}</p></TableCell><TableCell className="py-1.5 text-xs text-slate-600">{formatDate(sale.date)}</TableCell><TableCell className="py-1.5 text-xs font-medium text-slate-800">{sale.customerName}</TableCell><TableCell className="py-1.5"><StatusBadge status={sale.status} /></TableCell><TableCell className="py-1.5 text-right text-xs font-medium tabular-nums">{formatPKR(sale.total)}</TableCell><TableCell className="py-1.5 text-right text-xs text-slate-600 tabular-nums">{formatPKR(sale.paidAmount)}</TableCell><TableCell className="py-1.5 text-right text-xs font-semibold tabular-nums">{formatPKR(sale.balanceAmount)}</TableCell><TableCell className="py-1.5 pr-4 text-right"><Link href={`/sales/${sale.id}`} aria-label={`View ${sale.orderNumber}`} className="inline-flex size-7 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-slate-900"><ArrowRight className="size-3.5" /></Link></TableCell></TableRow>)}</TableBody>
             </Table>
           ) : (
-            <div className="flex min-h-64 flex-col items-center justify-center text-center"><span className="rounded-full bg-neutral-100 p-3 text-neutral-500"><ShoppingCart className="h-5 w-5" /></span><p className="mt-3 font-semibold">No sales orders found</p><p className="mt-1 text-sm text-neutral-500">Try a different search or status.</p></div>
+            <div className="flex min-h-56 flex-col items-center justify-center text-center"><span className="rounded-md border bg-slate-50 p-2 text-slate-500"><ShoppingCart className="size-4" /></span><p className="mt-3 text-sm font-semibold">No sales orders found</p><p className="mt-1 text-xs text-slate-500">Try a different search or status.</p></div>
           )}
         </CardContent>
       </Card>
     </div>
   );
+}
+
+function SummaryMetric({ label, value, attention = false }: { label: string; value: string; attention?: boolean }) {
+  return <div className="px-4 py-3"><p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">{label}</p><p className={`mt-1 text-lg font-semibold tracking-tight tabular-nums ${attention ? "text-amber-700" : "text-slate-950"}`}>{value}</p></div>;
 }
