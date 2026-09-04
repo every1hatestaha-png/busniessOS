@@ -29,8 +29,8 @@ export default async function PurchasesPage() {
                 <TableHead>Date</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">GRNs</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead className="text-right">Balance</TableHead>
+                <TableHead className="text-right">PO total</TableHead>
+                <TableHead className="text-right">Outstanding payable</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

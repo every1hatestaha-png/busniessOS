@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { requirePermission } from "@/lib/server/authorization";
-import { createCustomer, updateCustomer } from "@/lib/server/customers";
+import { createCustomer, CustomerDomainError, updateCustomer } from "@/lib/server/customers";
 import {
   customerEditSchema,
   customerSchema,
@@ -21,7 +21,7 @@ export async function createCustomerAction(
   _previousState: CreateCustomerState,
   input: CustomerInput,
 ): Promise<CreateCustomerState> {
-  const { workspaceId } = await requirePermission("customers.write");
+  const context = await requirePermission("customers.write");
   const parsed = customerSchema.safeParse(input);
 
   if (!parsed.success) {
@@ -35,7 +35,7 @@ export async function createCustomerAction(
 
   let customerId: string;
   try {
-    customerId = await createCustomer(workspaceId, parsed.data);
+    customerId = await createCustomer(context.workspaceId, parsed.data);
   } catch {
     return { message: "We could not save this customer. Please try again." };
   }
@@ -49,7 +49,7 @@ export async function updateCustomerAction(
   _previousState: CreateCustomerState,
   input: CustomerEditInput,
 ): Promise<CreateCustomerState> {
-  const { workspaceId } = await requirePermission("customers.write");
+  const context = await requirePermission("customers.write");
   const parsed = customerEditSchema.safeParse(input);
 
   if (!parsed.success) {
@@ -62,8 +62,9 @@ export async function updateCustomerAction(
   }
 
   try {
-    await updateCustomer(workspaceId, id, parsed.data);
-  } catch {
+    await updateCustomer({ ...context, userId: context.user.id }, id, parsed.data);
+  } catch (error) {
+    if (error instanceof CustomerDomainError) return { message: error.message };
     return { message: "We could not update this customer. Please try again." };
   }
 

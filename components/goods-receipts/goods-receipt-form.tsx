@@ -3,6 +3,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { formatPKR } from "@/lib/utils";
 
 type POItem = {
   id: string;
@@ -51,9 +52,9 @@ export function GoodsReceiptForm({ purchaseOrderId, poNumber, items }: { purchas
   }
 
   function computeTotal(): number {
-    return receipts.reduce((sum, r, i) => {
+    return receipts.reduce((sum, r) => {
       const accepted = Number(r.acceptedQuantity) || 0;
-      const cost = Number(r.actualUnitCost) || items[i].unitCost;
+      const cost = Number(r.actualUnitCost);
       return sum + accepted * cost;
     }, 0);
   }
@@ -142,7 +143,7 @@ export function GoodsReceiptForm({ purchaseOrderId, poNumber, items }: { purchas
               <Input
                 type="number"
                 min="0"
-                step="0.01"
+                step={item.unit === "KG" ? "0.0001" : "1"}
                 max={item.remainingQuantity}
                 value={receipts[index]?.receivedQuantity || ""}
                 onChange={(e) => updateReceipt(index, "receivedQuantity", e.target.value)}
@@ -151,7 +152,7 @@ export function GoodsReceiptForm({ purchaseOrderId, poNumber, items }: { purchas
               <Input
                 type="number"
                 min="0"
-                step="0.01"
+                step={item.unit === "KG" ? "0.0001" : "1"}
                 max={received}
                 value={receipts[index]?.acceptedQuantity || ""}
                 onChange={(e) => updateReceipt(index, "acceptedQuantity", e.target.value)}
@@ -177,7 +178,7 @@ export function GoodsReceiptForm({ purchaseOrderId, poNumber, items }: { purchas
       <div className="flex items-center justify-between border p-4">
         <div>
           <span className="text-sm text-neutral-500">GRN total value:</span>
-          <span className="ml-2 text-lg font-bold">{computeTotal().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          <span className="ml-2 text-lg font-bold">{formatPKR(computeTotal())}</span>
         </div>
         <div className="flex items-center gap-3">
           <Button disabled={busy} type="submit">

@@ -55,7 +55,7 @@ export function CustomerTable({ customers }: { customers: CustomerListItem[] }) 
                 <TableCell>{customer.city}</TableCell>
                 <TableCell><StatusBadge status={customer.status} /></TableCell>
                 <TableCell className="text-right"><p className="font-medium">{formatPKR(customer.currentBalance)}</p><StatusBadge status={getCreditStatus(customer.currentBalance, customer.creditLimit)} /></TableCell>
-                <TableCell className="text-right">{formatPKR(customer.creditLimit)}</TableCell>
+                <TableCell className="text-right">{customer.creditLimit > 0 ? formatPKR(customer.creditLimit) : "Not configured"}</TableCell>
               </TableRow>
             ))}
             {filtered.length === 0 && <TableRow><TableCell colSpan={6} className="h-28 text-center text-neutral-500">No customers match these filters.</TableCell></TableRow>}

@@ -4,14 +4,14 @@ import { PeriodFilters, ReportFilterBar, ReportFilterField, reportSelectClassNam
 import { ReportFrame } from "@/components/reports/report-frame";
 import { StatementTable } from "@/components/reports/statement-table";
 import { listCustomers } from "@/lib/server/customers";
-import { requireWorkspace } from "@/lib/server/auth";
+import { requirePermission } from "@/lib/server/authorization";
 import { getCustomerStatement } from "@/lib/server/reports";
 import { dateInputValue, parseDate, statementQuerySchema } from "@/lib/validation/reports";
 
 type Query = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function CustomerStatementPage({ searchParams }: { searchParams: Query }) {
-  const { workspaceId, workspace } = await requireWorkspace();
+  const { workspaceId, workspace } = await requirePermission("financial.manage");
   const raw = await searchParams;
   const parsed = statementQuerySchema.safeParse({ from: typeof raw.from === "string" ? raw.from : undefined, to: typeof raw.to === "string" ? raw.to : undefined, search: typeof raw.search === "string" ? raw.search : undefined, partyId: typeof raw.partyId === "string" ? raw.partyId : undefined });
   const query = parsed.success ? parsed.data : {};

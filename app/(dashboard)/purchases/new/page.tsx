@@ -9,7 +9,7 @@ export default async function NewPurchasePage() {
   const { workspaceId } = await requirePermission("financial.manage");
   const [suppliers, products] = await Promise.all([
     db.supplier.findMany({ where: { workspaceId }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    db.product.findMany({ where: { workspaceId, status: "ACTIVE" }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    db.product.findMany({ where: { workspaceId, status: "ACTIVE" }, select: { id: true, name: true, unit: true }, orderBy: { name: "asc" } }),
   ]);
   return (
     <div className="mx-auto max-w-5xl space-y-6">

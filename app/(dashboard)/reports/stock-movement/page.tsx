@@ -3,7 +3,7 @@ import { startOfMonth } from "date-fns";
 import { EmptyReportRow, FinancialCell, FinancialHead, FinancialHeading, FinancialRow, FinancialTable, Money } from "@/components/reports/financial-table";
 import { PeriodFilters, ReportFilterBar, ReportFilterField, reportSelectClassName, SearchFilter } from "@/components/reports/report-filter-bar";
 import { ReportFrame } from "@/components/reports/report-frame";
-import { requireWorkspace } from "@/lib/server/auth";
+import { requirePermission } from "@/lib/server/authorization";
 import { getCurrentStockReport, getStockMovementReport } from "@/lib/server/reports";
 import { dateInputValue, inventoryMovementQuerySchema, parseDate } from "@/lib/validation/reports";
 
@@ -11,7 +11,7 @@ type Query = Promise<Record<string, string | string[] | undefined>>;
 const movementTypes = ["OPENING_STOCK", "PURCHASE", "SALE", "RETURN_IN", "RETURN_OUT", "ADJUSTMENT", "SALE_CANCELLATION", "PURCHASE_CANCELLATION", "PURCHASE_RECEIPT"] as const;
 
 export default async function StockMovementPage({ searchParams }: { searchParams: Query }) {
-  const { workspaceId, workspace } = await requireWorkspace();
+  const { workspaceId, workspace } = await requirePermission("financial.manage");
   const raw = await searchParams;
   const parsed = inventoryMovementQuerySchema.safeParse({ from: typeof raw.from === "string" ? raw.from : undefined, to: typeof raw.to === "string" ? raw.to : undefined, search: typeof raw.search === "string" ? raw.search : undefined, productId: typeof raw.productId === "string" ? raw.productId : undefined, type: typeof raw.type === "string" ? raw.type : undefined });
   const query = parsed.success ? parsed.data : {};

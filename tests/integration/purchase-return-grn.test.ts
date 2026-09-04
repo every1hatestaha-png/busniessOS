@@ -7,6 +7,7 @@ let createGoodsReceipt: typeof import("@/lib/server/purchases")["createGoodsRece
 let createSupplierReturn: typeof import("@/lib/server/purchases")["createSupplierReturn"];
 let listSupplierReturns: typeof import("@/lib/server/purchases")["listSupplierReturns"];
 let getSupplierReturn: typeof import("@/lib/server/purchases")["getSupplierReturn"];
+let voidGoodsReceipt: typeof import("@/lib/server/purchases")["voidGoodsReceipt"];
 let ensureDefaultAccounts: typeof import("@/lib/server/accounting")["ensureDefaultAccounts"];
 
 const runId = randomUUID();
@@ -32,6 +33,7 @@ describe("Supplier return with GRN linking integration", () => {
     ({ createSupplierReturn } = await import("@/lib/server/purchases"));
     ({ listSupplierReturns } = await import("@/lib/server/purchases"));
     ({ getSupplierReturn } = await import("@/lib/server/purchases"));
+    ({ voidGoodsReceipt } = await import("@/lib/server/purchases"));
     ({ ensureDefaultAccounts } = await import("@/lib/server/accounting"));
 
     const user = await db.user.create({ data: { clerkId: `sr-${runId}`, email: `sr-${runId}@example.invalid` } });
@@ -550,7 +552,7 @@ describe("Supplier return with GRN linking integration", () => {
       idempotencyKey: `sr-wavg-grn-${runId}`,
     });
 
-    const costBefore = await db.product.findUniqueOrThrow({ where: { id: pieceProductId }, select: { costPrice: true } });
+    const costBefore = await db.product.findUniqueOrThrow({ where: { id: pieceProductId }, select: { costPrice: true, stockQuantity: true } });
 
     await createSupplierReturn(context(), {
       purchaseOrderId: order.id,
@@ -561,6 +563,32 @@ describe("Supplier return with GRN linking integration", () => {
     });
 
     const costAfter = await db.product.findUniqueOrThrow({ where: { id: pieceProductId }, select: { costPrice: true } });
-    expect(Number(costAfter.costPrice)).toBeCloseTo(Number(costBefore.costPrice), 2);
+    const expected = costBefore.costPrice.mul(costBefore.stockQuantity).minus(500).div(costBefore.stockQuantity.minus(5));
+    expect(Number(costAfter.costPrice)).toBeCloseTo(Number(expected), 2);
+  });
+
+  it("does not allow supplier returns against a voided GRN", async () => {
+    const order = await createPurchase(context(), {
+      supplierId,
+      items: [{ productId: pieceProductId, quantity: 2, unitCost: 75 }],
+      pricingMode: "UNIT",
+      idempotencyKey: `sr-voided-po-${runId}`,
+    });
+    const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: order.id } });
+    const grn = await createGoodsReceipt(context(), {
+      purchaseOrderId: order.id,
+      items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 2, acceptedQuantity: 2, actualUnitCost: 75 }],
+      idempotencyKey: `sr-voided-grn-${runId}`,
+    });
+    await voidGoodsReceipt(context(), grn.id, { voidedReason: "Supplier return eligibility test" });
+
+    await expect(createSupplierReturn(context(), {
+      purchaseOrderId: order.id,
+      goodReceivedNoteId: grn.id,
+      items: [{ itemId: poItem.id, quantity: 1 }],
+      reason: "Should not post",
+      notes: "",
+      idempotencyKey: `sr-voided-ret-${runId}`,
+    })).rejects.toThrow("Return quantity exceeds received quantity");
   });
 });

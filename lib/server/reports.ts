@@ -82,7 +82,7 @@ export async function getSupplierStatement(workspaceId: string, supplierId: stri
 export async function getCurrentStockReport(workspaceId: string, search?: string, lowStockOnly = false) {
   const [products, inventoryAccount] = await Promise.all([
     db.product.findMany({
-      where: { workspaceId, status: { not: "ARCHIVED" }, ...(search ? { OR: [{ name: { contains: search, mode: "insensitive" } }, { sku: { contains: search, mode: "insensitive" } }, { category: { contains: search, mode: "insensitive" } }] } : {}) },
+      where: { workspaceId, AND: [{ OR: [{ status: { not: "ARCHIVED" } }, { stockQuantity: { not: 0 } }] }, ...(search ? [{ OR: [{ name: { contains: search, mode: "insensitive" as const } }, { sku: { contains: search, mode: "insensitive" as const } }, { category: { contains: search, mode: "insensitive" as const } }] }] : [])] },
       orderBy: [{ name: "asc" }, { id: "asc" }],
       select: { id: true, name: true, sku: true, category: true, stockQuantity: true, costPrice: true, reorderLevel: true, unit: true, status: true },
     }),

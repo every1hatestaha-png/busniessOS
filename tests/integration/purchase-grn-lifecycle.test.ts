@@ -5,13 +5,17 @@ import { randomUUID } from "crypto";
 let db: typeof import("@/lib/server/db")["db"];
 let createPurchase: typeof import("@/lib/server/purchases")["createPurchase"];
 let createGoodsReceipt: typeof import("@/lib/server/purchases")["createGoodsReceipt"];
+let cancelPurchase: typeof import("@/lib/server/purchases")["cancelPurchase"];
+let createSupplierReturn: typeof import("@/lib/server/purchases")["createSupplierReturn"];
 let updatePurchase: typeof import("@/lib/server/purchases")["updatePurchase"];
 let deletePurchase: typeof import("@/lib/server/purchases")["deletePurchase"];
 let updateGoodsReceipt: typeof import("@/lib/server/purchases")["updateGoodsReceipt"];
 let voidGoodsReceipt: typeof import("@/lib/server/purchases")["voidGoodsReceipt"];
 let deleteGoodsReceipt: typeof import("@/lib/server/purchases")["deleteGoodsReceipt"];
+let getPurchase: typeof import("@/lib/server/purchases")["getPurchase"];
 let PurchaseDomainError: typeof import("@/lib/server/purchases")["PurchaseDomainError"];
 let ensureDefaultAccounts: typeof import("@/lib/server/accounting")["ensureDefaultAccounts"];
+let recordSupplierPayment: typeof import("@/lib/server/suppliers")["recordSupplierPayment"];
 
 const runId = randomUUID();
 let userId = "";
@@ -26,8 +30,9 @@ describe("P1: Purchase Order & GRN Lifecycle", () => {
     const { config } = await import("dotenv");
     config({ path: ".env.local", quiet: true });
     ({ db } = await import("@/lib/server/db"));
-    ({ createPurchase, createGoodsReceipt, updatePurchase, deletePurchase, updateGoodsReceipt, voidGoodsReceipt, deleteGoodsReceipt, PurchaseDomainError } = await import("@/lib/server/purchases"));
+    ({ createPurchase, createGoodsReceipt, cancelPurchase, createSupplierReturn, updatePurchase, deletePurchase, updateGoodsReceipt, voidGoodsReceipt, deleteGoodsReceipt, getPurchase, PurchaseDomainError } = await import("@/lib/server/purchases"));
     ({ ensureDefaultAccounts } = await import("@/lib/server/accounting"));
+    ({ recordSupplierPayment } = await import("@/lib/server/suppliers"));
 
     const user = await db.user.create({ data: { clerkId: `p1-${runId}`, email: `p1-${runId}@example.invalid` } });
     userId = user.id;
@@ -51,6 +56,8 @@ describe("P1: Purchase Order & GRN Lifecycle", () => {
     await db.supplierReturnItem.deleteMany({ where: { supplierReturn: { workspaceId } } });
     await db.supplierReturn.deleteMany({ where: { workspaceId } });
     await db.debitNote.deleteMany({ where: { workspaceId } });
+    await db.paymentAllocation.deleteMany({ where: { workspaceId } });
+    await db.payment.deleteMany({ where: { workspaceId } });
     await db.goodReceivedNoteItem.deleteMany({ where: { goodReceivedNote: { workspaceId } } });
     await db.goodReceivedNote.deleteMany({ where: { workspaceId } });
     await db.purchaseOrderItem.deleteMany({ where: { purchaseOrder: { workspaceId } } });
@@ -89,7 +96,7 @@ describe("P1: Purchase Order & GRN Lifecycle", () => {
     await db.purchaseOrder.delete({ where: { id: po.id } });
   });
 
-  it("2. updatePurchase: rejects edit on ORDERED PO", async () => {
+  it("2. updatePurchase: edits an ORDERED PO with no receiving or payment history", async () => {
     const po = await createPurchase(context(), {
       supplierId,
       items: [{ productId, quantity: 10, unitCost: 25 }],
@@ -97,9 +104,8 @@ describe("P1: Purchase Order & GRN Lifecycle", () => {
       idempotencyKey: `po-edit-2-${runId}`,
     });
 
-    await expect(
-      updatePurchase(context(), po.id, { notes: "nope" })
-    ).rejects.toThrow(PurchaseDomainError);
+    await expect(updatePurchase(context(), po.id, { notes: "Updated while unreceived" })).resolves.toMatchObject({ id: po.id });
+    expect((await db.purchaseOrder.findUniqueOrThrow({ where: { id: po.id } })).notes).toBe("Updated while unreceived");
 
     await db.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: po.id } });
     await db.purchaseOrder.delete({ where: { id: po.id } });
@@ -113,10 +119,14 @@ describe("P1: Purchase Order & GRN Lifecycle", () => {
       idempotencyKey: `po-edit-3-${runId}`,
     });
 
-    await expect(
-      updatePurchase(context(), po.id, { notes: "nope" })
-    ).rejects.toThrow(PurchaseDomainError);
+    const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: po.id } });
+    const grn = await createGoodsReceipt(context(), { purchaseOrderId: po.id, items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 10, acceptedQuantity: 10, actualUnitCost: 25 }] });
 
+    await expect(updatePurchase(context(), po.id, { notes: "nope" })).rejects.toMatchObject({ code: "CANNOT_EDIT_PO" });
+
+    await voidGoodsReceipt(context(), grn.id, { voidedReason: "Test cleanup" });
+    await db.goodReceivedNoteItem.deleteMany({ where: { goodReceivedNoteId: grn.id } });
+    await db.goodReceivedNote.delete({ where: { id: grn.id } });
     await db.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: po.id } });
     await db.purchaseOrder.delete({ where: { id: po.id } });
   });
@@ -146,7 +156,7 @@ describe("P1: Purchase Order & GRN Lifecycle", () => {
     expect(deleted).toBeNull();
   });
 
-  it("6. deletePurchase: rejects delete on ORDERED PO (must cancel instead)", async () => {
+  it("6. deletePurchase: rejects delete for ORDERED PO with no dependencies", async () => {
     const po = await createPurchase(context(), {
       supplierId,
       items: [{ productId, quantity: 10, unitCost: 25 }],
@@ -154,7 +164,8 @@ describe("P1: Purchase Order & GRN Lifecycle", () => {
       idempotencyKey: `po-del-2-${runId}`,
     });
 
-    await expect(deletePurchase(context(), po.id)).rejects.toThrow(PurchaseDomainError);
+    await expect(deletePurchase(context(), po.id)).rejects.toMatchObject({ code: "CANNOT_DELETE_PO" });
+    expect(await db.purchaseOrder.findUnique({ where: { id: po.id } })).not.toBeNull();
 
     await db.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: po.id } });
     await db.purchaseOrder.delete({ where: { id: po.id } });
@@ -173,7 +184,7 @@ describe("P1: Purchase Order & GRN Lifecycle", () => {
       items: [{ purchaseOrderItemId: (await db.purchaseOrderItem.findFirst({ where: { purchaseOrderId: po.id } }))!.id, receivedQuantity: 5, acceptedQuantity: 5, actualUnitCost: 25 }],
     });
 
-    await expect(deletePurchase(context(), po.id)).rejects.toThrow(PurchaseDomainError);
+    await expect(deletePurchase(context(), po.id)).rejects.toMatchObject({ code: "CANNOT_DELETE_PO", message: "Cannot delete this purchase because goods have already been received. Void the related GRN first." });
 
     await db.goodReceivedNoteItem.deleteMany({ where: { goodReceivedNote: { purchaseOrderId: po.id } } });
     await db.goodReceivedNote.deleteMany({ where: { purchaseOrderId: po.id } });
@@ -1285,5 +1296,59 @@ describe("P1: Purchase Order & GRN Lifecycle", () => {
     await db.goodReceivedNote.delete({ where: { id: grn.id } });
     await db.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: po.id } });
     await db.purchaseOrder.delete({ where: { id: po.id } });
+  });
+
+  it("45. GRN edit preserves received versus accepted quantities", async () => {
+    const product = await db.product.create({ data: { workspaceId, name: `Receipt distinction ${runId}`, sku: `receipt-distinction-${runId}`, stockQuantity: 0, costPrice: 25, sellingPrice: 50 } });
+    const po = await createPurchase(context(), { supplierId, items: [{ productId: product.id, quantity: 20, unitCost: 25 }], pricingMode: "UNIT", idempotencyKey: `po-received-accepted-${runId}` });
+    const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: po.id } });
+    const grn = await createGoodsReceipt(context(), { purchaseOrderId: po.id, items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 10, acceptedQuantity: 8, actualUnitCost: 25 }] });
+
+    await updateGoodsReceipt(context(), grn.id, { items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 9, acceptedQuantity: 7, actualUnitCost: 25 }] });
+
+    const [grnItem, updatedPoItem, updatedProduct] = await Promise.all([
+      db.goodReceivedNoteItem.findFirstOrThrow({ where: { goodReceivedNoteId: grn.id } }),
+      db.purchaseOrderItem.findUniqueOrThrow({ where: { id: poItem.id } }),
+      db.product.findUniqueOrThrow({ where: { id: product.id } }),
+    ]);
+    expect(grnItem.receivedQuantity.toString()).toBe("9");
+    expect(grnItem.acceptedQuantity.toString()).toBe("7");
+    expect(updatedPoItem.receivedQuantity.toString()).toBe("7");
+    expect(updatedProduct.stockQuantity.toString()).toBe("7");
+  });
+
+  it("46. keeps receiving and supplier-payment summaries independent", async () => {
+    const product = await db.product.create({ data: { workspaceId, name: `Summary product ${runId}`, sku: `summary-${runId}`, stockQuantity: 0, costPrice: 100, sellingPrice: 150 } });
+    const po = await createPurchase(context(), { supplierId, items: [{ productId: product.id, quantity: 100, unitCost: 100 }], pricingMode: "UNIT", idempotencyKey: `po-summary-${runId}` });
+    const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: po.id } });
+    await createGoodsReceipt(context(), { purchaseOrderId: po.id, items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 60, acceptedQuantity: 60, actualUnitCost: 100 }] });
+
+    const beforePayment = await getPurchase(workspaceId, po.id);
+    expect(beforePayment).toMatchObject({ total: 10000, goodsReceivedValue: 6000, remainingValueToReceive: 4000, paid: 0, outstanding: 6000 });
+
+    const cashBankAccount = await db.cashBankAccount.findFirstOrThrow({ where: { workspaceId, isActive: true } });
+    await recordSupplierPayment(context(), supplierId, { amount: 2000, cashBankAccountId: cashBankAccount.id, allocations: [{ purchaseOrderId: po.id, amount: 2000 }], method: "CASH", reference: "", notes: "", paymentDate: new Date(), idempotencyKey: randomUUID() });
+
+    const afterPayment = await getPurchase(workspaceId, po.id);
+    expect(afterPayment).toMatchObject({ total: 10000, goodsReceivedValue: 6000, remainingValueToReceive: 4000, paid: 2000, outstanding: 4000 });
+  });
+
+  it("47. Purchase and GRN mutation services enforce role permissions", async () => {
+    const staffContext = { workspaceId, userId, role: "STAFF" as const };
+    const product = await db.product.create({ data: { workspaceId, name: `Permission product ${runId}`, sku: `permission-${runId}`, stockQuantity: 0, costPrice: 25, sellingPrice: 50 } });
+    const po = await createPurchase(context(), { supplierId, items: [{ productId: product.id, quantity: 10, unitCost: 25 }], pricingMode: "UNIT", idempotencyKey: `po-permission-${runId}` });
+
+    await expect(createPurchase(staffContext, { supplierId, items: [{ productId: product.id, quantity: 1, unitCost: 25 }], pricingMode: "UNIT", idempotencyKey: `po-permission-denied-${runId}` })).rejects.toMatchObject({ code: "PERMISSION_DENIED", message: "Unauthorized" });
+    await expect(updatePurchase(staffContext, po.id, { notes: "Denied" })).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+    await expect(deletePurchase(staffContext, po.id)).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+    await expect(cancelPurchase(staffContext, po.id, false)).rejects.toMatchObject({ code: "PERMISSION_DENIED", message: "Unauthorized" });
+
+    const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: po.id } });
+    await expect(createGoodsReceipt(staffContext, { purchaseOrderId: po.id, items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 1, acceptedQuantity: 1, actualUnitCost: 25 }] })).rejects.toMatchObject({ code: "PERMISSION_DENIED", message: "Unauthorized" });
+    await expect(createSupplierReturn(staffContext, { purchaseOrderId: po.id, items: [{ itemId: poItem.id, quantity: 1 }], reason: "Denied", notes: "", idempotencyKey: randomUUID() })).rejects.toMatchObject({ code: "PERMISSION_DENIED", message: "Unauthorized" });
+    const grn = await createGoodsReceipt(context(), { purchaseOrderId: po.id, items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 5, acceptedQuantity: 5, actualUnitCost: 25 }] });
+    await expect(updateGoodsReceipt(staffContext, grn.id, { notes: "Denied" })).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+    await expect(voidGoodsReceipt(staffContext, grn.id, { voidedReason: "Denied" })).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+    await expect(deleteGoodsReceipt(staffContext, grn.id)).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
   });
 });

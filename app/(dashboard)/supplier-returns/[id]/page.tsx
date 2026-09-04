@@ -4,13 +4,13 @@ import { ChevronLeft } from "lucide-react";
 import { StatusBadge } from "@/components/business/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { requireWorkspace } from "@/lib/server/auth";
+import { requirePermission } from "@/lib/server/authorization";
 import { getSupplierReturn } from "@/lib/server/purchases";
 import { formatDate, formatPKR } from "@/lib/utils";
 
 export default async function SupplierReturnDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { workspaceId } = await requireWorkspace();
+  const { workspaceId } = await requirePermission("financial.manage");
   const data = await getSupplierReturn(workspaceId, id);
   if (!data) notFound();
 

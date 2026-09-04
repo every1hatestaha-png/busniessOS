@@ -5,13 +5,13 @@ import { FinancialCell, FinancialRow, FinancialTable, Money } from "@/components
 import { PeriodFilters, ReportFilterBar } from "@/components/reports/report-filter-bar";
 import { ReportFrame } from "@/components/reports/report-frame";
 import { getProfitAndLoss } from "@/lib/server/accounting";
-import { requireWorkspace } from "@/lib/server/auth";
+import { requirePermission } from "@/lib/server/authorization";
 import { dateInputValue, parseDate, periodQuerySchema } from "@/lib/validation/reports";
 
 type Query = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function ProfitLossPage({ searchParams }: { searchParams: Query }) {
-  const { workspaceId, workspace } = await requireWorkspace();
+  const { workspaceId, workspace } = await requirePermission("financial.manage");
   const raw = await searchParams;
   const parsed = periodQuerySchema.safeParse({ from: typeof raw.from === "string" ? raw.from : undefined, to: typeof raw.to === "string" ? raw.to : undefined });
   const now = new Date();

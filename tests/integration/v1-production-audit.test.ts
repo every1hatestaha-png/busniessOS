@@ -96,7 +96,7 @@ describe("BusinessOS V1 production-readiness company scenario", () => {
     products.weight = await createProduct(workspaceId, { name: "Weight Product", sku: `WEIGHT-${runId}`, category: "QA", costPrice: 0, sellingPrice: 1500, stockQuantity: 0, reorderLevel: 1, unit: "PIECE", status: "ACTIVE", description: "Weight-priced purchasing product" });
 
     for (const [name, openingBalance] of [["HBL Main Account", 500_000], ["Meezan Main Account", 300_000]] as const) {
-      const created = await createCashBankAccount({ workspaceId, userId }, { name, openingBalance, isBank: true, bankName: name.split(" ")[0], accountTitle: "BUSINESSOS V1 QA COMPANY", accountNumber: name.startsWith("HBL") ? "QA-HBL-001" : "QA-MEEZAN-001", notes: "V1 audit" });
+      const created = await createCashBankAccount(context(), { name, openingBalance, isBank: true, bankName: name.split(" ")[0], accountTitle: "BUSINESSOS V1 QA COMPANY", accountNumber: name.startsWith("HBL") ? "QA-HBL-001" : "QA-MEEZAN-001", notes: "V1 audit" });
       const row = await db.cashBankAccount.findUniqueOrThrow({ where: { workspaceId_accountId: { workspaceId, accountId: created.id } } });
       cashBank[name.startsWith("HBL") ? "hbl" : "meezan"] = { id: row.id, accountId: row.accountId };
     }

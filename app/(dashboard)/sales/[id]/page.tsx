@@ -24,7 +24,7 @@ export default async function SaleDetailPage({ params }: { params: Promise<{ id:
     <div className="mx-auto max-w-[1500px] space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div><Link href="/sales" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-neutral-500 hover:text-neutral-950"><ArrowLeft className="h-4 w-4" /> Sales orders</Link><div className="flex flex-wrap items-center gap-3"><h1 className="text-2xl font-bold tracking-tight text-neutral-950 md:text-3xl">{sale.orderNumber}</h1><StatusBadge status={sale.status} /></div><p className="mt-1 text-sm text-neutral-500">Created {formatDate(sale.date)} for {sale.customer.companyName}</p></div>
-        <div className="flex gap-2">{sale.status !== "CANCELLED" && canManageFinancials && <CancelSaleButton saleId={sale.id} />}<Link href="/sales/new" className="inline-flex h-9 items-center justify-center border bg-neutral-950 px-4 text-sm font-semibold text-white hover:bg-neutral-800">Create another order</Link></div>
+        <div className="flex gap-2">{sale.status !== "CANCELLED" && canManageFinancials && <CancelSaleButton saleId={sale.id} orderNumber={sale.orderNumber} />}<Link href="/sales/new" className="inline-flex h-9 items-center justify-center border bg-neutral-950 px-4 text-sm font-semibold text-white hover:bg-neutral-800">Create another order</Link></div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

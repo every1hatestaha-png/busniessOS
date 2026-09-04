@@ -1,6 +1,7 @@
 import { z } from "zod";
-import { ApiError, apiData, apiHandler, requireApiContext } from "@/lib/server/api";
+import { ApiError, apiData, apiHandler, parseApiBody, requireApiContext } from "@/lib/server/api";
 import { getPurchase, updatePurchase, deletePurchase, PurchaseDomainError } from "@/lib/server/purchases";
+import { updatePurchaseSchema } from "@/lib/validation/purchase";
 
 export const GET = apiHandler(async (_request: Request, { params }: { params: Promise<{ id: string }> }) => {
   const context = await requireApiContext("business.read");
@@ -11,12 +12,12 @@ export const GET = apiHandler(async (_request: Request, { params }: { params: Pr
 });
 
 export const PATCH = apiHandler(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
-  const context = await requireApiContext("inventory.adjust");
+  const context = await requireApiContext("financial.manage");
   const { id } = z.object({ id: z.uuid() }).parse(await params);
-  const body = await request.json();
+  const body = await parseApiBody(request, updatePurchaseSchema);
 
   try {
-    const updated = await updatePurchase(context, id, body);
+    await updatePurchase({ ...context, userId: context.user.id }, id, body);
     const purchase = await getPurchase(context.workspaceId, id);
     return apiData(purchase);
   } catch (error) {
@@ -29,11 +30,11 @@ export const PATCH = apiHandler(async (request: Request, { params }: { params: P
 });
 
 export const DELETE = apiHandler(async (_request: Request, { params }: { params: Promise<{ id: string }> }) => {
-  const context = await requireApiContext("inventory.adjust");
+  const context = await requireApiContext("financial.manage");
   const { id } = z.object({ id: z.uuid() }).parse(await params);
 
   try {
-    const deleted = await deletePurchase(context, id);
+    const deleted = await deletePurchase({ ...context, userId: context.user.id }, id);
     return apiData({ success: true, id: deleted.id, orderNumber: deleted.orderNumber });
   } catch (error) {
     if (error instanceof PurchaseDomainError) {
@@ -43,4 +44,3 @@ export const DELETE = apiHandler(async (_request: Request, { params }: { params:
     throw error;
   }
 });
-

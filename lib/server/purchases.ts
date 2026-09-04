@@ -9,6 +9,7 @@ import type { ServiceContext } from "@/lib/server/sales";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 import { purchaseSchema, goodsReceiptSchema, updatePurchaseSchema, voidGoodsReceiptSchema, updateGoodsReceiptSchema, type PurchaseInput, type GoodsReceiptInput, type UpdatePurchaseInput, type VoidGoodsReceiptInput, type UpdateGoodsReceiptInput } from "@/lib/validation/purchase";
 import { supplierReturnSchema, type SupplierReturnInput } from "@/lib/validation/returns";
+import { canPerformAction } from "@/lib/server/authorization";
 
 export class PurchaseDomainError extends Error {
   constructor(
@@ -30,6 +31,8 @@ export class PurchaseDomainError extends Error {
       | "CANNOT_DELETE_POSTED_GRN"
       | "GRN_HAS_SUPPLIER_RETURNS"
       | "INSUFFICIENT_INVENTORY"
+      | "PURCHASE_HAS_PAYMENTS"
+      | "PERMISSION_DENIED"
       | "INVALID_GRN_STATUS",
     message: string,
   ) {
@@ -43,6 +46,7 @@ export class PurchaseDomainError extends Error {
  * Status defaults to ORDERED.
  */
 export async function createPurchase(context: ServiceContext, input: PurchaseInput) {
+  if (!canPerformAction(context.role, "financial.manage")) throw new PurchaseDomainError("PERMISSION_DENIED", "Unauthorized");
   const data = purchaseSchema.parse(input);
   return withSerializableRetry(async (tx) => {
     const existing = await tx.purchaseOrder.findFirst({
@@ -61,7 +65,7 @@ export async function createPurchase(context: ServiceContext, input: PurchaseInp
     if (ids.length !== data.items.length) throw new PurchaseDomainError("PRODUCT_NOT_FOUND", "Duplicate products are not allowed.");
 
     const products = await tx.product.findMany({
-      where: { workspaceId: context.workspaceId, id: { in: ids }, status: { not: "ARCHIVED" } },
+      where: { workspaceId: context.workspaceId, id: { in: ids }, status: "ACTIVE" },
       select: { id: true, name: true, sku: true },
     });
     if (products.length !== data.items.length) throw new PurchaseDomainError("PRODUCT_NOT_FOUND", "One or more products are unavailable.");
@@ -135,6 +139,7 @@ export async function createPurchase(context: ServiceContext, input: PurchaseInp
  * This is the financial trigger: inventory increases, supplier payable created, GL posted.
  */
 export async function createGoodsReceipt(context: ServiceContext, input: GoodsReceiptInput) {
+  if (!canPerformAction(context.role, "financial.manage")) throw new PurchaseDomainError("PERMISSION_DENIED", "Unauthorized");
   const data = goodsReceiptSchema.parse(input);
   return withSerializableRetry(async (tx) => {
     if (data.idempotencyKey) {
@@ -340,6 +345,7 @@ export async function createGoodsReceipt(context: ServiceContext, input: GoodsRe
 }
 
 export async function cancelPurchase(context: ServiceContext, id: string, reverseInitialPayment: boolean) {
+  if (!canPerformAction(context.role, "financial.manage")) throw new PurchaseDomainError("PERMISSION_DENIED", "Unauthorized");
   return withSerializableRetry(async (tx) => {
     const order = await tx.purchaseOrder.findFirst({
       where: { id, workspaceId: context.workspaceId },
@@ -347,14 +353,15 @@ export async function cancelPurchase(context: ServiceContext, id: string, revers
     });
     if (!order) throw new PurchaseDomainError("PURCHASE_NOT_FOUND", "Purchase not found.");
     if (order.status === "CANCELLED") return { id: order.id };
+    if (order.paymentAllocations.length > 0) throw new PurchaseDomainError("INVALID_PAYMENT", "Purchase cannot be cancelled after supplier payments have been allocated.");
 
     if (order.status === "RECEIVED" || order.status === "PARTIALLY_RECEIVED") {
-      const hasGrn = await tx.goodReceivedNote.count({ where: { purchaseOrderId: id } });
+      const hasGrn = await tx.goodReceivedNote.count({ where: { purchaseOrderId: id, workspaceId: context.workspaceId, status: "ACTIVE" } });
       if (hasGrn > 0) {
-        const grns = await tx.goodReceivedNote.findMany({ where: { purchaseOrderId: id, workspaceId: context.workspaceId }, select: { id: true } });
+        const grns = await tx.goodReceivedNote.findMany({ where: { purchaseOrderId: id, workspaceId: context.workspaceId, status: "ACTIVE" }, select: { id: true } });
         const receiptItems = await tx.goodReceivedNoteItem.groupBy({
           by: ["purchaseOrderItemId"],
-          where: { goodReceivedNote: { purchaseOrderId: id, workspaceId: context.workspaceId } },
+          where: { goodReceivedNote: { purchaseOrderId: id, workspaceId: context.workspaceId, status: "ACTIVE" } },
           _sum: { acceptedQuantity: true, totalCost: true },
         });
         const receiptByItem = new Map(receiptItems.map((item) => [item.purchaseOrderItemId, item]));
@@ -363,17 +370,7 @@ export async function cancelPurchase(context: ServiceContext, id: string, revers
         if (order.returns.length) {
           throw new PurchaseDomainError("INVALID_RETURN", "Purchase cannot be cancelled after supplier returns have been recorded.");
         }
-        if (order.paymentAllocations.length > 1) {
-          throw new PurchaseDomainError("INVALID_PAYMENT", "Purchase cannot be cancelled after later payments have been allocated.");
-        }
-        const initialAllocation = order.paymentAllocations[0];
-        if (initialAllocation && initialAllocation.payment.notes !== "Payment made with purchase") {
-          throw new PurchaseDomainError("INVALID_PAYMENT", "Purchase cannot be cancelled after later payments have been allocated.");
-        }
-        if (initialAllocation && !reverseInitialPayment) {
-          throw new PurchaseDomainError("INVALID_PAYMENT", "Explicitly confirm reversal of the initial purchase payment.");
-        }
-        if (!initialAllocation && !reverseInitialPayment) {
+        if (!reverseInitialPayment) {
           throw new PurchaseDomainError("INVALID_PAYMENT", "Explicitly confirm cancellation of received purchase.");
         }
 
@@ -405,6 +402,7 @@ export async function cancelPurchase(context: ServiceContext, id: string, revers
                 reference: order.orderNumber,
               },
             });
+            await tx.purchaseOrderItem.update({ where: { id: item.id }, data: { receivedQuantity: { decrement: acceptedQuantity } } });
           }
         }
 
@@ -421,36 +419,11 @@ export async function cancelPurchase(context: ServiceContext, id: string, revers
 
         await tx.supplier.update({
           where: { id: order.supplierId, workspaceId: context.workspaceId },
-          data: { currentBalance: { decrement: grnTotal.minus(order.paidAmount) } },
+          data: { currentBalance: { decrement: grnTotal } },
         });
 
-        if (order.paymentAllocations[0]) {
-          const initial = order.paymentAllocations[0].payment;
-          const reversal = await tx.payment.create({
-            data: {
-              workspaceId: context.workspaceId,
-              supplierId: order.supplierId,
-              amount: initial.amount,
-              method: initial.method,
-              reference: `REV-${initial.reference ?? initial.id}`,
-              notes: "Initial purchase payment reversal",
-              reversalOfId: initial.id,
-            },
-          });
-          await tx.payment.update({ where: { id: initial.id, workspaceId: context.workspaceId }, data: { isReversed: true, reversedAt: new Date() } });
-          await tx.ledgerEntry.create({
-            data: {
-              workspaceId: context.workspaceId,
-              supplierId: order.supplierId,
-              type: "REVERSAL",
-              credit: initial.amount,
-              description: `Reversed supplier payment ${initial.reference ?? initial.id}`,
-              referenceId: reversal.id,
-            },
-          });
-        }
-
         await reverseGeneralLedgerEntries(tx, { workspaceId: context.workspaceId, sources: grns.map((grn) => ({ sourceType: "PURCHASE_RECEIPT", sourceId: grn.id })), documentNo: `REV-${order.orderNumber}`, date: new Date(), reason: `Cancelled purchase ${order.orderNumber}`, reversedById: context.userId });
+        await tx.goodReceivedNote.updateMany({ where: { id: { in: grns.map((grn) => grn.id) }, workspaceId: context.workspaceId, status: "ACTIVE" }, data: { status: "VOIDED", voidedAt: new Date(), voidedReason: `Purchase ${order.orderNumber} cancelled` } });
       }
     }
 
@@ -473,6 +446,7 @@ export async function cancelPurchase(context: ServiceContext, id: string, revers
 }
 
 export async function createSupplierReturn(context: ServiceContext, input: SupplierReturnInput) {
+  if (!canPerformAction(context.role, "financial.manage")) throw new PurchaseDomainError("PERMISSION_DENIED", "Unauthorized");
   const data = supplierReturnSchema.parse(input);
   return withSerializableRetry(async (tx) => {
     if (data.idempotencyKey) {
@@ -484,10 +458,10 @@ export async function createSupplierReturn(context: ServiceContext, input: Suppl
     const itemIds = data.items.map((item) => item.itemId);
     if (new Set(itemIds).size !== itemIds.length) throw new PurchaseDomainError("INVALID_RETURN", "Duplicate return items are not allowed.");
     const grnWhere = data.goodReceivedNoteId
-      ? { purchaseOrderItemId: { in: itemIds }, goodReceivedNote: { workspaceId: context.workspaceId, purchaseOrderId: order.id, id: data.goodReceivedNoteId } }
-      : { purchaseOrderItemId: { in: itemIds }, goodReceivedNote: { workspaceId: context.workspaceId, purchaseOrderId: order.id } };
+      ? { purchaseOrderItemId: { in: itemIds }, goodReceivedNote: { workspaceId: context.workspaceId, purchaseOrderId: order.id, id: data.goodReceivedNoteId, status: "ACTIVE" as const } }
+      : { purchaseOrderItemId: { in: itemIds }, goodReceivedNote: { workspaceId: context.workspaceId, purchaseOrderId: order.id, status: "ACTIVE" as const } };
     const [previous, received] = await Promise.all([
-      tx.supplierReturnItem.groupBy({ by: ["purchaseOrderItemId"], where: { purchaseOrderItemId: { in: itemIds }, supplierReturn: { workspaceId: context.workspaceId } }, _sum: { quantity: true } }),
+      tx.supplierReturnItem.groupBy({ by: ["purchaseOrderItemId"], where: { purchaseOrderItemId: { in: itemIds }, supplierReturn: { workspaceId: context.workspaceId, status: "POSTED" } }, _sum: { quantity: true } }),
       tx.goodReceivedNoteItem.groupBy({ by: ["purchaseOrderItemId"], where: grnWhere, _sum: { acceptedQuantity: true, totalCost: true } }),
     ]);
     const lines = data.items.map((item) => {
@@ -512,7 +486,8 @@ export async function createSupplierReturn(context: ServiceContext, input: Suppl
       const currentStock = product.stockQuantity.toNumber();
       const remainingValue = product.costPrice.mul(currentStock).minus(line.total);
       if (remainingValue.isNegative()) throw new PurchaseDomainError("INVALID_RETURN", "Return value exceeds the current inventory carrying value.");
-      const changed = await tx.product.updateMany({ where: { id: line.source.productId, workspaceId: context.workspaceId, stockQuantity: product.stockQuantity }, data: { stockQuantity: { decrement: line.quantity } } });
+      const remainingQuantity = currentStock - line.quantity;
+      const changed = await tx.product.updateMany({ where: { id: line.source.productId, workspaceId: context.workspaceId, stockQuantity: product.stockQuantity }, data: { stockQuantity: { decrement: line.quantity }, ...(remainingQuantity > 0 ? { costPrice: remainingValue.div(remainingQuantity) } : {}) } });
       if (changed.count !== 1) throw new PurchaseDomainError("INSUFFICIENT_STOCK", `${line.source.productName ?? "Product"} has insufficient stock to return.`);
       await tx.supplierReturnItem.create({ data: { supplierReturnId: supplierReturn.id, purchaseOrderItemId: line.source.id, productId: line.source.productId, quantity: line.quantity, unitCost: line.unitCost, totalCost: line.total } });
       await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: line.source.productId, type: "RETURN_OUT", quantityChanged: -line.quantity, unitCost: line.unitCost, reference: number } });
@@ -588,6 +563,9 @@ export async function getPurchase(workspaceId: string, id: string) {
     id: grn.id,
     grnNumber: grn.grnNumber,
     receiptDate: grn.receiptDate.toISOString(),
+    status: grn.status,
+    voidedAt: grn.voidedAt?.toISOString() ?? null,
+    voidedReason: grn.voidedReason,
     totalAmount: Number(grn.totalAmount),
     receivedBy: grn.receivedBy,
     checkedBy: grn.checkedBy,
@@ -603,6 +581,7 @@ export async function getPurchase(workspaceId: string, id: string) {
 
   const subtotal = items.reduce((sum, item) => sum + item.total, 0);
   const total = Number(row.totalAmount);
+  const goodsReceivedValue = row.goodsReceivedNotes.filter((grn) => grn.status === "ACTIVE").reduce((sum, grn) => sum.plus(grn.totalAmount), new Prisma.Decimal(0)).toNumber();
 
   return {
     id: row.id,
@@ -616,6 +595,8 @@ export async function getPurchase(workspaceId: string, id: string) {
     subtotal,
     discount: Math.max(0, subtotal - total),
     total,
+    goodsReceivedValue,
+    remainingValueToReceive: Math.max(0, total - goodsReceivedValue),
     paid: Number(row.paidAmount),
     outstanding: Number(row.balanceAmount),
     supplier: {
@@ -695,7 +676,7 @@ export async function getGoodsReceipt(workspaceId: string, id: string) {
       items: {
         include: {
           purchaseOrderItem: { select: { quantity: true, receivedQuantity: true, unitWeight: true, totalWeight: true, perKgRate: true } },
-          product: { select: { name: true, sku: true } },
+          product: { select: { name: true, sku: true, unit: true } },
         },
       },
     },
@@ -708,6 +689,8 @@ export async function getGoodsReceipt(workspaceId: string, id: string) {
     receiptDate: grn.receiptDate.toISOString(),
     totalAmount: Number(grn.totalAmount),
     status: grn.status,
+    voidedAt: grn.voidedAt?.toISOString() ?? null,
+    voidedReason: grn.voidedReason,
     receivedBy: grn.receivedBy,
     checkedBy: grn.checkedBy,
     notes: grn.notes,
@@ -731,6 +714,7 @@ export async function getGoodsReceipt(workspaceId: string, id: string) {
         purchaseOrderItemId: item.purchaseOrderItemId,
         productName: item.product.name,
         sku: item.product.sku ?? "",
+        unit: item.product.unit,
         orderedQuantity: poQty,
         previouslyReceived: poReceived - accepted,
         receivedNow: item.receivedQuantity.toNumber(),
@@ -832,24 +816,27 @@ export async function getSupplierReturn(workspaceId: string, id: string) {
  * Header fields (notes, expectedDeliveryDate) remain editable.
  */
 export async function updatePurchase(context: ServiceContext, id: string, input: UpdatePurchaseInput) {
+  if (!canPerformAction(context.role, "financial.manage")) throw new PurchaseDomainError("PERMISSION_DENIED", "You do not have permission to edit purchase orders.");
   const data = updatePurchaseSchema.parse(input);
   return withSerializableRetry(async (tx) => {
     const order = await tx.purchaseOrder.findFirst({
       where: { id, workspaceId: context.workspaceId },
-      select: { id: true, status: true, orderNumber: true },
+      select: { id: true, status: true, orderNumber: true, _count: { select: { goodsReceivedNotes: true, paymentAllocations: true, returns: true } } },
     });
     if (!order) throw new PurchaseDomainError("PURCHASE_NOT_FOUND", "Purchase not found.");
 
-    if (order.status !== "DRAFT") {
-      throw new PurchaseDomainError("CANNOT_EDIT_PO", `Purchase order cannot be edited in ${order.status} status. Only DRAFT orders can be edited.`);
-    }
+    if (!(["DRAFT", "ORDERED"] as const).includes(order.status as "DRAFT" | "ORDERED")) throw new PurchaseDomainError("CANNOT_EDIT_PO", `Cannot edit this purchase in ${order.status} status.`);
+    if (order._count.goodsReceivedNotes > 0) throw new PurchaseDomainError("CANNOT_EDIT_PO", "Cannot edit this purchase because goods have already been received.");
+    if (order._count.paymentAllocations > 0) throw new PurchaseDomainError("CANNOT_EDIT_PO", "Cannot edit this purchase because supplier payments are allocated to it.");
+    if (order._count.returns > 0) throw new PurchaseDomainError("CANNOT_EDIT_PO", "Cannot edit this purchase because supplier returns reference it.");
+
+    const changes: Prisma.PurchaseOrderUpdateInput = {};
+    if (data.notes !== undefined) changes.notes = data.notes || null;
+    if (data.expectedDeliveryDate !== undefined) changes.expectedDeliveryDate = data.expectedDeliveryDate;
 
     const updated = await tx.purchaseOrder.update({
       where: { id, workspaceId: context.workspaceId },
-      data: {
-        notes: data.notes || null,
-        expectedDeliveryDate: data.expectedDeliveryDate || null,
-      },
+      data: changes,
       select: { id: true, orderNumber: true },
     });
 
@@ -872,23 +859,24 @@ export async function updatePurchase(context: ServiceContext, id: string, input:
  * Otherwise, must use cancelPurchase.
  */
 export async function deletePurchase(context: ServiceContext, id: string) {
+  if (!canPerformAction(context.role, "financial.manage")) throw new PurchaseDomainError("PERMISSION_DENIED", "You do not have permission to delete purchase orders.");
   return withSerializableRetry(async (tx) => {
     const order = await tx.purchaseOrder.findFirst({
       where: { id, workspaceId: context.workspaceId },
-      select: { id: true, status: true, orderNumber: true },
+      select: { id: true, status: true, orderNumber: true, _count: { select: { goodsReceivedNotes: true, paymentAllocations: true, returns: true } } },
     });
     if (!order) throw new PurchaseDomainError("PURCHASE_NOT_FOUND", "Purchase not found.");
 
-    if (order.status !== "DRAFT") {
-      throw new PurchaseDomainError("CANNOT_DELETE_PO", `Purchase order cannot be deleted in ${order.status} status. Only DRAFT orders can be deleted. For other statuses, use cancel purchase instead.`);
-    }
+if (order._count.paymentAllocations > 0) throw new PurchaseDomainError("PURCHASE_HAS_PAYMENTS", "Cannot delete this purchase because supplier payments are allocated to it.");
+    if (order._count.returns > 0) throw new PurchaseDomainError("CANNOT_DELETE_PO", "Cannot delete this purchase because supplier returns reference it.");
+    if (order._count.goodsReceivedNotes > 0) throw new PurchaseDomainError("CANNOT_DELETE_PO", "Cannot delete this purchase because goods have already been received. Void the related GRN first.");
+    if (order.status !== "DRAFT") throw new PurchaseDomainError("CANNOT_DELETE_PO", `Cannot delete this purchase in ${order.status} status. Use cancel purchase instead.`);
 
-    const grnCount = await tx.goodReceivedNote.count({
-      where: { purchaseOrderId: id, workspaceId: context.workspaceId },
-    });
-    if (grnCount > 0) {
-      throw new PurchaseDomainError("CANNOT_DELETE_PO", "Purchase order cannot be deleted because it has linked goods receipts. Use cancel purchase instead.");
-    }
+    const [ledgerCount, generalLedgerCount] = await Promise.all([
+      tx.ledgerEntry.count({ where: { workspaceId: context.workspaceId, referenceId: id } }),
+      tx.generalLedgerEntry.count({ where: { workspaceId: context.workspaceId, sourceId: id } }),
+    ]);
+    if (ledgerCount > 0 || generalLedgerCount > 0) throw new PurchaseDomainError("CANNOT_DELETE_PO", "Cannot delete this purchase because accounting activity references it.");
 
     const deleted = await tx.purchaseOrder.delete({
       where: { id, workspaceId: context.workspaceId },
@@ -919,6 +907,7 @@ export async function deletePurchase(context: ServiceContext, id: string) {
  * Blocked if GRN is VOIDED or has linked SupplierReturns.
  */
 export async function updateGoodsReceipt(context: ServiceContext, id: string, input: UpdateGoodsReceiptInput) {
+  if (!canPerformAction(context.role, "inventory.adjust")) throw new PurchaseDomainError("PERMISSION_DENIED", "You do not have permission to edit goods receipts.");
   const data = updateGoodsReceiptSchema.parse(input);
   return withSerializableRetry(async (tx) => {
     const grn = await tx.goodReceivedNote.findFirst({
@@ -926,7 +915,7 @@ export async function updateGoodsReceipt(context: ServiceContext, id: string, in
       include: {
         items: true,
         supplierReturns: { select: { id: true }, take: 1 },
-        purchaseOrder: { select: { id: true, orderNumber: true } },
+        purchaseOrder: { select: { id: true, orderNumber: true, status: true, balanceAmount: true } },
       },
     });
     if (!grn) throw new PurchaseDomainError("GRN_NOT_FOUND", "Goods receipt not found.");
@@ -935,9 +924,14 @@ export async function updateGoodsReceipt(context: ServiceContext, id: string, in
       throw new PurchaseDomainError("CANNOT_MODIFY_GRN", "Cannot modify a voided goods receipt.");
     }
 
+    if (grn.purchaseOrder.status === "CANCELLED") throw new PurchaseDomainError("CANNOT_MODIFY_GRN", "Cannot edit a goods receipt for a cancelled purchase.");
+
     if (grn.supplierReturns.length > 0) {
       throw new PurchaseDomainError("GRN_HAS_SUPPLIER_RETURNS", "Goods receipt cannot be modified because it has linked supplier returns.");
     }
+
+    const returnDependency = await tx.supplierReturnItem.count({ where: { purchaseOrderItemId: { in: grn.items.map((item) => item.purchaseOrderItemId) }, supplierReturn: { workspaceId: context.workspaceId, status: "POSTED" } } });
+    if (returnDependency > 0) throw new PurchaseDomainError("GRN_HAS_SUPPLIER_RETURNS", "Cannot edit this GRN because supplier returns already reference its purchase items.");
 
     // Update header fields
     const headerUpdate: { notes?: string | null; receivedBy?: string | null; checkedBy?: string | null } = {};
@@ -987,6 +981,24 @@ export async function updateGoodsReceipt(context: ServiceContext, id: string, in
     });
     const poItemMap = new Map(poItems.map((p) => [p.id, p]));
 
+    let projectedTotalDelta = new Prisma.Decimal(0);
+    for (const item of data.items) {
+      const existing = existingByPoItem.get(item.purchaseOrderItemId)!;
+      const poItem = poItemMap.get(item.purchaseOrderItemId);
+if (!poItem) throw new PurchaseDomainError("INVALID_RECEIPT", "Purchase order item not found.");
+      if (item.acceptedQuantity > item.receivedQuantity) throw new PurchaseDomainError("INVALID_RECEIPT", "Accepted quantity cannot exceed received quantity.");
+      // poItem.receivedQuantity already includes this GRN's existing received qty.
+      // Subtract it out to get the capacity available for edits to this GRN.
+      const existingReceived = existing.receivedQuantity.toNumber();
+      const remainingPoQuantity = poItem.quantity.minus(poItem.receivedQuantity).plus(existingReceived).toNumber();
+      const newTotalReceived = item.receivedQuantity;
+      if (newTotalReceived > remainingPoQuantity) throw new PurchaseDomainError("OVER_RECEIPT", `Received weight cannot exceed the remaining PO quantity. Only ${remainingPoQuantity} remaining.`);
+      const quantityDelta = item.acceptedQuantity - existing.acceptedQuantity.toNumber();
+      if (quantityDelta > remainingPoQuantity) throw new PurchaseDomainError("OVER_RECEIPT", `Accepted quantity increase cannot exceed the remaining PO quantity. Only ${remainingPoQuantity} remaining.`);
+      projectedTotalDelta = projectedTotalDelta.plus(new Prisma.Decimal(item.actualUnitCost).mul(item.acceptedQuantity).minus(existing.totalCost));
+    }
+    if (grn.purchaseOrder.balanceAmount.plus(projectedTotalDelta).isNegative()) throw new PurchaseDomainError("PURCHASE_HAS_PAYMENTS", "Cannot reduce this GRN below the amount already settled by supplier payments or returns.");
+
     let totalDelta = new Prisma.Decimal(0);
 
     for (const item of data.items) {
@@ -996,7 +1008,6 @@ export async function updateGoodsReceipt(context: ServiceContext, id: string, in
 
       const oldAccepted = existing.acceptedQuantity.toNumber();
       const newAccepted = item.acceptedQuantity;
-      const oldUnitCost = Number(existing.unitCost);
       const newUnitCost = item.actualUnitCost;
 
       if (newAccepted < 0 || newUnitCost < 0) {
@@ -1015,10 +1026,12 @@ export async function updateGoodsReceipt(context: ServiceContext, id: string, in
       }
 
       // If quantity is increasing, verify PO has remaining ordered capacity
+      // poItem.receivedQuantity already includes this GRN's existing accepted qty,
+      // so subtract it out to get the true available capacity for this GRN.
       if (quantityDelta > 0) {
         const poQuantity = poItem.quantity.toNumber();
         const currentPoReceived = poItem.receivedQuantity.toNumber();
-        const remaining = poQuantity - currentPoReceived;
+        const remaining = poQuantity - currentPoReceived + oldAccepted;
         if (quantityDelta > remaining) {
           throw new PurchaseDomainError("OVER_RECEIPT", `Cannot increase accepted quantity by ${quantityDelta}. Only ${remaining} remaining on the purchase order.`);
         }
@@ -1119,7 +1132,7 @@ export async function updateGoodsReceipt(context: ServiceContext, id: string, in
       await tx.goodReceivedNoteItem.update({
         where: { id: existing.id },
         data: {
-          receivedQuantity: newAccepted,
+          receivedQuantity: item.receivedQuantity,
           acceptedQuantity: newAccepted,
           unitCost: newUnitCostDecimal,
           totalCost: newTotalCost,
@@ -1257,6 +1270,7 @@ export async function updateGoodsReceipt(context: ServiceContext, id: string, in
  * Blocked if any linked SupplierReturn exists or if current stock for any item is less than the received quantity.
  */
 export async function voidGoodsReceipt(context: ServiceContext, id: string, input: VoidGoodsReceiptInput) {
+  if (!canPerformAction(context.role, "inventory.adjust")) throw new PurchaseDomainError("PERMISSION_DENIED", "You do not have permission to void goods receipts.");
   const data = voidGoodsReceiptSchema.parse(input);
   return withSerializableRetry(async (tx) => {
     const grn = await tx.goodReceivedNote.findFirst({
@@ -1264,7 +1278,7 @@ export async function voidGoodsReceipt(context: ServiceContext, id: string, inpu
       include: {
         items: true,
         supplierReturns: { select: { id: true }, take: 1 },
-        purchaseOrder: { select: { id: true, orderNumber: true } },
+        purchaseOrder: { select: { id: true, orderNumber: true, status: true, balanceAmount: true } },
       },
     });
     if (!grn) throw new PurchaseDomainError("GRN_NOT_FOUND", "Goods receipt not found.");
@@ -1273,9 +1287,15 @@ export async function voidGoodsReceipt(context: ServiceContext, id: string, inpu
       throw new PurchaseDomainError("INVALID_GRN_STATUS", "This goods receipt has already been voided.");
     }
 
+    if (grn.purchaseOrder.status === "CANCELLED") throw new PurchaseDomainError("INVALID_GRN_STATUS", "Cannot void a goods receipt for a cancelled purchase.");
+
     if (grn.supplierReturns.length > 0) {
       throw new PurchaseDomainError("GRN_HAS_SUPPLIER_RETURNS", "Goods receipt cannot be voided because it has linked supplier returns.");
     }
+
+    const returnDependency = await tx.supplierReturnItem.count({ where: { purchaseOrderItemId: { in: grn.items.map((item) => item.purchaseOrderItemId) }, supplierReturn: { workspaceId: context.workspaceId, status: "POSTED" } } });
+    if (returnDependency > 0) throw new PurchaseDomainError("GRN_HAS_SUPPLIER_RETURNS", "Cannot void this GRN because supplier returns already reference its purchase items.");
+    if (grn.totalAmount.greaterThan(grn.purchaseOrder.balanceAmount)) throw new PurchaseDomainError("PURCHASE_HAS_PAYMENTS", "Cannot void this GRN because supplier payments or returns have already settled part of its payable.");
 
     // Validate sufficient inventory to reverse
     for (const item of grn.items) {
@@ -1307,6 +1327,8 @@ export async function voidGoodsReceipt(context: ServiceContext, id: string, inpu
       const remainingStock = currentStock - item.acceptedQuantity.toNumber();
       const remainingValue = currentValue.minus(reversalValue);
 
+      if (remainingValue.isNegative()) throw new PurchaseDomainError("INSUFFICIENT_INVENTORY", "Insufficient inventory carrying value to void this receipt.");
+
       const newCostPrice = remainingStock > 0 ? remainingValue.div(remainingStock) : new Prisma.Decimal(0);
 
       await tx.product.update({
@@ -1317,7 +1339,7 @@ export async function voidGoodsReceipt(context: ServiceContext, id: string, inpu
         },
       });
 
-      await tx.inventoryTransaction.create({
+      if (item.acceptedQuantity.greaterThan(0)) await tx.inventoryTransaction.create({
         data: {
           workspaceId: context.workspaceId,
           productId: item.productId,
@@ -1434,8 +1456,9 @@ export async function voidGoodsReceipt(context: ServiceContext, id: string, inpu
  * Users must use voidGoodsReceipt instead.
  */
 export async function deleteGoodsReceipt(_context: ServiceContext, _id: string) {
-  void _context;
-  void _id;
+  if (!canPerformAction(_context.role, "inventory.adjust")) throw new PurchaseDomainError("PERMISSION_DENIED", "You do not have permission to delete goods receipts.");
+  const exists = await db.goodReceivedNote.findFirst({ where: { id: _id, workspaceId: _context.workspaceId }, select: { id: true } });
+  if (!exists) throw new PurchaseDomainError("GRN_NOT_FOUND", "Goods receipt not found.");
   throw new PurchaseDomainError(
     "CANNOT_DELETE_POSTED_GRN",
     "Posted goods receipts cannot be deleted. Use void receipt instead to preserve audit and accounting integrity.",

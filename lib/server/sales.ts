@@ -9,9 +9,14 @@ import { saleSchema, type SaleInput } from "@/lib/validation/sale";
 import { writeAudit } from "@/lib/server/audit";
 import { customerReturnSchema, type CustomerReturnInput } from "@/lib/validation/returns";
 import { canPerformAction } from "@/lib/server/authorization";
+import { formatPKR } from "@/lib/utils";
 
 export type ServiceContext = { workspaceId: string; role: Role; userId?: string };
-export class SaleDomainError extends Error { constructor(public code: "CUSTOMER_NOT_FOUND" | "PRODUCT_NOT_FOUND" | "INSUFFICIENT_STOCK" | "INVALID_TOTAL" | "SALE_NOT_FOUND" | "INVALID_RETURN", message: string) { super(message); } }
+export class SaleDomainError extends Error {
+  constructor(public code: "CUSTOMER_NOT_FOUND" | "PRODUCT_NOT_FOUND" | "INSUFFICIENT_STOCK" | "INVALID_TOTAL" | "CREDIT_LIMIT_EXCEEDED" | "PAYMENT_PERMISSION_DENIED" | "PAYMENT_ACCOUNT_UNAVAILABLE" | "SALE_NOT_FOUND" | "INVALID_RETURN" | "PERMISSION_DENIED", message: string) {
+    super(message);
+  }
+}
 
 export async function createSale(context: ServiceContext, input: SaleInput) {
   const data = saleSchema.parse(input);
@@ -34,27 +39,41 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
     const total = subtotal.minus(discount);
     const paid = new Prisma.Decimal(data.paidAmount);
     if (total.isNegative() || paid.greaterThan(total)) throw new SaleDomainError("INVALID_TOTAL", "Payment or discount exceeds the order total.");
-    if (paid.greaterThan(0) && !canPerformAction(context.role, "payments.record")) throw new SaleDomainError("INVALID_TOTAL", "You do not have permission to record a payment with this sale.");
+    if (paid.greaterThan(0) && !canPerformAction(context.role, "payments.record")) throw new SaleDomainError("PAYMENT_PERMISSION_DENIED", "You do not have permission to record a payment with this sale.");
     const additionalCredit = total.minus(paid);
-    if (customer.creditLimit.greaterThan(0) && customer.currentBalance.plus(additionalCredit).greaterThan(customer.creditLimit)) throw new SaleDomainError("INVALID_TOTAL", "This sale exceeds the customer's credit limit.");
+    if (customer.creditLimit.greaterThan(0)) {
+      const remainingCredit = customer.creditLimit.minus(customer.currentBalance);
+      const availableCredit = remainingCredit.greaterThan(0) ? remainingCredit : new Prisma.Decimal(0);
+      if (additionalCredit.greaterThan(availableCredit)) {
+        throw new SaleDomainError("CREDIT_LIMIT_EXCEEDED", `Customer credit limit exceeded. Available credit: ${formatPKR(availableCredit.toNumber())}.`);
+      }
+    }
+
+    const cashBankAccountId = data.cashBankAccountId || null;
+    let receiptMethod: "CASH" | "BANK_TRANSFER" = "CASH";
+    if (paid.greaterThan(0)) {
+      const cashBankAccount = await tx.cashBankAccount.findFirst({ where: { id: cashBankAccountId!, workspaceId: context.workspaceId, isActive: true }, select: { id: true, isBank: true } });
+      if (!cashBankAccount) throw new SaleDomainError("PAYMENT_ACCOUNT_UNAVAILABLE", "The selected cash/bank account is unavailable.");
+      receiptMethod = cashBankAccount.isBank ? "BANK_TRANSFER" : "CASH";
+    }
+
+    for (const line of lines) {
+      const product = products.find((entry) => entry.id === line.productId)!;
+      if (product.stockQuantity.lessThan(line.quantity)) {
+        throw new SaleDomainError("INSUFFICIENT_STOCK", `Unable to create sale because ${product.name} does not have sufficient inventory. Available quantity: ${product.stockQuantity.toString()}.`);
+      }
+    }
 
     const orderNumber = await nextDocumentNumber(tx, context.workspaceId, "SALES_ORDER");
     const invoiceNumber = await nextDocumentNumber(tx, context.workspaceId, "INVOICE");
     const order = await tx.salesOrder.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, orderNumber, status: "CONFIRMED", subtotal, discount, total, paidAmount: paid, balanceAmount: total.minus(paid), notes: data.notes || null, idempotencyKey: data.idempotencyKey }, select: { id: true, orderDate: true } });
-    const cashBankAccountId = data.cashBankAccountId && data.cashBankAccountId !== "" ? data.cashBankAccountId : null;
-    let receiptMethod: "CASH" | "BANK_TRANSFER" = "CASH";
-    if (paid.greaterThan(0) && cashBankAccountId) {
-      const cashBankAccount = await tx.cashBankAccount.findFirst({ where: { id: cashBankAccountId, workspaceId: context.workspaceId, isActive: true }, select: { id: true, isBank: true } });
-      if (!cashBankAccount) throw new SaleDomainError("INVALID_TOTAL", "Cash/bank account is unavailable.");
-      receiptMethod = cashBankAccount.isBank ? "BANK_TRANSFER" : "CASH";
-    }
     let costOfGoodsSold = new Prisma.Decimal(0);
 
     for (const line of lines) {
       const product = products.find((entry) => entry.id === line.productId)!;
       costOfGoodsSold = costOfGoodsSold.plus(product.costPrice.mul(line.quantity));
       const changed = await tx.product.updateMany({ where: { id: line.productId, workspaceId: context.workspaceId, stockQuantity: { gte: line.quantity } }, data: { stockQuantity: { decrement: line.quantity } } });
-      if (changed.count !== 1) throw new SaleDomainError("INSUFFICIENT_STOCK", `${product.name} has insufficient stock.`);
+      if (changed.count !== 1) throw new SaleDomainError("INSUFFICIENT_STOCK", `Unable to create sale because ${product.name} does not have sufficient inventory. Available quantity: ${product.stockQuantity.toString()}.`);
       await tx.salesOrderItem.create({ data: { salesOrderId: order.id, productId: line.productId, productName: product.name, productSku: product.sku, quantity: line.quantity, unitPrice: line.unitPrice, discount: line.discount, totalPrice: line.total } });
       await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: line.productId, type: "SALE", quantityChanged: -line.quantity, unitCost: product.costPrice, reference: orderNumber } });
     }
@@ -65,7 +84,7 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
     await tx.customer.update({ where: { id: customer.id, workspaceId: context.workspaceId }, data: { currentBalance: { increment: total } } });
     if (paid.greaterThan(0)) {
       const paymentNumber = await nextDocumentNumber(tx, context.workspaceId, "PAYMENT_RECEIPT");
-      const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, invoiceId: invoice.id, cashBankAccountId, amount: paid, method: receiptMethod, reference: paymentNumber, notes: "Payment received with sale" }, select: { id: true } });
+      const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, invoiceId: invoice.id, cashBankAccountId, documentNumber: paymentNumber, amount: paid, netAmount: paid, method: receiptMethod, reference: paymentNumber, notes: "Payment received with sale", allocations: { create: { workspaceId: context.workspaceId, invoiceId: invoice.id, amount: paid } } }, select: { id: true } });
       await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, type: "PAYMENT_RECEIVED", credit: paid, description: `Payment ${paymentNumber}`, referenceId: payment.id } });
       await tx.customer.update({ where: { id: customer.id, workspaceId: context.workspaceId }, data: { currentBalance: { decrement: paid } } });
     }
@@ -76,6 +95,7 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
 }
 
 export async function createCustomerReturn(context: ServiceContext, input: CustomerReturnInput) {
+  if (!canPerformAction(context.role, "financial.manage")) throw new SaleDomainError("PERMISSION_DENIED", "Unauthorized");
   const data = customerReturnSchema.parse(input);
   return withSerializableRetry(async (tx) => {
     if (data.idempotencyKey) {
@@ -127,16 +147,19 @@ export async function createCustomerReturn(context: ServiceContext, input: Custo
 }
 
 export async function cancelSale(context: ServiceContext, id: string, reverseInitialPayment: boolean) {
+  if (!canPerformAction(context.role, "financial.manage")) throw new SaleDomainError("PERMISSION_DENIED", "Unauthorized");
   return withSerializableRetry(async (tx) => {
-    const order = await tx.salesOrder.findFirst({ where: { id, workspaceId: context.workspaceId }, include: { items: true, returns: { select: { id: true }, take: 1 }, invoices: { include: { payments: { where: { isReversed: false }, orderBy: { createdAt: "asc" } }, allocations: { where: { payment: { isReversed: false } }, select: { id: true } } } } } });
+    const order = await tx.salesOrder.findFirst({ where: { id, workspaceId: context.workspaceId }, include: { items: true, returns: { select: { id: true }, take: 1 }, invoices: { include: { payments: { where: { isReversed: false }, orderBy: { createdAt: "asc" } }, allocations: { where: { payment: { isReversed: false } }, select: { paymentId: true } }, creditAllocations: { select: { id: true }, take: 1 } } } } });
     if (!order) throw new SaleDomainError("CUSTOMER_NOT_FOUND", "Sale not found.");
     if (order.status === "CANCELLED") return { id: order.id };
     const invoice = order.invoices[0];
     const activePayments = invoice?.payments ?? [];
     const initial = activePayments.find((payment) => payment.notes === "Payment received with sale");
     const laterPayments = activePayments.filter((payment) => payment.id !== initial?.id);
+    const laterAllocations = invoice?.allocations.filter((allocation) => allocation.paymentId !== initial?.id) ?? [];
     if (order.returns.length) throw new SaleDomainError("INVALID_RETURN", "Sale cannot be cancelled after customer returns have been recorded.");
-    if (laterPayments.length || (invoice?.allocations.length ?? 0) > 0) throw new SaleDomainError("INVALID_TOTAL", "Sale cannot be cancelled after later payments have been recorded.");
+    if (invoice && (!invoice.creditApplied.isZero() || invoice.creditAllocations.length > 0)) throw new SaleDomainError("INVALID_TOTAL", "Sale cannot be cancelled after customer credit has been applied to its invoice.");
+    if (laterPayments.length || laterAllocations.length > 0) throw new SaleDomainError("INVALID_TOTAL", "Sale cannot be cancelled after later payments have been recorded.");
     if (initial && !reverseInitialPayment) throw new SaleDomainError("INVALID_TOTAL", "Explicitly confirm reversal of the initial sale payment.");
 
     const saleCosts = await tx.inventoryTransaction.findMany({ where: { workspaceId: context.workspaceId, reference: order.orderNumber, type: "SALE" }, select: { productId: true, unitCost: true } });

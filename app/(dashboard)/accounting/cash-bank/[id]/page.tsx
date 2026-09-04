@@ -5,11 +5,11 @@ import { PageHeader } from "@/components/business/page-header";
 import { PrintButton } from "@/components/invoices/print-button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getCashBankAccountLedger } from "@/lib/server/accounting";
-import { requireWorkspace } from "@/lib/server/auth";
+import { requirePermission } from "@/lib/server/authorization";
 import { formatDate, formatPKR } from "@/lib/utils";
 
 export default async function CashBankDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { workspaceId } = await requireWorkspace();
+  const { workspaceId } = await requirePermission("financial.manage");
   const account = await getCashBankAccountLedger(workspaceId, (await params).id);
   if (!account) notFound();
 

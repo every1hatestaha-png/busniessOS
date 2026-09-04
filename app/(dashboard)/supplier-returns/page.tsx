@@ -3,12 +3,12 @@ import { PageHeader } from "@/components/business/page-header";
 import { StatusBadge } from "@/components/business/status-badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { requireWorkspace } from "@/lib/server/auth";
+import { requirePermission } from "@/lib/server/authorization";
 import { listSupplierReturns } from "@/lib/server/purchases";
 import { formatDate, formatPKR } from "@/lib/utils";
 
 export default async function SupplierReturnsPage() {
-  const { workspaceId } = await requireWorkspace();
+  const { workspaceId } = await requirePermission("financial.manage");
   const returns = await listSupplierReturns(workspaceId);
 
   return (

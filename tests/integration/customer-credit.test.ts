@@ -197,4 +197,30 @@ describe("customer credit allocation and receivables", () => {
     expect(report.totalUnappliedCredit).toBeGreaterThanOrEqual(40);
     expect(report.customers.flatMap((customer) => customer.items).every((entry) => entry.outstandingAmount > 0)).toBe(true);
   }, 60_000);
+
+  it("blocks sale cancellation after customer credit is allocated", async () => {
+    const source = await saleWithInvoice(50, 0);
+    const customerReturn = await returnFor(source.item.id, source.sale.id);
+    const credit = await db.creditNote.findFirstOrThrow({ where: { customerReturnId: customerReturn.id } });
+    const target = await saleWithInvoice(80, 0);
+    await allocateCustomerCredit(context(), { creditNoteId: credit.id, invoiceId: target.invoice.id, amount: 20, idempotencyKey: randomUUID() });
+
+    await expect(cancelSale(context(), target.sale.id, true)).rejects.toThrow("customer credit has been applied");
+    const [sale, invoice, allocation] = await Promise.all([
+      db.salesOrder.findUniqueOrThrow({ where: { id: target.sale.id } }),
+      db.invoice.findUniqueOrThrow({ where: { id: target.invoice.id } }),
+      db.customerCreditAllocation.findFirstOrThrow({ where: { invoiceId: target.invoice.id } }),
+    ]);
+    expect(sale.status).not.toBe("CANCELLED");
+    expect(invoice.status).not.toBe("CANCELLED");
+    expect(Number(invoice.creditApplied)).toBe(20);
+    expect(Number(allocation.amount)).toBe(20);
+  });
+
+  it("enforces permissions for sale cancellation and customer returns", async () => {
+    const target = await saleWithInvoice(30, 0);
+    const staff = { workspaceId, userId, role: "STAFF" as const };
+    await expect(cancelSale(staff, target.sale.id, true)).rejects.toMatchObject({ code: "PERMISSION_DENIED", message: "Unauthorized" });
+    await expect(createCustomerReturn(staff, { salesOrderId: target.sale.id, items: [{ itemId: target.item.id, quantity: 1 }], restock: true, reason: "Unauthorized", notes: "", idempotencyKey: randomUUID() })).rejects.toMatchObject({ code: "PERMISSION_DENIED", message: "Unauthorized" });
+  });
 });

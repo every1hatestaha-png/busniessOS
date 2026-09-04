@@ -5,13 +5,13 @@ import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export function DeleteGrnButton({ grnId, disabled }: { grnId: string; disabled?: boolean }) {
+export function DeleteGrnButton({ grnId, grnNumber, disabled }: { grnId: string; grnNumber: string; disabled?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
   async function handleDelete() {
-    if (!confirm("Permanently delete this GRN? This will reverse all inventory and accounting entries. This action cannot be undone.")) return;
+    if (!confirm(`Delete GRN ${grnNumber}? Posted receipts are protected; use Void GRN to reverse an active receipt while preserving history.`)) return;
     setBusy(true);
     setMessage("");
     try {

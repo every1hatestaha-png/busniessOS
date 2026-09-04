@@ -11,7 +11,7 @@ export const POST = apiHandler(async (request: Request) => {
   const context = await requireApiContext("financial.manage");
   const input = await parseApiBody(request, cashBankAccountSchema);
   try {
-    return apiData(await createCashBankAccount({ workspaceId: context.workspaceId, userId: context.user.id }, input), 201);
+    return apiData(await createCashBankAccount({ workspaceId: context.workspaceId, userId: context.user.id, role: context.role }, input), 201);
   } catch (error) {
     if (error instanceof AccountingDomainError) throw new ApiError(422, "ACCOUNTING_REJECTED", error.message);
     throw error;

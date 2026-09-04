@@ -6,6 +6,7 @@ import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { formatPKR } from "@/lib/utils";
 
 type GrnItem = {
   id: string;
@@ -19,6 +20,7 @@ type GrnItem = {
   remainingQuantity: number;
   unitCost: number;
   totalCost: number;
+  unit: string;
 };
 
 type EditableGrn = {
@@ -51,9 +53,9 @@ export function EditGrnSheet({ grn }: { grn: EditableGrn }) {
   }
 
   function computeTotal(): number {
-    return items.reduce((sum, r, i) => {
+    return items.reduce((sum, r) => {
       const accepted = Number(r.acceptedQuantity) || 0;
-      const cost = Number(r.actualUnitCost) || grn.items[i].unitCost;
+      const cost = Number(r.actualUnitCost);
       return sum + accepted * cost;
     }, 0);
   }
@@ -68,11 +70,11 @@ export function EditGrnSheet({ grn }: { grn: EditableGrn }) {
       notes: form.get("notes") || "",
       receivedBy: form.get("receivedBy") || "",
       checkedBy: form.get("checkedBy") || "",
-      items: items.map((r, i) => ({
+      items: items.map((r) => ({
         purchaseOrderItemId: r.purchaseOrderItemId,
-        receivedQuantity: Number(r.receivedQuantity) || grn.items[i].receivedNow,
-        acceptedQuantity: Number(r.acceptedQuantity) || grn.items[i].acceptedQuantity,
-        actualUnitCost: Number(r.actualUnitCost) || grn.items[i].unitCost,
+        receivedQuantity: Number(r.receivedQuantity),
+        acceptedQuantity: Number(r.acceptedQuantity),
+        actualUnitCost: Number(r.actualUnitCost),
       })),
     };
 
@@ -128,7 +130,7 @@ export function EditGrnSheet({ grn }: { grn: EditableGrn }) {
               <span>Product</span>
               <span className="text-right">Received</span>
               <span className="text-right">Accepted</span>
-              <span className="text-right">Unit Cost</span>
+              <span className="text-right">Rate / Cost</span>
             </div>
             {grn.items.map((item, index) => (
               <div key={item.purchaseOrderItemId} className="grid gap-2" style={{ gridTemplateColumns: "1fr 80px 80px 100px" }}>
@@ -139,7 +141,7 @@ export function EditGrnSheet({ grn }: { grn: EditableGrn }) {
                 <Input
                   type="number"
                   min="0"
-                  step="0.01"
+                  step={item.unit === "KG" ? "0.0001" : "1"}
                   value={items[index]?.receivedQuantity ?? ""}
                   onChange={(e) => updateItem(index, "receivedQuantity", e.target.value)}
                   className="text-right"
@@ -147,7 +149,7 @@ export function EditGrnSheet({ grn }: { grn: EditableGrn }) {
                 <Input
                   type="number"
                   min="0"
-                  step="0.01"
+                  step={item.unit === "KG" ? "0.0001" : "1"}
                   value={items[index]?.acceptedQuantity ?? ""}
                   onChange={(e) => updateItem(index, "acceptedQuantity", e.target.value)}
                   className="text-right"
@@ -180,7 +182,7 @@ export function EditGrnSheet({ grn }: { grn: EditableGrn }) {
             <div>
               <span className="text-sm text-neutral-500">Updated total:</span>
               <span className="ml-2 text-lg font-bold">
-                {computeTotal().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {formatPKR(computeTotal())}
               </span>
             </div>
             <div className="flex items-center gap-3">

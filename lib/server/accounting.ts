@@ -1,17 +1,18 @@
 import "server-only";
 
-import { AccountCategory, AccountNormalBalance, AccountSystemCode, Prisma, type GeneralLedgerSourceType } from "@prisma/client";
+import { AccountCategory, AccountNormalBalance, AccountSystemCode, Prisma, type GeneralLedgerSourceType, type Role } from "@prisma/client";
 import { calculateProfitLossTotals, calculateRunningBalance } from "@/lib/accounting-math";
 import { writeAudit } from "@/lib/server/audit";
 import { db } from "@/lib/server/db";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 import { businessDayEnd, businessDayStart, businessMonthStart } from "@/lib/server/business-time";
+import { canPerformAction } from "@/lib/server/authorization";
 import { cashBankAccountSchema, expenseSchema, ledgerReportSchema, profitLossSchema, type CashBankAccountInput, type ExpenseInput, type LedgerReportInput, type ProfitLossInput } from "@/lib/validation/accounting";
 
 export class AccountingDomainError extends Error {}
 
-type ServiceContext = { workspaceId: string; userId?: string };
+type ServiceContext = { workspaceId: string; userId?: string; role?: Role };
 
 const DEFAULT_ACCOUNTS: Array<{ code: string; name: string; category: AccountCategory; normalBalance: AccountNormalBalance; systemCode: AccountSystemCode }> = [
   { code: "1000", name: "Cash in Hand", category: "ASSET", normalBalance: "DEBIT", systemCode: "CASH_IN_HAND" },
@@ -330,8 +331,9 @@ export async function getCashBankAccountLedger(workspaceId: string, cashBankAcco
 }
 
 export async function createCashBankAccount(context: ServiceContext, input: CashBankAccountInput) {
+  if (!context.role || !canPerformAction(context.role, "financial.manage")) throw new AccountingDomainError("Unauthorized");
   const data = cashBankAccountSchema.parse(input);
-  return db.$transaction(async (tx) => {
+  return withSerializableRetry(async (tx) => {
     await ensureDefaultAccounts(context.workspaceId, tx);
     const count = await tx.cashBankAccount.count({ where: { workspaceId: context.workspaceId, isBank: data.isBank } });
     const code = data.isBank ? `10${20 + count}` : `10${10 + count}`;

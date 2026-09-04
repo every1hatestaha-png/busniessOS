@@ -16,6 +16,7 @@ export default async function GoodsReceiptPrintPage({ params }: { params: Promis
         <p className="text-sm">{[workspace.address, workspace.city, workspace.country].filter(Boolean).join(", ")}</p>
         <p className="mt-2 text-lg font-bold tracking-wide">GOODS RECEIVED NOTE</p>
       </div>
+      {grn.status === "VOIDED" && <div className="mb-4 border-y-4 border-black p-2 text-center text-xl font-black tracking-[0.2em]">VOIDED{grn.voidedReason ? <span className="mt-1 block text-xs font-medium tracking-normal">Reason: {grn.voidedReason}</span> : null}</div>}
 
       <div className="mb-4 grid grid-cols-2 gap-4 text-sm">
         <div>
@@ -49,11 +50,11 @@ export default async function GoodsReceiptPrintPage({ params }: { params: Promis
                 {item.productName}
                 {item.sku && <span className="ml-1 text-xs text-neutral-500">({item.sku})</span>}
               </td>
-              <td className="border px-2 py-1 text-right">{item.orderedQuantity}</td>
-              <td className="border px-2 py-1 text-right">{item.previouslyReceived}</td>
-              <td className="border px-2 py-1 text-right">{item.receivedNow}</td>
-              <td className="border px-2 py-1 text-right font-semibold">{item.acceptedQuantity}</td>
-              <td className="border px-2 py-1 text-right">{item.remainingQuantity}</td>
+              <td className="border px-2 py-1 text-right">{item.orderedQuantity} {item.unit === "KG" ? "kg" : ""}</td>
+              <td className="border px-2 py-1 text-right">{item.previouslyReceived} {item.unit === "KG" ? "kg" : ""}</td>
+              <td className="border px-2 py-1 text-right">{item.receivedNow} {item.unit === "KG" ? "kg" : ""}</td>
+              <td className="border px-2 py-1 text-right font-semibold">{item.acceptedQuantity} {item.unit === "KG" ? "kg" : ""}</td>
+              <td className="border px-2 py-1 text-right">{item.remainingQuantity} {item.unit === "KG" ? "kg" : ""}</td>
               <td className="border px-2 py-1 text-right">{formatPKR(item.unitCost)}</td>
               <td className="border px-2 py-1 text-right font-semibold">{formatPKR(item.totalCost)}</td>
             </tr>

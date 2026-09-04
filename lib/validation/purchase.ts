@@ -35,18 +35,23 @@ export const goodsReceiptSchema = z.object({
   checkedBy: z.string().trim().max(200).optional(),
   items: z.array(z.object({
     purchaseOrderItemId: z.uuid(),
-    receivedQuantity: z.coerce.number().nonnegative(),
+    receivedQuantity: z.coerce.number().positive("Weight or quantity must be greater than zero."),
     acceptedQuantity: z.coerce.number().nonnegative(),
     actualUnitCost: z.coerce.number().nonnegative().max(999_999_999),
   })).min(1).max(100),
   idempotencyKey: z.string().trim().min(8).max(200).optional(),
+}).superRefine((receipt, context) => {
+  receipt.items.forEach((item, index) => {
+    if (item.acceptedQuantity > item.receivedQuantity) context.addIssue({ code: "custom", path: ["items", index, "acceptedQuantity"], message: "Accepted quantity cannot exceed received quantity." });
+  });
+  if (!receipt.items.some((item) => item.acceptedQuantity > 0)) context.addIssue({ code: "custom", path: ["items"], message: "Accept at least one received item." });
 });
 
 export type GoodsReceiptInput = z.infer<typeof goodsReceiptSchema>;
 
 export const updatePurchaseSchema = z.object({
   notes: z.string().trim().max(1000).optional(),
-  expectedDeliveryDate: z.coerce.date().optional(),
+  expectedDeliveryDate: z.union([z.coerce.date(), z.null()]).optional(),
 });
 
 export type UpdatePurchaseInput = z.infer<typeof updatePurchaseSchema>;
@@ -63,10 +68,14 @@ export const updateGoodsReceiptSchema = z.object({
   checkedBy: z.string().trim().max(200).optional(),
   items: z.array(z.object({
     purchaseOrderItemId: z.uuid(),
-    receivedQuantity: z.coerce.number().nonnegative(),
+    receivedQuantity: z.coerce.number().positive("Weight or quantity must be greater than zero."),
     acceptedQuantity: z.coerce.number().nonnegative(),
     actualUnitCost: z.coerce.number().nonnegative().max(999_999_999),
   })).min(1).max(100).optional(),
+}).superRefine((receipt, context) => {
+  receipt.items?.forEach((item, index) => {
+    if (item.acceptedQuantity > item.receivedQuantity) context.addIssue({ code: "custom", path: ["items", index, "acceptedQuantity"], message: "Accepted quantity cannot exceed received quantity." });
+  });
 });
 
 export type UpdateGoodsReceiptInput = z.infer<typeof updateGoodsReceiptSchema>;

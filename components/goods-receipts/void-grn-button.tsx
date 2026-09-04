@@ -5,18 +5,19 @@ import { useRouter } from "next/navigation";
 import { Ban } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export function VoidGrnButton({ grnId, disabled }: { grnId: string; disabled?: boolean }) {
+export function VoidGrnButton({ grnId, grnNumber, disabled }: { grnId: string; grnNumber: string; disabled?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
   async function handleVoid() {
-    const reason = prompt("Enter a reason for voiding this GRN (required):");
+    const reason = prompt(`Enter a reason for voiding ${grnNumber} (required):`);
     if (reason === null) return;
     if (!reason.trim()) {
       setMessage("A void reason is required.");
       return;
     }
+    if (!confirm(`Void GRN ${grnNumber}? This will reverse its inventory, supplier payable, PO receiving, and General Ledger effects.`)) return;
     setBusy(true);
     setMessage("");
     try {

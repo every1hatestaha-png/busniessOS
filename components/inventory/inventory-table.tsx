@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import type { ProductDTO } from "@/lib/server/products";
 import { cn, formatPKR, getStockStatus } from "@/lib/utils";
 
-export function InventoryTable({ products }: { products: ProductDTO[] }) {
+export function InventoryTable({ products, canCreate = false }: { products: ProductDTO[]; canCreate?: boolean }) {
   const [query, setQuery] = useState("");
   const [stockFilter, setStockFilter] = useState("ALL");
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
@@ -28,7 +28,7 @@ export function InventoryTable({ products }: { products: ProductDTO[] }) {
           <span className="mb-4 flex size-12 items-center justify-center rounded-xl bg-neutral-100 text-neutral-600"><PackagePlus className="size-5" /></span>
           <h2 className="font-semibold">Add your first product</h2>
           <p className="mt-1 text-sm text-neutral-500">Create a product to start tracking stock levels and movements.</p>
-          <Link href="/inventory/new" className={cn(buttonVariants(), "mt-5")}>New product</Link>
+          {canCreate && <Link href="/inventory/new" className={cn(buttonVariants(), "mt-5")}>New product</Link>}
         </CardContent>
       </Card>
     );
@@ -86,7 +86,7 @@ export function InventoryTable({ products }: { products: ProductDTO[] }) {
                     <div className="mt-1 lg:hidden"><StatusBadge status={stockStatus} /></div>
                   </TableCell>
                   <TableCell className="hidden text-right font-medium tabular-nums sm:table-cell">{formatPKR(product.sellingPrice)}</TableCell>
-                  <TableCell className="hidden lg:table-cell"><StatusBadge status={stockStatus} /></TableCell>
+                  <TableCell className="hidden lg:table-cell"><div className="flex flex-wrap gap-1"><StatusBadge status={product.status} /><StatusBadge status={stockStatus} /></div></TableCell>
                   <TableCell className="pr-3 text-right">
                     <Link href={`/inventory/${product.id}`} aria-label={`View ${product.name}`} className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "inline-flex")}><ArrowUpRight className="h-4 w-4" /></Link>
                   </TableCell>

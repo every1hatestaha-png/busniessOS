@@ -73,14 +73,14 @@ export async function getPayablesAging(
   const asOfDate = businessDateKey(asOf, timeZone);
   const asOfEnd = businessDayEnd(asOf, timeZone);
   const purchases = await db.purchaseOrder.findMany({
-    where: { workspaceId, goodsReceivedNotes: { some: { receiptDate: { lte: asOfEnd } } }, OR: [{ cancelledAt: null }, { cancelledAt: { gt: asOfEnd } }], ...(filters.supplierId ? { supplierId: filters.supplierId } : {}) },
+    where: { workspaceId, goodsReceivedNotes: { some: { receiptDate: { lte: asOfEnd }, OR: [{ status: "ACTIVE" }, { voidedAt: { gt: asOfEnd } }] } }, OR: [{ cancelledAt: null }, { cancelledAt: { gt: asOfEnd } }], ...(filters.supplierId ? { supplierId: filters.supplierId } : {}) },
     select: {
       id: true,
       orderNumber: true,
       supplierId: true,
-      goodsReceivedNotes: { where: { receiptDate: { lte: asOfEnd } }, orderBy: { receiptDate: "asc" }, select: { receiptDate: true, totalAmount: true } },
+      goodsReceivedNotes: { where: { receiptDate: { lte: asOfEnd }, OR: [{ status: "ACTIVE" }, { voidedAt: { gt: asOfEnd } }] }, orderBy: { receiptDate: "asc" }, select: { receiptDate: true, totalAmount: true } },
       paymentAllocations: { where: { payment: { paymentDate: { lte: asOfEnd }, OR: [{ isReversed: false }, { reversedAt: { gt: asOfEnd } }] } }, select: { amount: true } },
-      returns: { where: { date: { lte: asOfEnd } }, select: { totalAmount: true } },
+      returns: { where: { date: { lte: asOfEnd }, status: "POSTED" }, select: { totalAmount: true } },
       supplier: { select: { name: true, companyName: true } },
     },
   });

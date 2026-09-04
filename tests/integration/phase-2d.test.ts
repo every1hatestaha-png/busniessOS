@@ -127,6 +127,9 @@ describe("Phase 2D financial operations", () => {
     expect(await db.paymentAllocation.count({ where: { paymentId: payment.id } })).toBe(2);
     expect(Number((await db.purchaseOrder.findUniqueOrThrow({ where: { id: first.id } })).balanceAmount)).toBe(0);
     expect(Number((await db.purchaseOrder.findUniqueOrThrow({ where: { id: second.id } })).balanceAmount)).toBe(5);
+    await expect(cancelPurchase(context(), first.id, true)).rejects.toThrow("supplier payments have been allocated");
+    expect((await db.payment.findUniqueOrThrow({ where: { id: payment.id } })).isReversed).toBe(false);
+    expect(await db.paymentAllocation.count({ where: { paymentId: payment.id } })).toBe(2);
   });
 
   it("limits supplier payments to actual accepted GRN payable", async () => {

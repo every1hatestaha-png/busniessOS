@@ -8,6 +8,7 @@ import { z } from "zod";
 import {
   adjustProductStock,
   createProduct,
+  ProductDomainError,
   StockAdjustmentRejectedError,
   updateProduct,
 } from "@/lib/server/products";
@@ -20,7 +21,7 @@ export async function createProductAction(
   _previousState: ProductActionState,
   formData: FormData,
 ): Promise<ProductActionState> {
-  const { workspaceId } = await requirePermission("products.write");
+  const context = await requirePermission("products.write");
   const parsed = productSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: "Check the highlighted product details and try again." };
@@ -28,7 +29,7 @@ export async function createProductAction(
 
   let productId: string;
   try {
-    productId = await createProduct(workspaceId, parsed.data);
+    productId = await createProduct(context.workspaceId, parsed.data);
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return { error: "That SKU is already used in this workspace." };
@@ -45,18 +46,19 @@ export async function updateProductAction(
   _previousState: ProductActionState,
   formData: FormData,
 ): Promise<ProductActionState> {
-  const { workspaceId } = await requirePermission("products.write");
+  const context = await requirePermission("products.write");
   const parsed = productEditSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: "Check the highlighted product details and try again." };
   }
 
   try {
-    await updateProduct(workspaceId, id, parsed.data);
+    await updateProduct({ ...context, userId: context.user.id }, id, parsed.data);
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return { error: "That SKU is already used in this workspace." };
     }
+    if (error instanceof ProductDomainError) return { error: error.message };
     return { error: "The product could not be updated. Please try again." };
   }
 
@@ -81,7 +83,7 @@ export async function adjustStockAction(
   _previousState: StockAdjustmentState,
   formData: FormData,
 ): Promise<StockAdjustmentState> {
-  const { workspaceId } = await requirePermission("inventory.adjust");
+  const context = await requirePermission("inventory.adjust");
   const parsed = adjustmentSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: "Enter a valid quantity and a brief reason." };
@@ -89,7 +91,7 @@ export async function adjustStockAction(
 
   try {
     const stockQuantity = await adjustProductStock(
-      workspaceId,
+      { ...context, userId: context.user.id },
       parsed.data.productId,
       parsed.data.quantity,
       parsed.data.reason,

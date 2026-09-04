@@ -1,5 +1,6 @@
 import { ArrowUpRight, BookOpen, Boxes, FileText, HandCoins, Landmark, PackageSearch, ReceiptText, ShoppingCart, Truck, UsersRound } from "lucide-react";
 import Link from "next/link";
+import { requirePermission } from "@/lib/server/authorization";
 
 const sections = [
   { title: "Financial", reports: [
@@ -24,7 +25,8 @@ const sections = [
   ] },
 ] as const;
 
-export default function ReportsPage() {
+export default async function ReportsPage() {
+  await requirePermission("financial.manage");
   return (
     <div className="mx-auto max-w-7xl space-y-7">
       <header className="border-b border-neutral-200 pb-5"><p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Financial control</p><h1 className="mt-1 text-3xl font-bold tracking-tight">Reports Center</h1><p className="mt-1 text-sm text-neutral-500">Filter, review, and print reports generated from posted workspace records.</p></header>

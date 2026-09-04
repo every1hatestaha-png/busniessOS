@@ -10,6 +10,7 @@ import { getGoodsReceipt } from "@/lib/server/purchases";
 import { formatDate, formatPKR } from "@/lib/utils";
 import { EditGrnSheet } from "@/components/goods-receipts/edit-grn-sheet";
 import { VoidGrnButton } from "@/components/goods-receipts/void-grn-button";
+import { DeleteGrnButton } from "@/components/goods-receipts/delete-grn-button";
 
 export default async function GoodsReceiptDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -20,7 +21,7 @@ export default async function GoodsReceiptDetailPage({ params }: { params: Promi
   const canAdjust = canPerformAction(role, "inventory.adjust");
   const isActive = grn.status === "ACTIVE";
   const canEdit = canAdjust && isActive && !grn.hasSupplierReturns;
-  const canVoid = canAdjust && isActive;
+  const canVoid = canAdjust && isActive && !grn.hasSupplierReturns;
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-6">
@@ -37,12 +38,16 @@ export default async function GoodsReceiptDetailPage({ params }: { params: Promi
         </div>
         <div className="flex gap-2">
           {canEdit && <EditGrnSheet grn={grn} />}
-          {canVoid && <VoidGrnButton grnId={grn.id} />}
+          {canVoid && <VoidGrnButton grnId={grn.id} grnNumber={grn.grnNumber} />}
+          {canAdjust && <DeleteGrnButton grnId={grn.id} grnNumber={grn.grnNumber} />}
           <Link href={`/goods-receipts/${id}/print`} target="_blank" className="inline-flex h-9 items-center justify-center border px-4 text-sm font-semibold text-neutral-700 hover:bg-neutral-50">
             <Printer className="mr-2 h-4 w-4" /> Print GRN
           </Link>
         </div>
       </div>
+
+      {grn.status === "VOIDED" && <div className="border border-red-200 bg-red-50 p-4 text-sm text-red-800"><p className="font-semibold">This GRN was voided{grn.voidedAt ? ` on ${formatDate(grn.voidedAt)}` : ""}.</p>{grn.voidedReason && <p className="mt-1">Reason: {grn.voidedReason}</p>}</div>}
+      {grn.hasSupplierReturns && isActive && <div className="border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">This GRN cannot be edited or voided because supplier returns reference it.</div>}
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-6">
@@ -69,11 +74,11 @@ export default async function GoodsReceiptDetailPage({ params }: { params: Promi
                         {item.productName}
                         {item.sku && <span className="ml-2 font-mono text-xs text-neutral-400">{item.sku}</span>}
                       </TableCell>
-                      <TableCell className="text-right">{item.orderedQuantity}</TableCell>
-                      <TableCell className="text-right">{item.previouslyReceived}</TableCell>
-                      <TableCell className="text-right">{item.receivedNow}</TableCell>
-                      <TableCell className="text-right font-semibold">{item.acceptedQuantity}</TableCell>
-                      <TableCell className="text-right">{item.remainingQuantity}</TableCell>
+                      <TableCell className="text-right">{item.orderedQuantity} {item.unit === "KG" ? "kg" : ""}</TableCell>
+                      <TableCell className="text-right">{item.previouslyReceived} {item.unit === "KG" ? "kg" : ""}</TableCell>
+                      <TableCell className="text-right">{item.receivedNow} {item.unit === "KG" ? "kg" : ""}</TableCell>
+                      <TableCell className="text-right font-semibold">{item.acceptedQuantity} {item.unit === "KG" ? "kg" : ""}</TableCell>
+                      <TableCell className="text-right">{item.remainingQuantity} {item.unit === "KG" ? "kg" : ""}</TableCell>
                       <TableCell className="text-right">{formatPKR(item.unitCost)}</TableCell>
                       <TableCell className="pr-4 text-right font-semibold">{formatPKR(item.totalCost)}</TableCell>
                     </TableRow>

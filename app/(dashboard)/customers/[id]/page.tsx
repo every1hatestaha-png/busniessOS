@@ -12,6 +12,7 @@ import { getCashBankAccounts } from "@/lib/server/accounting";
 import { getCustomer } from "@/lib/server/customers";
 import { canPerformAction } from "@/lib/server/authorization";
 import { formatPKR, getCreditStatus } from "@/lib/utils";
+import { RemoveCustomerButton } from "@/components/customers/remove-customer-button";
 
 export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -28,7 +29,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     <div className="space-y-6">
       <div>
         <Link href="/customers" className="mb-3 inline-flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-900"><ChevronLeft className="h-4 w-4" />Customers</Link>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><h1 className="text-2xl font-bold tracking-tight md:text-3xl">{customer.companyName}</h1><p className="mt-1 text-sm text-neutral-500">{customer.name}, {customer.city}</p></div><div className="flex flex-wrap gap-2"><StatusBadge status={customer.status} /><StatusBadge status={getCreditStatus(customer.currentBalance, customer.creditLimit)} />{canPerformAction(role, "customers.write") && <Link href={`/customers/${customer.id}/edit`} className={buttonVariants({ variant: "outline", size: "sm" })}><Pencil className="h-4 w-4" />Edit</Link>}</div></div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><h1 className="text-2xl font-bold tracking-tight md:text-3xl">{customer.companyName}</h1><p className="mt-1 text-sm text-neutral-500">{customer.name}, {customer.city}</p></div><div className="flex flex-wrap gap-2"><StatusBadge status={customer.status} /><StatusBadge status={getCreditStatus(customer.currentBalance, customer.creditLimit)} />{canPerformAction(role, "customers.write") && <><Link href={`/customers/${customer.id}/edit`} className={buttonVariants({ variant: "outline", size: "sm" })}><Pencil className="h-4 w-4" />Edit</Link><RemoveCustomerButton customerId={customer.id} customerName={customer.companyName || customer.name} /></>}</div></div>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard label="Outstanding balance" value={formatPKR(customer.currentBalance)} detail="Amount currently receivable" icon={CircleDollarSign} />

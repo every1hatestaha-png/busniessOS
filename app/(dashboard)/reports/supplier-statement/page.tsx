@@ -3,7 +3,7 @@ import { startOfMonth } from "date-fns";
 import { PeriodFilters, ReportFilterBar, ReportFilterField, reportSelectClassName, SearchFilter } from "@/components/reports/report-filter-bar";
 import { ReportFrame } from "@/components/reports/report-frame";
 import { StatementTable } from "@/components/reports/statement-table";
-import { requireWorkspace } from "@/lib/server/auth";
+import { requirePermission } from "@/lib/server/authorization";
 import { getSupplierStatement } from "@/lib/server/reports";
 import { listSuppliers } from "@/lib/server/suppliers";
 import { dateInputValue, parseDate, statementQuerySchema } from "@/lib/validation/reports";
@@ -11,7 +11,7 @@ import { dateInputValue, parseDate, statementQuerySchema } from "@/lib/validatio
 type Query = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function SupplierStatementPage({ searchParams }: { searchParams: Query }) {
-  const { workspaceId, workspace } = await requireWorkspace();
+  const { workspaceId, workspace } = await requirePermission("financial.manage");
   const raw = await searchParams;
   const parsed = statementQuerySchema.safeParse({ from: typeof raw.from === "string" ? raw.from : undefined, to: typeof raw.to === "string" ? raw.to : undefined, search: typeof raw.search === "string" ? raw.search : undefined, partyId: typeof raw.partyId === "string" ? raw.partyId : undefined });
   const query = parsed.success ? parsed.data : {};

@@ -5,7 +5,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-type Product = { id: string; name: string };
+type Product = { id: string; name: string; unit: string };
 
 type LineItem = {
   productId: string;
@@ -127,7 +127,7 @@ export function PurchaseForm({ suppliers, products }: { suppliers: Array<{ id: s
         <div className="grid gap-2 text-xs font-medium text-neutral-500" style={{ gridTemplateColumns: pricingMode === "WEIGHT" ? "1fr 80px 80px 80px 80px 100px 36px" : "1fr 80px 100px 100px 36px" }}>
           <span>Product</span>
           <span className="text-right">Qty</span>
-          {pricingMode === "WEIGHT" && <><span className="text-right">Unit Wt</span><span className="text-right">Rate/kg</span><span className="text-right">Weight</span></>}
+          {pricingMode === "WEIGHT" && <><span className="text-right">Unit Wt (kg)</span><span className="text-right">Rate/kg</span><span className="text-right">Total Wt (kg)</span></>}
           <span className="text-right">Unit Cost</span>
           <span className="text-right">Line Total</span>
           <span></span>
@@ -135,6 +135,7 @@ export function PurchaseForm({ suppliers, products }: { suppliers: Array<{ id: s
 
         {lines.map((line, index) => {
           const qty = Number(line.quantity) || 0;
+          const selectedProduct = products.find((product) => product.id === line.productId);
           const lineTotal =
             pricingMode === "WEIGHT" && line.unitWeight && line.perKgRate
               ? Number(line.unitWeight) * qty * Number(line.perKgRate)
@@ -152,7 +153,7 @@ export function PurchaseForm({ suppliers, products }: { suppliers: Array<{ id: s
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
-              <Input required type="number" min="1" value={line.quantity} onChange={(e) => updateLine(index, "quantity", e.target.value)} placeholder="Qty" className="text-right" />
+              <Input required type="number" min={selectedProduct?.unit === "KG" && pricingMode === "UNIT" ? "0.0001" : "1"} step={selectedProduct?.unit === "KG" && pricingMode === "UNIT" ? "0.0001" : "1"} value={line.quantity} onChange={(e) => updateLine(index, "quantity", e.target.value)} placeholder={selectedProduct?.unit === "KG" && pricingMode === "UNIT" ? "KG" : "Qty"} className="text-right" />
               {pricingMode === "WEIGHT" && (
                 <>
                   <Input type="number" min="0" step="0.001" value={line.unitWeight} onChange={(e) => updateLine(index, "unitWeight", e.target.value)} placeholder="Wt" className="text-right" />

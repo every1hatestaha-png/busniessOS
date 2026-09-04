@@ -39,8 +39,8 @@ export default async function PurchasePrintPage({ params }: { params: Promise<{ 
             <th className="border px-2 py-1 text-right">Qty</th>
             {purchase.pricingMode === "WEIGHT" && (
               <>
-                <th className="border px-2 py-1 text-right">Unit Wt</th>
-                <th className="border px-2 py-1 text-right">Total Wt</th>
+                <th className="border px-2 py-1 text-right">Unit Wt (kg)</th>
+                <th className="border px-2 py-1 text-right">Total Wt (kg)</th>
                 <th className="border px-2 py-1 text-right">Rate/kg</th>
               </>
             )}
@@ -56,7 +56,7 @@ export default async function PurchasePrintPage({ params }: { params: Promise<{ 
                 {item.productName}
                 {item.sku && <span className="ml-1 text-xs text-neutral-500">({item.sku})</span>}
               </td>
-              <td className="border px-2 py-1 text-right">{item.quantity}</td>
+              <td className="border px-2 py-1 text-right">{item.quantity} {item.unit === "KG" ? "kg" : ""}</td>
               {purchase.pricingMode === "WEIGHT" && (
                 <>
                   <td className="border px-2 py-1 text-right">{item.unitWeight ? `${item.unitWeight} kg` : "—"}</td>

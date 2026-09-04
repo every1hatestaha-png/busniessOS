@@ -10,6 +10,8 @@ import { formatDate, formatPKR } from "@/lib/utils";
 import { canPerformAction } from "@/lib/server/authorization";
 import { SupplierReturnForm } from "@/components/purchases/supplier-return-form";
 import { CancelPurchaseButton } from "@/components/purchases/cancel-purchase-button";
+import { DeletePurchaseButton } from "@/components/purchases/delete-purchase-button";
+import { EditPurchaseSheet } from "@/components/purchases/edit-purchase-sheet";
 
 export default async function PurchaseDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -19,8 +21,6 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
 
   const canManageFinancials = canPerformAction(role, "financial.manage");
   const canReceive = canManageFinancials && purchase.status !== "CANCELLED" && purchase.status !== "RECEIVED";
-  const totalReceived = purchase.items.reduce((sum, item) => sum + item.receivedQuantity, 0);
-  const totalOrdered = purchase.items.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-6">
@@ -34,11 +34,13 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
             <StatusBadge status={purchase.status} />
           </div>
           <p className="mt-1 text-sm text-neutral-500">
-            {purchase.status === "ORDERED" ? "Ordered" : "Received"} {formatDate(purchase.date)} from {purchase.supplier.companyName}
+            {purchase.status.replaceAll("_", " ")} · {formatDate(purchase.date)} · {purchase.supplier.companyName}
           </p>
         </div>
         <div className="flex gap-2">
-          {canManageFinancials && purchase.status !== "CANCELLED" && <CancelPurchaseButton purchaseId={purchase.id} received={purchase.status === "RECEIVED" || purchase.status === "PARTIALLY_RECEIVED"} />}
+          {canManageFinancials && <EditPurchaseSheet purchase={purchase} />}
+          {canManageFinancials && <DeletePurchaseButton purchaseId={purchase.id} orderNumber={purchase.orderNumber} />}
+          {canManageFinancials && purchase.status !== "CANCELLED" && <CancelPurchaseButton purchaseId={purchase.id} orderNumber={purchase.orderNumber} received={purchase.status === "RECEIVED" || purchase.status === "PARTIALLY_RECEIVED"} />}
           {canReceive && (
             <Link href={`/purchases/${id}/receive`} className="inline-flex h-9 items-center justify-center bg-neutral-950 px-4 text-sm font-semibold text-white hover:bg-neutral-800">
               <Truck className="mr-2 h-4 w-4" /> Receive Goods
@@ -53,8 +55,8 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <InfoCard icon={CalendarDays} label="Order date" value={formatDate(purchase.date)} />
         <InfoCard icon={ReceiptText} label="Line items" value={`${purchase.items.length} product${purchase.items.length === 1 ? "" : "s"}`} />
-        <InfoCard icon={Boxes} label="Received" value={`${totalReceived} / ${totalOrdered}`} />
-        <InfoCard icon={CreditCard} label="Outstanding" value={formatPKR(purchase.outstanding)} />
+        <InfoCard icon={Boxes} label="Goods received value" value={formatPKR(purchase.goodsReceivedValue)} />
+        <InfoCard icon={CreditCard} label="Outstanding payable" value={formatPKR(purchase.outstanding)} />
       </div>
 
       {purchase.expectedDeliveryDate && (
@@ -66,13 +68,13 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
           </CardContent>
         </Card>
       )}
-      {canManageFinancials && purchase.status !== "CANCELLED" && totalReceived > 0 && (
+      {canManageFinancials && purchase.status !== "CANCELLED" && purchase.goodsReceivedValue > 0 && (
         <Card className="shadow-none">
           <CardContent className="pt-5">
             <SupplierReturnForm
               purchaseOrderId={purchase.id}
               items={purchase.items.map((item) => ({ id: item.id, productName: item.productName, receivedQuantity: item.receivedQuantity, unit: item.unit }))}
-              grns={purchase.grns.map((grn) => ({
+              grns={purchase.grns.filter((grn) => grn.status === "ACTIVE").map((grn) => ({
                 id: grn.id,
                 grnNumber: grn.grnNumber,
                 items: grn.items.map((gi) => ({
@@ -134,6 +136,7 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
                     <TableRow>
                       <TableHead className="pl-4">GRN No</TableHead>
                       <TableHead>Date</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead className="text-right">Items</TableHead>
                       <TableHead className="text-right">Value</TableHead>
                       <TableHead className="pr-4 text-right">Actions</TableHead>
@@ -144,6 +147,7 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
                       <TableRow key={grn.id}>
                         <TableCell className="pl-4 font-mono text-xs">{grn.grnNumber}</TableCell>
                         <TableCell>{formatDate(grn.receiptDate)}</TableCell>
+                        <TableCell><StatusBadge status={grn.status} /></TableCell>
                         <TableCell className="text-right">{grn.items.length}</TableCell>
                         <TableCell className="text-right">{formatPKR(grn.totalAmount)}</TableCell>
                         <TableCell className="pr-4 text-right">
@@ -185,24 +189,11 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
           </Card>
         </div>
 
-        <Card className="shadow-none xl:sticky xl:top-6">
-          <CardHeader><CardTitle>Payment summary</CardTitle></CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <SummaryRow label="Subtotal" value={formatPKR(purchase.subtotal)} />
-            {purchase.discount > 0 && <SummaryRow label="Discount" value={`- ${formatPKR(purchase.discount)}`} />}
-            <div className="flex items-center justify-between border-t pt-4">
-              <span className="font-semibold">PO total</span>
-              <span className="text-xl font-bold">{formatPKR(purchase.total)}</span>
-            </div>
-            <SummaryRow label="Amount received" value={formatPKR(purchase.paid)} />
-            {purchase.paid > 0 && <p className="text-xs text-neutral-500">Based on accepted GRN values.</p>}
-            <div className="mt-2 flex items-center justify-between border bg-neutral-950 p-4 text-white">
-              <span className="font-medium">Outstanding</span>
-              <span className="text-lg font-bold">{formatPKR(purchase.outstanding)}</span>
-            </div>
-            <Link href={`/suppliers/${purchase.supplier.id}`} className="inline-flex w-full items-center justify-center border px-3 py-2 font-semibold text-neutral-700 hover:bg-neutral-50">View supplier khata</Link>
-          </CardContent>
-        </Card>
+        <div className="space-y-4 xl:sticky xl:top-6">
+          <Card className="shadow-none"><CardHeader><CardTitle>Purchase summary</CardTitle></CardHeader><CardContent className="space-y-3 text-sm"><SummaryRow label="Subtotal" value={formatPKR(purchase.subtotal)} />{purchase.discount > 0 && <SummaryRow label="Discount" value={`- ${formatPKR(purchase.discount)}`} />}<SummaryRow label="PO total" value={formatPKR(purchase.total)} /></CardContent></Card>
+          <Card className="shadow-none"><CardHeader><CardTitle>Receiving summary</CardTitle></CardHeader><CardContent className="space-y-3 text-sm"><SummaryRow label="Goods received value" value={formatPKR(purchase.goodsReceivedValue)} /><SummaryRow label="Remaining value to receive" value={formatPKR(purchase.remainingValueToReceive)} /></CardContent></Card>
+          <Card className="shadow-none"><CardHeader><CardTitle>Payment summary</CardTitle></CardHeader><CardContent className="space-y-3 text-sm"><SummaryRow label="Paid to supplier" value={formatPKR(purchase.paid)} /><div className="flex items-center justify-between bg-neutral-950 p-4 text-white"><span className="font-medium">Outstanding payable</span><span className="text-lg font-bold">{formatPKR(purchase.outstanding)}</span></div><Link href={`/suppliers/${purchase.supplier.id}`} className="inline-flex w-full items-center justify-center border px-3 py-2 font-semibold text-neutral-700 hover:bg-neutral-50">View supplier khata</Link></CardContent></Card>
+        </div>
       </div>
     </div>
   );

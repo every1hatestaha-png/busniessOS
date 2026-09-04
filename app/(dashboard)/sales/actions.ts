@@ -17,7 +17,7 @@ export async function createSaleAction(
   const parsed = saleSchema.safeParse(input);
 
   if (!parsed.success) {
-    return { error: "Check the order details and try again." };
+    return { error: parsed.error.issues[0]?.message ?? "Check the order details and try again." };
   }
 
   let saleId: string;
@@ -26,7 +26,7 @@ export async function createSaleAction(
     saleId = sale.id;
   } catch (error) {
     if (error instanceof SaleDomainError) {
-      return { error: "The order could not be created. Check the customer, products, stock, and totals." };
+      return { error: error.message };
     }
     return { error: "The order could not be saved. Please try again." };
   }

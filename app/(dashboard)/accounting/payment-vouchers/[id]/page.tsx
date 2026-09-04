@@ -2,12 +2,12 @@ import { notFound } from "next/navigation";
 
 import { PrintButton } from "@/components/invoices/print-button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { requireWorkspace } from "@/lib/server/auth";
+import { requirePermission } from "@/lib/server/authorization";
 import { getSupplierPaymentVoucher } from "@/lib/server/suppliers";
 import { formatDate, formatPKR } from "@/lib/utils";
 
 export default async function PaymentVoucherPage({ params }: { params: Promise<{ id: string }> }) {
-  const { workspaceId } = await requireWorkspace();
+  const { workspaceId } = await requirePermission("financial.manage");
   const voucher = await getSupplierPaymentVoucher(workspaceId, (await params).id);
   if (!voucher) notFound();
 

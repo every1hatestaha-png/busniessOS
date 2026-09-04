@@ -15,6 +15,7 @@ let getCustomer: typeof import("@/lib/server/customers")["getCustomer"];
 let getProduct: typeof import("@/lib/server/products")["getProduct"];
 let ensureDefaultAccounts: typeof import("@/lib/server/accounting")["ensureDefaultAccounts"];
 let createCashBankAccount: typeof import("@/lib/server/accounting")["createCashBankAccount"];
+let getReceivablesAging: typeof import("@/lib/server/receivables")["getReceivablesAging"];
 
 let workspaceA: string;
 let workspaceB: string;
@@ -24,8 +25,9 @@ let productA: string;
 let productB: string;
 let cashBankAccountA: string;
 let bankCashBankAccountA: string;
+let cashBankAccountB: string;
 
-const context = (workspaceId: string) => ({ workspaceId, role: "OWNER" as const });
+const context = (workspaceId: string, role: "OWNER" | "ADMIN" | "STAFF" = "OWNER") => ({ workspaceId, role });
 
 function saleInput(customerId: string, productId: string, overrides: { quantity?: number; paidAmount?: number; cashBankAccountId?: string } = {}) {
   return {
@@ -50,6 +52,7 @@ describe("sales and payments against Neon", () => {
     ({ getCustomer } = await import("@/lib/server/customers"));
     ({ getProduct } = await import("@/lib/server/products"));
     ({ ensureDefaultAccounts, createCashBankAccount } = await import("@/lib/server/accounting"));
+    ({ getReceivablesAging } = await import("@/lib/server/receivables"));
 
     const [userA, userB] = await Promise.all([
       db.user.create({ data: { clerkId: `test-clerk-a-${runId}`, email: `test-a-${runId}@example.invalid` } }),
@@ -75,9 +78,10 @@ describe("sales and payments against Neon", () => {
     customerB = secondCustomer.id;
     productA = firstProduct.id;
     productB = secondProduct.id;
-    await ensureDefaultAccounts(workspaceA);
+    await Promise.all([ensureDefaultAccounts(workspaceA), ensureDefaultAccounts(workspaceB)]);
     cashBankAccountA = (await db.cashBankAccount.findFirstOrThrow({ where: { workspaceId: workspaceA, isActive: true }, select: { id: true } })).id;
-    const bankAccount = await createCashBankAccount({ workspaceId: workspaceA, userId: userA.id }, { name: `Sales bank ${runId}`, isBank: true, openingBalance: 0, bankName: "Test Bank", accountTitle: "BusinessOS", accountNumber: "123" });
+    cashBankAccountB = (await db.cashBankAccount.findFirstOrThrow({ where: { workspaceId: workspaceB, isActive: true }, select: { id: true } })).id;
+    const bankAccount = await createCashBankAccount({ workspaceId: workspaceA, userId: userA.id, role: "OWNER" as const }, { name: `Sales bank ${runId}`, isBank: true, openingBalance: 0, bankName: "Test Bank", accountTitle: "BusinessOS", accountNumber: "123" });
     bankCashBankAccountA = (await db.cashBankAccount.findFirstOrThrow({ where: { accountId: bankAccount.id }, select: { id: true } })).id;
   }, 30_000);
 
@@ -132,7 +136,7 @@ describe("sales and payments against Neon", () => {
     });
     const input = saleInput(customerA, product.id, { quantity: 2, paidAmount: 0 });
 
-    await expect(createSale(context(workspaceA), input)).rejects.toMatchObject({ code: "INSUFFICIENT_STOCK" });
+    await expect(createSale(context(workspaceA), input)).rejects.toMatchObject({ code: "INSUFFICIENT_STOCK", message: expect.stringContaining("Available quantity: 1") });
 
     const [unchangedProduct, order, inventoryCount] = await Promise.all([
       db.product.findUniqueOrThrow({ where: { id: product.id } }),
@@ -154,18 +158,121 @@ describe("sales and payments against Neon", () => {
   it("posts paid-at-sale cash receipt to the selected cash/bank account", async () => {
     const defaultBefore = await db.cashBankAccount.findUniqueOrThrow({ where: { id: cashBankAccountA }, select: { currentBalance: true } });
     const bankBefore = await db.cashBankAccount.findUniqueOrThrow({ where: { id: bankCashBankAccountA }, select: { currentBalance: true, accountId: true } });
+    const customerBefore = await db.customer.findUniqueOrThrow({ where: { id: customerA }, select: { currentBalance: true } });
 
     const result = await createSale(context(workspaceA), saleInput(customerA, productA, { quantity: 1, paidAmount: 50, cashBankAccountId: bankCashBankAccountA }));
 
-    const [defaultAfter, bankAfter, glReceipt] = await Promise.all([
+    const [defaultAfter, bankAfter, customerAfter, invoice, glReceipt] = await Promise.all([
       db.cashBankAccount.findUniqueOrThrow({ where: { id: cashBankAccountA }, select: { currentBalance: true } }),
       db.cashBankAccount.findUniqueOrThrow({ where: { id: bankCashBankAccountA }, select: { currentBalance: true } }),
+      db.customer.findUniqueOrThrow({ where: { id: customerA }, select: { currentBalance: true } }),
+      db.invoice.findUniqueOrThrow({ where: { salesOrderId: result.id } }),
       db.generalLedgerEntry.findFirstOrThrow({ where: { workspaceId: workspaceA, sourceId: result.id, sourceType: "RECEIPT", debit: { gt: 0 } } }),
     ]);
+    const payment = await db.payment.findFirstOrThrow({ where: { workspaceId: workspaceA, invoiceId: invoice.id, notes: "Payment received with sale" }, include: { allocations: true } });
 
     expect(Number(defaultAfter.currentBalance)).toBe(Number(defaultBefore.currentBalance));
     expect(Number(bankAfter.currentBalance)).toBe(Number(bankBefore.currentBalance) + 50);
+    expect(Number(customerAfter.currentBalance) - Number(customerBefore.currentBalance)).toBe(30);
     expect(glReceipt.accountId).toBe(bankBefore.accountId);
+    expect(payment.cashBankAccountId).toBe(bankCashBankAccountA);
+    expect(payment.method).toBe("BANK_TRANSFER");
+    expect(Number(payment.amount)).toBe(50);
+    expect(Number(payment.netAmount)).toBe(50);
+    expect(payment.documentNumber).toMatch(/^PAY-/);
+    expect(payment.allocations).toEqual([expect.objectContaining({ invoiceId: invoice.id, amount: expect.anything() })]);
+    expect(Number(payment.allocations[0].amount)).toBe(50);
+  });
+
+  it("creates the 67 x Rs 950 unpaid sale without a configured credit limit or cash movement", async () => {
+    const customer = await db.customer.create({ data: { workspaceId: workspaceA, name: `Unlimited customer ${runId}` } });
+    const product = await db.product.create({ data: { workspaceId: workspaceA, name: `950 product ${runId}`, sku: `950-${runId}`, costPrice: 500, sellingPrice: 950, stockQuantity: 67 } });
+    const cashBefore = await db.cashBankAccount.findMany({ where: { workspaceId: workspaceA }, select: { id: true, currentBalance: true }, orderBy: { id: "asc" } });
+
+    const result = await createSale(context(workspaceA), {
+      customerId: customer.id,
+      items: [{ productId: product.id, quantity: 67, unitPrice: 950, discount: 0 }],
+      orderDiscount: 0,
+      paidAmount: 0,
+      notes: "Unpaid regression",
+      idempotencyKey: randomUUID(),
+    });
+
+    const [order, invoice, updatedCustomer, payments, receiptEntries, cashAfter, receivables] = await Promise.all([
+      db.salesOrder.findUniqueOrThrow({ where: { id: result.id } }),
+      db.invoice.findUniqueOrThrow({ where: { salesOrderId: result.id } }),
+      db.customer.findUniqueOrThrow({ where: { id: customer.id } }),
+      db.payment.findMany({ where: { workspaceId: workspaceA, customerId: customer.id } }),
+      db.generalLedgerEntry.findMany({ where: { workspaceId: workspaceA, sourceId: result.id, sourceType: "RECEIPT" } }),
+      db.cashBankAccount.findMany({ where: { workspaceId: workspaceA }, select: { id: true, currentBalance: true }, orderBy: { id: "asc" } }),
+      getReceivablesAging(workspaceA, { customerId: customer.id }),
+    ]);
+
+    expect(Number(order.total)).toBe(63650);
+    expect(Number(order.paidAmount)).toBe(0);
+    expect(Number(order.balanceAmount)).toBe(63650);
+    expect(invoice.status).toBe("UNPAID");
+    expect(Number(invoice.paidAmount)).toBe(0);
+    expect(Number(updatedCustomer.currentBalance)).toBe(63650);
+    expect(payments).toHaveLength(0);
+    expect(receiptEntries).toHaveLength(0);
+    expect(cashAfter.map((account) => [account.id, account.currentBalance.toString()])).toEqual(cashBefore.map((account) => [account.id, account.currentBalance.toString()]));
+    expect(receivables.totalOutstanding).toBe(63650);
+  });
+
+  it("enforces configured credit using existing outstanding and reports available credit", async () => {
+    const withinCustomer = await db.customer.create({ data: { workspaceId: workspaceA, name: `Within limit ${runId}`, creditLimit: 100000, currentBalance: 20000 } });
+    const overCustomer = await db.customer.create({ data: { workspaceId: workspaceA, name: `Over limit ${runId}`, creditLimit: 100000, currentBalance: 20000 } });
+    const product = await db.product.create({ data: { workspaceId: workspaceA, name: `Credit product ${runId}`, sku: `credit-${runId}`, costPrice: 400, sellingPrice: 1000, stockQuantity: 200 } });
+
+    await createSale(context(workspaceA), {
+      customerId: withinCustomer.id,
+      items: [{ productId: product.id, quantity: 60, unitPrice: 1000, discount: 0 }],
+      orderDiscount: 0,
+      paidAmount: 0,
+      notes: "Within credit",
+      idempotencyKey: randomUUID(),
+    });
+    expect(Number((await db.customer.findUniqueOrThrow({ where: { id: withinCustomer.id } })).currentBalance)).toBe(80000);
+
+    const rejectedKey = randomUUID();
+    await expect(createSale(context(workspaceA), {
+      customerId: overCustomer.id,
+      items: [{ productId: product.id, quantity: 90, unitPrice: 1000, discount: 0 }],
+      orderDiscount: 0,
+      paidAmount: 0,
+      notes: "Over credit",
+      idempotencyKey: rejectedKey,
+    })).rejects.toMatchObject({ code: "CREDIT_LIMIT_EXCEEDED", message: "Customer credit limit exceeded. Available credit: Rs 80,000." });
+    expect(await db.salesOrder.findFirst({ where: { workspaceId: workspaceA, idempotencyKey: rejectedKey } })).toBeNull();
+    expect(Number((await db.customer.findUniqueOrThrow({ where: { id: overCustomer.id } })).currentBalance)).toBe(20000);
+  });
+
+  it("requires an active same-workspace cash/bank account only when paid amount is positive", async () => {
+    const customer = await db.customer.create({ data: { workspaceId: workspaceA, name: `Account policy ${runId}` } });
+    const product = await db.product.create({ data: { workspaceId: workspaceA, name: `Account product ${runId}`, sku: `account-${runId}`, costPrice: 20, sellingPrice: 100, stockQuantity: 10 } });
+    const inactiveAccount = await createCashBankAccount({ workspaceId: workspaceA, role: "OWNER" as const }, { name: `Inactive ${runId}`, isBank: false, openingBalance: 0, bankName: "", accountTitle: "", accountNumber: "" });
+    const inactiveCashBank = await db.cashBankAccount.findFirstOrThrow({ where: { accountId: inactiveAccount.id } });
+    await db.cashBankAccount.update({ where: { id: inactiveCashBank.id }, data: { isActive: false } });
+
+    const missingAccountKey = randomUUID();
+    await expect(createSale(context(workspaceA), { customerId: customer.id, items: [{ productId: product.id, quantity: 1, unitPrice: 100, discount: 0 }], orderDiscount: 0, paidAmount: 10, notes: "", idempotencyKey: missingAccountKey })).rejects.toThrow("Select the cash/bank account receiving this payment.");
+    await expect(createSale(context(workspaceA), { customerId: customer.id, items: [{ productId: product.id, quantity: 1, unitPrice: 100, discount: 0 }], orderDiscount: 0, paidAmount: 10, cashBankAccountId: cashBankAccountB, notes: "", idempotencyKey: randomUUID() })).rejects.toMatchObject({ code: "PAYMENT_ACCOUNT_UNAVAILABLE" });
+    await expect(createSale(context(workspaceA), { customerId: customer.id, items: [{ productId: product.id, quantity: 1, unitPrice: 100, discount: 0 }], orderDiscount: 0, paidAmount: 10, cashBankAccountId: inactiveCashBank.id, notes: "", idempotencyKey: randomUUID() })).rejects.toMatchObject({ code: "PAYMENT_ACCOUNT_UNAVAILABLE" });
+
+    expect(await db.salesOrder.findFirst({ where: { workspaceId: workspaceA, idempotencyKey: missingAccountKey } })).toBeNull();
+    expect(Number((await db.product.findUniqueOrThrow({ where: { id: product.id } })).stockQuantity)).toBe(10);
+  });
+
+  it("allows staff to create unpaid sales but not initial payments", async () => {
+    const customer = await db.customer.create({ data: { workspaceId: workspaceA, name: `Staff customer ${runId}` } });
+    const product = await db.product.create({ data: { workspaceId: workspaceA, name: `Staff product ${runId}`, sku: `staff-${runId}`, costPrice: 20, sellingPrice: 100, stockQuantity: 5 } });
+
+    const unpaid = await createSale(context(workspaceA, "STAFF"), { customerId: customer.id, items: [{ productId: product.id, quantity: 1, unitPrice: 100, discount: 0 }], orderDiscount: 0, paidAmount: 0, notes: "", idempotencyKey: randomUUID() });
+    expect(unpaid.id).toBeTruthy();
+
+    await expect(createSale(context(workspaceA, "STAFF"), { customerId: customer.id, items: [{ productId: product.id, quantity: 1, unitPrice: 100, discount: 0 }], orderDiscount: 0, paidAmount: 10, cashBankAccountId: cashBankAccountA, notes: "", idempotencyKey: randomUUID() })).rejects.toMatchObject({ code: "PAYMENT_PERMISSION_DENIED" });
+    expect(Number((await db.product.findUniqueOrThrow({ where: { id: product.id } })).stockQuantity)).toBe(4);
   });
 
   it("records a payment transaction and reduces customer, invoice, and order balances", async () => {

@@ -1,14 +1,14 @@
 import { EmptyReportRow, FinancialCell, FinancialHead, FinancialHeading, FinancialRow, FinancialTable, Money } from "@/components/reports/financial-table";
 import { ReportFilterBar, ReportFilterField, SearchFilter } from "@/components/reports/report-filter-bar";
 import { ReportFrame } from "@/components/reports/report-frame";
-import { requireWorkspace } from "@/lib/server/auth";
+import { requirePermission } from "@/lib/server/authorization";
 import { getCurrentStockReport } from "@/lib/server/reports";
 import { periodQuerySchema } from "@/lib/validation/reports";
 
 type Query = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function CurrentStockPage({ searchParams }: { searchParams: Query }) {
-  const { workspaceId, workspace } = await requireWorkspace();
+  const { workspaceId, workspace } = await requirePermission("financial.manage");
   const raw = await searchParams;
   const parsed = periodQuerySchema.safeParse({ search: typeof raw.search === "string" ? raw.search : undefined });
   const search = parsed.success ? parsed.data.search : undefined;

@@ -8,6 +8,7 @@ import { nextDocumentNumber } from "@/lib/server/document-numbers";
 import type { ServiceContext } from "@/lib/server/sales";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 import { supplierPaymentSchema, supplierSchema, type SupplierInput, type SupplierPaymentInput } from "@/lib/validation/supplier";
+import { canPerformAction } from "@/lib/server/authorization";
 
 export class SupplierDomainError extends Error {}
 
@@ -23,6 +24,7 @@ export async function getSupplier(workspaceId: string, id: string) {
 }
 
 export async function createSupplier(context: ServiceContext, input: SupplierInput) {
+  if (!canPerformAction(context.role, "financial.manage")) throw new SupplierDomainError("Unauthorized");
   const data = supplierSchema.parse(input);
   const { openingBalance, ...supplierData } = data;
   return db.$transaction(async (tx) => {
@@ -67,6 +69,7 @@ export async function createSupplier(context: ServiceContext, input: SupplierInp
 }
 
 export async function updateSupplier(context: ServiceContext, id: string, input: SupplierInput) {
+  if (!canPerformAction(context.role, "financial.manage")) throw new SupplierDomainError("Unauthorized");
   const data = supplierSchema.omit({ openingBalance: true }).parse(input);
   return db.$transaction(async (tx) => {
     const found = await tx.supplier.findFirst({ where: { id, workspaceId: context.workspaceId }, select: { id: true } });
@@ -78,6 +81,7 @@ export async function updateSupplier(context: ServiceContext, id: string, input:
 }
 
 export async function deleteSupplier(context: ServiceContext, id: string) {
+  if (!canPerformAction(context.role, "financial.manage")) throw new SupplierDomainError("Unauthorized");
   return db.$transaction(async (tx) => {
     const supplier = await tx.supplier.findFirst({ where: { id, workspaceId: context.workspaceId }, include: { _count: { select: { purchaseOrders: true, payments: true, ledgerEntries: true } } } });
     if (!supplier) throw new SupplierDomainError("Supplier not found.");
@@ -88,6 +92,7 @@ export async function deleteSupplier(context: ServiceContext, id: string) {
 }
 
 export async function recordSupplierPayment(context: ServiceContext, supplierId: string, input: SupplierPaymentInput) {
+  if (!canPerformAction(context.role, "payments.record")) throw new SupplierDomainError("Unauthorized");
   const data = supplierPaymentSchema.parse(input); const amount = new Prisma.Decimal(data.amount); const withholdingTaxAmount = new Prisma.Decimal(data.withholdingTaxAmount ?? 0); const netAmount = amount.minus(withholdingTaxAmount);
   return withSerializableRetry(async (tx) => {
     if (data.idempotencyKey) {
