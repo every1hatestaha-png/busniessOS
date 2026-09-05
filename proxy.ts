@@ -9,19 +9,19 @@ export const proxy = clerkMiddleware(async (auth, request) => {
     return corsPreflightResponse(request);
   }
 
-  const isPublicRoute = path === "/api/webhooks/clerk" || path === "/sign-in" || path.startsWith("/sign-in/") || path === "/sign-up" || path.startsWith("/sign-up/");
-  if (!isApiV1Request(path) && !isPublicRoute) {
+  if (!isApiV1Request(path)) {
     await auth.protect();
   }
 
   if (isApiV1Request(path)) {
     return applyCorsHeaders(NextResponse.next(), request.headers.get("origin"));
   }
+
+  return NextResponse.next();
 });
 
 export const config = {
   matcher: [
-    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
-    "/(api|trpc)(.*)",
+    "/((?!_next|sign-in|sign-up|api/webhooks|api/health|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
   ],
 };

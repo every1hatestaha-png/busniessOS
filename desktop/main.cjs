@@ -7,10 +7,83 @@ const net = require("node:net");
 const path = require("node:path");
 const { app, BrowserWindow, dialog, session, shell } = require("electron");
 
+// ---------------------------------------------------------------------------
+// PHASE 0 — Bootstrap logging (runs BEFORE everything else)
+// ---------------------------------------------------------------------------
+// All other code depends on this.  Writes to bootstrap.log immediately so we
+// can diagnose why the installed app exits before desktop.log is created.
+
+let _bootstrapLogPath = null;
+
+function _bootstrapLog(level, message) {
+  const timestamp = new Date().toISOString();
+  const line = `[${timestamp}] [${level}] ${message}\n`;
+  try {
+    const userData = app.getPath("userData");
+    if (!_bootstrapLogPath) {
+      const dir = path.join(userData, "logs");
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      _bootstrapLogPath = path.join(dir, "bootstrap.log");
+    }
+    fs.appendFileSync(_bootstrapLogPath, line, "utf8");
+  } catch {
+    // Last resort — write to console so it's not silently swallowed.
+  }
+  if (level === "ERROR") {
+    console.error(`[BusinessOS:BOOT] ${message}`);
+  } else {
+    console.log(`[BusinessOS:BOOT] ${message}`);
+  }
+}
+
+// --- Emit very first line ---
+_bootstrapLog("INFO", "=== BOOTSTRAP START ===");
+try {
+  _bootstrapLog("INFO", `app.getName()=${typeof app.getName === "function" ? app.getName() : "N/A"}`);
+  _bootstrapLog("INFO", `app.isPackaged=${app.isPackaged}`);
+  _bootstrapLog("INFO", `app.getPath("userData")=${app.getPath("userData")}`);
+  _bootstrapLog("INFO", `process.resourcesPath=${process.resourcesPath}`);
+  _bootstrapLog("INFO", `process.execPath=${process.execPath}`);
+  _bootstrapLog("INFO", `process.platform=${process.platform}`);
+  _bootstrapLog("INFO", `process.version=${process.version}`);
+  _bootstrapLog("INFO", `process.arch=${process.arch}`);
+} catch (e) {
+  console.log(`[BusinessOS:BOOT] Bootstrap metadata error: ${e.message}`);
+}
+
+// ---------------------------------------------------------------------------
+// Global error handlers — registered immediately
+// ---------------------------------------------------------------------------
+
+process.on("uncaughtException", (error) => {
+  _bootstrapLog("ERROR", `UNCAUGHT EXCEPTION: ${error.name}: ${error.message}`);
+  if (error.stack) {
+    const safeLines = error.stack.split("\n").filter((l) => !l.includes("sk_") && !l.includes("DATABASE_URL") && !l.includes("password"));
+    _bootstrapLog("ERROR", safeLines.join("\n"));
+  }
+});
+
+process.on("unhandledRejection", (reason) => {
+  if (reason instanceof Error) {
+    _bootstrapLog("ERROR", `UNHANDLED REJECTION: ${reason.name}: ${reason.message}`);
+    if (reason.stack) {
+      const safeLines = reason.stack.split("\n").filter((l) => !l.includes("sk_") && !l.includes("DATABASE_URL") && !l.includes("password"));
+      _bootstrapLog("ERROR", safeLines.join("\n"));
+    }
+  } else {
+    _bootstrapLog("ERROR", `UNHANDLED REJECTION: ${String(reason)}`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
 const LOOPBACK_HOST = "127.0.0.1";
-const SERVER_READY_TIMEOUT_MS = 90_000;
+const SERVER_READY_TIMEOUT_MS = 30_000;
 const POLL_INTERVAL_INITIAL_MS = 250;
-const POLL_INTERVAL_MAX_MS = 2_000;
+const POLL_INTERVAL_MAX_MS = 500;
+const HEALTH_PATH = "/api/health";
 const SPLASH_WIDTH = 420;
 const SPLASH_HEIGHT = 320;
 const MAIN_MIN_WIDTH = 1024;
@@ -38,7 +111,7 @@ let quitting = false;
 let shutdownStarted = false;
 
 // ---------------------------------------------------------------------------
-// Logging
+// Logging (for non-bootstrap log messages)
 // ---------------------------------------------------------------------------
 
 function ensureLogDir() {
@@ -228,12 +301,15 @@ function spawnNextServer(port) {
 }
 
 // ---------------------------------------------------------------------------
-// Server readiness polling with exponential backoff
+// Server readiness polling via /api/health
 // ---------------------------------------------------------------------------
 
 function waitForServer(child, origin) {
   const deadline = Date.now() + SERVER_READY_TIMEOUT_MS;
   let pollInterval = POLL_INTERVAL_INITIAL_MS;
+  let attempt = 0;
+
+  appendLog("INFO", `Health probe started: ${origin}${HEALTH_PATH}`);
 
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -251,23 +327,25 @@ function waitForServer(child, origin) {
 
     const poll = () => {
       if (settled) return;
+      attempt += 1;
+
       if (Date.now() >= deadline) {
-        finish(new Error("Local server did not become ready in time (90s timeout)."));
+        finish(new Error(`Health probe timed out after ${SERVER_READY_TIMEOUT_MS / 1000}s.`));
         return;
       }
-      const request = http.get(`${origin}/sign-in`, (response) => {
+
+      const request = http.get(`${origin}${HEALTH_PATH}`, (response) => {
         response.resume();
-        if ((response.statusCode ?? 500) < 500) {
-          appendLog("INFO", `Server ready (HTTP ${response.statusCode})`);
+        appendLog("INFO", `Health attempt #${attempt} — HTTP ${response.statusCode}`);
+        if (response.statusCode === 200) {
+          appendLog("INFO", "Server readiness confirmed");
           finish();
         } else {
-          pollInterval = Math.min(pollInterval * 1.5, POLL_INTERVAL_MAX_MS);
           setTimeout(poll, pollInterval);
         }
       });
-      request.setTimeout(1_000, () => request.destroy());
+      request.setTimeout(2_000, () => request.destroy());
       request.on("error", () => {
-        pollInterval = Math.min(pollInterval * 1.5, POLL_INTERVAL_MAX_MS);
         setTimeout(poll, pollInterval);
       });
     };
@@ -325,6 +403,8 @@ async function startLocalServer() {
       lastError = error;
       appendLog("ERROR", `Attempt ${attempt + 1} failed: ${error.message}`);
       try { child.kill(); } catch { /* ignore */ }
+      // Wait for the killed process to exit before retrying
+      await new Promise((r) => child.once("exit", r)).catch(() => {});
     }
   }
 
@@ -427,8 +507,10 @@ function createSplashWindow() {
 
 function closeSplashWindow() {
   if (!splashWindow) return;
+  appendLog("INFO", "STAGE: closing splash window...");
   try { splashWindow.close(); } catch { /* ignore */ }
   splashWindow = null;
+  appendLog("INFO", "STAGE: splash closed");
 }
 
 // ---------------------------------------------------------------------------
@@ -467,61 +549,110 @@ function createMainWindow() {
   });
 
   mainWindow.once("ready-to-show", () => {
+    appendLog("INFO", "STAGE: main window ready-to-show — closing splash");
     closeSplashWindow();
     mainWindow?.show();
+    appendLog("INFO", "STAGE: main window shown");
   });
 
   mainWindow.on("closed", () => { mainWindow = null; });
 
+  appendLog("INFO", `STAGE: main window loading ${serverOrigin}`);
   void mainWindow.loadURL(serverOrigin);
 }
 
 // ---------------------------------------------------------------------------
-// Application entry
+// Application entry — stage-logged
 // ---------------------------------------------------------------------------
 
+_bootstrapLog("INFO", "STAGE: requesting single-instance lock...");
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
+_bootstrapLog("INFO", `STAGE: single-instance lock result=${hasSingleInstanceLock}`);
+
 if (!hasSingleInstanceLock) {
+  _bootstrapLog("WARN", "Another BusinessOS instance is already running. Quitting.");
   app.quit();
 } else {
   app.on("second-instance", () => {
+    appendLog("INFO", "Second instance detected — restoring main window");
     if (!mainWindow) return;
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.show();
     mainWindow.focus();
   });
 
+  _bootstrapLog("INFO", "STAGE: waiting for app.whenReady()...");
   app.whenReady().then(async () => {
+    appendLog("INFO", "STAGE: app.whenReady() resolved");
     try {
       appendLog("INFO", `BusinessOS starting (packaged=${app.isPackaged})`);
       appendLog("INFO", `process.execPath=${process.execPath}`);
       appendLog("INFO", `process.resourcesPath=${process.resourcesPath ?? "N/A"}`);
       appendLog("INFO", `app.getAppPath()=${app.getAppPath()}`);
+      appendLog("INFO", `app.getPath("userData")=${app.getPath("userData")}`);
 
-      if (app.isPackaged) loadPackagedRuntimeEnv();
+      appendLog("INFO", "STAGE: runtime.env lookup...");
+      const configPath = path.join(app.getPath("userData"), "runtime.env");
+      const configExists = fs.existsSync(configPath);
+      appendLog("INFO", `STAGE: runtime.env exists=${configExists} (path=${configPath})`);
 
+      if (app.isPackaged) {
+        appendLog("INFO", "STAGE: loading packaged runtime.env...");
+        loadPackagedRuntimeEnv();
+        appendLog("INFO", "STAGE: packaged runtime.env loaded");
+      } else {
+        appendLog("INFO", "STAGE: dev mode — skipping runtime.env");
+      }
+
+      appendLog("INFO", "STAGE: setting permission handler...");
       session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
 
+      appendLog("INFO", "STAGE: creating splash window...");
       createSplashWindow();
+      appendLog("INFO", "STAGE: splash window created");
+
+      appendLog("INFO", "STAGE: verifying installed resources...");
+      if (app.isPackaged) {
+        const serverRoot = path.join(process.resourcesPath, "next");
+        const serverEntry = path.join(serverRoot, "server.js");
+        appendLog("INFO", `STAGE: serverRoot=${serverRoot}`);
+        appendLog("INFO", `STAGE: server.js exists=${fs.existsSync(serverEntry)}`);
+        appendLog("INFO", `STAGE: node_modules exists=${fs.existsSync(path.join(serverRoot, "node_modules"))}`);
+      }
+
+      appendLog("INFO", "STAGE: starting local server...");
       await startLocalServer();
+      appendLog("INFO", "STAGE: local server started");
+
+      appendLog("INFO", "STAGE: creating main window...");
       createMainWindow();
+      appendLog("INFO", "STAGE: main window created — startup complete");
     } catch (error) {
       closeSplashWindow();
       const message = error instanceof Error ? error.message : "Unknown startup error.";
-      appendLog("ERROR", `Startup failed: ${message}`);
+      appendLog("ERROR", `STAGE: STARTUP FAILED: ${message}`);
       if (error instanceof Error && error.stack) appendLog("ERROR", error.stack);
-      dialog.showErrorBox(
-        "BusinessOS could not start",
-        `The local application server failed to launch.\n\n${message}\n\nCheck the desktop log for details:\n${path.join(app.getPath("userData"), "logs", "desktop.log")}`
-      );
+      try {
+        dialog.showErrorBox(
+          "BusinessOS could not start",
+          `The local application server failed to launch.\n\n${message}\n\nCheck the desktop log for details:\n${path.join(app.getPath("userData"), "logs", "desktop.log")}`
+        );
+      } catch (dialogErr) {
+        appendLog("ERROR", `Could not show error dialog: ${dialogErr.message}`);
+      }
       app.quit();
     }
+  }).catch((err) => {
+    _bootstrapLog("ERROR", `app.whenReady() rejected: ${err.name}: ${err.message}`);
+    if (err.stack) _bootstrapLog("ERROR", err.stack);
+    app.quit();
   });
 
   app.on("window-all-closed", () => app.quit());
 
   app.on("before-quit", (event) => {
     quitting = true;
+    appendLog("INFO", "STAGE: before-quit fired");
     if (!serverProcess || shutdownStarted) return;
     event.preventDefault();
     shutdownStarted = true;
