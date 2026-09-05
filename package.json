@@ -1,6 +1,8 @@
 {
   "name": "business-os",
   "version": "0.1.0",
+  "description": "BusinessOS - Accounting, Inventory & Sales Management",
+  "author": "BusinessOS",
   "private": true,
   "main": "desktop/main.cjs",
   "scripts": {
@@ -11,7 +13,7 @@
     "test": "vitest run",
     "postinstall": "prisma generate",
     "desktop:dev": "electron .",
-    "desktop:build": "npm run build && electron-builder --win nsis"
+    "desktop:build": "npm run build && node desktop/postbuild.cjs && electron-builder --win nsis"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -69,18 +71,11 @@
     ],
     "extraResources": [
       {
-        "from": ".next/standalone",
+        "from": ".desktop-stage/next",
         "to": "next"
-      },
-      {
-        "from": ".next/static",
-        "to": "next/.next/static"
-      },
-      {
-        "from": "public",
-        "to": "next/public"
       }
     ],
+    "afterPack": "desktop/afterPack.cjs",
     "win": {
       "target": [
         {
@@ -89,7 +84,8 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "icon": "app/favicon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -97,7 +93,10 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "BusinessOS"
+      "shortcutName": "BusinessOS",
+      "menuCategory": "BusinessOS",
+      "uninstallDisplayName": "BusinessOS",
+      "deleteAppDataOnUninstall": false
     }
   }
 }
