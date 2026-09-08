@@ -14,7 +14,7 @@
     "postinstall": "prisma generate",
     "desktop:dev": "node desktop/dev.cjs",
     "desktop:build": "npm run build && npm run desktop:package",
-    "desktop:package": "node desktop/postbuild.cjs && electron-builder --win nsis",
+    "desktop:package": "electron-builder --win nsis",
     "desktop:test": "node tests/desktop/run.cjs"
   },
   "dependencies": {
@@ -71,13 +71,6 @@
       "!**/.env*",
       "!**/*.pem"
     ],
-    "extraResources": [
-      {
-        "from": ".desktop-stage/next",
-        "to": "next"
-      }
-    ],
-    "afterPack": "desktop/afterPack.cjs",
     "win": {
       "target": [
         {
