@@ -1188,6 +1188,32 @@ function createMainWindow() {
     appendLog(level >= 2 ? "WARN" : "INFO", `[renderer] [${prefix}] ${message}${sourceId ? ` (${sourceId}:${line})` : ""}`);
   });
 
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown" || input.key.toLowerCase() !== "p" || !(input.control || input.meta)) return;
+    event.preventDefault();
+    mainWindow?.webContents.print({}, (success, failureReason) => {
+      appendLog(success ? "INFO" : "ERROR", success ? "[D8.1][print] print dialog opened" : `[D8.1][print] failed reason=${failureReason}`);
+    });
+  });
+
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    appendLog("ERROR", `[D8.1][renderer] process gone reason=${details.reason} exitCode=${details.exitCode}`);
+    if (quitting || !mainWindow || mainWindow.isDestroyed()) return;
+    void dialog.showMessageBox(mainWindow, {
+      type: "error",
+      title: "BusinessOS needs to reload",
+      message: "The application window stopped unexpectedly.",
+      detail: "Reload BusinessOS to continue. Your saved records are not affected.",
+      buttons: ["Reload", "Close"],
+      defaultId: 0,
+      cancelId: 1,
+    }).then(({ response }) => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (response === 0) mainWindow.reload();
+      else app.quit();
+    });
+  });
+
   mainWindow.webContents.once("did-finish-load", () => {
     appendLog("INFO", `[D4][windows] main ready ID=${mainWindow?.id ?? "unknown"} URL=${mainWindow?.webContents.getURL() || "unknown"}`);
     finishStartup("did-finish-load");
