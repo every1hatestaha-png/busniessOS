@@ -21,6 +21,7 @@ const eslintConfig = defineConfig([
     ".desktop-test/**",
     ".next-*/**",
     "tests/desktop/*.cjs",
+    "tests/visual-qa/**",
   ]),
 ]);
 
