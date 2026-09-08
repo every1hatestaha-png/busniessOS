@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { startTransition, useActionState } from "react";
-import { useForm } from "react-hook-form";
+import { type Resolver, useForm } from "react-hook-form";
 
 import {
   createCustomerAction,
@@ -33,7 +33,7 @@ export function CustomerForm({ customer }: CustomerFormProps) {
   const action = customer ? updateCustomerAction.bind(null, customer.id) : createCustomerAction;
   const [state, submitAction, isPending] = useActionState(action, initialState);
   const { register, handleSubmit, formState: { errors } } = useForm<FormValues>({
-    resolver: zodResolver(customerSchema) as any,
+    resolver: zodResolver(customerSchema) as unknown as Resolver<FormValues>,
     defaultValues: customer
       ? { ...customer, openingBalance: "0", creditDays: customer.creditDays ?? 30 }
       : defaultFormValues,
