@@ -1,6 +1,10 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+
 export default function DesktopAuthPage() {
+  const router = useRouter();
+
   const handleSignIn = () => {
     console.log("[desktop-auth] sign-in button clicked");
     if (window.businessOSDesktop?.startAuth) {
@@ -8,7 +12,7 @@ export default function DesktopAuthPage() {
       window.businessOSDesktop.startAuth();
     } else {
       console.log("[desktop-auth] IPC bridge not available, falling back to window.location.href");
-      window.location.href = "/desktop-auth/start";
+      router.push("/desktop-auth/start");
     }
   };
 
