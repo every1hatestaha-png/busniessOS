@@ -17,7 +17,7 @@ const handleProxy = clerkMiddleware(async (auth, request) => {
     d4ProxyLog(`root request URL origin=${request.nextUrl.origin} pathname=${path}`);
   }
 
-  if (path.startsWith("/desktop-auth")) {
+  if (path.startsWith("/desktop-auth") || path === "/api/desktop-config") {
     return NextResponse.next();
   }
 
