@@ -1,6 +1,6 @@
 "use strict";
 
-const { spawn, execFile } = require("node:child_process");
+const { spawn } = require("node:child_process");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -104,19 +104,7 @@ const OAUTH_STATE_TIMEOUT_MS = 5 * 60 * 1000;
 const TOKEN_REFRESH_BUFFER_MS = 60_000;
 const APP_VERSION = app.getVersion();
 
-const RUNTIME_ENV_KEYS = new Set([
-  "DATABASE_URL",
-  "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
-  "CLERK_SECRET_KEY",
-  "CLERK_WEBHOOK_SECRET",
-  "NEXT_PUBLIC_CLERK_SIGN_IN_URL",
-  "NEXT_PUBLIC_CLERK_SIGN_UP_URL",
-  "NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL",
-  "NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL",
-  "NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL",
-  "NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL",
-  "CLERK_OAUTH_CLIENT_ID",
-]);
+const DEFAULT_PRODUCTION_ORIGIN = "https://business-os-khzr.vercel.app";
 
 let mainWindow = null;
 let splashWindow = null;
@@ -256,51 +244,37 @@ function appendLog(level, message) {
 }
 
 // ---------------------------------------------------------------------------
-// Environment / secrets
+// Hosted runtime configuration
 // ---------------------------------------------------------------------------
 
-function parseRuntimeEnv(contents) {
-  const values = {};
-  for (const rawLine of contents.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith("#")) continue;
-    const match = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
-    if (!match || !RUNTIME_ENV_KEYS.has(match[1])) continue;
-    let value = match[2].trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
-    values[match[1]] = value;
+function validateHostedOrigin(value) {
+  const parsed = new URL(value);
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.search || parsed.hash || parsed.pathname !== "/") {
+    throw new Error("BUSINESSOS_APP_ORIGIN must be an HTTPS origin without credentials, a path, query, or fragment");
   }
-  return values;
+  return parsed.origin;
 }
 
-function loadPackagedRuntimeEnv() {
-  const configPath = path.join(app.getPath("userData"), "runtime.env");
-  if (!fs.existsSync(configPath)) {
-    throw new Error(
-      `Desktop configuration is missing.\n\n` +
-        `Please create the file:\n${configPath}\n\n` +
-        `Required variables:\n` +
-        `  DATABASE_URL=postgresql://...\n` +
-        `  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_...\n` +
-        `  CLERK_SECRET_KEY=sk_...\n` +
-        `  CLERK_OAUTH_CLIENT_ID=...\n\n` +
-        `You can copy these from your .env.local file.`
-    );
+async function configureHostedRuntime() {
+  serverOrigin = validateHostedOrigin(process.env.BUSINESSOS_APP_ORIGIN || DEFAULT_PRODUCTION_ORIGIN);
+  const response = await fetch(`${serverOrigin}/api/desktop-config`, {
+    headers: { Accept: "application/json" },
+    redirect: "error",
+  });
+  if (!response.ok) throw new Error(`Hosted desktop configuration failed with HTTP ${response.status}`);
+  if (new URL(response.url).origin !== serverOrigin) throw new Error("Hosted desktop configuration changed origin");
+
+  const config = await response.json();
+  if (typeof config.publishableKey !== "string" || !/^pk_(test|live)_/.test(config.publishableKey)) {
+    throw new Error("Hosted desktop configuration has an invalid Clerk publishable key");
   }
-  const values = parseRuntimeEnv(fs.readFileSync(configPath, "utf8"));
-  for (const [key, value] of Object.entries(values)) process.env[key] = value;
-  const missing = ["DATABASE_URL", "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "CLERK_SECRET_KEY", "CLERK_OAUTH_CLIENT_ID"].filter(
-    (key) => !process.env[key]
-  );
-  if (missing.length) {
-    throw new Error(
-      `Desktop configuration is missing required variables: ${missing.join(", ")}\n\n` +
-        `Please edit:\n${configPath}`
-    );
+  if (typeof config.oauthClientId !== "string" || !config.oauthClientId.trim()) {
+    throw new Error("Hosted desktop configuration has an invalid OAuth client ID");
   }
-  appendLog("INFO", `Loaded runtime.env with ${Object.keys(values).length} variables`);
+
+  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = config.publishableKey;
+  process.env.CLERK_OAUTH_CLIENT_ID = config.oauthClientId;
+  appendLog("INFO", `Hosted runtime configured origin=${serverOrigin}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -339,16 +313,6 @@ function isPortAvailable(port, host = SERVER_HOST) {
 // Next.js server process
 // ---------------------------------------------------------------------------
 
-function buildPackagedEnv(port) {
-  return {
-    ...process.env,
-    NODE_ENV: "production",
-    HOSTNAME: SERVER_HOST,
-    PORT: String(port),
-    ELECTRON_RUN_AS_NODE: "1",
-  };
-}
-
 function buildDevEnv(port) {
   return {
     ...process.env,
@@ -356,51 +320,6 @@ function buildDevEnv(port) {
     HOSTNAME: SERVER_HOST,
     PORT: String(port),
   };
-}
-
-function spawnPackagedServer(port) {
-  const serverRoot = path.join(process.resourcesPath, "next");
-  const serverEntry = path.join(serverRoot, "server.js");
-  if (!fs.existsSync(serverEntry)) {
-    throw new Error(`Packaged Next.js server is missing at: ${serverEntry}`);
-  }
-
-  const env = buildPackagedEnv(port);
-  appendLog("INFO", `Packaged server entry: ${serverEntry}`);
-
-  try {
-    const child = execFile(process.execPath, [serverEntry], {
-      cwd: serverRoot,
-      env,
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    });
-    appendLog("INFO", "execFile spawn succeeded");
-    return child;
-  } catch (primaryError) {
-    appendLog("WARN", `execFile failed (${primaryError.code}: ${primaryError.message}), trying spawn+shell fallback`);
-  }
-
-  try {
-    const child = spawn(process.execPath, [serverEntry], {
-      cwd: serverRoot,
-      env,
-      stdio: ["ignore", "pipe", "pipe"],
-      shell: true,
-      windowsHide: true,
-    });
-    appendLog("INFO", "spawn+shell fallback succeeded");
-    return child;
-  } catch (fallbackError) {
-    appendLog("ERROR", `spawn+shell also failed: ${fallbackError.code}: ${fallbackError.message}`);
-    throw new Error(
-      `Failed to start the local server.\n\n` +
-        `Attempted: execFile and spawn+shell.\n` +
-        `Last error: ${fallbackError.message}\n\n` +
-        `Server entry: ${serverEntry}\n` +
-        `CWD: ${serverRoot}`
-    );
-  }
 }
 
 function spawnDevServer(port) {
@@ -418,7 +337,7 @@ function spawnDevServer(port) {
 }
 
 function spawnNextServer(port) {
-  return app.isPackaged ? spawnPackagedServer(port) : spawnDevServer(port);
+  return spawnDevServer(port);
 }
 
 // ---------------------------------------------------------------------------
@@ -480,6 +399,10 @@ function waitForServer(child, origin) {
 // ---------------------------------------------------------------------------
 
 async function startLocalServer() {
+  if (app.isPackaged) {
+    await configureHostedRuntime();
+    return;
+  }
   if (!app.isPackaged && process.env.BUSINESSOS_DEV_ORIGIN) {
     const origin = new URL(process.env.BUSINESSOS_DEV_ORIGIN);
     if (origin.protocol !== "http:" || origin.hostname !== SERVER_HOST) {
@@ -1324,21 +1247,12 @@ if (!hasSingleInstanceLock) {
     try {
       appendLog("INFO", `BusinessOS starting (packaged=${app.isPackaged})`);
 
-      appendLog("INFO", "STAGE: runtime.env lookup...");
-      const configPath = path.join(app.getPath("userData"), "runtime.env");
-      const configExists = fs.existsSync(configPath);
-      appendLog("INFO", `STAGE: runtime.env exists=${configExists} (path=${configPath})`);
-
-      if (app.isPackaged) {
-        appendLog("INFO", "STAGE: loading packaged runtime.env...");
-        loadPackagedRuntimeEnv();
-        appendLog("INFO", "STAGE: packaged runtime.env loaded");
-      } else {
-        appendLog("INFO", "STAGE: dev mode — skipping runtime.env");
-      }
-
       appendLog("INFO", "STAGE: creating splash window...");
       createSplashWindow();
+
+      appendLog("INFO", "STAGE: connecting to BusinessOS service...");
+      await startLocalServer();
+      appendLog("INFO", "STAGE: BusinessOS service ready");
 
       appendLog("INFO", "STAGE: loading desktop credentials...");
       const storedCredentialsReady = await prepareStoredCredentials();
@@ -1348,19 +1262,6 @@ if (!hasSingleInstanceLock) {
       session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
 
       registerDesktopAuthIpc();
-
-      appendLog("INFO", "STAGE: verifying installed resources...");
-      if (app.isPackaged) {
-        const serverRoot = path.join(process.resourcesPath, "next");
-        const serverEntry = path.join(serverRoot, "server.js");
-        appendLog("INFO", `STAGE: serverRoot=${serverRoot}`);
-        appendLog("INFO", `STAGE: server.js exists=${fs.existsSync(serverEntry)}`);
-        appendLog("INFO", `STAGE: node_modules exists=${fs.existsSync(path.join(serverRoot, "node_modules"))}`);
-      }
-
-      appendLog("INFO", "STAGE: starting local server...");
-      await startLocalServer();
-      appendLog("INFO", "STAGE: local server started");
 
       if (storedCredentialsReady) {
         setupBearerTokenInjection();
@@ -1379,7 +1280,7 @@ if (!hasSingleInstanceLock) {
       try {
         dialog.showErrorBox(
           "BusinessOS could not start",
-          `The local application server failed to launch.\n\n${message}\n\nCheck the desktop log for details:\n${path.join(app.getPath("userData"), "logs", "desktop.log")}`
+          `The BusinessOS service could not be reached.\n\n${message}\n\nCheck the desktop log for details:\n${path.join(app.getPath("userData"), "logs", "desktop.log")}`
         );
       } catch (dialogErr) {
         appendLog("ERROR", `Could not show error dialog: ${dialogErr.message}`);
