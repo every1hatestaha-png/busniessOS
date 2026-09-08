@@ -14,7 +14,7 @@ let userId = ""; let workspaceId = ""; let customerId = ""; let otherCustomerId 
 const context = () => ({ workspaceId, userId, role: "OWNER" as const });
 
 async function saleWithInvoice(total = 100, paidAmount = 0) {
-  const sale = await createSale(context(), { customerId, items: [{ productId, quantity: 1, unitPrice: total, discount: 0 }], orderDiscount: 0, paidAmount, ...(paidAmount > 0 ? { cashBankAccountId } : {}), notes: "", idempotencyKey: randomUUID() });
+  const sale = await createSale(context(), { customerId, items: [{ productId, quantity: 1, unitPrice: total, discountPerUnit: 0 }], orderDiscount: 0, paidAmount, ...(paidAmount > 0 ? { cashBankAccountId } : {}), notes: "", idempotencyKey: randomUUID() });
   const invoice = await db.invoice.findUniqueOrThrow({ where: { salesOrderId: sale.id } });
   const item = await db.salesOrderItem.findFirstOrThrow({ where: { salesOrderId: sale.id } });
   return { sale, invoice, item };
@@ -145,7 +145,7 @@ describe("customer credit allocation and receivables", () => {
     const { sale, invoice, item } = await saleWithInvoice(100, 0);
     const customerReturn = await returnFor(item.id, sale.id);
     const credit = await db.creditNote.findFirstOrThrow({ where: { customerReturnId: customerReturn.id } });
-    const otherSale = await createSale(context(), { customerId: otherCustomerId, items: [{ productId, quantity: 1, unitPrice: 100, discount: 0 }], orderDiscount: 0, paidAmount: 0, notes: "", idempotencyKey: randomUUID() });
+    const otherSale = await createSale(context(), { customerId: otherCustomerId, items: [{ productId, quantity: 1, unitPrice: 100, discountPerUnit: 0 }], orderDiscount: 0, paidAmount: 0, notes: "", idempotencyKey: randomUUID() });
     const otherInvoice = await db.invoice.findUniqueOrThrow({ where: { salesOrderId: otherSale.id } });
     const cancelled = await saleWithInvoice(100, 0);
     await cancelSale(context(), cancelled.sale.id, true);
@@ -224,3 +224,5 @@ describe("customer credit allocation and receivables", () => {
     await expect(createCustomerReturn(staff, { salesOrderId: target.sale.id, items: [{ itemId: target.item.id, quantity: 1 }], restock: true, reason: "Unauthorized", notes: "", idempotencyKey: randomUUID() })).rejects.toMatchObject({ code: "PERMISSION_DENIED", message: "Unauthorized" });
   });
 });
+
+

@@ -22,6 +22,11 @@ function readEmail(value: unknown) {
   return readString(value, "email_address", "emailAddress", "email")?.toLowerCase() ?? null;
 }
 
+function readVerifiedEmail(value: unknown) {
+  if (!isRecord(value) || !isRecord(value.verification)) return null;
+  return readString(value.verification, "status") === "verified" ? readEmail(value) : null;
+}
+
 export function isClerkUserLifecycleEvent(type: string) {
   return type === "user.created" || type === "user.updated" || type === "user.deleted";
 }
@@ -40,10 +45,12 @@ export function getClerkUserIdentity(data: unknown) {
     : null;
   const directPrimary = user.primary_email_address ?? user.primaryEmailAddress;
   const email = readEmail(primaryAddress) ?? readEmail(directPrimary) ?? addresses.map(readEmail).find(Boolean) ?? null;
+  const verifiedPrimaryEmail = readVerifiedEmail(primaryAddress) ?? readVerifiedEmail(directPrimary);
 
   return {
     id,
     email,
+    verifiedPrimaryEmail,
     firstName: readString(user, "first_name", "firstName"),
     lastName: readString(user, "last_name", "lastName"),
   };

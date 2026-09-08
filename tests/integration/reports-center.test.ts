@@ -129,14 +129,38 @@ describe("reports center integration", () => {
     const expenseAccount = await db.account.findUniqueOrThrow({ where: { workspaceId_systemCode: { workspaceId, systemCode: "OFFICE_EXPENSE" } } });
     const cashAccount = await db.account.findUniqueOrThrow({ where: { workspaceId_systemCode: { workspaceId, systemCode: "CASH_IN_HAND" } } });
     const cogsAccount = await db.account.findUniqueOrThrow({ where: { workspaceId_systemCode: { workspaceId, systemCode: "COST_OF_GOODS_SOLD" } } });
+    const revenueAccount = await db.account.findUniqueOrThrow({ where: { workspaceId_systemCode: { workspaceId, systemCode: "SALES_REVENUE" } } });
     await db.expense.create({ data: { workspaceId, expenseAccountId: expenseAccount.id, paymentAccountId: cashAccount.id, voucherNumber: `EXP-PNL-${runId}`, expenseDate: date("2026-08-07"), amount: 25 } });
     await db.generalLedgerEntry.createMany({ data: [
+      { workspaceId, accountId: revenueAccount.id, sourceType: "SALE", sourceId: randomUUID(), documentNo: `SO-PNL-${runId}`, date: date("2026-08-05"), narration: "Sales revenue", debit: 0, credit: 200 },
       { workspaceId, accountId: cogsAccount.id, sourceType: "SALE", sourceId: randomUUID(), documentNo: `SO-PNL-${runId}`, date: date("2026-08-05"), narration: "Historical COGS", debit: 60, credit: 0 },
       { workspaceId, accountId: expenseAccount.id, sourceType: "EXPENSE", sourceId: randomUUID(), documentNo: `EXP-PNL-${runId}`, date: date("2026-08-07"), narration: "Office expense", debit: 25, credit: 0 },
     ] });
     const report = await getProfitAndLoss(workspaceId, { from: date("2026-08-01"), to: date("2026-08-31") });
     expect(report).toMatchObject({ grossSales: 200, costOfGoodsSold: 60, grossProfit: 140, operatingExpenses: 25, netProfit: 115 });
     expect(report.expenseCategories).toEqual([expect.objectContaining({ name: "Office Expense", amount: 25 })]);
+  }, 60_000);
+
+  it("reports cross-period sale cancellation from dated GL reversals", async () => {
+    const [revenueAccount, cogsAccount] = await Promise.all([
+      db.account.findUniqueOrThrow({ where: { workspaceId_systemCode: { workspaceId, systemCode: "SALES_REVENUE" } } }),
+      db.account.findUniqueOrThrow({ where: { workspaceId_systemCode: { workspaceId, systemCode: "COST_OF_GOODS_SOLD" } } }),
+    ]);
+    const saleId = randomUUID();
+    await db.generalLedgerEntry.createMany({ data: [
+      { workspaceId, accountId: revenueAccount.id, sourceType: "SALE", sourceId: saleId, documentNo: `SO-CROSS-${runId}`, date: date("2025-07-15"), narration: "Original revenue", debit: 0, credit: 100 },
+      { workspaceId, accountId: cogsAccount.id, sourceType: "SALE", sourceId: saleId, documentNo: `SO-CROSS-${runId}`, date: date("2025-07-15"), narration: "Original COGS", debit: 40, credit: 0 },
+      { workspaceId, accountId: revenueAccount.id, sourceType: "REVERSAL", sourceId: randomUUID(), documentNo: `REV-SO-CROSS-${runId}`, date: date("2025-08-15"), narration: "Cancellation revenue reversal", debit: 100, credit: 0 },
+      { workspaceId, accountId: cogsAccount.id, sourceType: "REVERSAL", sourceId: randomUUID(), documentNo: `REV-SO-CROSS-${runId}`, date: date("2025-08-15"), narration: "Cancellation COGS reversal", debit: 0, credit: 40 },
+    ] });
+
+    const [originalPeriod, cancellationPeriod] = await Promise.all([
+      getProfitAndLoss(workspaceId, { from: date("2025-07-01"), to: date("2025-07-31") }),
+      getProfitAndLoss(workspaceId, { from: date("2025-08-01"), to: date("2025-08-31") }),
+    ]);
+    expect(originalPeriod).toMatchObject({ grossSales: 100, salesReturns: 0, costOfGoodsSold: 40, netProfit: 60 });
+    expect(cancellationPeriod).toMatchObject({ grossSales: 0, salesReturns: 100, costOfGoodsSold: -40, netProfit: -60 });
+    expect(originalPeriod.netProfit + cancellationPeriod.netProfit).toBe(0);
   }, 60_000);
 
   it("builds customer and supplier statements with opening and running balances", async () => {
@@ -181,7 +205,15 @@ describe("reports center integration", () => {
   }, 60_000);
 
   it("uses report totals once in the Net Operating Position formula", async () => {
+    const order = await db.purchaseOrder.create({ data: { workspaceId, supplierId, orderNumber: `PO-DASH-${runId}`, status: "PARTIALLY_RECEIVED", totalAmount: 1009, balanceAmount: 1009 } });
+    await db.goodReceivedNote.createMany({ data: [
+      { workspaceId, supplierId, purchaseOrderId: order.id, grnNumber: `GRN-ACTIVE-${runId}`, totalAmount: 10, status: "ACTIVE", receiptDate: new Date() },
+      { workspaceId, supplierId, purchaseOrderId: order.id, grnNumber: `GRN-VOID-${runId}`, totalAmount: 999, status: "VOIDED", receiptDate: new Date(), voidedAt: new Date(), voidedReason: "Dashboard test" },
+    ] });
     const dashboard = await getFinancialDashboard(workspaceId);
+    expect(dashboard.purchasesThisMonth).toBe(10);
     expect(dashboard.netOperatingPosition).toBe(dashboard.receivables + dashboard.inventoryValue + dashboard.cashBank - dashboard.payables);
   }, 60_000);
 });
+
+

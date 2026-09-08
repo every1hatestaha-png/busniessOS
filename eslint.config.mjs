@@ -14,8 +14,13 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Electron desktop packaging artifacts:
     "dist-desktop/**",
+    "dist-desktop*/**",
     ".desktop-stage/**",
     "desktop/**",
+    ".desktop-dev/**",
+    ".desktop-test/**",
+    ".next-*/**",
+    "tests/desktop/*.cjs",
   ]),
 ]);
 

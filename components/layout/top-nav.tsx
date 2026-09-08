@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { UserButton } from "@clerk/nextjs";
 import type { Role } from "@prisma/client";
 import { Bell, Menu, Search, X } from "lucide-react";
@@ -9,11 +9,17 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/s
 import { Sidebar } from "@/components/layout/sidebar";
 import { GlobalSearch } from "@/components/search/global-search";
 import type { SearchResult } from "@/lib/search";
+import { DesktopAccountMenu } from "@/components/layout/desktop-logout-button";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 
 export function TopNav({ workspaceName, workspaceId, workspaces, searchResults, role }: { workspaceName: string; workspaceId: string; workspaces: Array<{ workspaceId: string; workspace: { name: string } }>; searchResults: SearchResult[]; role: Role }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const isDesktop = useSyncExternalStore(
+    () => () => {},
+    () => Boolean(window.businessOSDesktop?.signOut && window.businessOSDesktop.switchAccount),
+    () => false,
+  );
 
   return (
     <header className="relative z-40 flex min-h-16 flex-wrap items-center border-b bg-white px-4 print:hidden sm:px-6">
@@ -41,7 +47,8 @@ export function TopNav({ workspaceName, workspaceId, workspaces, searchResults, 
           <Button variant="ghost" size="icon" className="text-muted-foreground" aria-label="Notifications">
             <Bell className="size-4" />
           </Button>
-          <div className="ml-1 flex items-center border-l pl-3"><UserButton /></div>
+          {isDesktop ? <DesktopAccountMenu /> : null}
+          {!isDesktop ? <div className="ml-1 flex items-center border-l pl-3"><UserButton /></div> : null}
         </div>
       </div>
       {mobileSearchOpen && <GlobalSearch results={searchResults} autoFocus onNavigate={() => setMobileSearchOpen(false)} className="mt-3 lg:hidden" />}

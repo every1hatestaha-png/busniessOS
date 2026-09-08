@@ -159,10 +159,10 @@ describe("BusinessOS V1 production-readiness company scenario", () => {
     expect(await systemBalance("WITHHOLDING_TAX_PAYABLE", "CREDIT")).toBe(500);
     expect(Number((await db.payment.findUniqueOrThrow({ where: { id: voucher.id } })).netAmount)).toBe(4500);
 
-    const saleA1 = await createSale(context(), { customerId: customers.a, items: [{ productId: products.unitA, quantity: 10, unitPrice: 200, discount: 0 }], orderDiscount: 0, paidAmount: 0, notes: "Credit sale", idempotencyKey: randomUUID() });
-    const saleB = await createSale(context(), { customerId: customers.b, items: [{ productId: products.unitA, quantity: 5, unitPrice: 200, discount: 0 }], orderDiscount: 0, paidAmount: 400, cashBankAccountId: cashBank.meezan.id, notes: "Part paid", idempotencyKey: randomUUID() });
-    await createSale(context(), { customerId: customers.c, items: [{ productId: products.unitA, quantity: 2, unitPrice: 200, discount: 0 }], orderDiscount: 0, paidAmount: 400, cashBankAccountId: cashBank.cash.id, notes: "Paid", idempotencyKey: randomUUID() });
-    const saleA2 = await createSale(context(), { customerId: customers.a, items: [{ productId: products.unitA, quantity: 2, unitPrice: 200, discount: 0 }], orderDiscount: 0, paidAmount: 0, notes: "Second credit sale", idempotencyKey: randomUUID() });
+    const saleA1 = await createSale(context(), { customerId: customers.a, items: [{ productId: products.unitA, quantity: 10, unitPrice: 200, discountPerUnit: 0 }], orderDiscount: 0, paidAmount: 0, notes: "Credit sale", idempotencyKey: randomUUID() });
+    const saleB = await createSale(context(), { customerId: customers.b, items: [{ productId: products.unitA, quantity: 5, unitPrice: 200, discountPerUnit: 0 }], orderDiscount: 0, paidAmount: 400, cashBankAccountId: cashBank.meezan.id, notes: "Part paid", idempotencyKey: randomUUID() });
+    await createSale(context(), { customerId: customers.c, items: [{ productId: products.unitA, quantity: 2, unitPrice: 200, discountPerUnit: 0 }], orderDiscount: 0, paidAmount: 400, cashBankAccountId: cashBank.cash.id, notes: "Paid", idempotencyKey: randomUUID() });
+    const saleA2 = await createSale(context(), { customerId: customers.a, items: [{ productId: products.unitA, quantity: 2, unitPrice: 200, discountPerUnit: 0 }], orderDiscount: 0, paidAmount: 0, notes: "Second credit sale", idempotencyKey: randomUUID() });
     const [invoiceA1, invoiceA2] = await Promise.all([invoiceFor(saleA1.id), invoiceFor(saleA2.id)]);
     await recordPayment(context(), { customerId: customers.a, invoiceId: invoiceA1.id, cashBankAccountId: cashBank.hbl.id, amount: 500, paymentDate: new Date(), method: "BANK_TRANSFER", reference: "QA-R1", notes: "", idempotencyKey: randomUUID() });
     await recordPayment(context(), { customerId: customers.a, cashBankAccountId: cashBank.meezan.id, amount: 600, allocations: [{ invoiceId: invoiceA1.id, amount: 300 }, { invoiceId: invoiceA2.id, amount: 300 }], paymentDate: new Date(), method: "BANK_TRANSFER", reference: "QA-R2", notes: "", idempotencyKey: randomUUID() });
@@ -224,3 +224,5 @@ describe("BusinessOS V1 production-readiness company scenario", () => {
     expect((await getPayablesAging(otherWorkspaceId)).totalOutstanding).toBe(0);
   }, 180_000);
 });
+
+

@@ -19,6 +19,6 @@ export async function POST(request: Request) {
   if (event.type === "user.deleted") { await db.user.deleteMany({ where: { clerkId: identity.id } }); return Response.json({ received: true }); }
   if (!identity.email) return Response.json({ error: "User has no email." }, { status: 422 });
   const user = await db.user.upsert({ where: { clerkId: identity.id }, create: { clerkId: identity.id, email: identity.email, firstName: identity.firstName, lastName: identity.lastName }, update: { email: identity.email, firstName: identity.firstName, lastName: identity.lastName } });
-  await acceptPendingInvitations(user.id, user.email);
+  if (identity.verifiedPrimaryEmail) await acceptPendingInvitations(user.id, identity.verifiedPrimaryEmail);
   return Response.json({ received: true });
 }

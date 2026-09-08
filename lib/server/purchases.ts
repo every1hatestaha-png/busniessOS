@@ -40,6 +40,30 @@ export class PurchaseDomainError extends Error {
   }
 }
 
+function validateWeightReceipt<T extends {
+  receivedQuantity: number;
+  acceptedQuantity: number;
+  receivedWeightKg?: number;
+  acceptedWeightKg?: number;
+  ratePerKg?: number;
+}>(item: T): asserts item is T & { receivedWeightKg: number; acceptedWeightKg: number; ratePerKg: number } {
+  if (item.receivedWeightKg == null || item.acceptedWeightKg == null || item.ratePerKg == null) {
+    throw new PurchaseDomainError("INVALID_RECEIPT", "Received weight, accepted weight, and rate per kg are required for weight-priced items.");
+  }
+  if (item.receivedWeightKg <= 0 || item.ratePerKg <= 0) {
+    throw new PurchaseDomainError("INVALID_RECEIPT", "Received weight and rate per kg must be greater than zero for weight-priced items.");
+  }
+  if (item.acceptedQuantity > 0 && item.acceptedWeightKg <= 0) {
+    throw new PurchaseDomainError("INVALID_RECEIPT", "Accepted weight must be greater than zero when accepted quantity is greater than zero.");
+  }
+  if (item.acceptedQuantity === 0 && item.acceptedWeightKg > 0) {
+    throw new PurchaseDomainError("INVALID_RECEIPT", "Accepted weight must be zero when no quantity is accepted.");
+  }
+  if (item.acceptedWeightKg > item.receivedWeightKg) {
+    throw new PurchaseDomainError("INVALID_RECEIPT", "Accepted weight cannot exceed received weight.");
+  }
+}
+
 /**
  * Create a Purchase Order (commercial commitment only).
  * No inventory, no payable, no GL, no supplier balance changes.
@@ -209,12 +233,7 @@ export async function createGoodsReceipt(context: ServiceContext, input: GoodsRe
       let lineAmount: Prisma.Decimal | null = null;
 
       if (isWeightPriced) {
-        if (item.receivedWeightKg == null || item.acceptedWeightKg == null || item.ratePerKg == null) {
-          throw new PurchaseDomainError("INVALID_RECEIPT", "Weight fields are required for weight-priced items.");
-        }
-        if (item.acceptedWeightKg > item.receivedWeightKg) {
-          throw new PurchaseDomainError("INVALID_RECEIPT", "Accepted weight cannot exceed received weight.");
-        }
+        validateWeightReceipt(item);
         receivedWeightKg = new Prisma.Decimal(item.receivedWeightKg);
         acceptedWeightKg = new Prisma.Decimal(item.acceptedWeightKg);
         ratePerKg = new Prisma.Decimal(item.ratePerKg);
@@ -222,6 +241,9 @@ export async function createGoodsReceipt(context: ServiceContext, input: GoodsRe
         totalCost = lineAmount;
       } else {
         totalCost = unitCost.mul(item.acceptedQuantity);
+      }
+      if (totalCost.gt(0) && item.acceptedQuantity <= 0) {
+        throw new PurchaseDomainError("INVALID_RECEIPT", "Accepted quantity must be greater than zero when accepted value is greater than zero.");
       }
       totalAcceptedAmount = totalAcceptedAmount.plus(totalCost);
 
@@ -284,9 +306,10 @@ export async function createGoodsReceipt(context: ServiceContext, input: GoodsRe
       });
       const currentStock = product.stockQuantity.toNumber();
       const resultingQuantity = currentStock + item.acceptedQuantity;
+const inventoryUnitCost = item.acceptedQuantity > 0 ? item.totalCost.div(item.acceptedQuantity) : item.unitCost;
       const weightedCost = resultingQuantity > 0
-        ? product.costPrice.mul(currentStock).plus(item.unitCost.mul(item.acceptedQuantity)).div(resultingQuantity)
-        : item.unitCost;
+        ? product.costPrice.mul(currentStock).plus(item.totalCost).div(resultingQuantity)
+        : inventoryUnitCost;
       await tx.product.update({
         where: { id: item.purchaseOrderItem.productId, workspaceId: context.workspaceId },
         data: { stockQuantity: { increment: item.acceptedQuantity }, costPrice: weightedCost },
@@ -298,7 +321,7 @@ export async function createGoodsReceipt(context: ServiceContext, input: GoodsRe
           productId: item.purchaseOrderItem.productId,
           type: "PURCHASE_RECEIPT",
           quantityChanged: item.acceptedQuantity,
-          unitCost: item.unitCost,
+          unitCost: inventoryUnitCost,
           reference: grnNumber,
         },
       });
@@ -565,7 +588,7 @@ export async function createSupplierReturn(context: ServiceContext, input: Suppl
       const changed = await tx.product.updateMany({ where: { id: line.source.productId, workspaceId: context.workspaceId, stockQuantity: product.stockQuantity }, data: { stockQuantity: { decrement: line.quantity }, ...(remainingQuantity > 0 ? { costPrice: remainingValue.div(remainingQuantity) } : {}) } });
       if (changed.count !== 1) throw new PurchaseDomainError("INSUFFICIENT_STOCK", `${line.source.productName ?? "Product"} has insufficient stock to return.`);
       await tx.supplierReturnItem.create({ data: { supplierReturnId: supplierReturn.id, purchaseOrderItemId: line.source.id, productId: line.source.productId, quantity: line.quantity, unitCost: line.unitCost, totalCost: line.total, returnedWeightKg: line.returnedWeightKg, ratePerKg: line.ratePerKg } });
-      await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: line.source.productId, type: "RETURN_OUT", quantityChanged: -line.quantity, unitCost: line.unitCost, reference: number } });
+      await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: line.source.productId, type: "RETURN_OUT", quantityChanged: -line.quantity, unitCost: line.total.div(line.quantity), reference: number } });
     }
     await tx.debitNote.create({ data: { workspaceId: context.workspaceId, supplierId: order.supplierId, purchaseOrderId: order.id, number: noteNumber, reason: data.reason || "Supplier return", amount: total, reference: number, notes: data.notes || null } });
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, supplierId: order.supplierId, type: "PURCHASE_RETURN", debit: total, description: `Supplier return ${number}`, referenceId: supplierReturn.id } });
@@ -1069,10 +1092,10 @@ export async function updateGoodsReceipt(context: ServiceContext, id: string, in
       const poItem = poItemMap.get(item.purchaseOrderItemId);
 if (!poItem) throw new PurchaseDomainError("INVALID_RECEIPT", "Purchase order item not found.");
       if (item.acceptedQuantity > item.receivedQuantity) throw new PurchaseDomainError("INVALID_RECEIPT", "Accepted quantity cannot exceed received quantity.");
-      // poItem.receivedQuantity already includes this GRN's existing received qty.
-      // Subtract it out to get the capacity available for edits to this GRN.
-      const existingReceived = existing.receivedQuantity.toNumber();
-      const remainingPoQuantity = poItem.quantity.minus(poItem.receivedQuantity).plus(existingReceived).toNumber();
+      // PO receivedQuantity tracks cumulative accepted quantity, so restore this
+      // GRN's accepted quantity when calculating edit capacity.
+      const existingAccepted = existing.acceptedQuantity.toNumber();
+      const remainingPoQuantity = poItem.quantity.minus(poItem.receivedQuantity).plus(existingAccepted).toNumber();
       const newTotalReceived = item.receivedQuantity;
       if (newTotalReceived > remainingPoQuantity) throw new PurchaseDomainError("OVER_RECEIPT", `Received weight cannot exceed the remaining PO quantity. Only ${remainingPoQuantity} remaining.`);
       const quantityDelta = item.acceptedQuantity - existing.acceptedQuantity.toNumber();
@@ -1080,10 +1103,7 @@ if (!poItem) throw new PurchaseDomainError("INVALID_RECEIPT", "Purchase order it
       const isWeightPriced = poItem.perKgRate != null;
       let newLineTotal: Prisma.Decimal;
       if (isWeightPriced) {
-        if (item.receivedWeightKg == null || item.acceptedWeightKg == null || item.ratePerKg == null) {
-          throw new PurchaseDomainError("INVALID_RECEIPT", "Weight fields are required for weight-priced items.");
-        }
-        if (item.acceptedWeightKg > item.receivedWeightKg) throw new PurchaseDomainError("INVALID_RECEIPT", "Accepted weight cannot exceed received weight.");
+        validateWeightReceipt(item);
         newLineTotal = new Prisma.Decimal(item.acceptedWeightKg).mul(new Prisma.Decimal(item.ratePerKg));
       } else {
         newLineTotal = new Prisma.Decimal(item.actualUnitCost).mul(item.acceptedQuantity);
@@ -1139,9 +1159,7 @@ if (!poItem) throw new PurchaseDomainError("INVALID_RECEIPT", "Purchase order it
       let newRatePerKg: Prisma.Decimal | null = null;
       let newLineAmount: Prisma.Decimal | null = null;
       if (isWeightPricedUpdate) {
-        if (item.receivedWeightKg == null || item.acceptedWeightKg == null || item.ratePerKg == null) {
-          throw new PurchaseDomainError("INVALID_RECEIPT", "Weight fields are required for weight-priced items.");
-        }
+        validateWeightReceipt(item);
         newReceivedWeightKg = new Prisma.Decimal(item.receivedWeightKg);
         newAcceptedWeightKg = new Prisma.Decimal(item.acceptedWeightKg);
         newRatePerKg = new Prisma.Decimal(item.ratePerKg);
@@ -1149,6 +1167,9 @@ if (!poItem) throw new PurchaseDomainError("INVALID_RECEIPT", "Purchase order it
         newTotalCost = newLineAmount;
       } else {
         newTotalCost = newUnitCostDecimal.mul(newAccepted);
+      }
+      if (newTotalCost.gt(0) && newAccepted <= 0) {
+        throw new PurchaseDomainError("INVALID_RECEIPT", "Accepted quantity must be greater than zero when accepted value is greater than zero.");
       }
       const totalCostDelta = newTotalCost.minus(oldTotalCost);
       totalDelta = totalDelta.plus(totalCostDelta);
@@ -1190,9 +1211,10 @@ if (!poItem) throw new PurchaseDomainError("INVALID_RECEIPT", "Purchase order it
 
         const currentStock = product.stockQuantity.toNumber();
         const resultingQuantity = currentStock + newAccepted;
+        const newInventoryUnitCost = newTotalCost.div(newAccepted);
         const weightedCost = resultingQuantity > 0
-          ? product.costPrice.mul(currentStock).plus(newUnitCostDecimal.mul(newAccepted)).div(resultingQuantity)
-          : newUnitCostDecimal;
+          ? product.costPrice.mul(currentStock).plus(newTotalCost).div(resultingQuantity)
+          : newInventoryUnitCost;
 
         await tx.product.update({
           where: { id: existing.productId, workspaceId: context.workspaceId },
@@ -1220,7 +1242,7 @@ if (!poItem) throw new PurchaseDomainError("INVALID_RECEIPT", "Purchase order it
             productId: existing.productId,
             type: "PURCHASE_RECEIPT",
             quantityChanged: newAccepted,
-            unitCost: newUnitCostDecimal,
+            unitCost: newInventoryUnitCost,
             reference: grn.grnNumber,
           },
         });

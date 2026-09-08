@@ -7,8 +7,44 @@ import type { ServiceContext } from "@/lib/server/sales";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 import { paymentSchema, type PaymentInput } from "@/lib/validation/payment";
 import { writeAudit } from "@/lib/server/audit";
+import { db } from "@/lib/server/db";
 
 export class PaymentDomainError extends Error {}
+
+export async function getPaymentReceipt(workspaceId: string, id: string) {
+  const payment = await db.payment.findFirst({
+    where: { id, workspaceId, customerId: { not: null } },
+    include: {
+      customer: { select: { id: true, name: true, companyName: true, phone: true, address: true } },
+      cashBankAccount: { select: { name: true, account: { select: { code: true } } } },
+      invoice: { select: { id: true, invoiceNumber: true } },
+      allocations: { include: { invoice: { select: { id: true, invoiceNumber: true } } }, orderBy: { createdAt: "asc" } },
+      reversalOf: { select: { id: true, documentNumber: true } },
+    },
+  });
+  if (!payment || !payment.customer) return null;
+  const allocations = payment.allocations.map((allocation) => ({ id: allocation.id, invoiceId: allocation.invoiceId, invoiceNumber: allocation.invoice?.invoiceNumber ?? "Unassigned", amount: Number(allocation.amount) }));
+  const allocatedAmount = payment.allocations.length
+    ? payment.allocations.reduce((sum, allocation) => sum.plus(allocation.amount), new Prisma.Decimal(0))
+    : payment.invoice ? payment.amount : new Prisma.Decimal(0);
+  return {
+    id: payment.id,
+    documentNumber: payment.documentNumber ?? `Payment ${payment.id.slice(0, 8)}`,
+    amount: Number(payment.amount),
+    allocatedAmount: Number(allocatedAmount),
+    unallocatedAmount: Number(payment.amount.minus(allocatedAmount)),
+    method: payment.method,
+    reference: payment.reference,
+    notes: payment.notes,
+    paymentDate: payment.paymentDate.toISOString(),
+    isReversed: payment.isReversed,
+    isReversal: Boolean(payment.reversalOfId),
+    reversalOf: payment.reversalOf,
+    customer: { ...payment.customer, companyName: payment.customer.companyName ?? payment.customer.name },
+    cashBankAccount: payment.cashBankAccount,
+    allocations: allocations.length ? allocations : payment.invoice ? [{ id: `direct-${payment.id}`, invoiceId: payment.invoice.id, invoiceNumber: payment.invoice.invoiceNumber, amount: Number(payment.amount) }] : [],
+  };
+}
 
 export async function recordPayment(context: ServiceContext, input: PaymentInput) {
   const data = paymentSchema.parse(input);

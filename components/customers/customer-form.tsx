@@ -18,7 +18,9 @@ import {
   type CustomerInput,
 } from "@/lib/validation/customer";
 
-type FormValues = CustomerInput;
+type FormValues = CustomerInput & { creditDays: number };
+
+const defaultFormValues = { name: "", companyName: "", phone: "", email: "", city: "", address: "", creditDays: 30, creditLimit: "0", openingBalance: "0", status: "ACTIVE" as const, notes: "" };
 const initialState: CreateCustomerState = {};
 const labelClassName = "mb-1.5 block text-sm font-medium text-neutral-700";
 const fieldClassName = "space-y-1";
@@ -31,10 +33,10 @@ export function CustomerForm({ customer }: CustomerFormProps) {
   const action = customer ? updateCustomerAction.bind(null, customer.id) : createCustomerAction;
   const [state, submitAction, isPending] = useActionState(action, initialState);
   const { register, handleSubmit, formState: { errors } } = useForm<FormValues>({
-    resolver: zodResolver(customerSchema),
+    resolver: zodResolver(customerSchema) as any,
     defaultValues: customer
-      ? { ...customer, openingBalance: "0" }
-      : { name: "", companyName: "", phone: "", email: "", city: "", address: "", creditLimit: "0", openingBalance: "0", status: "ACTIVE", notes: "" },
+      ? { ...customer, openingBalance: "0", creditDays: customer.creditDays ?? 30 }
+      : defaultFormValues,
   });
 
   function onSubmit(values: FormValues) {
@@ -62,7 +64,8 @@ export function CustomerForm({ customer }: CustomerFormProps) {
       </div>
       <div className="rounded-xl border border-neutral-200 bg-white p-4 sm:p-5">
         <div className="mb-4"><h2 className="font-semibold">Credit controls</h2><p className="text-xs text-neutral-500">{customer ? "Set the maximum approved credit. Current receivable cannot be changed here." : "Set the starting receivable and maximum approved credit."}</p></div>
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className={fieldClassName}><label className={labelClassName} htmlFor="creditDays">Credit days</label><Input id="creditDays" type="number" min="0" max="365" step="1" {...register("creditDays", { valueAsNumber: true })} aria-invalid={!!errors.creditDays} /><p className="text-xs text-neutral-500">Customer payment period used for new invoice due dates.</p>{error("creditDays")}</div>
           <div className={fieldClassName}><label className={labelClassName} htmlFor="creditLimit">Credit limit (PKR)</label><Input id="creditLimit" type="number" min="0" step="1" {...register("creditLimit")} aria-invalid={!!errors.creditLimit} /><p className="text-xs text-neutral-500">Enter 0 when no credit limit is configured.</p>{error("creditLimit")}</div>
            {!customer && <div className={fieldClassName}><label className={labelClassName} htmlFor="openingBalance">Opening receivable (PKR)</label><Input id="openingBalance" type="number" min="0" step="1" {...register("openingBalance")} aria-invalid={!!errors.openingBalance} /><p className="text-xs text-amber-700">A positive amount establishes the opening receivable and posts its accounting entry.</p>{error("openingBalance")}</div>}
           <div className={`${fieldClassName} md:col-span-2`}><label className={labelClassName} htmlFor="notes">Notes <span className="font-normal text-neutral-400">(optional)</span></label><textarea id="notes" {...register("notes")} rows={4} className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-200" placeholder="Delivery preferences, payment terms, or account notes" />{error("notes")}</div>

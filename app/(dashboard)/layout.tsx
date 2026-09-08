@@ -8,10 +8,15 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  console.info("[D4][root] dashboard layout entered");
+  console.info("[D4][root] before workspace resolution");
   const { workspace, role } = await requireWorkspace();
+  console.info("[D4][root] after workspace resolution");
+  console.info(`[D4][dashboard] request success=YES workspaceFound=YES role=${role}`);
   const [searchResults, workspaces] = await Promise.all([getSearchResults(workspace.id), listCurrentUserWorkspaces()]);
+  console.info("[D4][root] before page render");
 
-  return (
+  const rendered = (
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground print:block print:h-auto print:overflow-visible print:bg-white">
       <div className="hidden print:hidden lg:block">
         <Sidebar workspaceName={workspace.name} role={role} />
@@ -24,4 +29,6 @@ export default async function DashboardLayout({
       </div>
     </div>
   );
+  console.info("[D4][root] page render completed");
+  return rendered;
 }

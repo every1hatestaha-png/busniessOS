@@ -25,6 +25,7 @@ export type CustomerListItem = {
   phone: string;
   email: string;
   city: string;
+  creditDays: number;
   creditLimit: number;
   currentBalance: number;
   status: "ACTIVE" | "INACTIVE" | "BLACKLISTED";
@@ -80,6 +81,7 @@ export async function listCustomers(workspaceId: string): Promise<CustomerListIt
       phone: true,
       email: true,
       city: true,
+      creditDays: true,
       creditLimit: true,
       currentBalance: true,
       status: true,
@@ -107,11 +109,12 @@ export async function getCustomer(workspaceId: string, id: string): Promise<Cust
     city: string | null;
     address: string | null;
     notes: string | null;
+    creditDays: number;
     creditLimit: Prisma.Decimal;
     currentBalance: Prisma.Decimal;
     status: "ACTIVE" | "INACTIVE" | "BLACKLISTED";
   }>>`
-    SELECT "id", "name", "companyName", "phone", "email", "city", "address", "notes", "creditLimit", "currentBalance", "status"
+    SELECT "id", "name", "companyName", "phone", "email", "city", "address", "notes", "creditDays", "creditLimit", "currentBalance", "status"
     FROM "customers"
     WHERE "id" = ${id} AND "workspaceId" = ${workspaceId}
     LIMIT 1
@@ -173,6 +176,7 @@ export async function getCustomer(workspaceId: string, id: string): Promise<Cust
     city: customer.city ?? "",
     address: customer.address ?? "",
     notes: customer.notes ?? "",
+    creditDays: customer.creditDays,
     creditLimit: Number(customer.creditLimit),
     currentBalance: Number(customer.currentBalance),
     status: customer.status,
@@ -213,6 +217,7 @@ export async function createCustomer(context: CustomerMutationContext, input: Cu
         email: input.email,
         city: input.city,
         address: input.address,
+        creditDays: input.creditDays ?? 30,
         creditLimit: input.creditLimit,
         currentBalance: openingBalance,
         status: input.status,
@@ -258,6 +263,7 @@ export async function updateCustomer(
         email: input.email,
         city: input.city,
         address: input.address,
+        ...(input.creditDays !== undefined ? { creditDays: input.creditDays } : {}),
         creditLimit: input.creditLimit,
         status: input.status,
         notes: input.notes || null,

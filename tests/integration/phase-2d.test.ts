@@ -53,8 +53,8 @@ describe("Phase 2D financial operations", () => {
   }, 30_000);
 
   it("allocates one customer payment across multiple invoices", async () => {
-    const first = await createSale(context(), { customerId, items: [{ productId, quantity: 1, unitPrice: 50, discount: 0 }], orderDiscount: 0, paidAmount: 0, notes: "", idempotencyKey: randomUUID() });
-    const second = await createSale(context(), { customerId, items: [{ productId, quantity: 1, unitPrice: 50, discount: 0 }], orderDiscount: 0, paidAmount: 0, notes: "", idempotencyKey: randomUUID() });
+    const first = await createSale(context(), { customerId, items: [{ productId, quantity: 1, unitPrice: 50, discountPerUnit: 0 }], orderDiscount: 0, paidAmount: 0, notes: "", idempotencyKey: randomUUID() });
+    const second = await createSale(context(), { customerId, items: [{ productId, quantity: 1, unitPrice: 50, discountPerUnit: 0 }], orderDiscount: 0, paidAmount: 0, notes: "", idempotencyKey: randomUUID() });
     const invoices = await db.invoice.findMany({ where: { salesOrderId: { in: [first.id, second.id] } }, orderBy: { createdAt: "asc" } });
     const key = randomUUID();
     const input = { customerId, cashBankAccountId, amount: 70, allocations: [{ invoiceId: invoices[0].id, amount: 50 }, { invoiceId: invoices[1].id, amount: 20 }], paymentDate: new Date(), method: "CASH" as const, reference: "", notes: "", idempotencyKey: key };
@@ -91,7 +91,7 @@ describe("Phase 2D financial operations", () => {
   });
 
   it("records customer and supplier returns with notes, stock, ledger, balances, and audit", async () => {
-    const sale = await createSale(context(), { customerId, items: [{ productId, quantity: 2, unitPrice: 50, discount: 0 }], orderDiscount: 0, paidAmount: 0, notes: "", idempotencyKey: randomUUID() });
+    const sale = await createSale(context(), { customerId, items: [{ productId, quantity: 2, unitPrice: 50, discountPerUnit: 0 }], orderDiscount: 0, paidAmount: 0, notes: "", idempotencyKey: randomUUID() });
     const saleItem = await db.salesOrderItem.findFirstOrThrow({ where: { salesOrderId: sale.id } });
     const customerReturnInput = { salesOrderId: sale.id, items: [{ itemId: saleItem.id, quantity: 1 }], restock: true, reason: "Damaged", notes: "", idempotencyKey: randomUUID() };
     const customerReturn = await createCustomerReturn(context(), customerReturnInput);
@@ -170,3 +170,5 @@ describe("Phase 2D financial operations", () => {
     await expect(cancelPurchase(context(), purchase.id, true)).rejects.toThrow("supplier returns");
   });
 });
+
+

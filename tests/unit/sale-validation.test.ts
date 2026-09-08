@@ -4,7 +4,7 @@ import { saleSchema } from "@/lib/validation/sale";
 
 const validSale = () => ({
   customerId: crypto.randomUUID(),
-  items: [{ productId: crypto.randomUUID(), quantity: 1, unitPrice: 100, discount: 0 }],
+  items: [{ productId: crypto.randomUUID(), quantity: 1, unitPrice: 100, discountPerUnit: 0 }],
   orderDiscount: 0,
   paidAmount: 0,
   notes: "",

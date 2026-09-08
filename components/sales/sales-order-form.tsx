@@ -11,12 +11,12 @@ import { createSaleAction, type CreateSaleState } from "@/app/(dashboard)/sales/
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { calculateBalance, calculateOrderTotal, formatPKR } from "@/lib/utils";
+import { calculateBalance, formatPKR } from "@/lib/utils";
 import { saleSchema, type SaleInput } from "@/lib/validation/sale";
 
 const orderSchema = saleSchema.superRefine((order, context) => {
   const gross = order.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
-  const lineDiscounts = order.items.reduce((sum, item) => sum + item.discount, 0);
+  const lineDiscounts = order.items.reduce((sum, item) => sum + item.quantity * item.discountPerUnit, 0);
   if (order.orderDiscount > Math.max(0, gross - lineDiscounts)) context.addIssue({ code: "custom", message: "Discount exceeds the remaining order value", path: ["orderDiscount"] });
   const total = Math.max(0, gross - lineDiscounts - order.orderDiscount);
   if (order.paidAmount > total) context.addIssue({ code: "custom", message: "Paid amount cannot exceed the total", path: ["paidAmount"] });
@@ -34,7 +34,7 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
   const [actionState, submitAction, isPending] = useActionState(createSaleAction, {} as CreateSaleState);
   const { control, register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<OrderFormInput, unknown, OrderFormValues>({
     resolver: zodResolver(orderSchema),
-    defaultValues: { customerId: "", items: [{ productId: "", quantity: 1, unitPrice: 0, discount: 0 }], orderDiscount: 0, paidAmount: 0, cashBankAccountId: "", notes: "", idempotencyKey: "00000000-0000-0000-0000-000000000000" },
+    defaultValues: { customerId: "", items: [{ productId: "", quantity: 1, unitPrice: 0, discountPerUnit: 0 }], orderDiscount: 0, paidAmount: 0, cashBankAccountId: "", notes: "", idempotencyKey: "00000000-0000-0000-0000-000000000000" },
   });
   const { fields, append, remove } = useFieldArray({ control, name: "items" });
   const items = useWatch({ control, name: "items" }) ?? [];
@@ -43,8 +43,8 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
   const customerId = useWatch({ control, name: "customerId" });
   const selectedCustomer = customers.find((customer) => customer.id === customerId);
   const subtotal = items.reduce((sum, item) => sum + (item?.quantity || 0) * (item?.unitPrice || 0), 0);
-  const lineDiscounts = items.reduce((sum, item) => sum + (item?.discount || 0), 0);
-  const total = calculateOrderTotal(Math.max(0, subtotal - lineDiscounts), orderDiscount);
+  const lineDiscounts = items.reduce((sum, item) => sum + (item?.quantity || 0) * (item?.discountPerUnit || 0), 0);
+  const total = Math.max(0, subtotal - lineDiscounts - orderDiscount);
   const balance = calculateBalance(total, paidAmount);
 
   function selectProduct(index: number, productId: string) {
@@ -78,23 +78,23 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
           </CardContent>
         </Card>
 
-        <Card className="gap-0 rounded-md border py-0 shadow-none ring-0">
-          <CardHeader className="flex-row items-center justify-between border-b px-4 py-3"><div><CardTitle className="text-sm font-semibold">Line Items</CardTitle><p className="mt-0.5 text-[11px] text-slate-500">Fixed discounts are applied per line.</p></div><Button type="button" variant="outline" size="xs" onClick={() => append({ productId: "", quantity: 1, unitPrice: 0, discount: 0 })}><Plus />Add line</Button></CardHeader>
-           <CardContent className="overflow-x-auto p-0">
-             <div className="min-w-[760px]"><div className="grid grid-cols-[minmax(220px,1fr)_90px_120px_110px_130px_36px] gap-2 border-b bg-slate-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500"><span>Product</span><span className="text-right">Qty</span><span className="text-right">Unit price</span><span className="text-right">Discount</span><span className="text-right">Line total</span><span /></div>
-            {fields.map((field, index) => {
-              const line = items[index];
-              const lineTotal = Math.max(0, (line?.quantity || 0) * (line?.unitPrice || 0) - (line?.discount || 0));
-              const selectedProduct = products.find((product) => product.id === line?.productId);
-              return <div key={field.id} className="grid grid-cols-[minmax(220px,1fr)_90px_120px_110px_130px_36px] items-start gap-2 border-b px-4 py-2.5 last:border-0">
-                <Field error={errors.items?.[index]?.productId?.message}><select value={line?.productId ?? ""} onChange={(event) => selectProduct(index, event.target.value)} className={fieldClass}><option value="">Select product</option>{products.filter((product) => product.status === "ACTIVE").map((product) => <option key={product.id} value={product.id}>{product.name} ({product.sku})</option>)}</select>{selectedProduct && <span className="mt-1 block text-[10px] text-slate-500">Available {selectedProduct.stockQuantity} {selectedProduct.unit.toLowerCase()}</span>}</Field>
-                <Field error={errors.items?.[index]?.quantity?.message}><Input type="number" min="1" step="1" className="text-right text-xs" {...register(`items.${index}.quantity`, { valueAsNumber: true })} /></Field>
-                <Field error={errors.items?.[index]?.unitPrice?.message}><Input type="number" min="0" step="1" className="text-right text-xs" {...register(`items.${index}.unitPrice`, { valueAsNumber: true })} /></Field>
-                <Field error={errors.items?.[index]?.discount?.message}><Input type="number" min="0" step="1" className="text-right text-xs" {...register(`items.${index}.discount`, { valueAsNumber: true })} /></Field>
-                <div className="flex h-8 items-center justify-end text-xs font-semibold tabular-nums">{formatPKR(lineTotal)}</div>
-                <Button type="button" variant="ghost" size="icon" disabled={fields.length === 1} onClick={() => remove(index)} aria-label={`Remove line ${index + 1}`}><Trash2 className="text-red-600" /></Button>
-              </div>;
-            })}
+<Card className="gap-0 rounded-md border py-0 shadow-none ring-0">
+            <CardHeader className="flex-row items-center justify-between border-b px-4 py-3"><div><CardTitle className="text-sm font-semibold">Line Items</CardTitle><p className="mt-0.5 text-[11px] text-slate-500">Per-unit discounts are applied per line.</p></div><Button type="button" variant="outline" size="xs" onClick={() => append({ productId: "", quantity: 1, unitPrice: 0, discountPerUnit: 0 })}><Plus />Add line</Button></CardHeader>
+             <CardContent className="overflow-x-auto p-0">
+              <div className="min-w-[760px]"><div className="grid grid-cols-[minmax(220px,1fr)_90px_120px_110px_130px_36px] gap-2 border-b bg-slate-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500"><span>Product</span><span className="text-right">Qty</span><span className="text-right">Unit price</span><span className="text-right">Disc/unit</span><span className="text-right">Line total</span><span /></div>
+             {fields.map((field, index) => {
+               const line = items[index];
+               const lineTotal = Math.max(0, (line?.quantity || 0) * (line?.unitPrice || 0) - (line?.quantity || 0) * (line?.discountPerUnit || 0));
+               const selectedProduct = products.find((product) => product.id === line?.productId);
+               return <div key={field.id} className="grid grid-cols-[minmax(220px,1fr)_90px_120px_110px_130px_36px] items-start gap-2 border-b px-4 py-2.5 last:border-0">
+                 <Field error={errors.items?.[index]?.productId?.message}><select value={line?.productId ?? ""} onChange={(event) => selectProduct(index, event.target.value)} className={fieldClass}><option value="">Select product</option>{products.filter((product) => product.status === "ACTIVE").map((product) => <option key={product.id} value={product.id}>{product.name} ({product.sku})</option>)}</select>{selectedProduct && <span className="mt-1 block text-[10px] text-slate-500">Available {selectedProduct.stockQuantity} {selectedProduct.unit.toLowerCase()}</span>}</Field>
+                 <Field error={errors.items?.[index]?.quantity?.message}><Input type="number" min="1" step="1" className="text-right text-xs" {...register(`items.${index}.quantity`, { valueAsNumber: true })} /></Field>
+                 <Field error={errors.items?.[index]?.unitPrice?.message}><Input type="number" min="0" step="1" className="text-right text-xs" {...register(`items.${index}.unitPrice`, { valueAsNumber: true })} /></Field>
+                 <Field error={errors.items?.[index]?.discountPerUnit?.message}><Input type="number" min="0" step="1" className="text-right text-xs" {...register(`items.${index}.discountPerUnit`, { valueAsNumber: true })} /></Field>
+                 <div className="flex h-8 items-center justify-end text-xs font-semibold tabular-nums">{formatPKR(lineTotal)}</div>
+                 <Button type="button" variant="ghost" size="icon" disabled={fields.length === 1} onClick={() => remove(index)} aria-label={`Remove line ${index + 1}`}><Trash2 className="text-red-600" /></Button>
+               </div>;
+             })}
              {errors.items?.root?.message && <p className="border-t px-4 py-2 text-xs font-medium text-red-600">{errors.items.root.message}</p>}</div>
           </CardContent>
         </Card>

@@ -1,6 +1,6 @@
 {
   "name": "business-os",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "description": "BusinessOS - Accounting, Inventory & Sales Management",
   "author": "BusinessOS",
   "private": true,
@@ -12,8 +12,10 @@
     "lint": "eslint",
     "test": "vitest run",
     "postinstall": "prisma generate",
-    "desktop:dev": "electron .",
-    "desktop:build": "npm run build && node desktop/postbuild.cjs && electron-builder --win nsis"
+    "desktop:dev": "node desktop/dev.cjs",
+    "desktop:build": "npm run build && npm run desktop:package",
+    "desktop:package": "node desktop/postbuild.cjs && electron-builder --win nsis",
+    "desktop:test": "node tests/desktop/run.cjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -91,6 +93,7 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "BusinessOS",

@@ -46,7 +46,7 @@ export function PayablesTable({ report, suppliers, filters }: { report: Payables
       </form>
 
       <div className="overflow-hidden rounded-xl border bg-white">
-        <Table className="min-w-[940px] text-xs print:min-w-0 print:text-[9px] print:[&_td]:px-1 print:[&_th]:px-1">
+        <Table className="min-w-[940px] text-xs print:min-w-0 print:table-fixed print:text-[8px] print:[&_td]:whitespace-normal print:[&_td]:px-1 print:[&_th]:whitespace-normal print:[&_th]:px-1">
           <TableHeader>
             <TableRow>
               <TableHead>Supplier</TableHead>

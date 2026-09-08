@@ -48,7 +48,7 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
               <Truck className="mr-1 size-3.5" /> Receive Goods
             </Link>
           )}
-          <Link href={`/purchases/${id}/print`} target="_blank" className="inline-flex h-7 items-center justify-center rounded-md border px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
+          <Link href={`/purchases/${id}/print`} className="inline-flex h-7 items-center justify-center rounded-md border px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
             <Printer className="mr-1 size-3.5" /> Print PO
           </Link>
         </div>

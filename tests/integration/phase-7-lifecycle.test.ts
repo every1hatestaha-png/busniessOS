@@ -123,7 +123,7 @@ describe("Phase 7: Full lifecycle integration tests", () => {
 
       const sale = await createSale(ctx(), {
         customerId,
-        items: [{ productId: saleTestProductId, quantity: 10, unitPrice: 200, discount: 0 }],
+        items: [{ productId: saleTestProductId, quantity: 10, unitPrice: 200, discountPerUnit: 0 }],
         orderDiscount: 0,
         paidAmount: 0,
         notes: "Phase 7 test sale",
@@ -147,7 +147,7 @@ describe("Phase 7: Full lifecycle integration tests", () => {
     it("records payment and updates balances", async () => {
       const sale = await createSale(ctx(), {
         customerId,
-        items: [{ productId: saleTestProductId, quantity: 5, unitPrice: 200, discount: 0 }],
+        items: [{ productId: saleTestProductId, quantity: 5, unitPrice: 200, discountPerUnit: 0 }],
         orderDiscount: 0,
         paidAmount: 0,
         notes: "Credit sale",
@@ -180,7 +180,7 @@ describe("Phase 7: Full lifecycle integration tests", () => {
     it("creates return with credit note and inventory restoration", async () => {
       const sale = await createSale(ctx(), {
         customerId,
-        items: [{ productId: saleTestProductId, quantity: 3, unitPrice: 200, discount: 0 }],
+        items: [{ productId: saleTestProductId, quantity: 3, unitPrice: 200, discountPerUnit: 0 }],
         orderDiscount: 0,
         paidAmount: 0,
         notes: "Return test sale",
@@ -505,3 +505,5 @@ describe("Phase 7: Full lifecycle integration tests", () => {
     });
   });
 });
+
+
