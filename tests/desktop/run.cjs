@@ -20,7 +20,19 @@ async function run() {
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
   const child = spawn(require("electron"), [path.resolve("tests/desktop/smoke.cjs")], { env, stdio: "inherit", windowsHide: true });
-  child.on("error", () => { process.exitCode = 1; });
-  child.on("exit", (code) => { process.exitCode = code || 0; });
+  await new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      if (signal) {
+        reject(new Error(`Electron desktop test terminated by signal ${signal}`));
+        return;
+      }
+      if (code !== 0) {
+        reject(new Error(`Electron desktop test exited with code ${code}`));
+        return;
+      }
+      resolve();
+    });
+  });
 }
 run().catch((error) => { console.error(error); process.exitCode = 1; });
