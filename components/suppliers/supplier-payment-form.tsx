@@ -25,9 +25,6 @@ export function SupplierPaymentForm({ supplierId, cashBankAccounts = [] }: { sup
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
   useEffect(() => {
-    setLoadingPurchases(true);
-    setPurchasesLoadError(false);
-    setPurchases([]);
     fetch(`/api/v1/suppliers/${supplierId}/purchases`)
       .then((r) => { if (!r.ok) throw new Error("Failed to load purchases"); return r.json(); })
       .then((body) => { if (body.data) setPurchases(body.data); })
