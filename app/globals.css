@@ -142,6 +142,7 @@
 
   * {
     print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 
   thead {
@@ -161,6 +162,13 @@
     color: black !important;
   }
 
+  html,
+  body {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
   [data-print-orientation="landscape"] {
     page: landscape;
   }
@@ -168,6 +176,114 @@
   [data-document] {
     font-size: 9pt;
     line-height: 1.4;
+  }
+
+  [data-report] {
+    font-size: 8.5pt;
+    line-height: 1.32;
+  }
+
+  [data-report-header],
+  [data-document-header] {
+    break-after: avoid;
+    padding-bottom: 3mm !important;
+  }
+
+  [data-report-header] > div:first-child {
+    gap: 8mm !important;
+  }
+
+  [data-report-header] h1 {
+    font-size: 17pt !important;
+    line-height: 1.1 !important;
+  }
+
+  [data-report-header] > div:last-child {
+    margin-top: 2.5mm !important;
+    padding-top: 2mm !important;
+  }
+
+  [data-report-body] {
+    margin-top: 4mm !important;
+  }
+
+  [data-report-summary] {
+    display: grid !important;
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    gap: 1.5mm !important;
+    margin: 0 0 4mm !important;
+    break-inside: avoid;
+  }
+
+  [data-report-summary] [data-metric-card] {
+    min-width: 0 !important;
+    border: 0 !important;
+    border-top: 1.5pt solid #111827 !important;
+    border-radius: 0 !important;
+    background: #f8fafc !important;
+  }
+
+  [data-report-summary] [data-metric-card-content] {
+    padding: 2mm !important;
+  }
+
+  [data-report-summary] > div:not([data-metric-card]) {
+    min-width: 0 !important;
+    border: 0 !important;
+    border-top: 1.5pt solid #111827 !important;
+    border-radius: 0 !important;
+    background: #f8fafc !important;
+    color: #0f172a !important;
+    padding: 2mm !important;
+    text-align: left !important;
+  }
+
+  [data-report-summary] > div:not([data-metric-card]) p:first-child {
+    color: #475569 !important;
+    font-size: 6.5pt !important;
+    line-height: 1.1 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  [data-report-summary] > div:not([data-metric-card]) p:last-child {
+    margin-top: 1.2mm !important;
+    color: #0f172a !important;
+    font-size: 9pt !important;
+    line-height: 1.1 !important;
+    white-space: nowrap;
+  }
+
+  [data-report-summary] [data-metric-icon],
+  [data-report-summary] [data-metric-detail] {
+    display: none !important;
+  }
+
+  [data-report-summary] [data-metric-label] {
+    color: #475569 !important;
+    font-size: 6.5pt !important;
+    line-height: 1.1 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  [data-report-summary] [data-metric-value] {
+    margin-top: 1.2mm !important;
+    color: #0f172a !important;
+    font-size: 9pt !important;
+    line-height: 1.1 !important;
+    white-space: nowrap;
+  }
+
+  [data-print-footer] {
+    display: block !important;
+    margin-top: 4mm;
+    border-top: 0.5pt solid #cbd5e1;
+    padding-top: 2mm;
+    color: #64748b;
+    font-size: 6.5pt;
+    letter-spacing: 0.03em;
+    text-align: right;
   }
 
   p {
@@ -192,5 +308,47 @@
     min-width: 0 !important;
     width: 100% !important;
     font-size: 9pt;
+  }
+
+  [data-report] table {
+    font-size: 7.5pt !important;
+  }
+
+  [data-report] th {
+    background: #e8eef5 !important;
+    color: #1e293b !important;
+    font-size: 6.5pt !important;
+    letter-spacing: 0.04em;
+  }
+
+  [data-report] th,
+  [data-report] td {
+    padding: 1.5mm 1.2mm !important;
+  }
+
+  [data-report] a {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+
+  [data-document] table {
+    font-size: 8pt !important;
+  }
+
+  [data-document] th {
+    background: #e8eef5 !important;
+    color: #1e293b !important;
+    font-size: 7pt !important;
+    letter-spacing: 0.025em;
+  }
+
+  [data-document] th,
+  [data-document] td {
+    padding: 1.5mm !important;
+  }
+
+  [data-document-signatures] {
+    margin-top: 10mm !important;
+    gap: 8mm !important;
   }
 }
