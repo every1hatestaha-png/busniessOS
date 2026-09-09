@@ -28,7 +28,7 @@ export function ReportCompanyHeader({
   const contact = [workspace.phone, workspace.email].filter(Boolean).join("  |  ");
 
   return (
-    <header className="border-b-2 border-neutral-900 pb-4">
+    <header data-report-header className="border-b-2 border-neutral-900 pb-4">
       <div className="flex items-start justify-between gap-8">
         <div>
           <p className="text-xl font-bold tracking-tight text-neutral-950">{workspace.name}</p>
