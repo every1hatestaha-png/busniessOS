@@ -13,7 +13,7 @@ export function DocumentHeader({ workspace, title, number, details }: { workspac
   const location = [workspace.address, workspace.city, workspace.country].filter(Boolean).join(", ");
   const contact = [workspace.phone, workspace.email].filter(Boolean).join("  |  ");
   return (
-    <header className="border-b-2 border-neutral-950 pb-5">
+    <header data-document-header className="border-b-2 border-neutral-950 pb-5">
       <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-start">
         <div>
           <p className="text-xl font-bold tracking-tight">{workspace.name}</p>
