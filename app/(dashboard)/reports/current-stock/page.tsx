@@ -18,7 +18,7 @@ export default async function CurrentStockPage({ searchParams }: { searchParams:
 
   return (
     <ReportFrame workspace={workspace} title="Current Stock" subtitle="On-hand inventory valued on the existing current-cost basis" filters={filters}>
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div data-report-summary className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <div><p className="text-xs text-neutral-500">Total quantity</p><p className="text-xl font-bold tabular-nums">{report.totalQuantity.toLocaleString("en-PK")}</p></div>
         <div className="text-right"><p className="text-xs text-neutral-500">Current-cost value</p><p className="text-xl font-bold tabular-nums"><Money value={report.totalValue} /></p></div>
         <div className="text-right"><p className="text-xs text-neutral-500">Inventory GL</p><p className="text-xl font-bold tabular-nums">{report.inventoryGlBalance === null ? "Filtered" : <Money value={report.inventoryGlBalance} />}</p></div>
