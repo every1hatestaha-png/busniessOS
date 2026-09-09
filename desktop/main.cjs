@@ -605,6 +605,13 @@ function buildAccountSelectionUrl(authorizationUrl) {
   return accountSelectionUrl.toString();
 }
 
+function buildExternalAuthenticationUrl(authorizationUrl) {
+  // Always enter OAuth through Clerk's account-selection boundary. This makes
+  // reuse of an existing browser session explicit and keeps "use another
+  // account" inside Clerk's configured authentication challenge.
+  return buildAccountSelectionUrl(authorizationUrl);
+}
+
 function startOAuthCallbackListener(codeVerifier, state, mode) {
   let resolveReady;
   let rejectReady;
@@ -767,7 +774,8 @@ async function startDesktopOAuthFlow({ mode = "normal-login" } = {}) {
     return false;
   }
 
-  const externalAuthUrl = mode === "switch-account" ? buildAccountSelectionUrl(authUrl) : authUrl;
+  const externalAuthUrl = buildExternalAuthenticationUrl(authUrl);
+  appendLog("INFO", `[D8.1][auth] account-selection boundary required mode=${mode}`);
   const listener = startOAuthCallbackListener(codeVerifier, state, mode);
   try {
     await listener.ready;
