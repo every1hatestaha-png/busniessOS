@@ -65,3 +65,5 @@ describe("supplier opening balance", () => {
     expect(audit?.metadata).toMatchObject({ openingBalance: "1250.5" });
   });
 });
+
+

@@ -2,7 +2,7 @@ import "server-only";
 
 import type { Role } from "@prisma/client";
 import { Prisma } from "@prisma/client";
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { z, ZodError, type ZodType } from "zod";
@@ -37,7 +37,7 @@ export type ApiContext = {
 
 export class ApiError extends Error {
   constructor(
-    public readonly status: 401 | 403 | 404 | 422 | 500,
+    public readonly status: 401 | 403 | 404 | 409 | 422 | 500,
     public readonly code: string,
     message: string,
   ) {
@@ -46,17 +46,18 @@ export class ApiError extends Error {
 }
 
 export async function requireApiUser() {
-  const session = await auth();
-  if (!session.userId) {
+  const session = await auth({ acceptsToken: ["session_token", "oauth_token"] });
+  const userId = "userId" in session ? session.userId : null;
+  if (!userId) {
     throw new ApiError(401, "UNAUTHENTICATED", "Authentication is required.");
   }
 
-  let localUser = await db.user.findUnique({ where: { clerkId: session.userId } });
+  let localUser = await db.user.findUnique({ where: { clerkId: userId } });
   if (!localUser) {
-    const clerkUser = await currentUser();
-    const email = clerkUser?.emailAddresses.find((entry) => entry.id === clerkUser.primaryEmailAddressId)?.emailAddress ?? clerkUser?.emailAddresses[0]?.emailAddress;
-    if (!clerkUser || !email) throw new ApiError(403, "USER_NOT_PROVISIONED", "The authenticated user cannot be provisioned.");
-    localUser = await db.user.upsert({ where: { clerkId: session.userId }, create: { clerkId: session.userId, email, firstName: clerkUser.firstName, lastName: clerkUser.lastName }, update: { email, firstName: clerkUser.firstName, lastName: clerkUser.lastName } });
+    const clerkUser = await (await clerkClient()).users.getUser(userId);
+    const email = clerkUser.emailAddresses.find((entry) => entry.id === clerkUser.primaryEmailAddressId)?.emailAddress ?? clerkUser.emailAddresses[0]?.emailAddress;
+    if (!email) throw new ApiError(403, "USER_NOT_PROVISIONED", "The authenticated user cannot be provisioned.");
+    localUser = await db.user.upsert({ where: { clerkId: userId }, create: { clerkId: userId, email, firstName: clerkUser.firstName, lastName: clerkUser.lastName }, update: { email, firstName: clerkUser.firstName, lastName: clerkUser.lastName } });
   }
 
   return localUser;
@@ -132,7 +133,7 @@ export function apiError(error: unknown) {
     if (error.code === "P2002") {
       return NextResponse.json(
         { error: { code: "CONFLICT", message: "A record with those details already exists." } },
-        { status: 422 },
+        { status: 409 },
       );
     }
     if (error.code === "P2025") {

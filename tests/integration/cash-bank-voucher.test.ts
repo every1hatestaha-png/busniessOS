@@ -136,7 +136,7 @@ describe("cash/bank + payment voucher + WHT integration", () => {
   });
 
   it("posts a customer payment into the selected bank account and reduces AR", async () => {
-    const sale = await createSale(context(), { customerId, items: [{ productId, quantity: 2, unitPrice: 200, discount: 0 }], orderDiscount: 0, paidAmount: 0, notes: "", idempotencyKey: randomUUID() });
+    const sale = await createSale(context(), { customerId, items: [{ productId, quantity: 2, unitPrice: 200, discountPerUnit: 0 }], orderDiscount: 0, paidAmount: 0, notes: "", idempotencyKey: randomUUID() });
     const invoice = await db.invoice.findUniqueOrThrow({ where: { salesOrderId: sale.id } });
     expect(Number(invoice.amount)).toBe(400);
 
@@ -253,7 +253,7 @@ describe("cash/bank + payment voucher + WHT integration", () => {
   });
 
   it("is idempotent for customer receipts and supplier vouchers", async () => {
-    const sale = await createSale(context(), { customerId, items: [{ productId, quantity: 1, unitPrice: 150, discount: 0 }], orderDiscount: 0, paidAmount: 0, notes: "", idempotencyKey: randomUUID() });
+    const sale = await createSale(context(), { customerId, items: [{ productId, quantity: 1, unitPrice: 150, discountPerUnit: 0 }], orderDiscount: 0, paidAmount: 0, notes: "", idempotencyKey: randomUUID() });
     const invoice = await db.invoice.findUniqueOrThrow({ where: { salesOrderId: sale.id } });
     const custKey = randomUUID();
     const custInput = { customerId, invoiceId: invoice.id, cashBankAccountId: cashAccountId, amount: 150, paymentDate: new Date(), method: "CASH" as const, reference: "", notes: "", idempotencyKey: custKey };
@@ -308,3 +308,5 @@ describe("cash/bank + payment voucher + WHT integration", () => {
     expect(voucher!.allocations[0].purchaseOrder.orderNumber).toBe(purchase.orderNumber);
   });
 });
+
+

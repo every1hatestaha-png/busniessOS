@@ -11,6 +11,7 @@ let createSale: typeof import("@/lib/server/sales")["createSale"];
 let listSales: typeof import("@/lib/server/sales")["listSales"];
 let getSale: typeof import("@/lib/server/sales")["getSale"];
 let recordPayment: typeof import("@/lib/server/payments")["recordPayment"];
+let getPaymentReceipt: typeof import("@/lib/server/payments")["getPaymentReceipt"];
 let getCustomer: typeof import("@/lib/server/customers")["getCustomer"];
 let getProduct: typeof import("@/lib/server/products")["getProduct"];
 let ensureDefaultAccounts: typeof import("@/lib/server/accounting")["ensureDefaultAccounts"];
@@ -32,7 +33,7 @@ const context = (workspaceId: string, role: "OWNER" | "ADMIN" | "STAFF" = "OWNER
 function saleInput(customerId: string, productId: string, overrides: { quantity?: number; paidAmount?: number; cashBankAccountId?: string } = {}) {
   return {
     customerId,
-    items: [{ productId, quantity: overrides.quantity ?? 2, unitPrice: 100, discount: 10 }],
+    items: [{ productId, quantity: overrides.quantity ?? 2, unitPrice: 100, discountPerUnit: 10 }],
     orderDiscount: 10,
     paidAmount: overrides.paidAmount ?? 60,
     cashBankAccountId: overrides.cashBankAccountId,
@@ -48,7 +49,7 @@ describe("sales and payments against Neon", () => {
 
     ({ db } = await import("@/lib/server/db"));
     ({ createSale, listSales, getSale } = await import("@/lib/server/sales"));
-    ({ recordPayment } = await import("@/lib/server/payments"));
+    ({ recordPayment, getPaymentReceipt } = await import("@/lib/server/payments"));
     ({ getCustomer } = await import("@/lib/server/customers"));
     ({ getProduct } = await import("@/lib/server/products"));
     ({ ensureDefaultAccounts, createCashBankAccount } = await import("@/lib/server/accounting"));
@@ -191,7 +192,7 @@ describe("sales and payments against Neon", () => {
 
     const result = await createSale(context(workspaceA), {
       customerId: customer.id,
-      items: [{ productId: product.id, quantity: 67, unitPrice: 950, discount: 0 }],
+      items: [{ productId: product.id, quantity: 67, unitPrice: 950, discountPerUnit: 0 }],
       orderDiscount: 0,
       paidAmount: 0,
       notes: "Unpaid regression",
@@ -227,7 +228,7 @@ describe("sales and payments against Neon", () => {
 
     await createSale(context(workspaceA), {
       customerId: withinCustomer.id,
-      items: [{ productId: product.id, quantity: 60, unitPrice: 1000, discount: 0 }],
+      items: [{ productId: product.id, quantity: 60, unitPrice: 1000, discountPerUnit: 0 }],
       orderDiscount: 0,
       paidAmount: 0,
       notes: "Within credit",
@@ -238,7 +239,7 @@ describe("sales and payments against Neon", () => {
     const rejectedKey = randomUUID();
     await expect(createSale(context(workspaceA), {
       customerId: overCustomer.id,
-      items: [{ productId: product.id, quantity: 90, unitPrice: 1000, discount: 0 }],
+      items: [{ productId: product.id, quantity: 90, unitPrice: 1000, discountPerUnit: 0 }],
       orderDiscount: 0,
       paidAmount: 0,
       notes: "Over credit",
@@ -256,9 +257,9 @@ describe("sales and payments against Neon", () => {
     await db.cashBankAccount.update({ where: { id: inactiveCashBank.id }, data: { isActive: false } });
 
     const missingAccountKey = randomUUID();
-    await expect(createSale(context(workspaceA), { customerId: customer.id, items: [{ productId: product.id, quantity: 1, unitPrice: 100, discount: 0 }], orderDiscount: 0, paidAmount: 10, notes: "", idempotencyKey: missingAccountKey })).rejects.toThrow("Select the cash/bank account receiving this payment.");
-    await expect(createSale(context(workspaceA), { customerId: customer.id, items: [{ productId: product.id, quantity: 1, unitPrice: 100, discount: 0 }], orderDiscount: 0, paidAmount: 10, cashBankAccountId: cashBankAccountB, notes: "", idempotencyKey: randomUUID() })).rejects.toMatchObject({ code: "PAYMENT_ACCOUNT_UNAVAILABLE" });
-    await expect(createSale(context(workspaceA), { customerId: customer.id, items: [{ productId: product.id, quantity: 1, unitPrice: 100, discount: 0 }], orderDiscount: 0, paidAmount: 10, cashBankAccountId: inactiveCashBank.id, notes: "", idempotencyKey: randomUUID() })).rejects.toMatchObject({ code: "PAYMENT_ACCOUNT_UNAVAILABLE" });
+    await expect(createSale(context(workspaceA), { customerId: customer.id, items: [{ productId: product.id, quantity: 1, unitPrice: 100, discountPerUnit: 0 }], orderDiscount: 0, paidAmount: 10, notes: "", idempotencyKey: missingAccountKey })).rejects.toThrow("Select the cash/bank account receiving this payment.");
+    await expect(createSale(context(workspaceA), { customerId: customer.id, items: [{ productId: product.id, quantity: 1, unitPrice: 100, discountPerUnit: 0 }], orderDiscount: 0, paidAmount: 10, cashBankAccountId: cashBankAccountB, notes: "", idempotencyKey: randomUUID() })).rejects.toMatchObject({ code: "PAYMENT_ACCOUNT_UNAVAILABLE" });
+    await expect(createSale(context(workspaceA), { customerId: customer.id, items: [{ productId: product.id, quantity: 1, unitPrice: 100, discountPerUnit: 0 }], orderDiscount: 0, paidAmount: 10, cashBankAccountId: inactiveCashBank.id, notes: "", idempotencyKey: randomUUID() })).rejects.toMatchObject({ code: "PAYMENT_ACCOUNT_UNAVAILABLE" });
 
     expect(await db.salesOrder.findFirst({ where: { workspaceId: workspaceA, idempotencyKey: missingAccountKey } })).toBeNull();
     expect(Number((await db.product.findUniqueOrThrow({ where: { id: product.id } })).stockQuantity)).toBe(10);
@@ -268,10 +269,10 @@ describe("sales and payments against Neon", () => {
     const customer = await db.customer.create({ data: { workspaceId: workspaceA, name: `Staff customer ${runId}` } });
     const product = await db.product.create({ data: { workspaceId: workspaceA, name: `Staff product ${runId}`, sku: `staff-${runId}`, costPrice: 20, sellingPrice: 100, stockQuantity: 5 } });
 
-    const unpaid = await createSale(context(workspaceA, "STAFF"), { customerId: customer.id, items: [{ productId: product.id, quantity: 1, unitPrice: 100, discount: 0 }], orderDiscount: 0, paidAmount: 0, notes: "", idempotencyKey: randomUUID() });
+    const unpaid = await createSale(context(workspaceA, "STAFF"), { customerId: customer.id, items: [{ productId: product.id, quantity: 1, unitPrice: 100, discountPerUnit: 0 }], orderDiscount: 0, paidAmount: 0, notes: "", idempotencyKey: randomUUID() });
     expect(unpaid.id).toBeTruthy();
 
-    await expect(createSale(context(workspaceA, "STAFF"), { customerId: customer.id, items: [{ productId: product.id, quantity: 1, unitPrice: 100, discount: 0 }], orderDiscount: 0, paidAmount: 10, cashBankAccountId: cashBankAccountA, notes: "", idempotencyKey: randomUUID() })).rejects.toMatchObject({ code: "PAYMENT_PERMISSION_DENIED" });
+    await expect(createSale(context(workspaceA, "STAFF"), { customerId: customer.id, items: [{ productId: product.id, quantity: 1, unitPrice: 100, discountPerUnit: 0 }], orderDiscount: 0, paidAmount: 10, cashBankAccountId: cashBankAccountA, notes: "", idempotencyKey: randomUUID() })).rejects.toMatchObject({ code: "PAYMENT_PERMISSION_DENIED" });
     expect(Number((await db.product.findUniqueOrThrow({ where: { id: product.id } })).stockQuantity)).toBe(4);
   });
 
@@ -294,12 +295,14 @@ describe("sales and payments against Neon", () => {
       notes: "",
     });
 
-    const [updatedCustomer, updatedInvoice, updatedOrder, payment, ledger] = await Promise.all([
+    const [updatedCustomer, updatedInvoice, updatedOrder, payment, ledger, receipt, isolatedReceipt] = await Promise.all([
       db.customer.findUniqueOrThrow({ where: { id: customer.id } }),
       db.invoice.findUniqueOrThrow({ where: { id: invoice.id } }),
       db.salesOrder.findUniqueOrThrow({ where: { id: sale.id } }),
       db.payment.findUniqueOrThrow({ where: { id: result.id } }),
       db.ledgerEntry.findFirstOrThrow({ where: { workspaceId: workspaceA, referenceId: result.id } }),
+      getPaymentReceipt(workspaceA, result.id),
+      getPaymentReceipt(workspaceB, result.id),
     ]);
     expect(Number(updatedCustomer.currentBalance)).toBe(45);
     expect(Number(updatedInvoice.paidAmount)).toBe(35);
@@ -309,6 +312,8 @@ describe("sales and payments against Neon", () => {
     expect(payment).toMatchObject({ customerId: customer.id, invoiceId: invoice.id, method: "BANK_TRANSFER" });
     expect(ledger.type).toBe("PAYMENT_RECEIVED");
     expect(Number(ledger.credit)).toBe(35);
+    expect(receipt).toMatchObject({ id: result.id, amount: 35, allocatedAmount: 35, unallocatedAmount: 0, method: "BANK_TRANSFER", customer: { id: customer.id }, allocations: [{ invoiceId: invoice.id, amount: 35 }] });
+    expect(isolatedReceipt).toBeNull();
   });
 
   it("rejects a payment for a customer from another workspace", async () => {
@@ -325,3 +330,5 @@ describe("sales and payments against Neon", () => {
     expect(await db.payment.count({ where: { workspaceId: workspaceA, customerId: customerB } })).toBe(before);
   });
 });
+
+

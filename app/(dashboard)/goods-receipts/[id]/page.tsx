@@ -38,7 +38,7 @@ export default async function GoodsReceiptDetailPage({ params }: { params: Promi
         <div className="flex items-center gap-2">
           {canEdit && <EditGrnSheet grn={grn} />}
           {canVoid && <VoidGrnButton grnId={grn.id} grnNumber={grn.grnNumber} />}
-          <Link href={`/goods-receipts/${id}/print`} target="_blank" className="inline-flex h-7 items-center justify-center rounded-md border px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
+          <Link href={`/goods-receipts/${id}/print`} className="inline-flex h-7 items-center justify-center rounded-md border px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
             <Printer className="mr-1 size-3.5" /> Print GRN
           </Link>
         </div>
@@ -69,7 +69,7 @@ export default async function GoodsReceiptDetailPage({ params }: { params: Promi
                 </TableHeader>
                 <TableBody>
                   {grn.items.map((item) => {
-                    const isWeighted = item.ratePerKg != null;
+                    const isWeighted = item.perKgRate != null;
                     return (
                     <TableRow key={item.id} className="h-11">
                       <TableCell className="py-1.5 pl-4 text-xs font-medium">
@@ -78,14 +78,14 @@ export default async function GoodsReceiptDetailPage({ params }: { params: Promi
                       </TableCell>
                       <QuantityCell value={item.orderedQuantity} unit={item.unit} />
                       <QuantityCell value={item.previouslyReceived} unit={item.unit} />
-                      <QuantityCell value={item.receivedNow} unit={item.unit} />
-                       <TableCell className="py-1.5 text-right text-xs"><span className="font-semibold tabular-nums">{item.acceptedQuantity} {unitLabel(item.unit)}</span>{item.receivedNow > item.acceptedQuantity && <p className="text-[10px] text-amber-700">Rejected {item.receivedNow - item.acceptedQuantity} {unitLabel(item.unit)}</p>}</TableCell>
+                      <TableCell className="py-1.5 text-right text-xs"><span className="tabular-nums">{item.receivedNow} {unitLabel(item.unit)}</span>{isWeighted && <p className="text-[10px] text-slate-500">{item.receivedWeightKg != null ? `${item.receivedWeightKg} kg actual` : "Missing received weight"}</p>}</TableCell>
+                       <TableCell className="py-1.5 text-right text-xs"><span className="font-semibold tabular-nums">{item.acceptedQuantity} {unitLabel(item.unit)}</span>{isWeighted && <p className="text-[10px] text-slate-500">{item.acceptedWeightKg != null ? `${item.acceptedWeightKg} kg valued` : "Missing accepted weight"}</p>}{item.receivedNow > item.acceptedQuantity && <p className="text-[10px] text-amber-700">Rejected {item.receivedNow - item.acceptedQuantity} {unitLabel(item.unit)}</p>}</TableCell>
                       <QuantityCell value={item.remainingQuantity} unit={item.unit} strong />
                       <TableCell className="py-1.5 text-right text-xs tabular-nums">
-                        {isWeighted ? <span>{formatPKR(item.ratePerKg!)}/kg</span> : formatPKR(item.unitCost)}
+                        {isWeighted ? (item.ratePerKg != null ? <span>{formatPKR(item.ratePerKg)}/kg</span> : <span className="text-amber-700">Missing rate/kg</span>) : <span>{formatPKR(item.unitCost)}/{unitLabel(item.unit)}</span>}
                       </TableCell>
                       <TableCell className="py-1.5 pr-4 text-right text-xs font-semibold tabular-nums">
-                        {isWeighted ? formatPKR(item.lineAmount ?? item.totalCost) : formatPKR(item.totalCost)}
+                        {formatPKR(item.totalCost)}
                       </TableCell>
                     </TableRow>
                     );

@@ -45,14 +45,14 @@ export default async function ReceivablesPage({ searchParams }: { searchParams: 
     listCustomers(workspaceId),
   ]);
   return (
-    <div className="space-y-6 print:space-y-4">
-      <div className="flex items-start justify-between gap-4">
+    <div data-print-orientation="landscape" className="space-y-6 print:space-y-4">
+      <div className="flex items-start justify-between gap-4 print:hidden">
         <PageHeader title="Receivables" description={`Outstanding customer invoices as of ${report.asOfDate}.`} />
         <div className="print:hidden"><PrintButton label="Print aging" /></div>
       </div>
       <div className="hidden print:block"><ReportCompanyHeader workspace={workspace} title="Accounts Receivable Aging" from={report.asOfDate} to={report.asOfDate} subtitle="Outstanding customer invoices and applied settlements" /></div>
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-        <MetricCard label="Total Receivable" value={formatPKR(report.totalOutstanding)} detail={`${report.customers.length} customers`} icon={Banknote} />
+        <MetricCard label="Total Receivable" value={formatPKR(report.totalOutstanding)} detail={`${report.customers.length} ${report.customers.length === 1 ? "customer" : "customers"}`} icon={Banknote} />
         <MetricCard label="Unapplied Credit" value={formatPKR(report.totalUnappliedCredit)} detail="Held separately" icon={CreditCard} />
         <MetricCard label="On-account Receipts" value={formatPKR(report.totalUnappliedPayments)} detail="Not allocated to invoices" icon={CreditCard} />
         <MetricCard label="Current" value={formatPKR(report.buckets.current)} detail="Not overdue" icon={Clock4} />

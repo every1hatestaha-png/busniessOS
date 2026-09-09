@@ -295,6 +295,7 @@ model Customer {
   email          String?
   address        String?
   city           String?
+  creditDays     Int            @default(30)
   creditLimit    Decimal        @default(0) @db.Decimal(15, 2)
   currentBalance Decimal        @default(0) @db.Decimal(15, 2)
   notes          String?
@@ -541,10 +542,10 @@ model SalesOrderItem {
   id           String   @id @default(uuid())
   salesOrderId String
   productId    String
-  quantity     Decimal  @db.Decimal(15, 4)
-  unitPrice    Decimal  @db.Decimal(15, 2)
-  discount     Decimal  @default(0) @db.Decimal(15, 2)
-  totalPrice   Decimal  @db.Decimal(15, 2)
+  quantity        Decimal  @db.Decimal(15, 4)
+  unitPrice       Decimal  @db.Decimal(15, 2)
+  discountPerUnit Decimal  @default(0) @db.Decimal(15, 2)
+  totalPrice      Decimal  @db.Decimal(15, 2)
   productName  String?
   productSku   String?
   createdAt    DateTime @default(now())

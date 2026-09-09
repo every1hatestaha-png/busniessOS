@@ -4,7 +4,7 @@ import Link from "next/link";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AlertCircle } from "lucide-react";
 import { startTransition, useEffect, useRef, useActionState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { createProductAction, updateProductAction } from "@/app/(dashboard)/inventory/actions";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -28,14 +28,14 @@ type ProductFormProps = {
 export function ProductForm({ product }: ProductFormProps) {
   const action = product ? updateProductAction.bind(null, product.id) : createProductAction;
   const [actionState, formAction, isPending] = useActionState(action, {});
-  const { register, handleSubmit, watch, reset, formState: { errors, isSubmitSuccessful } } = useForm<ProductFormInput, unknown, ProductFormValues>({
+  const { control, register, handleSubmit, reset, formState: { errors, isSubmitSuccessful } } = useForm<ProductFormInput, unknown, ProductFormValues>({
     resolver: zodResolver(productSchema),
     defaultValues: product ? { ...product, stockQuantity: 0 } : { unit: "PIECE", stockQuantity: 0, reorderLevel: 10 },
   });
-  const selectedUnit = watch("unit");
+  const selectedUnit = useWatch({ control, name: "unit" });
   const isKgMode = selectedUnit === "KG";
   const qtyStep = isKgMode ? "0.01" : "1";
-  const allValues = watch();
+  const allValues = useWatch({ control });
   const draftKey = product ? `${DRAFT_KEY}-${product.id}` : DRAFT_KEY;
   const restoreRef = useRef(false);
 

@@ -131,8 +131,13 @@
 
 @media print {
   @page {
-    size: A4;
+    size: A4 portrait;
     margin: 12mm;
+  }
+
+  @page landscape {
+    size: A4 landscape;
+    margin: 10mm;
   }
 
   * {
@@ -147,12 +152,34 @@
     display: table-footer-group;
   }
 
+  table[data-financial-table] tfoot {
+    display: table-row-group;
+  }
+
   body {
     background: white !important;
     color: black !important;
   }
 
-  [data-report-section] {
+  [data-print-orientation="landscape"] {
+    page: landscape;
+  }
+
+  [data-document] {
+    font-size: 9pt;
+    line-height: 1.4;
+  }
+
+  p {
+    orphans: 3;
+    widows: 3;
+  }
+
+  [data-report-section],
+  [data-document-section],
+  [data-document-totals],
+  [data-document-signatures],
+  [data-status-stamp] {
     break-inside: avoid;
   }
 

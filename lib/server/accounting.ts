@@ -379,6 +379,19 @@ export async function listExpenses(workspaceId: string) {
   return rows.map((row) => ({ id: row.id, voucherNumber: row.voucherNumber, date: row.expenseDate.toISOString(), amount: amount(row.amount), payee: row.payee, reference: row.reference, notes: row.notes, expenseAccount: row.expenseAccount, paymentAccount: row.paymentAccount }));
 }
 
+export async function getExpenseVoucher(workspaceId: string, id: string) {
+  const expense = await db.expense.findFirst({
+    where: { id, workspaceId },
+    include: {
+      workspace: { select: { name: true, phone: true, email: true, address: true, city: true, country: true } },
+      expenseAccount: { select: { name: true, code: true } },
+      paymentAccount: { select: { name: true, code: true } },
+    },
+  });
+  if (!expense) return null;
+  return { ...expense, expenseDate: expense.expenseDate.toISOString(), amount: Number(expense.amount) };
+}
+
 export async function getGeneralLedger(workspaceId: string, input: LedgerReportInput) {
   const data = ledgerReportSchema.parse(input);
   const { from, to } = normalizeRange(data);
@@ -399,22 +412,19 @@ export async function getGeneralLedger(workspaceId: string, input: LedgerReportI
 export async function getProfitAndLoss(workspaceId: string, input: ProfitLossInput = {}) {
   const data = profitLossSchema.parse(input);
   const { from, to } = normalizeRange(data);
-  const [sales, returns, profitAndLossEntries] = await Promise.all([
-    db.salesOrder.aggregate({ where: { workspaceId, status: { not: "CANCELLED" }, orderDate: { gte: from, lte: to } }, _sum: { total: true } }),
-    db.customerReturn.aggregate({ where: { workspaceId, date: { gte: from, lte: to } }, _sum: { totalAmount: true } }),
-    db.generalLedgerEntry.groupBy({
-      by: ["accountId"],
-      where: { workspaceId, date: { gte: from, lte: to }, account: { category: { in: ["COST_OF_SALES", "EXPENSE", "INCOME"] } } },
-      _sum: { debit: true, credit: true },
-    }),
-  ]);
+  const profitAndLossEntries = await db.generalLedgerEntry.groupBy({
+    by: ["accountId"],
+    where: { workspaceId, date: { gte: from, lte: to }, account: { category: { in: ["COST_OF_SALES", "EXPENSE", "INCOME"] } } },
+    _sum: { debit: true, credit: true },
+  });
   const accounts = profitAndLossEntries.length
     ? await db.account.findMany({ where: { workspaceId, id: { in: profitAndLossEntries.map((entry) => entry.accountId) } }, select: { id: true, code: true, name: true, category: true, systemCode: true } })
     : [];
   const accountById = new Map(accounts.map((account) => [account.id, account]));
   const costOfGoodsSold = profitAndLossEntries.reduce((sum, entry) => accountById.get(entry.accountId)?.category === "COST_OF_SALES" ? sum.plus(new Prisma.Decimal(amount(entry._sum.debit)).minus(new Prisma.Decimal(amount(entry._sum.credit)))) : sum, new Prisma.Decimal(0)).toNumber();
-  const grossSales = amount(sales._sum.total);
-  const salesReturns = amount(returns._sum.totalAmount);
+  const salesRevenueEntry = profitAndLossEntries.find((entry) => accountById.get(entry.accountId)?.systemCode === "SALES_REVENUE");
+  const grossSales = amount(salesRevenueEntry?._sum.credit);
+  const salesReturns = amount(salesRevenueEntry?._sum.debit);
   const expenseMap = new Map<string, { id: string; code: string; name: string; amount: number }>();
   for (const entry of profitAndLossEntries) {
     const account = accountById.get(entry.accountId);
@@ -454,15 +464,13 @@ export async function getFinancialDashboard(workspaceId: string) {
     ), cash_bank AS (
       SELECT COALESCE(SUM("currentBalance"), 0) AS total FROM "cash_bank_accounts" WHERE "workspaceId" = ${workspaceId} AND "isActive" = true
     ), purchases_month AS (
-      SELECT COALESCE(SUM("totalAmount"), 0) AS total FROM "goods_received_notes" WHERE "workspaceId" = ${workspaceId} AND "receiptDate" >= ${monthStart} AND "receiptDate" <= ${now}
+      SELECT COALESCE(SUM("totalAmount"), 0) AS total FROM "goods_received_notes" WHERE "workspaceId" = ${workspaceId} AND "status" = 'ACTIVE' AND "receiptDate" >= ${monthStart} AND "receiptDate" <= ${now}
     ), low_stock AS (
       SELECT COUNT(*) AS total FROM "products" WHERE "workspaceId" = ${workspaceId} AND "stockQuantity" <= "reorderLevel"
-    ), sales_month AS (
-      SELECT COALESCE(SUM("total"), 0) AS total FROM "sales_orders" WHERE "workspaceId" = ${workspaceId} AND "status" <> 'CANCELLED' AND "orderDate" >= ${monthStart} AND "orderDate" <= ${now}
-    ), returns_month AS (
-      SELECT COALESCE(SUM("totalAmount"), 0) AS total FROM "customer_returns" WHERE "workspaceId" = ${workspaceId} AND "date" >= ${monthStart} AND "date" <= ${now}
     ), pl AS (
       SELECT
+        COALESCE(SUM(CASE WHEN a."systemCode" = 'SALES_REVENUE' THEN gle."credit" ELSE 0 END), 0) AS sales_credits,
+        COALESCE(SUM(CASE WHEN a."systemCode" = 'SALES_REVENUE' THEN gle."debit" ELSE 0 END), 0) AS sales_debits,
         COALESCE(SUM(CASE WHEN a."category" = 'COST_OF_SALES' THEN gle."debit" - gle."credit" ELSE 0 END), 0) AS cogs,
         COALESCE(SUM(CASE WHEN a."category" = 'EXPENSE' THEN gle."debit" - gle."credit" ELSE 0 END), 0) AS expenses,
         COALESCE(SUM(CASE WHEN a."systemCode" = 'OTHER_INCOME' THEN gle."credit" - gle."debit" ELSE 0 END), 0) AS other_income
@@ -473,8 +481,8 @@ export async function getFinancialDashboard(workspaceId: string) {
         AND gle."date" <= ${now}
         AND a."category" IN ('COST_OF_SALES', 'EXPENSE', 'INCOME')
     )
-    SELECT receivables.total AS "receivables", payables.total AS "payables", inventory.total AS "inventoryValue", cash_bank.total AS "cashBank", purchases_month.total AS "purchasesThisMonth", low_stock.total AS "lowStockCount", sales_month.total AS "grossSales", returns_month.total AS "salesReturns", pl.cogs AS "costOfGoodsSold", pl.expenses AS "operatingExpenses", pl.other_income AS "otherIncome"
-    FROM receivables, payables, inventory, cash_bank, purchases_month, low_stock, sales_month, returns_month, pl
+    SELECT receivables.total AS "receivables", payables.total AS "payables", inventory.total AS "inventoryValue", cash_bank.total AS "cashBank", purchases_month.total AS "purchasesThisMonth", low_stock.total AS "lowStockCount", pl.sales_credits AS "grossSales", pl.sales_debits AS "salesReturns", pl.cogs AS "costOfGoodsSold", pl.expenses AS "operatingExpenses", pl.other_income AS "otherIncome"
+    FROM receivables, payables, inventory, cash_bank, purchases_month, low_stock, pl
   `;
   const grossSales = amount(row?.grossSales);
   const salesReturns = amount(row?.salesReturns);

@@ -19,15 +19,16 @@ export function SupplierPaymentForm({ supplierId, cashBankAccounts = [] }: { sup
   const [allocations, setAllocations] = useState<Record<string, number>>({});
   const [purchases, setPurchases] = useState<PurchaseOption[]>([]);
   const [loadingPurchases, setLoadingPurchases] = useState(true);
+  const [purchasesLoadError, setPurchasesLoadError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [idempotencyKey] = useState(() => crypto.randomUUID());
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
   useEffect(() => {
     fetch(`/api/v1/suppliers/${supplierId}/purchases`)
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error("Failed to load purchases"); return r.json(); })
       .then((body) => { if (body.data) setPurchases(body.data); })
-      .catch(() => {})
+      .catch(() => { setPurchases([]); setPurchasesLoadError(true); })
       .finally(() => setLoadingPurchases(false));
   }, [supplierId]);
 
@@ -83,13 +84,21 @@ export function SupplierPaymentForm({ supplierId, cashBankAccounts = [] }: { sup
         setBusy(false);
       }}
     >
-      <div className="mb-4 flex items-start justify-between gap-4">
+<div className="mb-4 flex items-start justify-between gap-4">
         <div><h2 className="font-semibold">Supplier payment voucher</h2><p className="mt-1 text-xs text-neutral-500">Allocate gross settlement against open purchase bills. WHT is deducted from the net cash/bank payment.</p></div>
-        <div className="rounded-lg bg-neutral-950 px-3 py-2 text-right text-white"><p className="text-xs text-neutral-300">Net payment</p><p className="font-semibold tabular-nums">{formatPKR(net)}</p></div>
+        <div className="rounded-lg bg-neutral-950 px-3 py-2 text-right text-white"><p className="text-xs text-neutral-300">Net cash/bank payment</p><p className="font-semibold tabular-nums">{formatPKR(net)}</p></div>
       </div>
       <div className="grid gap-3 lg:grid-cols-6">
-        <div className="lg:col-span-1"><label className="mb-1 block text-xs font-medium text-neutral-500">Gross (auto)</label><input type="number" readOnly value={gross} className={`${fieldClass} w-full bg-neutral-50 tabular-nums`} /></div>
-        <Input className="lg:col-span-1" min="0" step="0.01" type="number" name="withholdingTaxAmount" placeholder="WHT" value={wht} onChange={(event) => setWht(event.target.value)} />
+        <div className="lg:col-span-2">
+          <label className="mb-1 block text-xs font-medium text-neutral-500">Selected bills: {Object.values(allocations).filter((v) => v > 0).length}</label>
+          <div className="space-y-1 text-xs text-neutral-500">
+            <div className="flex justify-between"><span>Gross liability settled (auto)</span><span className="tabular-nums font-medium">{formatPKR(gross)}</span></div>
+            <div className="flex justify-between"><span>Less: WHT retained</span><span className="tabular-nums">{formatPKR(Number(wht || 0))}</span></div>
+            <div className="flex justify-between border-t pt-1"><span>Net cash/bank payment</span><span className="tabular-nums font-semibold">{formatPKR(net)}</span></div>
+          </div>
+        </div>
+        <Input className="lg:col-span-1" min="0" step="0.01" type="number" name="withholdingTaxAmount" value={wht} onChange={(event) => setWht(event.target.value)} />
+        <label className="lg:col-span-1 block text-xs font-medium text-neutral-500">Withholding tax (reduces cash payment)</label>
         <select name="cashBankAccountId" required className={`${fieldClass} lg:col-span-2`}><option value="">Pay from cash/bank</option>{cashBankAccounts.map((account) => <option key={account.cashBankAccountId} value={account.cashBankAccountId}>{account.name}{account.isBank && account.bankName ? ` · ${account.bankName}` : ""} · {formatPKR(account.currentBalance)}</option>)}</select>
         <select name="method" className={fieldClass}><option value="CASH">Cash</option><option value="BANK_TRANSFER">Bank transfer</option><option value="CHEQUE">Cheque</option><option value="JAZZCASH">JazzCash</option><option value="EASYPAISA">Easypaisa</option><option value="OTHER">Other</option></select>
         <Input name="reference" placeholder="Reference" />
@@ -100,19 +109,21 @@ export function SupplierPaymentForm({ supplierId, cashBankAccounts = [] }: { sup
         <h3 className="mb-2 text-sm font-semibold">Allocate against purchase bills</h3>
         {loadingPurchases ? (
           <p className="text-sm text-neutral-500">Loading open purchases...</p>
+        ) : purchasesLoadError ? (
+          <p className="text-sm text-red-600">Open purchases could not be loaded. Retry before recording a voucher.</p>
         ) : purchases.length === 0 ? (
-          <p className="text-sm text-neutral-500">No outstanding purchase bills for this supplier.</p>
+          <p className="text-sm text-amber-700">No open purchase bills available. Opening or other unallocated supplier payable cannot be settled here.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-xs font-medium text-neutral-500">
-                  <th className="pb-2 pr-2">Document</th>
+                  <th className="pb-2 pr-2">PO reference</th>
                   <th className="pb-2 pr-2">Date</th>
-                  <th className="pb-2 pr-2 text-right">Original</th>
-                  <th className="pb-2 pr-2 text-right">Settled</th>
-                  <th className="pb-2 pr-2 text-right">Outstanding</th>
-                  <th className="pb-2 pr-2 text-right">Allocate Now</th>
+                  <th className="pb-2 pr-2 text-right">PO ordered total</th>
+                  <th className="pb-2 pr-2 text-right">Gross payments allocated</th>
+                  <th className="pb-2 pr-2 text-right font-semibold">Current payable</th>
+                  <th className="pb-2 pr-2 text-right">Allocate now</th>
                   <th className="pb-2 text-right">Remaining</th>
                 </tr>
               </thead>

@@ -46,7 +46,7 @@ export function ReceivablesTable({ report, customers, filters }: { report: Recei
       </form>
 
       <div className="overflow-hidden rounded-xl border bg-white">
-        <Table className="min-w-[1180px] text-xs print:min-w-0 print:text-[9px] print:[&_td]:px-1 print:[&_th]:px-1">
+        <Table className="min-w-[1180px] text-xs print:min-w-0 print:table-fixed print:text-[8px] print:[&_td]:whitespace-normal print:[&_td]:px-1 print:[&_th]:whitespace-normal print:[&_th]:px-1">
           <TableHeader>
             <TableRow>
               <TableHead>Customer</TableHead>

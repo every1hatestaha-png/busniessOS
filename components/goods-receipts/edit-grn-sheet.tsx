@@ -6,6 +6,7 @@ import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { calculateAcceptedValue } from "@/lib/grn-calculations";
 import { formatPKR } from "@/lib/utils";
 
 type GrnItem = {
@@ -59,27 +60,14 @@ export function EditGrnSheet({ grn }: { grn: EditableGrn }) {
   function updateItem(index: number, field: string, value: string) {
     setItems((prev) => prev.map((r, i) => {
       if (i !== index) return r;
-      const updated = { ...r, [field]: value };
-      const item = grn.items[index];
-      if (item?.perKgRate != null) {
-        if (field === "receivedQuantity") updated.receivedWeightKg = value;
-        if (field === "acceptedQuantity") updated.acceptedWeightKg = value;
-      }
-      return updated;
+      return { ...r, [field]: value };
     }));
   }
 
   function computeTotal(): number {
     return items.reduce((sum, r, index) => {
       const item = grn.items[index];
-      if (item?.perKgRate) {
-        const acceptedWeight = Number(r.acceptedWeightKg) || 0;
-        const rate = Number(r.ratePerKg) || 0;
-        return sum + acceptedWeight * rate;
-      }
-      const accepted = Number(r.acceptedQuantity) || 0;
-      const cost = Number(r.actualUnitCost);
-      return sum + accepted * cost;
+      return sum + (calculateAcceptedValue({ isWeightPriced: item?.perKgRate != null, acceptedQuantity: r.acceptedQuantity, actualUnitCost: r.actualUnitCost, acceptedWeightKg: r.acceptedWeightKg, ratePerKg: r.ratePerKg }) ?? 0);
     }, 0);
   }
 
@@ -89,6 +77,29 @@ export function EditGrnSheet({ grn }: { grn: EditableGrn }) {
     setMessage("");
 
     const form = new FormData(e.currentTarget);
+    for (let index = 0; index < items.length; index += 1) {
+      const receipt = items[index];
+      const item = grn.items[index];
+      if (item.perKgRate == null) continue;
+      const receivedWeight = Number(receipt.receivedWeightKg);
+      const acceptedWeight = Number(receipt.acceptedWeightKg);
+      const rate = Number(receipt.ratePerKg);
+      if (!receipt.receivedWeightKg || !receipt.ratePerKg || receivedWeight <= 0 || rate <= 0) {
+        setMessage(`${item.productName}: enter received weight and a rate per kg greater than zero.`);
+        setBusy(false);
+        return;
+      }
+      if (Number(receipt.acceptedQuantity) > 0 && (!receipt.acceptedWeightKg || acceptedWeight <= 0)) {
+        setMessage(`${item.productName}: enter accepted weight greater than zero.`);
+        setBusy(false);
+        return;
+      }
+      if (acceptedWeight > receivedWeight) {
+        setMessage(`${item.productName}: accepted weight cannot exceed received weight.`);
+        setBusy(false);
+        return;
+      }
+    }
     const payload = {
       notes: form.get("notes") || "",
       receivedBy: form.get("receivedBy") || "",
@@ -103,7 +114,7 @@ export function EditGrnSheet({ grn }: { grn: EditableGrn }) {
           actualUnitCost: Number(r.actualUnitCost),
         };
         if (isWeighted) {
-          return { ...base, receivedWeightKg: Number(r.receivedWeightKg) || 0, acceptedWeightKg: Number(r.acceptedWeightKg) || 0, ratePerKg: Number(r.ratePerKg) || 0 };
+          return { ...base, receivedWeightKg: Number(r.receivedWeightKg), acceptedWeightKg: Number(r.acceptedWeightKg), ratePerKg: Number(r.ratePerKg) };
         }
         return base;
       }),
@@ -158,21 +169,25 @@ export function EditGrnSheet({ grn }: { grn: EditableGrn }) {
 
           <div className="space-y-2">
             <div><h4 className="text-sm font-semibold">Receipt Lines</h4><p className="mt-0.5 text-[11px] text-slate-500">Accepted cannot exceed physically received quantity. The server remains authoritative for PO capacity.</p></div>
-            <div className="grid grid-cols-[minmax(170px,1fr)_90px_90px_90px_110px] gap-2 rounded-t-md border bg-slate-50 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            <div className="overflow-x-auto">
+            <div className="min-w-[980px]">
+            <div className="grid grid-cols-[minmax(190px,1fr)_90px_90px_105px_105px_100px_115px] gap-2 rounded-t-md border bg-slate-50 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
               <span>Product / Capacity</span>
-              <span className="text-right">Received</span>
-              <span className="text-right">Accepted</span>
-              <span className="text-right">Rate / Cost</span>
+              <span className="text-right">Received qty</span>
+              <span className="text-right">Accepted qty</span>
+              <span className="text-right">Received kg</span>
+              <span className="text-right">Accepted kg</span>
+              <span className="text-right">Rate</span>
               <span className="text-right">Accepted value</span>
             </div>
             {grn.items.map((item, index) => {
               const isWeighted = item.perKgRate != null;
               return (
-              <div key={item.purchaseOrderItemId} className="grid grid-cols-[minmax(170px,1fr)_90px_90px_90px_110px] items-start gap-2 border-x border-b px-3 py-2.5 last:rounded-b-md">
+              <div key={item.purchaseOrderItemId} className="grid grid-cols-[minmax(190px,1fr)_90px_90px_105px_105px_100px_115px] items-start gap-2 border-x border-b px-3 py-2.5 last:rounded-b-md">
                 <div className="text-xs">
                   <p className="font-medium">{item.productName}</p>
                   <p className="mt-0.5 text-[10px] text-slate-500">Ordered {item.orderedQuantity} · prev. accepted {item.previouslyReceived} · remaining {item.remainingQuantity} {item.unit.toLowerCase()}</p>
-                  {isWeighted && <p className="text-[10px] text-slate-500">{item.ratePerKg != null ? `${formatPKR(item.ratePerKg)}/kg` : ""}</p>}
+                  {isWeighted && <p className="text-[10px] text-slate-500">Actual valuation uses accepted kg x rate/kg.</p>}
                 </div>
                 <Input
                   type="number"
@@ -191,7 +206,10 @@ export function EditGrnSheet({ grn }: { grn: EditableGrn }) {
                   className="text-right"
                   max={Number(items[index]?.receivedQuantity || 0)}
                 />
+                {isWeighted ? <Input type="number" min="0.001" step="0.001" value={items[index]?.receivedWeightKg ?? ""} onChange={(e) => updateItem(index, "receivedWeightKg", e.target.value)} className="text-right" aria-label={`${item.productName} received weight kg`} /> : <div className="flex h-8 items-center justify-end text-slate-300">-</div>}
+                {isWeighted ? <Input type="number" min="0" step="0.001" max={Number(items[index]?.receivedWeightKg || 0)} value={items[index]?.acceptedWeightKg ?? ""} onChange={(e) => updateItem(index, "acceptedWeightKg", e.target.value)} className="text-right" aria-label={`${item.productName} accepted weight kg`} /> : <div className="flex h-8 items-center justify-end text-slate-300">-</div>}
                 {isWeighted ? (
+                  <div>
                   <Input
                     type="number"
                     min="0"
@@ -199,8 +217,12 @@ export function EditGrnSheet({ grn }: { grn: EditableGrn }) {
                     value={items[index]?.ratePerKg ?? ""}
                     onChange={(e) => updateItem(index, "ratePerKg", e.target.value)}
                     className="text-right"
+                    aria-label={`${item.productName} rate per kg`}
                   />
+                  <p className="mt-1 text-right text-[9px] text-slate-500">PKR/kg</p>
+                  </div>
                 ) : (
+                  <div>
                   <Input
                     type="number"
                     min="0"
@@ -208,17 +230,22 @@ export function EditGrnSheet({ grn }: { grn: EditableGrn }) {
                     value={items[index]?.actualUnitCost ?? ""}
                     onChange={(e) => updateItem(index, "actualUnitCost", e.target.value)}
                     className="text-right"
+                    aria-label={`${item.productName} cost per ${item.unit.toLowerCase()}`}
                   />
+                  <p className="mt-1 text-right text-[9px] text-slate-500">PKR/{item.unit.toLowerCase()}</p>
+                  </div>
                 )}
                 <div className="flex h-8 items-center justify-end text-xs font-semibold tabular-nums">
-                  {isWeighted
-                    ? formatPKR((Number(items[index]?.acceptedWeightKg) || 0) * (Number(items[index]?.ratePerKg) || 0))
-                    : formatPKR((Number(items[index]?.acceptedQuantity) || 0) * (Number(items[index]?.actualUnitCost) || 0))
-                  }
+                  {(() => {
+                    const value = calculateAcceptedValue({ isWeightPriced: isWeighted, acceptedQuantity: items[index]?.acceptedQuantity ?? "", actualUnitCost: items[index]?.actualUnitCost ?? "", acceptedWeightKg: items[index]?.acceptedWeightKg ?? "", ratePerKg: items[index]?.ratePerKg ?? "" });
+                    return value == null ? <span className="text-[9px] font-normal text-amber-700">Complete fields</span> : formatPKR(value);
+                  })()}
                 </div>
               </div>
               );
             })}
+            </div>
+            </div>
           </div>
 
           <div>

@@ -20,6 +20,12 @@
 # production
 /build
 /dist-desktop/
+/dist-desktop-*/
+/dist/
+/release/
+/.next-*/
+/.desktop-dev/
+/.desktop-test/
 /.desktop-stage/
 
 # misc

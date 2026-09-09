@@ -324,6 +324,52 @@ describe("Weight-based GRN and decimal quantity integration", () => {
   });
 
   describe("GRN weight fields lifecycle", () => {
+    it("values piece inventory priced by actual accepted kilograms", async () => {
+      const order = await createPurchase(context(), {
+        supplierId,
+        items: [{ productId: pieceProductId, quantity: 100, unitCost: 1269, perKgRate: 282, unitWeight: 4.5 }],
+        pricingMode: "WEIGHT",
+        idempotencyKey: `wt-piece-kg-po-${runId}`,
+      });
+      const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: order.id } });
+      const stockBefore = await db.product.findUniqueOrThrow({ where: { id: pieceProductId }, select: { stockQuantity: true } });
+
+      const grn = await createGoodsReceipt(context(), {
+        purchaseOrderId: order.id,
+        items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 49, acceptedQuantity: 49, actualUnitCost: 1269, receivedWeightKg: 221, acceptedWeightKg: 220.5, ratePerKg: 282 }],
+        idempotencyKey: `wt-piece-kg-grn-${runId}`,
+      });
+
+      const item = await db.goodReceivedNoteItem.findFirstOrThrow({ where: { goodReceivedNoteId: grn.id } });
+      expect(item.acceptedQuantity.toNumber()).toBe(49);
+      expect(item.acceptedWeightKg?.toNumber()).toBe(220.5);
+      expect(item.totalCost.toNumber()).toBe(62_181);
+      const stock = await db.product.findUniqueOrThrow({ where: { id: pieceProductId }, select: { stockQuantity: true } });
+      expect(stock.stockQuantity.minus(stockBefore.stockQuantity).toNumber()).toBe(49);
+    });
+
+    it("rejects a positive weighted acceptance with zero accepted weight or rate", async () => {
+      const order = await createPurchase(context(), {
+        supplierId,
+        items: [{ productId: pieceProductId, quantity: 2, unitCost: 1000, perKgRate: 100, unitWeight: 10 }],
+        pricingMode: "WEIGHT",
+        idempotencyKey: `wt-zero-po-${runId}`,
+      });
+      const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: order.id } });
+
+      await expect(createGoodsReceipt(context(), {
+        purchaseOrderId: order.id,
+        items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 2, acceptedQuantity: 2, actualUnitCost: 1000, receivedWeightKg: 20, acceptedWeightKg: 0, ratePerKg: 100 }],
+        idempotencyKey: `wt-zero-grn-${runId}`,
+      })).rejects.toMatchObject({ code: "INVALID_RECEIPT" });
+
+      await expect(createGoodsReceipt(context(), {
+        purchaseOrderId: order.id,
+        items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 2, acceptedQuantity: 2, actualUnitCost: 1000, receivedWeightKg: 20, acceptedWeightKg: 20, ratePerKg: 0 }],
+        idempotencyKey: `wt-zero-rate-grn-${runId}`,
+      })).rejects.toMatchObject({ code: "INVALID_RECEIPT" });
+    });
+
     it("persists weight fields on GRN item for weighted receipt", async () => {
       const order = await createPurchase(context(), {
         supplierId,
@@ -572,6 +618,8 @@ describe("Weight-based GRN and decimal quantity integration", () => {
     });
 
     it("B: returned quantity differs from returned kilograms", async () => {
+      const productBefore = await db.product.findUniqueOrThrow({ where: { id: kgProductId }, select: { stockQuantity: true, costPrice: true } });
+      const carryingValueBefore = productBefore.stockQuantity.mul(productBefore.costPrice);
       const order = await createPurchase(context(), {
         supplierId,
         items: [{ productId: kgProductId, quantity: 100, unitCost: 420, perKgRate: 420, unitWeight: 2.5 }],
@@ -584,6 +632,13 @@ describe("Weight-based GRN and decimal quantity integration", () => {
         items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 100, acceptedQuantity: 100, actualUnitCost: 420, receivedWeightKg: 250, acceptedWeightKg: 250, ratePerKg: 420 }],
         idempotencyKey: `wt-sr-b-grn-${runId}`,
       });
+      const [productAfterReceipt, receipt] = await Promise.all([
+        db.product.findUniqueOrThrow({ where: { id: kgProductId }, select: { stockQuantity: true, costPrice: true } }),
+        db.goodReceivedNote.findUniqueOrThrow({ where: { id: grn.id }, select: { grnNumber: true } }),
+      ]);
+      expect(productAfterReceipt.stockQuantity.mul(productAfterReceipt.costPrice).minus(carryingValueBefore).toNumber()).toBeCloseTo(105000, 2);
+      const receiptMovement = await db.inventoryTransaction.findFirstOrThrow({ where: { workspaceId, reference: receipt.grnNumber, type: "PURCHASE_RECEIPT" }, orderBy: { createdAt: "desc" } });
+      expect(receiptMovement.unitCost?.toNumber()).toBeCloseTo(1050, 2);
 
       const ret = await createSupplierReturn(context(), {
         purchaseOrderId: order.id,
@@ -599,6 +654,9 @@ describe("Weight-based GRN and decimal quantity integration", () => {
       expect(retItem.returnedWeightKg?.toNumber()).toBeCloseTo(50, 3);
       expect(retItem.ratePerKg?.toNumber()).toBeCloseTo(420, 2);
       expect(retItem.totalCost.toNumber()).toBeCloseTo(21000, 2);
+      const returnedDocument = await db.supplierReturn.findUniqueOrThrow({ where: { id: ret.id }, select: { number: true } });
+      const returnMovement = await db.inventoryTransaction.findFirstOrThrow({ where: { workspaceId, reference: returnedDocument.number, type: "RETURN_OUT" } });
+      expect(returnMovement.unitCost?.toNumber()).toBeCloseTo(1050, 2);
     });
 
     it("C: correct supplier payable reversal", async () => {
@@ -767,3 +825,5 @@ describe("Weight-based GRN and decimal quantity integration", () => {
     });
   });
 });
+
+

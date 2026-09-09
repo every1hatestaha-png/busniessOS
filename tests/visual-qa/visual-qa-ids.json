@@ -1,0 +1,15 @@
+{
+  "workspaceId": "visual-qa-workspace",
+  "userId": "7a0d3ff3-b82d-4796-a69d-4159825543e0",
+  "cashAccountId": "b5663edc-5ef0-44b5-be2e-05bece3b6963",
+  "bankAccountId": "b0975193-3ac6-4fcb-bc0c-cc2fe44fb762",
+  "customer1Id": "11111111-1111-4111-8111-111111111101",
+  "customerLongNameId": "11111111-1111-4111-8111-111111111102",
+  "productPieceId": "visual-qa-product-piece",
+  "productLongDescId": "visual-qa-product-long",
+  "productWeightId": "visual-qa-product-weight",
+  "productWeightHeavyId": "visual-qa-product-heavy",
+  "supplier1Id": "33333333-3333-4333-8333-333333333301",
+  "supplierLongId": "33333333-3333-4333-8333-333333333302",
+  "expenseAccountId": "ff53875f-ba1a-4ab9-bd52-d1999bfca683"
+}

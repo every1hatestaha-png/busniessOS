@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { cn, formatPKR } from "@/lib/utils";
 
 export function FinancialTable({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className="overflow-x-auto"><table className={cn("w-full border-collapse text-xs", className)}>{children}</table></div>;
+  return <div className="overflow-x-auto print:overflow-visible"><table data-financial-table className={cn("w-full border-collapse text-xs", className)}>{children}</table></div>;
 }
 
 export function FinancialHead({ children }: { children: ReactNode }) {

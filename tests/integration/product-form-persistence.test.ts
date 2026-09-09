@@ -272,7 +272,7 @@ describe("Product decimal quantity and form integration", () => {
   it("excludes archived products from new sale and purchase creation", async () => {
     const product = await db.product.create({ data: { workspaceId, name: "Archived Selector Product", sku: `arch-sel-${runId}`, category: "Test", costPrice: 10, sellingPrice: 20, stockQuantity: 1, status: "ARCHIVED" } });
 
-    await expect(createSale(context(), { customerId, items: [{ productId: product.id, quantity: 1, unitPrice: 20, discount: 0 }], orderDiscount: 0, paidAmount: 0, notes: "", idempotencyKey: randomUUID() })).rejects.toMatchObject({ code: "PRODUCT_NOT_FOUND" });
+    await expect(createSale(context(), { customerId, items: [{ productId: product.id, quantity: 1, unitPrice: 20, discountPerUnit: 0 }], orderDiscount: 0, paidAmount: 0, notes: "", idempotencyKey: randomUUID() })).rejects.toMatchObject({ code: "PRODUCT_NOT_FOUND" });
     await expect(createPurchase(context(), { supplierId, items: [{ productId: product.id, quantity: 1, unitCost: 10 }], pricingMode: "UNIT", idempotencyKey: `arch-po-${runId}` })).rejects.toMatchObject({ code: "PRODUCT_NOT_FOUND" });
   });
 
@@ -314,7 +314,7 @@ describe("Product decimal quantity and form integration", () => {
 
     const used = await db.customer.create({ data: { workspaceId, name: `Used customer ${runId}`, creditLimit: 1000 } });
     const product = await db.product.create({ data: { workspaceId, name: `Customer history product ${runId}`, sku: `cust-hist-${runId}`, costPrice: 10, sellingPrice: 20, stockQuantity: 2 } });
-    const sale = await createSale(context(), { customerId: used.id, items: [{ productId: product.id, quantity: 1, unitPrice: 20, discount: 0 }], orderDiscount: 0, paidAmount: 0, notes: "", idempotencyKey: randomUUID() });
+    const sale = await createSale(context(), { customerId: used.id, items: [{ productId: product.id, quantity: 1, unitPrice: 20, discountPerUnit: 0 }], orderDiscount: 0, paidAmount: 0, notes: "", idempotencyKey: randomUUID() });
 
     await expect(removeCustomer(context(), used.id)).resolves.toMatchObject({ disposition: "DEACTIVATED" });
     expect((await db.customer.findUniqueOrThrow({ where: { id: used.id } })).status).toBe("INACTIVE");
@@ -332,3 +332,5 @@ describe("Product decimal quantity and form integration", () => {
     await expect(deleteSupplier(staff, supplierId)).rejects.toThrow("Unauthorized");
   });
 });
+
+

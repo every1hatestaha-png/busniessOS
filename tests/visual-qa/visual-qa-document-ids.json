@@ -1,0 +1,39 @@
+{
+  "invoices": {
+    "1-line": "c2a6c0f6-9091-4b0a-a84d-06dbbfcce600",
+    "5-line": "31288e3a-3530-4a5a-afde-39d3b9ace443",
+    "25-line": "4ce94aea-87c6-438b-baa6-f59eb22f0fc4",
+    "100-line": "058f878e-4148-44f8-9c79-8af08c4ffb61",
+    "long-name": "5398765f-1934-415d-b8d8-3193ffca13e7",
+    "decimal-qty": "2f9939b1-5821-42fc-aef7-44d75df636a3",
+    "weight-qty": "2837a19d-baa3-4e6a-8e9f-e576bbe1b890",
+    "large-pkr": "a20536c5-6013-4a81-816c-d11602227f61",
+    "partial-paid": "5102661a-55fb-4bbf-ac72-dd11449de696",
+    "paid": "75ee2f6f-ccfc-4927-847f-6183e334aae0",
+    "void": "1f3fa28d-c586-44f4-8e07-de38d75ee589",
+    "aging-15": "62a65c4f-1d90-4338-8101-496132fa0a9e",
+    "aging-45": "ddbb4330-8251-4d80-9eaf-b20b4242d387",
+    "aging-75": "8868ef9c-d8db-47a3-902c-8f975672a74c",
+    "aging-120": "baaf9afe-1aa8-4732-aa6f-0bdcb136d21b"
+  },
+  "purchaseOrders": {
+    "basic": "b6d19bf2-5d26-45b1-b625-da2c41715df4",
+    "long-supplier": "6f23e67b-6666-419b-9ebe-d970d7294494",
+    "weight": "a624fe0e-9b1c-48e5-b6ca-15494dbcbab2",
+    "25-line": "8b9bbe60-ae04-435b-b590-7f9f5436abe2"
+  },
+  "grns": {
+    "basic": "af2012f9-b2e6-4a04-9751-e9c2d6244315",
+    "weighted": "b8448793-56a2-4242-bc63-242d75898375",
+    "multi": "b3f48305-a739-4b25-af63-448a0df86dee"
+  },
+  "reports": {
+    "customerId": "11111111-1111-4111-8111-111111111101",
+    "supplierId": "33333333-3333-4333-8333-333333333301",
+    "cashBankAccountId": "b5663edc-5ef0-44b5-be2e-05bece3b6963",
+    "generalLedgerAccountId": "e672c7b8-3a99-4119-b148-5084271430da"
+  },
+  "supplierReturn": "1f59ae47-f652-4a38-9d86-ffaa6e653750",
+  "paymentReceipt": "6f4a6c1e-6b39-406a-832e-0b56dc667b66",
+  "expenseVoucher": "fba18e29-f9ef-4439-9ece-4688d336dfe0"
+}
