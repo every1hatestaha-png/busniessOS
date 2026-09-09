@@ -99,6 +99,18 @@ app.whenReady().then(async () => {
           if (oldKey === undefined) delete process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY; else process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = oldKey;
         }
       },
+      externalAuthenticationPath() {
+        const oldKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+        process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = 'pk_test_' + Buffer.from('fixture.clerk.accounts.dev$').toString('base64');
+        try {
+          const authorizationUrl = buildAuthorizationUrl('challenge', 'state');
+          const url = new URL(buildExternalAuthenticationUrl(authorizationUrl));
+          return url.hostname + url.pathname + ':' + new URL(url.searchParams.get('redirect_url')).searchParams.get('state');
+        }
+        finally {
+          if (oldKey === undefined) delete process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY; else process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = oldKey;
+        }
+      },
     };`, context);
   const api = context.testApi;
   api.configure(origin, win);
@@ -110,6 +122,7 @@ app.whenReady().then(async () => {
   assert.equal(await win.webContents.executeJavaScript("typeof window.businessOSDesktop.switchAccount"), "function");
   assert.equal(api.authorizationParams(), "false:false");
   assert.equal(api.accountSelectionPath(), "fixture.accounts.dev/sign-in/choose:fixture");
+  assert.equal(api.externalAuthenticationPath(), "fixture.accounts.dev/sign-in/choose:state", "Normal login must use the explicit account-selection boundary");
   await session.defaultSession.cookies.set({ url: origin, name: "businessos_workspace", value: "fixture-a", httpOnly: true });
   await win.webContents.executeJavaScript("localStorage.setItem('draft','fixture'); sessionStorage.setItem('draft','fixture'); window.clerkTestMode='reject'");
   await chooseAccountAction("Sign out");

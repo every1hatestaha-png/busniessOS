@@ -23,13 +23,14 @@ export default function DesktopAuthPage() {
           BusinessOS
         </h1>
         <p className="text-slate-400 mb-8">
-          Sign in to continue
+          Choose an account already signed in to your browser, or use another
+          account and complete its authentication challenge.
         </p>
         <button
           onClick={handleSignIn}
           className="inline-block rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition-colors cursor-pointer"
         >
-          Sign in with BusinessOS
+          Choose account and continue
         </button>
         <p className="mt-6 text-xs text-slate-500">
           Opens your default browser for secure authentication
