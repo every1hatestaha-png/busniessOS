@@ -99,6 +99,73 @@ app.whenReady().then(async () => {
           if (oldKey === undefined) delete process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY; else process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = oldKey;
         }
       },
+      externalAuthenticationPath() {
+        const oldKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+        process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = 'pk_test_' + Buffer.from('fixture.clerk.accounts.dev
+  const api = context.testApi;
+  api.configure(origin, win);
+  assert.equal(typeof session.defaultSession.webRequest.onBeforeSendHeaders.removeListener, "undefined", "D5 used a nonexistent Electron API");
+  api.seed();
+  await win.loadURL(origin);
+  await until(() => win.webContents.executeJavaScript("Boolean(document.querySelector('button'))"));
+  assert.equal(await win.webContents.executeJavaScript("typeof window.businessOSDesktop.signOut"), "function");
+  assert.equal(await win.webContents.executeJavaScript("typeof window.businessOSDesktop.switchAccount"), "function");
+  assert.equal(api.authorizationParams(), "false:false");
+  assert.equal(api.accountSelectionPath(), "fixture.accounts.dev/sign-in/choose:fixture");
+  assert.equal(api.externalAuthenticationPath(), "fixture.accounts.dev/sign-in/choose:state", "Normal login must use the explicit account-selection boundary");
+  await session.defaultSession.cookies.set({ url: origin, name: "businessos_workspace", value: "fixture-a", httpOnly: true });
+  await win.webContents.executeJavaScript("localStorage.setItem('draft','fixture'); sessionStorage.setItem('draft','fixture'); window.clerkTestMode='reject'");
+  await chooseAccountAction("Sign out");
+  await until(() => win.webContents.executeJavaScript("Boolean(document.querySelector('[role=alert]'))"));
+  assert.equal(api.state().token, true, "Clerk failure is shown, not silently treated as completed logout");
+  await win.webContents.executeJavaScript("window.clerkTestMode='success'");
+  const clearStorage = session.defaultSession.clearStorageData.bind(session.defaultSession);
+  session.defaultSession.clearStorageData = async () => { throw new Error("fixture storage failure"); };
+  await chooseAccountAction("Sign out");
+  await until(() => logs.some((line) => line.includes("failed stage=Electron")));
+  assert.equal(api.state().busy, false, "Cleanup failure must release logout lock");
+  session.defaultSession.clearStorageData = clearStorage;
+  api.seed();
+  await chooseAccountAction("Sign out");
+  await until(() => win.webContents.getURL() === `${origin}/desktop-auth`);
+  await until(() => !api.state().busy);
+  const state = api.state();
+  assert.equal(state.token || state.refresh || state.bearer || state.file, false);
+  assert.equal((await session.defaultSession.cookies.get({ url: origin })).length, 0);
+  assert.equal(await win.webContents.executeJavaScript("localStorage.length + sessionStorage.length"), 0);
+  assert.equal(await api.restore(), false, "Restart cannot restore logged-out account");
+  api.seed();
+  assert.equal(await api.restore(), true, "Normal account persistence must still work");
+  await win.loadURL(origin);
+  await until(() => win.webContents.executeJavaScript("Boolean(document.querySelector('button'))"));
+  await chooseAccountAction("Sign out");
+  await until(() => win.webContents.getURL() === `${origin}/desktop-auth`);
+  assert(logs.some((line) => line.includes("action selected=signout")));
+  assert(logs.some((line) => line.includes("preload logout invoked")));
+  api.seed();
+  api.stubOAuth();
+  await win.loadURL(origin);
+  await until(() => win.webContents.executeJavaScript("Boolean(document.querySelector('button[aria-label=\"Open account menu\"]'))"));
+  await chooseAccountAction("Switch account");
+  await until(() => api.oauthMode() === "switch-account");
+  assert.equal(api.state().token && api.state().refresh && api.state().bearer && api.state().file, true, "Account A remains recoverable until the new OAuth callback succeeds");
+  assert(logs.some((line) => line.includes("preload switch-account invoked")));
+  console.log("PASS: account menu → Clerk fixture → packaged-compatible preload → sign-out/switch IPC → safeStorage deletion → cookies/storage → desktop-auth or account-select OAuth; retry and persistence verified. No real account or DB used.");
+  clearTimeout(deadline);
+  server.close();
+  win.destroy();
+  app.quit();
+}).catch((error) => { console.error(error); server?.close(); clearTimeout(deadline); app.exit(1); });
+).toString('base64');
+        try {
+          const authorizationUrl = buildAuthorizationUrl('challenge', 'state');
+          const url = new URL(buildExternalAuthenticationUrl(authorizationUrl));
+          return url.hostname + url.pathname + ':' + new URL(url.searchParams.get('redirect_url')).searchParams.get('state');
+        }
+        finally {
+          if (oldKey === undefined) delete process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY; else process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = oldKey;
+        }
+      },
     };`, context);
   const api = context.testApi;
   api.configure(origin, win);
