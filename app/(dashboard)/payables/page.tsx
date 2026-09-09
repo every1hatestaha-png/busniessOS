@@ -44,13 +44,13 @@ export default async function PayablesPage({ searchParams }: { searchParams: Sea
     listSuppliers(workspaceId),
   ]);
   return (
-    <div data-print-orientation="landscape" className="space-y-6 print:space-y-4">
+    <div data-report data-print-orientation="landscape" className="space-y-6 print:space-y-4">
       <div className="flex items-start justify-between gap-4 print:hidden">
         <PageHeader title="Payables" description={`Outstanding supplier bills as of ${report.asOfDate}.`} />
         <div className="print:hidden"><PrintButton label="Print aging" /></div>
       </div>
       <div className="hidden print:block"><ReportCompanyHeader workspace={workspace} title="Accounts Payable Aging" from={report.asOfDate} to={report.asOfDate} subtitle="Outstanding accepted supplier liabilities" /></div>
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+      <section data-report-summary className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
         <MetricCard label="Total Payable" value={formatPKR(report.totalOutstanding)} detail={`${report.suppliers.length} ${report.suppliers.length === 1 ? "supplier" : "suppliers"}`} icon={ArrowDownCircle} />
         <MetricCard label="Current" value={formatPKR(report.buckets.current)} detail="Not overdue" icon={Clock4} />
         {PAYABLES_BUCKET_ORDER.map((bucket) => (
