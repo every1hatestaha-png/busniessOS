@@ -9,6 +9,7 @@ export function DocumentFrame({ workspace, title, number, status, statusReason, 
       <DocumentHeader workspace={workspace} title={title} number={number} details={details} />
       {status && <DocumentStatusStamp status={status} reason={statusReason} />}
       {children}
+      <footer data-print-footer className="hidden">{title} · {number} · BusinessOS</footer>
     </article>
   );
 }
