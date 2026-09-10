@@ -23,6 +23,25 @@ const eslintConfig = defineConfig([
     "tests/desktop/*.cjs",
     "tests/visual-qa/**",
   ]),
+  {
+    rules: {
+      // Prevent accidental imports from desktop/ in web code.
+      // Desktop code is preserved for future desktop release but should not be
+      // imported by web components, pages, or server logic.
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["desktop/**"],
+              message:
+                "Importing from 'desktop/**' is not allowed in web code. Desktop code is isolated for the future desktop release. If you need shared functionality, move it to lib/ or components/.",
+            },
+          ],
+        },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;

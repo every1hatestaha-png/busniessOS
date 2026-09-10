@@ -25,7 +25,7 @@ export function OnboardingForm({
         <aside className="relative overflow-hidden bg-blue-600 p-8 text-white sm:p-10">
           <div className="absolute -left-20 top-1/2 size-72 rounded-full bg-cyan-300/20 blur-3xl" />
           <div className="relative flex h-full min-h-64 flex-col">
-            <p className="flex items-center gap-2 text-lg font-bold"><Sparkles className="size-5" />BusinessOS</p>
+            <p className="flex items-center gap-2 text-lg font-bold"><Sparkles className="size-5" />MunshiOS</p>
             <div className="my-auto py-12">
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-blue-100">Two-minute setup</p>
               <h1 className="mt-3 text-4xl font-bold leading-tight">Make the workspace yours.</h1>

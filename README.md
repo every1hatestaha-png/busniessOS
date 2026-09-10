@@ -142,6 +142,39 @@ Write-like requests produce proposed actions only. For example, a payment-record
 
 Global search in the top navigation covers customers, products, orders, and invoices and links to the relevant records.
 
+## MunshiOS Web Development
+
+The primary development target is now the **web application**. The Electron desktop layer is preserved for future reuse but is **not the primary development target**.
+
+### Web Commands
+
+```bash
+npm run dev:web      # Start Next.js dev server (no Electron)
+npm run build:web    # Production build for web (no Electron packaging)
+npm run test         # Unit + integration tests (no Electron required)
+npm run lint         # ESLint with web-first rules
+```
+
+### Desktop Development (Secondary)
+
+Desktop code is preserved in `desktop/` for future reuse. Desktop-specific commands remain available:
+
+```bash
+npm run desktop:dev     # Electron + Next.js dev (for desktop testing)
+npm run desktop:build   # Build + package Electron installer
+npm run desktop:test    # Electron smoke tests
+npm run desktop:package # Package NSIS installer only
+```
+
+> **Note**: `npm run dev` and `npm run build` are unchanged and continue to work as before (they run the web app). Desktop development is explicitly opt-in via the `desktop:*` scripts.
+
+### Web-First Safeguards
+
+- ESLint rule `no-restricted-imports` prevents accidental imports from `desktop/**` in web code.
+- `next.config.ts` uses `output: "standalone"` only for non-Vercel builds (Electron packaging). On Vercel, it builds normally.
+- Clerk authentication supports both web (session cookies) and Electron (OAuth tokens) via dual-token middleware in `proxy.ts` and `lib/server/auth.ts`.
+- Desktop code in `desktop/` is ignored by ESLint and TypeScript for web builds.
+
 ## Commands
 
 ```bash

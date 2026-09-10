@@ -7,8 +7,8 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "BusinessOS",
-  description: "AI-first operating system for Pakistani SMEs",
+  title: "MunshiOS",
+  description: "Har karobar ka digital system - Modern operating system for Pakistani businesses",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

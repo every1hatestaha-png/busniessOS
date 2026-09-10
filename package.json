@@ -7,7 +7,9 @@
   "main": "desktop/main.cjs",
   "scripts": {
     "dev": "next dev",
+    "dev:web": "next dev",
     "build": "next build",
+    "build:web": "next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",

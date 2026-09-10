@@ -1,0 +1,29 @@
+TELEMETRY, SUPPORT, AUDIT
+
+Useful operational metadata:
+- workspace
+- app version
+- OS version if needed
+- last heartbeat
+- auth/update health
+- last error code
+- last successful update
+- user count
+- last active timestamp
+
+Do not collect unnecessary transaction content.
+
+Support tools:
+- internal notes
+- support status
+- safe diagnostic bundle later
+- customer-visible support reference
+
+Audit all owner control actions.
+
+Sensitive fields must never be logged:
+- tokens
+- passwords
+- secret keys
+- DATABASE_URL
+- refresh tokens

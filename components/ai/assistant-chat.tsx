@@ -82,10 +82,10 @@ export function AssistantChat() {
     <Card className="flex min-h-0 flex-1 overflow-hidden border-neutral-200 bg-white shadow-sm">
       <CardHeader className="border-b bg-neutral-50/70 pb-4">
         <div className="flex items-center gap-2 font-semibold">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-blue-600 text-white">
+          <span className="flex size-8 items-center justify-center rounded-lg bg-emerald-600 text-white">
             <Sparkles className="size-4" />
           </span>
-          BusinessOS Assistant
+          MunshiOS Assistant
           <span className="ml-auto rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">Demo mode</span>
         </div>
         <div className="flex gap-2 overflow-x-auto pt-3 pb-1">

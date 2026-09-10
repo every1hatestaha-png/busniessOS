@@ -1,0 +1,20 @@
+AGENT OPERATING RULES
+
+1. Audit before architecture changes.
+2. Never trust frontend-only enforcement.
+3. Never invent identity mappings.
+4. Never loosen Electron security to make auth easier.
+5. Never commit secrets.
+6. Never commit runtime.env.
+7. Never commit generated installers/build folders unless explicitly intended.
+8. Never access production DB manually without explicit user permission.
+9. Never deploy/migrate/commit/push without explicit user permission.
+10. Keep changes small and testable.
+11. Prefer config/feature flags over customer forks.
+12. Protect existing accounting/inventory correctness.
+13. Every subscription override must be auditable.
+14. Expiry must never delete business data.
+15. Report actual manual-test limitations honestly.
+16. Do not claim verified when only code review/build passed.
+17. Preserve web compatibility while improving desktop.
+18. Use fresh build output when OneDrive locks stale artifacts.

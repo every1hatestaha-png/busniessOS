@@ -1,0 +1,36 @@
+SECURITY, RBAC, MULTI-TENANCY
+
+Security layers:
+1. Authentication
+2. Workspace membership
+3. Role/permission
+4. Platform entitlement
+5. Resource ownership/workspace scope
+
+Never combine these into one boolean.
+
+Every business mutation must know:
+- actor
+- workspace
+- permission
+- entitlement state
+
+Owner platform dashboard:
+requires separate platform-owner authorization.
+
+Customer workspace admins must never gain platform-owner capability.
+
+Audit:
+- trial changes
+- subscription changes
+- suspension
+- plan changes
+- feature grants
+- billing status overrides
+- update policy changes
+
+Data isolation:
+all domain queries/mutations must remain workspace-scoped.
+
+Secrets:
+never renderer-accessible.

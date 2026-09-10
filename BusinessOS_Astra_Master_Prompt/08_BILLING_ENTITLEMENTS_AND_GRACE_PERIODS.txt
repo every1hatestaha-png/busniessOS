@@ -1,0 +1,26 @@
+BILLING, ENTITLEMENTS, GRACE
+
+Keep billing separate from entitlement.
+
+Billing provider event:
+-> updates normalized subscription state
+-> entitlement service derives access
+
+This permits:
+- manual activation
+- offline invoice/business sales
+- future Stripe/Paddle/local payment provider/etc.
+without rewriting domain enforcement.
+
+Grace period:
+optional configurable period after failed/late renewal.
+
+Do not silently grant indefinite grace.
+
+Owner should see:
+- past due since
+- grace ends
+- payment state
+- access state
+
+Payment failure must not alter accounting records inside customer BusinessOS operational data.

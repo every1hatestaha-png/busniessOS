@@ -1,0 +1,46 @@
+HIGH-LEVEL ACCEPTANCE TESTS
+
+Trial:
+- new customer gets correct trial window
+- days remaining accurate
+- trial cannot accidentally reset
+- owner can extend with audit
+- expiry happens even if no cron ran
+
+Paid:
+- manual activation restores access
+- renewal extends period
+- expired subscription blocks protected mutations
+- data remains intact
+
+Multi-tenancy:
+- Customer A never reads/writes Customer B
+- owner dashboard can explicitly see cross-customer summary only with owner role
+
+RBAC:
+- subscription active does not override user permission restrictions
+- workspace admin does not become platform owner
+
+Expiry:
+- UI communicates expiry
+- server blocks mutation
+- direct API call cannot bypass
+- historical data behavior matches policy
+
+Desktop:
+- startup works
+- auth works
+- version reported
+- update check works when later implemented
+- no secrets exposed
+
+Owner dashboard:
+- filters/statuses accurate
+- overrides audited
+- suspension immediate
+- reactivation immediate
+
+Updates:
+- invalid/untrusted package rejected
+- mandatory update enforceable
+- failed update recoverable

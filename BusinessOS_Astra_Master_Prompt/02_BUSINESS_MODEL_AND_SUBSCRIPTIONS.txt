@@ -1,0 +1,55 @@
+BUSINESS MODEL AND SUBSCRIPTION SPEC
+
+Commercial model:
+- BusinessOS is sold to multiple businesses.
+- Each new customer receives a 1-month free trial.
+- The trial should feel like the real product, not a crippled demo.
+- After the trial, continuing normal transactional use requires active paid access.
+- Customers should not need a new installer or separate build when converting from trial to paid.
+- Subscription status is controlled centrally.
+
+Recommended concepts:
+Customer Account / Workspace
+Plan
+Subscription
+Trial
+Entitlement
+Feature
+Owner Override
+Billing Event
+Renewal
+Suspension
+Grace Period
+
+Recommended effective-access logic:
+Platform access is allowed when:
+- active trial not expired
+OR
+- active subscription
+OR
+- valid grace access
+OR
+- explicit owner temporary override
+
+Access denied/limited when:
+- trial expired and no paid entitlement
+- subscription expired
+- manually suspended
+
+Never erase data at expiry.
+
+Possible plans later:
+Starter
+Professional
+Enterprise
+Custom
+
+Do not hardcode commercial pricing into domain logic. Store plans/configuration.
+
+Trial abuse controls to consider later:
+- one trial per workspace/customer
+- optional verified email/business identity
+- owner override
+- audit extension history
+
+Manual subscriptions should be possible before automated payment gateway integration.

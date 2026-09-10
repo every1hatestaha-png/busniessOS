@@ -1,0 +1,78 @@
+RECOMMENDED PHASES
+
+S0 SaaS Architecture Audit
+- schema
+- workspaces
+- auth
+- RBAC
+- mutation boundaries
+- desktop version/update architecture
+Deliverable: written gap report only.
+
+S1 Trial + Subscription Domain
+- plan model
+- subscription/trial model
+- owner overrides
+- effective entitlement service
+- tests
+Do not enforce globally until model is proven.
+
+S2 Entitlement Enforcement
+- guard critical mutations centrally
+- expiry behavior
+- read-only policy
+- tests across sales/purchases/inventory/accounting
+
+S3 Customer Subscription UX
+- trial status
+- days remaining
+- expiry screen
+- plan/status
+- renewal/support action
+
+S4 Owner Dashboard
+- customer list
+- detail
+- search/filter
+- extend trial
+- activate/suspend/reactivate
+- plan/features
+- audit
+
+S5 Lifecycle Automation
+- expiry reporting
+- expiring-soon notifications
+- renewal reminders
+- grace handling
+
+S6 Desktop Control Plane
+- heartbeat
+- app version
+- minimum supported version
+- central config/feature flags
+
+S7 Auto Update
+- signed releases
+- safe update check/install
+- mandatory update policy
+- recovery
+
+S8 Billing Integration
+- provider adapter
+- webhook ingestion
+- normalized billing events
+- subscription synchronization
+
+S9 Support/Analytics Hardening
+- health metrics
+- support notes
+- audit views
+- diagnostics
+
+S10 Production Readiness
+- multi-tenancy audit
+- RBAC audit
+- entitlement bypass audit
+- billing replay/idempotency
+- update security
+- backup/recovery

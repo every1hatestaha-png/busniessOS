@@ -1,0 +1,48 @@
+DESKTOP SAAS ARCHITECTURE
+
+Target:
+Windows-installed BusinessOS client with centralized cloud policy.
+
+Desktop responsibilities:
+- secure startup
+- local Next.js standalone hosting
+- authentication handoff
+- secure credential persistence
+- update checks
+- heartbeat/version reporting
+- local UX
+
+Cloud/server responsibilities:
+- identity
+- workspace membership
+- RBAC
+- customer subscription/trial state
+- entitlement enforcement
+- centralized configuration
+- billing integration
+- audit
+- update policy metadata
+
+Do not trust local clock/client-only entitlement checks for enforcement.
+
+The desktop app may display expiry status locally, but server-authoritative access must decide whether mutations are allowed.
+
+Update architecture considerations:
+- app semantic version
+- release manifest
+- signed update artifact
+- update channel
+- minimum supported version
+- mandatory update policy
+- release notes
+- staged rollout
+- rollback
+
+Customer-specific differences:
+use settings/features/configuration whenever possible.
+
+Avoid:
+customer-specific hardcoded branches
+customer-specific binaries
+manual code copies
+separate databases unless intentionally required by future enterprise architecture

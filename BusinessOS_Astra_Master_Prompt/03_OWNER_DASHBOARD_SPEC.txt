@@ -1,0 +1,74 @@
+OWNER DASHBOARD SPEC
+
+This is NOT the normal customer admin dashboard.
+
+Audience:
+BusinessOS platform owner and trusted internal operators.
+
+Core overview cards:
+- total customers
+- active customers
+- trialing
+- expiring in 7 days
+- expired
+- active paid
+- grace/past due
+- suspended
+- outdated desktop versions
+- upcoming renewals
+
+Customer table:
+- customer/workspace name
+- owner/contact
+- plan
+- lifecycle state
+- trial start
+- trial end
+- days remaining
+- subscription start
+- renewal/expiry
+- last active
+- app version
+- users
+- status badge
+- internal notes indicator
+
+Customer detail page:
+- company profile
+- workspace identifiers
+- users
+- current plan
+- subscription timeline
+- trial history
+- owner overrides
+- app versions/devices
+- last heartbeat
+- feature flags
+- support notes
+- billing history summary
+- audit trail
+
+Owner actions:
+- extend trial
+- start trial
+- end trial
+- activate subscription
+- set renewal date
+- suspend/reactivate
+- change plan
+- grant/revoke feature
+- temporary grace
+- internal note
+- force minimum app version if architecture supports it later
+
+Every action:
+- explicit reason where appropriate
+- actor ID
+- timestamp
+- before/after metadata
+- audit record
+
+Safety:
+- destructive actions require confirmation
+- no silent cross-workspace data editing
+- platform-owner permission required

@@ -1,0 +1,43 @@
+CUSTOMER LIFECYCLE AND EXPIRY
+
+Example lifecycle:
+
+LEAD
+-> TRIALING
+-> ACTIVE
+-> GRACE / PAST_DUE (optional)
+-> EXPIRED
+-> REACTIVATED or CANCELLED
+
+SUSPENDED is an administrative override and may apply independently.
+
+Trial:
+- trialStartAt
+- trialEndAt
+- createdBy/source
+- extension history
+
+Subscription:
+- planId
+- status
+- startsAt
+- currentPeriodStart
+- currentPeriodEnd
+- cancelAtPeriodEnd
+- cancelledAt
+- provider/customer/subscription references if billing provider is used later
+
+Effective entitlement should be computed from timestamps/status rather than relying solely on a manually updated status field.
+
+Expiry:
+- automatic at request time
+- optionally synchronized by scheduled job for reporting/notifications
+- no data deletion
+- transactional writes blocked by central entitlement middleware/service
+- read access policy defined explicitly
+
+Suggested customer UX after expiry:
+- clearly explain trial/subscription expired
+- show renewal/contact action
+- keep important historical data readable if policy allows
+- block mutation CTAs server-side and UI-side

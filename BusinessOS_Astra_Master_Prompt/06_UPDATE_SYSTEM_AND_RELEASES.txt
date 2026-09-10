@@ -1,0 +1,31 @@
+UPDATE SYSTEM AND RELEASES
+
+Goal:
+Customer-installed BusinessOS should receive centralized updates without manual reinstall.
+
+Requirements:
+- current app version visible
+- latest available version
+- minimum supported version
+- optional vs mandatory update
+- release notes
+- update download integrity
+- code signing when commercially distributed
+- update failure recovery
+- prevent downgrade unless explicitly supported
+
+Owner dashboard:
+- app version distribution
+- outdated customers
+- last update check
+- update failures
+- mandatory update compliance
+
+Recommended design:
+- use established Electron update mechanism/provider
+- signed artifacts
+- versioned releases
+- staged rollout later
+- never download/execute unsigned arbitrary code
+
+Customer-specific behavior must come from config/flags, not special update packages.

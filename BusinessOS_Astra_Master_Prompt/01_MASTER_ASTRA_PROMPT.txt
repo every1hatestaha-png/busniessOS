@@ -1,0 +1,416 @@
+You are taking over BusinessOS as the primary coding agent in Astra.
+
+Your job is not just to fix isolated bugs. Your job is to help turn BusinessOS into a commercially sellable, centrally managed Windows desktop SaaS product while preserving the existing operational software.
+
+READ EVERY FILE IN THIS FOLDER BEFORE MAKING A PLAN.
+
+CORE PRODUCT VISION
+
+BusinessOS is a business management platform that will be sold repeatedly to multiple independent customers.
+
+The customer experience should feel like normal installed Windows software:
+- customer downloads/installs BusinessOS
+- signs in
+- gets a full 1-month free trial
+- uses the real software in daily business operations
+- after trial expiry, transactional/business features become unavailable unless the subscription is active
+- customer data remains intact
+- when subscription is renewed, access resumes without reinstalling or rebuilding anything
+
+The owner of BusinessOS must have centralized control over all customers from a separate owner/admin dashboard.
+
+The owner must be able to see and control:
+- all customer organizations/workspaces
+- company/customer name
+- account owner
+- contact details
+- plan
+- trial start date
+- trial end date
+- days remaining
+- subscription status
+- payment status
+- renewal date
+- grace period
+- last login
+- last app heartbeat
+- installed app version
+- update status
+- active/inactive/suspended state
+- reason for suspension
+- number of users
+- important usage metrics
+- support notes
+- internal tags
+- customer-specific configuration
+- feature entitlements
+- license/device status if introduced later
+
+The business model must support:
+- 1-month free trial
+- full software during trial
+- automatic expiry
+- paid renewal
+- centralized suspension/reactivation
+- multiple customers from one codebase
+- no per-customer code forks
+- centrally managed software updates
+- customer-specific settings through configuration/feature flags
+- future upgrade to multiple pricing tiers
+
+CURRENT TECHNICAL DIRECTION
+
+BusinessOS currently uses:
+- Next.js
+- React
+- TypeScript
+- Prisma
+- Neon PostgreSQL
+- Clerk
+- Electron
+- electron-builder
+- Windows desktop packaging
+- local Next.js standalone server inside Electron
+- online database
+- centralized shared codebase
+
+The web app and existing business/accounting/inventory logic must remain intact unless a specific task requires a change.
+
+DESKTOP PRODUCT MODEL
+
+The desktop app should behave like centrally managed SaaS software.
+
+Preferred architecture:
+Desktop Client
+-> Auth
+-> Cloud database/API
+-> subscription/entitlement check
+-> workspace/customer isolation
+-> business modules
+
+The desktop binary should not contain customer-specific business logic forks.
+
+CUSTOMER-SPECIFIC REQUIREMENTS
+
+When a customer asks for a change:
+- first decide whether it is useful globally
+- if global, implement once for all customers
+- if customer-specific, prefer:
+  - workspace settings
+  - feature flags
+  - configurable workflows
+  - plan entitlements
+  - optional modules
+instead of creating a separate branch/build for that customer
+
+TRIAL AND SUBSCRIPTION RULE
+
+Default trial:
+30 days from activation or first eligible use.
+
+During trial:
+- normal business functionality available
+- visible trial status
+- owner dashboard shows days remaining
+
+After expiry:
+- do NOT delete data
+- do NOT corrupt or alter accounting/inventory history
+- do NOT uninstall software
+- switch workspace entitlement to expired/read-only/locked state according to final policy
+- paid renewal should restore access immediately
+
+Prefer blocking transactional mutations while still allowing enough read-only access for the customer to understand the status and renew.
+
+The exact locking policy must be implemented centrally server-side, not only hidden in the desktop UI.
+
+OWNER CONTROL PLANE
+
+Create a separate BusinessOS Owner/Admin control plane.
+
+It must be logically separated from normal customer administration.
+
+Only BusinessOS platform-owner roles can access it.
+
+Owner dashboard should eventually support:
+- customer search/filter/sort
+- active trials
+- trials expiring soon
+- expired trials
+- active subscriptions
+- overdue/failed renewals
+- suspended customers
+- monthly recurring revenue metrics when billing is added
+- upcoming renewals
+- customer health/activity
+- app version distribution
+- customers on outdated builds
+- support notes/history
+- override trial end date
+- extend trial
+- activate subscription
+- suspend/reactivate
+- change plan
+- grant/revoke features
+- see audit log of owner actions
+
+AUTOMATIC EXPIRY
+
+Never rely on a scheduled job alone for access control.
+
+Access decisions must be derived from authoritative timestamps/status at request time.
+
+Example:
+trialEndAt <= now AND no active paid subscription
+=> entitlement expired
+
+A scheduled job may update cached statuses or send notifications, but the server must still enforce the effective state correctly even if a cron/job never ran.
+
+SUBSCRIPTION STATE MODEL
+
+Design a robust state model such as:
+- TRIALING
+- ACTIVE
+- GRACE
+- PAST_DUE
+- EXPIRED
+- SUSPENDED
+- CANCELLED
+
+Do not blindly implement these names if the existing schema has a better pattern. Audit first and propose the cleanest migration.
+
+ENTITLEMENT ENFORCEMENT
+
+The most important rule:
+never enforce subscription access only in Electron or frontend components.
+
+Enforce mutations in server/domain/API boundaries.
+
+Critical transaction classes include:
+- purchases
+- GRNs
+- supplier returns
+- sales
+- receipts
+- payments
+- stock adjustments
+- accounting vouchers
+- inventory mutations
+- customer/supplier transactional workflows
+- other business mutations
+
+Read-only behavior after expiry should be intentionally designed.
+
+AUTHORIZATION
+
+Keep three layers separate:
+1. authentication: who is the user?
+2. workspace authorization/RBAC: what can this user do inside their business?
+3. platform entitlement: is this customer workspace allowed to use the paid product right now?
+
+Subscription status must NOT bypass or replace RBAC.
+
+MULTI-TENANCY
+
+Every customer must remain isolated by workspace/organization.
+
+Audit all major server queries and mutations for workspace scoping.
+
+No customer must ever be able to:
+- see another customer's data
+- change another customer's data
+- infer confidential customer data
+- alter another customer's subscription
+
+OWNER DASHBOARD must be the only cross-customer context and must use explicit platform-owner authorization.
+
+UPDATES
+
+BusinessOS desktop should eventually have centralized updates.
+
+Desired flow:
+- developer makes change in shared repo
+- version is released
+- installed desktop app detects new release
+- prompts or safely installs update
+- customer does not manually download/reinstall every update
+
+Design for:
+- app version
+- minimum supported version
+- optional update
+- mandatory update
+- release notes
+- update channel
+- rollback/recovery strategy
+- update signature/security
+
+Do not implement insecure auto-update shortcuts.
+
+BILLING
+
+Billing provider is not fixed unless already decided elsewhere in the codebase.
+
+Architecture must not tightly couple entitlement logic to one payment provider.
+
+Separate:
+- billing events
+- subscription record
+- entitlements/access policy
+
+This allows manual subscription activation initially and payment-gateway automation later.
+
+OWNER OVERRIDES
+
+Owner should be able to:
+- extend trial
+- manually activate paid access
+- set expiry
+- suspend
+- unsuspend
+- add internal notes
+- grant temporary access
+- change plan/features
+
+Every such action must be audited.
+
+NOTIFICATIONS
+
+Plan for:
+- trial started
+- 7 days remaining
+- 3 days remaining
+- 1 day remaining
+- trial expired
+- renewal approaching
+- payment overdue
+- access restored
+- mandatory app update
+
+Do not build all notification channels unless requested. Create architecture that can support email/in-app/desktop notifications later.
+
+CUSTOMER DASHBOARD
+
+Normal customer-facing settings should eventually show:
+- current plan
+- trial/subscription status
+- trial or renewal date
+- days remaining
+- billing/contact details where applicable
+- app version
+- update availability
+- support/contact action
+
+Do not expose owner-only controls.
+
+DATA RETENTION
+
+Expiration/cancellation must not delete operational data.
+
+Customer records should be recoverable/reactivatable unless explicitly deleted under a separate controlled retention/deletion process.
+
+SECURITY
+
+Never store:
+- Clerk secret
+- database credentials
+- billing secrets
+in renderer-accessible storage.
+
+Use server-side/runtime secrets.
+
+Desktop credentials must use secure storage mechanisms.
+
+Keep:
+- nodeIntegration false
+- contextIsolation true
+- sandbox true
+- webSecurity true
+
+LOGGING AND SUPPORT
+
+Plan for production-safe support diagnostics:
+- app version
+- workspace ID
+- timestamp
+- error code
+- safe stack/error category
+- update status
+- heartbeat
+
+Never log secrets/tokens/passwords.
+
+ANALYTICS / CUSTOMER HEALTH
+
+Owner dashboard may later show useful non-invasive operational health:
+- last active date
+- active users
+- major module adoption
+- version
+- failed sync/auth/update events
+- trial usage activity
+
+Avoid collecting unnecessary sensitive business content.
+
+IMPLEMENTATION STRATEGY
+
+Before changing code:
+1. audit existing schema
+2. audit auth/workspace architecture
+3. audit all server mutation entry points
+4. audit Electron lifecycle
+5. audit update/build config
+6. produce gap analysis
+7. propose phased implementation
+
+Prefer incremental phases, each independently testable.
+
+Do not attempt the entire SaaS control plane in one giant change.
+
+EXPECTED PHASES
+
+A sensible roadmap likely includes:
+
+Phase S0 - Architecture/Audit
+Phase S1 - Subscription + trial data model
+Phase S2 - Entitlement service and mutation enforcement
+Phase S3 - Customer subscription/trial UI
+Phase S4 - Owner platform dashboard
+Phase S5 - Expiry/grace/renewal automation and notifications
+Phase S6 - Desktop heartbeat/version reporting
+Phase S7 - Secure auto-update
+Phase S8 - Billing-provider integration
+Phase S9 - analytics/support/admin hardening
+Phase S10 - production readiness audit
+
+But first inspect the repository and adapt this roadmap to the actual code.
+
+CURRENT PRIORITY
+
+First finish/stabilize D4 desktop auth and packaging before starting SaaS subscription work.
+
+Once D4 is truly verified:
+- clean temporary diagnostics
+- validate installer
+- commit D4 only with explicit user approval
+- then start SaaS control-plane audit
+
+DO NOT COMMIT, PUSH, DEPLOY, MIGRATE, OR TOUCH PRODUCTION UNTIL EXPLICITLY AUTHORIZED.
+
+YOUR FIRST RESPONSE AFTER READING THIS WORKSPACE MUST CONTAIN:
+
+1. Current repository understanding
+2. Current D4 blockers and status
+3. Existing multi-tenant architecture summary
+4. Existing schema pieces that can support trials/subscriptions
+5. Missing schema/services/UI
+6. Recommended SaaS architecture
+7. Recommended owner dashboard architecture
+8. Recommended subscription/expiry enforcement point
+9. Recommended update architecture
+10. Risks
+11. Proposed phases with acceptance criteria
+12. Files likely involved
+13. What you will do first
+
+Do not modify files until this audit/plan is complete.

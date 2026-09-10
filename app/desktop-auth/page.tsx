@@ -20,16 +20,16 @@ export default function DesktopAuthPage() {
     <main className="flex min-h-screen items-center justify-center bg-neutral-950 px-4">
       <div className="text-center">
         <h1 className="text-3xl font-bold tracking-tight text-white mb-4">
-          BusinessOS
+          MunshiOS
         </h1>
         <p className="text-slate-400 mb-8">
           Sign in to continue
         </p>
         <button
           onClick={handleSignIn}
-          className="inline-block rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition-colors cursor-pointer"
+          className="inline-block rounded-lg bg-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 transition-colors cursor-pointer"
         >
-          Sign in with BusinessOS
+          Sign in with MunshiOS
         </button>
         <p className="mt-6 text-xs text-slate-500">
           Opens your default browser for secure authentication

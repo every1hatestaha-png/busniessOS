@@ -54,11 +54,11 @@ export function Sidebar({ workspaceName, role }: { workspaceName: string; role: 
   const pathname = usePathname();
 
   return (
-    <aside className="flex h-full w-[236px] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+    <aside className="flex h-full w-[260px] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <div className="flex h-16 shrink-0 items-center gap-3 border-b border-sidebar-border px-4">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-sidebar-primary text-sm font-bold text-sidebar-primary-foreground">B</div>
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-base font-bold text-sidebar-primary-foreground">M</div>
         <div className="min-w-0 leading-tight">
-          <p className="text-sm font-semibold tracking-tight text-white">BusinessOS</p>
+          <p className="text-base font-semibold tracking-tight text-white">MunshiOS</p>
           <p className="mt-0.5 truncate text-[11px] text-slate-400" title={workspaceName}>{workspaceName}</p>
         </div>
       </div>
@@ -69,7 +69,7 @@ export function Sidebar({ workspaceName, role }: { workspaceName: string; role: 
             if (!visibleRoutes.length) return null;
             return <div key={section.label}>
               <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{section.label}</p>
-              <div className="space-y-0.5">
+              <div className="space-y-1">
                 {visibleRoutes.map((route) => {
                   const isActive = pathname === route.href || pathname?.startsWith(`${route.href}/`);
                   return (
@@ -78,13 +78,13 @@ export function Sidebar({ workspaceName, role }: { workspaceName: string; role: 
                       href={route.href}
                       aria-current={isActive ? "page" : undefined}
                       className={cn(
-                        "flex h-8 items-center gap-2.5 rounded-md border border-transparent px-2 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                        "flex h-9 items-center gap-2.5 rounded-md border border-transparent px-2.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
                         isActive
                           ? "border-white/10 bg-sidebar-accent text-white"
                           : "text-slate-400 hover:bg-white/5 hover:text-slate-100"
                       )}
                     >
-                      <route.icon className={cn("size-4", isActive ? "text-blue-400" : "text-slate-500")} />
+                      <route.icon className={cn("size-4", isActive ? "text-emerald-400" : "text-slate-500")} />
                       <span className="truncate">{route.label}</span>
                     </Link>
                   );
