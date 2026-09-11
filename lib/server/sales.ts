@@ -88,6 +88,7 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
       const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, invoiceId: invoice.id, cashBankAccountId, documentNumber: paymentNumber, amount: paid, netAmount: paid, method: receiptMethod, reference: paymentNumber, notes: "Payment received with sale", allocations: { create: { workspaceId: context.workspaceId, invoiceId: invoice.id, amount: paid } } }, select: { id: true } });
       await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, type: "PAYMENT_RECEIVED", credit: paid, description: `Payment ${paymentNumber}`, referenceId: payment.id } });
       await tx.customer.update({ where: { id: customer.id, workspaceId: context.workspaceId }, data: { currentBalance: { decrement: paid } } });
+      if (cashBankAccountId) await tx.cashBankAccount.update({ where: { id: cashBankAccountId, workspaceId: context.workspaceId }, data: { currentBalance: { increment: paid } } });
     }
     await postSaleToGeneralLedger(tx, { workspaceId: context.workspaceId, saleId: order.id, orderNumber, date: order.orderDate, revenue: total, costOfGoodsSold, cashReceived: paid, cashBankAccountId });
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "sale.created", entityType: "SalesOrder", entityId: order.id, metadata: { orderNumber, total: total.toString() } });
