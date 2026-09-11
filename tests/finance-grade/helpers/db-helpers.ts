@@ -3,7 +3,7 @@
  * Provides isolated workspace setup, teardown, and verification queries.
  */
 
-import { Prisma, type Role } from "@prisma/client";
+import { Prisma, type GeneralLedgerSourceType, type Role } from "@prisma/client";
 
 type PrismaClient = typeof import("@/lib/server/db")["db"];
 
@@ -78,7 +78,7 @@ export async function teardownTestWorkspace(workspaceId: string, userId: string)
 }
 
 /** Get actual GL entries for a source document. */
-export async function getGLEntries(workspaceId: string, sourceType: string, sourceId: string) {
+export async function getGLEntries(workspaceId: string, sourceType: GeneralLedgerSourceType, sourceId: string) {
   const db = await getDb();
   return db.generalLedgerEntry.findMany({
     where: { workspaceId, sourceType, sourceId },
