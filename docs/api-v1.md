@@ -12,6 +12,7 @@ JSON responses use `{ "data": ... }` or `{ "error": { "code", "message" } }`.
 | POST | `/api/v1/supplier-payments/:id/reverse` | financial | Reverse a posted supplier payment while preserving its audit trail |
 | POST | `/api/v1/payments/:id/reverse` | financial | Reverse a standalone customer receipt while preserving its audit trail |
 | POST | `/api/v1/supplier-returns/:id/cancel` | financial | Cancel a posted supplier return by restoring stock/payable and reversing its GL effect |
+| POST | `/api/v1/accounting/expenses/:id/reverse` | financial | Reverse a posted operating expense without deleting its voucher |
 | GET/POST | `/api/v1/purchases` | read / financial | List and create purchase orders |
 | POST | `/api/v1/sales/:id/cancel` | financial | Safely cancel a sale and its invoice |
 | GET/POST | `/api/v1/members` | members | List members/invitations and invite |
@@ -24,6 +25,8 @@ Purchase creation requires an `Idempotency-Key` header (8-200 characters). The b
 Payment reversals accept `{ "reason": "..." }` and never delete the original payment. Customer receipt reversal restores customer receivable, invoice/sale allocation state, cash/bank and the corresponding general-ledger posting. A receipt captured during sale creation must be reversed through sale cancellation so revenue, stock, invoice and cash remain atomic. Supplier payment reversal restores gross payable and purchase allocations, returns the net cash amount, reverses WHT/general-ledger effects, and preserves the original voucher.
 
 Supplier-return cancellation accepts `{ "reason": "..." }`. It keeps the posted return and debit-note history, marks the supplier return `CANCELLED`, restores the exact inventory carrying value removed by the original return, restores supplier and PO outstanding balances, records a reversal in the supplier ledger, reverses the original supplier-return GL entries, and writes an audit event. The original debit note remains as historical evidence and is displayed together with the cancelled return.
+
+Expense reversal accepts `{ "reason": "..." }`. It retains the original expense row/voucher, detects reversal state from immutable GL reversal links, restores the expense amount to the original active cash/bank account, creates balanced dated reversal GL entries, and records an audit event. Repeating the same reversal is safe and does not restore cash twice.
 
 `POST /api/webhooks/clerk` verifies Svix headers with `CLERK_WEBHOOK_SECRET`, synchronizes Clerk users, and accepts matching pending invitations. Configure the endpoint in Clerk for `user.created`, `user.updated`, and `user.deleted`.
 
