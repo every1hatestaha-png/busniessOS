@@ -160,4 +160,63 @@ describe("RC1 finance reconciliation", () => {
     expect(gl.balanced).toBe(true);
     expect(gl.totalDebit).toBe(gl.totalCredit);
   }, 60_000);
+
+  it("keeps a sale-time receipt and its cancellation reconciled to cash", async () => {
+    const context = ownerContext(workspaceId, userId);
+    const { createSale, cancelSale } = await import("@/lib/server/sales");
+
+    const [cashBefore, customerBefore, productBefore] = await Promise.all([
+      db.cashBankAccount.findUniqueOrThrow({ where: { id: cashBankAccountId } }),
+      db.customer.findUniqueOrThrow({ where: { id: customerId } }),
+      db.product.findUniqueOrThrow({ where: { id: productId } }),
+    ]);
+
+    const sale = await createSale(context, {
+      customerId,
+      items: [{ productId, quantity: 1, unitPrice: 1000, discountPerUnit: 0 }],
+      orderDiscount: 0,
+      paidAmount: 500,
+      cashBankAccountId,
+      notes: "RC1 sale-time payment",
+      idempotencyKey: randomUUID(),
+    });
+
+    const [cashAfterSale, customerAfterSale, productAfterSale, persistedSale, invoice] = await Promise.all([
+      db.cashBankAccount.findUniqueOrThrow({ where: { id: cashBankAccountId } }),
+      db.customer.findUniqueOrThrow({ where: { id: customerId } }),
+      db.product.findUniqueOrThrow({ where: { id: productId } }),
+      db.salesOrder.findUniqueOrThrow({ where: { id: sale.id } }),
+      db.invoice.findFirstOrThrow({ where: { workspaceId, salesOrderId: sale.id } }),
+    ]);
+
+    expect(Number(cashAfterSale.currentBalance)).toBe(Number(cashBefore.currentBalance) + 500);
+    expect(Number(customerAfterSale.currentBalance)).toBe(Number(customerBefore.currentBalance) + 500);
+    expect(Number(productAfterSale.stockQuantity)).toBe(Number(productBefore.stockQuantity) - 1);
+    expect(Number(persistedSale.total)).toBe(1000);
+    expect(Number(persistedSale.paidAmount)).toBe(500);
+    expect(Number(persistedSale.balanceAmount)).toBe(500);
+    expect(Number(invoice.paidAmount)).toBe(500);
+    expect(invoice.status).toBe("PARTIALLY_PAID");
+
+    await cancelSale(context, sale.id, true);
+
+    const [cashAfterCancel, customerAfterCancel, productAfterCancel, cancelledSale, cancelledInvoice, gl] = await Promise.all([
+      db.cashBankAccount.findUniqueOrThrow({ where: { id: cashBankAccountId } }),
+      db.customer.findUniqueOrThrow({ where: { id: customerId } }),
+      db.product.findUniqueOrThrow({ where: { id: productId } }),
+      db.salesOrder.findUniqueOrThrow({ where: { id: sale.id } }),
+      db.invoice.findUniqueOrThrow({ where: { id: invoice.id } }),
+      verifyGLBalanced(workspaceId),
+    ]);
+
+    expect(Number(cashAfterCancel.currentBalance)).toBe(Number(cashBefore.currentBalance));
+    expect(Number(customerAfterCancel.currentBalance)).toBe(Number(customerBefore.currentBalance));
+    expect(Number(productAfterCancel.stockQuantity)).toBe(Number(productBefore.stockQuantity));
+    expect(cancelledSale.status).toBe("CANCELLED");
+    expect(Number(cancelledSale.paidAmount)).toBe(0);
+    expect(Number(cancelledSale.balanceAmount)).toBe(0);
+    expect(cancelledInvoice.status).toBe("CANCELLED");
+    expect(Number(cancelledInvoice.paidAmount)).toBe(0);
+    expect(gl.balanced).toBe(true);
+  }, 60_000);
 });
