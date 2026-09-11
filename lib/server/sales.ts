@@ -23,7 +23,7 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
   return withSerializableRetry(async (tx) => {
     const existing = await tx.salesOrder.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true } });
     if (existing) return existing;
-    const customer = await tx.customer.findFirst({ where: { id: data.customerId, workspaceId: context.workspaceId, status: "ACTIVE" }, select: { id: true, currentBalance: true, creditLimit: true } });
+    const customer = await tx.customer.findFirst({ where: { id: data.customerId, workspaceId: context.workspaceId, status: "ACTIVE" }, select: { id: true, currentBalance: true, creditLimit: true, creditDays: true } });
     if (!customer) throw new SaleDomainError("CUSTOMER_NOT_FOUND", "Customer is unavailable.");
     const products = await tx.product.findMany({ where: { workspaceId: context.workspaceId, id: { in: data.items.map((item) => item.productId) }, status: "ACTIVE" }, select: { id: true, name: true, sku: true, stockQuantity: true, costPrice: true } });
     if (products.length !== data.items.length) throw new SaleDomainError("PRODUCT_NOT_FOUND", "One or more products are unavailable.");
@@ -79,7 +79,8 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
       await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: line.productId, type: "SALE", quantityChanged: -line.quantity, unitCost: product.costPrice, reference: orderNumber } });
     }
 
-    const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + 30);
+    const dueDate = new Date(order.orderDate);
+    dueDate.setDate(dueDate.getDate() + customer.creditDays);
     const invoice = await tx.invoice.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, salesOrderId: order.id, invoiceNumber, amount: total, paidAmount: paid, status: paid.isZero() ? "UNPAID" : paid.equals(total) ? "PAID" : "PARTIALLY_PAID", dueDate }, select: { id: true } });
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, type: "SALE", debit: total, description: `Sale ${orderNumber}`, referenceId: order.id } });
     await tx.customer.update({ where: { id: customer.id, workspaceId: context.workspaceId }, data: { currentBalance: { increment: total } } });
@@ -226,7 +227,7 @@ export async function getSale(workspaceId: string, id: string) {
     paidAmount: Number(row.paidAmount),
     balanceAmount: Number(row.balanceAmount),
     notes: row.notes ?? "",
-    customer: { id: row.customer.id, name: row.customer.name, companyName: row.customer.companyName ?? row.customer.name, phone: row.customer.phone ?? "", address: row.customer.address ?? "", currentBalance: Number(row.customer.currentBalance), creditLimit: Number(row.customer.creditLimit) },
+    customer: { id: row.customer.id, name: row.customer.name, companyName: row.customer.companyName ?? row.customer.name, phone: row.customer.phone ?? "", address: row.customer.address ?? "", currentBalance: Number(row.customer.currentBalance), creditDays: row.customer.creditDays, creditLimit: Number(row.customer.creditLimit) },
     items: row.items.map((item) => ({ id: item.id, productName: item.productName ?? item.product.name, sku: item.productSku ?? item.product.sku ?? "", quantity: item.quantity, unitPrice: Number(item.unitPrice), discountPerUnit: Number(item.discountPerUnit), total: Number(item.totalPrice) })),
     invoice: row.invoices[0] ? { id: row.invoices[0].id, number: row.invoices[0].invoiceNumber } : null,
     returns: row.returns.map((entry) => ({
