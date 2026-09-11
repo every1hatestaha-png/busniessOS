@@ -59,7 +59,8 @@ describe("customer credit days", () => {
       db.invoice.findFirstOrThrow({ where: { workspaceId, salesOrderId: sale.id } }),
     ]);
 
-    const dueInDays = Math.round((invoice.dueDate.getTime() - order.orderDate.getTime()) / 86_400_000);
+    expect(invoice.dueDate).not.toBeNull();
+    const dueInDays = Math.round((invoice.dueDate!.getTime() - order.orderDate.getTime()) / 86_400_000);
     expect(dueInDays).toBe(15);
   }, 60_000);
 });
