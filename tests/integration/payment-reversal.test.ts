@@ -64,6 +64,9 @@ describe("customer payment reversal", () => {
     );
     paymentId = recorded.id;
 
+    const cashAfterReceipt = await db.cashBankAccount.findUniqueOrThrow({ where: { id: cashBankAccountId } });
+    expect(Number(cashAfterReceipt.currentBalance)).toBe(30);
+
     const reversal = await reverseCustomerPayment({ workspaceId, role: "OWNER", userId }, paymentId, "Duplicate receipt");
     expect(reversal.alreadyReversed).toBe(false);
 
