@@ -11,6 +11,7 @@ JSON responses use `{ "data": ... }` or `{ "error": { "code", "message" } }`.
 | POST | `/api/v1/suppliers/:id/payments` | payments | Record supplier payment |
 | POST | `/api/v1/supplier-payments/:id/reverse` | financial | Reverse a posted supplier payment while preserving its audit trail |
 | POST | `/api/v1/payments/:id/reverse` | financial | Reverse a standalone customer receipt while preserving its audit trail |
+| POST | `/api/v1/customer-returns/:id/cancel` | financial | Cancel an unapplied customer return and reverse its receivable/inventory/GL effects |
 | POST | `/api/v1/supplier-returns/:id/cancel` | financial | Cancel a posted supplier return by restoring stock/payable and reversing its GL effect |
 | POST | `/api/v1/accounting/expenses/:id/reverse` | financial | Reverse a posted operating expense without deleting its voucher |
 | GET/POST | `/api/v1/purchases` | read / financial | List and create purchase orders |
@@ -23,6 +24,8 @@ JSON responses use `{ "data": ... }` or `{ "error": { "code", "message" } }`.
 Purchase creation requires an `Idempotency-Key` header (8-200 characters). The body includes `supplierId`, `items`, optional payment fields where supported, and notes. Sale creation accepts its existing body key and clients should also supply `Idempotency-Key`; cancellation accepts `{ "reverseInitialPayment": true }` when the sale-time payment must be reversed. Cancellation is rejected if any later payment exists.
 
 Payment reversals accept `{ "reason": "..." }` and never delete the original payment. Customer receipt reversal restores customer receivable, invoice/sale allocation state, cash/bank and the corresponding general-ledger posting. A receipt captured during sale creation must be reversed through sale cancellation so revenue, stock, invoice and cash remain atomic. Supplier payment reversal restores gross payable and purchase allocations, returns the net cash amount, reverses WHT/general-ledger effects, and preserves the original voucher.
+
+Customer-return cancellation accepts `{ "reason": "..." }` only while the linked credit note is still OPEN and unapplied. It preserves the original customer-return and credit-note records, marks the credit note `CANCELLED`, restores customer receivable, removes any stock that had been restocked at the exact historical return cost, reverses the customer-return GL entries, records an audit event, and excludes the cancelled return from future cumulative return-quantity checks. Once all returns on a sale are cancelled, those cancelled returns no longer block safe sale cancellation. If returned stock has already been consumed or the credit note has been allocated, automatic cancellation is rejected rather than corrupting inventory or receivables.
 
 Supplier-return cancellation accepts `{ "reason": "..." }`. It keeps the posted return and debit-note history, marks the supplier return `CANCELLED`, restores the exact inventory carrying value removed by the original return, restores supplier and PO outstanding balances, records a reversal in the supplier ledger, reverses the original supplier-return GL entries, and writes an audit event. The original debit note remains as historical evidence and is displayed together with the cancelled return.
 
