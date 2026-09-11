@@ -144,8 +144,7 @@ describe("RC1 finance reconciliation", () => {
       receivables: 37_500,
       inventoryValue: 30_000,
       cashBank: 10_000,
-      grossSales: 47_500,
-      costOfGoodsSold: 30_000,
+      salesThisMonth: 47_500,
       grossProfit: 17_500,
       netProfit: 17_500,
     });
