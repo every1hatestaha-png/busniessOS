@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { teardownTestWorkspace } from "../finance-grade/helpers/db-helpers";
 
 let db: typeof import("@/lib/server/db")["db"];
 let reverseCustomerPayment: typeof import("@/lib/server/payments")["reverseCustomerPayment"];
@@ -40,26 +41,20 @@ describe("financial reversal workspace isolation", () => {
     const product = await db.product.create({ data: { workspaceId: workspaceA, name: "Isolation Product", sku: `ISO-${runId}`, stockQuantity: 1, costPrice: 1, sellingPrice: 2 } });
     const account = await db.account.create({ data: { workspaceId: workspaceA, code: `ISO-${runId}`, name: "Isolation Expense", category: "EXPENSE", normalBalance: "DEBIT" } });
 
-    const customerPayment = await db.payment.create({ data: { workspaceId: workspaceA, customerId: customer.id, amount: 10, netAmount: 10, method: "CASH" } });
-    customerPaymentId = customerPayment.id;
-    const supplierPayment = await db.payment.create({ data: { workspaceId: workspaceA, supplierId: supplier.id, amount: 10, netAmount: 10, method: "CASH" } });
-    supplierPaymentId = supplierPayment.id;
-
+    customerPaymentId = (await db.payment.create({ data: { workspaceId: workspaceA, customerId: customer.id, amount: 10, netAmount: 10, method: "CASH" } })).id;
+    supplierPaymentId = (await db.payment.create({ data: { workspaceId: workspaceA, supplierId: supplier.id, amount: 10, netAmount: 10, method: "CASH" } })).id;
     const purchase = await db.purchaseOrder.create({ data: { workspaceId: workspaceA, supplierId: supplier.id, orderNumber: `PO-ISO-${runId}`, status: "RECEIVED", totalAmount: 10, balanceAmount: 10 } });
     const poItem = await db.purchaseOrderItem.create({ data: { purchaseOrderId: purchase.id, productId: product.id, productName: product.name, quantity: 1, receivedQuantity: 1, unitCost: 10, totalCost: 10 } });
     const supplierReturn = await db.supplierReturn.create({ data: { workspaceId: workspaceA, supplierId: supplier.id, purchaseOrderId: purchase.id, number: `SR-ISO-${runId}`, status: "POSTED", totalAmount: 10 } });
     supplierReturnId = supplierReturn.id;
     await db.supplierReturnItem.create({ data: { supplierReturnId: supplierReturn.id, purchaseOrderItemId: poItem.id, productId: product.id, quantity: 1, unitCost: 10, totalCost: 10 } });
-
-    const expense = await db.expense.create({ data: { workspaceId: workspaceA, expenseAccountId: account.id, paymentAccountId: account.id, voucherNumber: `EXP-ISO-${runId}`, expenseDate: new Date(), amount: 10 } });
-    expenseId = expense.id;
+    expenseId = (await db.expense.create({ data: { workspaceId: workspaceA, expenseAccountId: account.id, paymentAccountId: account.id, voucherNumber: `EXP-ISO-${runId}`, expenseDate: new Date(), amount: 10 } })).id;
   }, 60_000);
 
   afterAll(async () => {
     if (!db) return;
-    const ids = [workspaceA, workspaceB].filter(Boolean);
-    if (ids.length) await db.workspace.deleteMany({ where: { id: { in: ids } } });
-    if (userId) await db.user.deleteMany({ where: { id: userId } });
+    if (workspaceA && userId) await teardownTestWorkspace(workspaceA, userId);
+    if (workspaceB) await db.workspace.delete({ where: { id: workspaceB } }).catch(() => undefined);
     await db.$disconnect();
   }, 60_000);
 
@@ -67,17 +62,14 @@ describe("financial reversal workspace isolation", () => {
     await expect(reverseCustomerPayment({ workspaceId: workspaceB, role: "OWNER", userId }, customerPaymentId, "Cross workspace attempt")).rejects.toThrow("Customer payment not found.");
     expect((await db.payment.findUniqueOrThrow({ where: { id: customerPaymentId } })).isReversed).toBe(false);
   });
-
   it("cannot reverse supplier payments from another workspace", async () => {
     await expect(reverseSupplierPayment({ workspaceId: workspaceB, role: "OWNER", userId }, supplierPaymentId, "Cross workspace attempt")).rejects.toThrow("Supplier payment not found.");
     expect((await db.payment.findUniqueOrThrow({ where: { id: supplierPaymentId } })).isReversed).toBe(false);
   });
-
   it("cannot cancel supplier returns from another workspace", async () => {
     await expect(cancelSupplierReturn({ workspaceId: workspaceB, role: "OWNER", userId }, supplierReturnId, "Cross workspace attempt")).rejects.toThrow("Supplier return not found.");
     expect((await db.supplierReturn.findUniqueOrThrow({ where: { id: supplierReturnId } })).status).toBe("POSTED");
   });
-
   it("cannot reverse expenses from another workspace", async () => {
     await expect(reverseExpense({ workspaceId: workspaceB, role: "OWNER", userId }, expenseId, "Cross workspace attempt")).rejects.toThrow("Expense not found.");
     expect(await db.expense.findUnique({ where: { id: expenseId } })).not.toBeNull();
