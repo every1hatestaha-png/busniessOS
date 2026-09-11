@@ -1,22 +1,29 @@
 import { notFound } from "next/navigation";
 
 import { PrintButton } from "@/components/invoices/print-button";
+import { ReverseSupplierPaymentButton } from "@/components/payments/reverse-supplier-payment-button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { requirePermission } from "@/lib/server/authorization";
+import { getSupplierPaymentReversalState } from "@/lib/server/supplier-payment-reversals";
 import { getSupplierPaymentVoucher } from "@/lib/server/suppliers";
 import { formatDate, formatPKR } from "@/lib/utils";
 
 export default async function PaymentVoucherPage({ params }: { params: Promise<{ id: string }> }) {
   const { workspaceId } = await requirePermission("financial.manage");
-  const voucher = await getSupplierPaymentVoucher(workspaceId, (await params).id);
-  if (!voucher) notFound();
+  const id = (await params).id;
+  const [voucher, reversalState] = await Promise.all([
+    getSupplierPaymentVoucher(workspaceId, id),
+    getSupplierPaymentReversalState(workspaceId, id),
+  ]);
+  if (!voucher || !reversalState) notFound();
+  const status = reversalState.isReversal ? "REVERSAL" : reversalState.isReversed ? "REVERSED" : null;
 
   return (
     <div className="mx-auto max-w-[1050px] space-y-4 print:max-w-none print:space-y-0">
-      <div className="flex items-center justify-between print:hidden"><div><p className="text-sm text-neutral-500">Supplier payment voucher</p><h1 className="text-2xl font-bold">{voucher.documentNumber}</h1></div><PrintButton label="Print voucher" /></div>
+      <div className="flex flex-wrap items-center justify-between gap-3 print:hidden"><div><p className="text-sm text-neutral-500">Supplier payment voucher</p><div className="flex items-center gap-2"><h1 className="text-2xl font-bold">{voucher.documentNumber}</h1>{status && <span className="rounded-full border border-neutral-300 px-2 py-0.5 text-xs font-semibold">{status}</span>}</div></div><div className="flex items-center gap-2">{reversalState.canReverse && <ReverseSupplierPaymentButton paymentId={id} documentNumber={voucher.documentNumber} />}<PrintButton label="Print voucher" /></div></div>
       <article className="bg-white p-8 shadow-sm print:p-0 print:shadow-none">
         <header className="border-b-2 border-neutral-900 pb-5">
-          <div className="flex items-start justify-between gap-8"><div><p className="text-xs font-bold uppercase tracking-[0.25em] text-neutral-500">Bank Payment Voucher</p><h2 className="mt-2 text-2xl font-bold">{voucher.workspace.name}</h2><div className="mt-2 text-sm text-neutral-600">{voucher.workspace.address && <p>{voucher.workspace.address}</p>}<p>{[voucher.workspace.city, voucher.workspace.country].filter(Boolean).join(", ")}</p>{voucher.workspace.phone && <p>{voucher.workspace.phone}</p>}</div></div><div className="text-right"><p className="font-mono text-lg font-bold">{voucher.documentNumber}</p><p className="mt-2 text-sm text-neutral-600">Date: {formatDate(voucher.paymentDate)}</p><p className="text-sm text-neutral-600">Method: {voucher.method.replaceAll("_", " ")}</p></div></div>
+          <div className="flex items-start justify-between gap-8"><div><p className="text-xs font-bold uppercase tracking-[0.25em] text-neutral-500">Bank Payment Voucher</p><h2 className="mt-2 text-2xl font-bold">{voucher.workspace.name}</h2><div className="mt-2 text-sm text-neutral-600">{voucher.workspace.address && <p>{voucher.workspace.address}</p>}<p>{[voucher.workspace.city, voucher.workspace.country].filter(Boolean).join(", ")}</p>{voucher.workspace.phone && <p>{voucher.workspace.phone}</p>}</div></div><div className="text-right"><p className="font-mono text-lg font-bold">{voucher.documentNumber}</p><p className="mt-2 text-sm text-neutral-600">Date: {formatDate(voucher.paymentDate)}</p><p className="text-sm text-neutral-600">Method: {voucher.method.replaceAll("_", " ")}</p>{status && <p className="mt-2 text-xs font-bold uppercase tracking-[0.18em]">{status}</p>}</div></div>
         </header>
         <section className="grid gap-6 border-b border-neutral-200 py-6 md:grid-cols-2">
           <div><p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Paid to</p><p className="mt-2 text-lg font-semibold">{voucher.supplier?.companyName ?? voucher.supplier?.name}</p>{voucher.supplier?.companyName && <p className="text-sm text-neutral-600">{voucher.supplier.name}</p>}<div className="mt-2 text-sm text-neutral-500">{voucher.supplier?.address && <p>{voucher.supplier.address}</p>}{voucher.supplier?.phone && <p>{voucher.supplier.phone}</p>}</div></div>
