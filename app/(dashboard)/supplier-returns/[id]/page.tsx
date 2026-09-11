@@ -5,6 +5,7 @@ import { ChevronLeft } from "lucide-react";
 import { DocumentFrame } from "@/components/documents/document-frame";
 import { DocumentSignatures } from "@/components/documents/document-signatures";
 import { PrintButton } from "@/components/invoices/print-button";
+import { CancelSupplierReturnButton } from "@/components/purchases/cancel-supplier-return-button";
 import { requirePermission } from "@/lib/server/authorization";
 import { getSupplierReturn } from "@/lib/server/purchases";
 import { formatDate, formatPKR } from "@/lib/utils";
@@ -17,11 +18,14 @@ export default async function SupplierReturnDetailPage({ params }: { params: Pro
 
   return (
     <div className="mx-auto max-w-[1050px] space-y-4 print:max-w-none print:space-y-0">
-      <div className="flex items-center justify-between print:hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <Link href="/supplier-returns" className="inline-flex items-center gap-1 text-sm font-medium text-neutral-500 hover:text-neutral-950">
           <ChevronLeft className="h-4 w-4" /> Supplier returns / {data.number}
         </Link>
-        <PrintButton label="Print supplier return" />
+        <div className="flex items-center gap-2">
+          {data.status === "POSTED" && <CancelSupplierReturnButton returnId={data.id} number={data.number} />}
+          <PrintButton label="Print supplier return" />
+        </div>
       </div>
 
       <DocumentFrame
@@ -29,6 +33,7 @@ export default async function SupplierReturnDetailPage({ params }: { params: Pro
         title="Supplier return"
         number={data.number}
         status={data.status}
+        statusReason={data.status === "CANCELLED" ? "Financial effects reversed; original return retained for audit." : undefined}
         details={<><p>Date: {formatDate(data.date)}</p><p>PO: {data.purchaseOrder.orderNumber}</p>{data.goodReceivedNote && <p>GRN: {data.goodReceivedNote.grnNumber}</p>}</>}
       >
         <section data-document-section className="my-6 grid gap-6 border-b border-neutral-200 pb-6 sm:grid-cols-2">
@@ -44,7 +49,7 @@ export default async function SupplierReturnDetailPage({ params }: { params: Pro
         </section>
 
         <section data-document-totals className="my-6 flex justify-end"><div className="flex w-full max-w-sm justify-between border-y-2 border-neutral-950 py-3 text-lg font-bold"><span>Return total</span><span>{formatPKR(data.total)}</span></div></section>
-        {data.debitNote && <section data-document-section className="my-6 text-sm"><p className="font-semibold">Debit note: {data.debitNote.number}</p><p>{formatPKR(data.debitNote.amount)}</p></section>}
+        {data.debitNote && <section data-document-section className="my-6 text-sm"><p className="font-semibold">Debit note: {data.debitNote.number}</p><p>{formatPKR(data.debitNote.amount)}</p>{data.status === "CANCELLED" && <p className="mt-1 text-xs font-semibold uppercase tracking-wide">Cancelled with supplier return reversal</p>}</section>}
         {data.notes && <section data-document-section className="my-6 text-sm"><h2 className="font-semibold">Notes</h2><p className="mt-1 whitespace-pre-wrap text-neutral-700">{data.notes}</p></section>}
         <DocumentSignatures slots={[{ label: "Prepared by" }, { label: "Checked by" }, { label: "Approved by" }]} />
       </DocumentFrame>
