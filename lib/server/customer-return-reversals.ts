@@ -87,7 +87,7 @@ export async function cancelCustomerReturn(context: ServiceContext, customerRetu
     });
     await tx.creditNote.update({
       where: { id: creditNote.id, workspaceId: context.workspaceId },
-      data: { status: "CANCELLED", remainingAmount: 0, notes: [creditNote.notes, `Cancelled with customer return: ${cleanReason}`].filter(Boolean).join("\n") },
+      data: { status: "CANCELLED", notes: [creditNote.notes, `Cancelled with customer return: ${cleanReason}`].filter(Boolean).join("\n") },
     });
     await tx.customerReturn.update({
       where: { id: customerReturn.id, workspaceId: context.workspaceId },
