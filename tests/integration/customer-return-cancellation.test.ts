@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { teardownTestWorkspace } from "../finance-grade/helpers/db-helpers";
 
 let db: typeof import("@/lib/server/db")["db"];
 let ensureDefaultAccounts: typeof import("@/lib/server/accounting")["ensureDefaultAccounts"];
@@ -36,8 +37,7 @@ describe("customer return cancellation", () => {
 
   afterAll(async () => {
     if (!db) return;
-    if (workspaceId) await db.workspace.delete({ where: { id: workspaceId } });
-    if (userId) await db.user.deleteMany({ where: { id: userId } });
+    if (workspaceId && userId) await teardownTestWorkspace(workspaceId, userId);
     await db.$disconnect();
   }, 60_000);
 
@@ -67,7 +67,8 @@ describe("customer return cancellation", () => {
     expect(cancelledFirst.alreadyCancelled).toBe(false);
     const firstCredit = await db.creditNote.findUniqueOrThrow({ where: { customerReturnId: firstReturn.id } });
     expect(firstCredit.status).toBe("CANCELLED");
-    expect(Number(firstCredit.remainingAmount)).toBe(0);
+    expect(Number(firstCredit.appliedAmount)).toBe(0);
+    expect(Number(firstCredit.remainingAmount)).toBe(Number(firstCredit.amount));
     expect(Number((await db.product.findUniqueOrThrow({ where: { id: productId } })).stockQuantity)).toBe(6);
     expect(Number((await db.customer.findUniqueOrThrow({ where: { id: customerId } })).currentBalance)).toBe(80);
 
