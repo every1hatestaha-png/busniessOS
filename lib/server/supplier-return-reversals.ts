@@ -5,7 +5,6 @@ import { Prisma } from "@prisma/client";
 import { reverseGeneralLedgerEntries } from "@/lib/server/accounting";
 import { canPerformAction } from "@/lib/server/authorization";
 import { writeAudit } from "@/lib/server/audit";
-import { db } from "@/lib/server/db";
 import type { ServiceContext } from "@/lib/server/sales";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 
