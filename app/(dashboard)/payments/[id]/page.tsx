@@ -4,22 +4,28 @@ import { notFound } from "next/navigation";
 import { DocumentFrame } from "@/components/documents/document-frame";
 import { DocumentSignatures } from "@/components/documents/document-signatures";
 import { PrintButton } from "@/components/invoices/print-button";
+import { ReversePaymentButton } from "@/components/payments/reverse-payment-button";
+import { canPerformAction } from "@/lib/server/authorization";
 import { requireWorkspace } from "@/lib/server/auth";
 import { getPaymentReceipt } from "@/lib/server/payments";
 import { formatDate, formatPKR } from "@/lib/utils";
 
 export default async function PaymentReceiptPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { workspaceId, workspace } = await requireWorkspace();
+  const { workspaceId, workspace, role } = await requireWorkspace();
   const receipt = await getPaymentReceipt(workspaceId, id);
   if (!receipt) notFound();
   const status = receipt.isReversal ? "REVERSAL" : receipt.isReversed ? "REVERSED" : undefined;
+  const canReverse = canPerformAction(role, "financial.manage") && !receipt.isReversed && !receipt.isReversal;
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-4 print:max-w-none print:space-y-0">
-      <div className="flex items-center justify-between print:hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <Link href={receipt.allocations[0]?.invoiceId ? `/invoices/${receipt.allocations[0].invoiceId}` : "/khata"} className="text-sm font-medium text-neutral-500 hover:text-neutral-950">Back to account</Link>
-        <PrintButton label="Print receipt" />
+        <div className="flex items-center gap-2">
+          {canReverse && <ReversePaymentButton paymentId={receipt.id} documentNumber={receipt.documentNumber} />}
+          <PrintButton label="Print receipt" />
+        </div>
       </div>
       <DocumentFrame workspace={workspace} title="Customer payment receipt" number={receipt.documentNumber} status={status} statusReason={receipt.reversalOf?.documentNumber ? `Reversal of ${receipt.reversalOf.documentNumber}` : undefined} details={<><p>Date: {formatDate(receipt.paymentDate)}</p><p>Method: {receipt.method.replaceAll("_", " ")}</p></>}>
         <section data-document-section className="my-6 grid gap-6 border-b border-neutral-200 pb-6 sm:grid-cols-2">
