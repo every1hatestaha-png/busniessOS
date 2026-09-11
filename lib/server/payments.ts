@@ -1,7 +1,8 @@
 import "server-only";
 
 import { Prisma } from "@prisma/client";
-import { postCustomerPaymentToGeneralLedger } from "@/lib/server/accounting";
+import { postCustomerPaymentToGeneralLedger, reverseGeneralLedgerEntries } from "@/lib/server/accounting";
+import { canPerformAction } from "@/lib/server/authorization";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";
 import type { ServiceContext } from "@/lib/server/sales";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
@@ -96,5 +97,136 @@ export async function recordPayment(context: ServiceContext, input: PaymentInput
     }
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "customer.payment_recorded", entityType: "Payment", entityId: payment.id, metadata: { amount: data.amount } });
     return { id: payment.id };
+  });
+}
+
+/**
+ * Reverse a standalone customer receipt without deleting financial history.
+ * Payments captured as part of sale creation are intentionally excluded because
+ * their cash/AR GL entries use the sale as the accounting source; those must be
+ * reversed through cancelSale so stock, revenue, invoice and payment stay atomic.
+ */
+export async function reverseCustomerPayment(context: ServiceContext, paymentId: string, reason: string) {
+  if (!canPerformAction(context.role, "financial.manage")) throw new PaymentDomainError("Unauthorized");
+  const cleanReason = reason.trim();
+  if (cleanReason.length < 3 || cleanReason.length > 500) throw new PaymentDomainError("Provide a reversal reason between 3 and 500 characters.");
+
+  return withSerializableRetry(async (tx) => {
+    const payment = await tx.payment.findFirst({
+      where: { id: paymentId, workspaceId: context.workspaceId, customerId: { not: null } },
+      include: {
+        allocations: {
+          include: {
+            invoice: { select: { id: true, amount: true, paidAmount: true, creditApplied: true, salesOrderId: true, status: true } },
+          },
+        },
+        reversals: { select: { id: true }, take: 1 },
+      },
+    });
+    if (!payment || !payment.customerId) throw new PaymentDomainError("Customer payment not found.");
+    if (payment.reversalOfId) throw new PaymentDomainError("A reversal entry cannot be reversed again.");
+    if (payment.isReversed) {
+      const existingReversal = payment.reversals[0];
+      if (existingReversal) return { id: existingReversal.id, alreadyReversed: true as const };
+      throw new PaymentDomainError("This payment is already marked reversed.");
+    }
+    if (!payment.cashBankAccountId) throw new PaymentDomainError("Payment has no cash/bank account and cannot be safely reversed.");
+
+    // Standalone receipts post GL entries with sourceId = payment.id. Payments
+    // captured during createSale are posted under the sale id and must use sale cancellation.
+    const standalonePostingCount = await tx.generalLedgerEntry.count({
+      where: { workspaceId: context.workspaceId, sourceType: "RECEIPT", sourceId: payment.id, reversalOfId: null },
+    });
+    if (standalonePostingCount === 0) throw new PaymentDomainError("This receipt was recorded with a sale. Cancel the sale to reverse it safely.");
+
+    const now = new Date();
+    const reversalNumber = await nextDocumentNumber(tx, context.workspaceId, "PAYMENT_RECEIPT");
+    const reversal = await tx.payment.create({
+      data: {
+        workspaceId: context.workspaceId,
+        customerId: payment.customerId,
+        invoiceId: payment.invoiceId,
+        cashBankAccountId: payment.cashBankAccountId,
+        documentNumber: reversalNumber,
+        amount: payment.amount,
+        netAmount: payment.amount,
+        method: payment.method,
+        reference: `REV-${payment.documentNumber ?? payment.reference ?? payment.id.slice(0, 8)}`,
+        notes: `Payment reversal: ${cleanReason}`,
+        paymentDate: now,
+        reversalOfId: payment.id,
+      },
+      select: { id: true },
+    });
+
+    await tx.payment.update({
+      where: { id: payment.id, workspaceId: context.workspaceId },
+      data: { isReversed: true, reversedAt: now },
+    });
+
+    await tx.ledgerEntry.create({
+      data: {
+        workspaceId: context.workspaceId,
+        customerId: payment.customerId,
+        type: "REVERSAL",
+        debit: payment.amount,
+        description: `Reversed payment ${payment.documentNumber ?? payment.id}: ${cleanReason}`,
+        referenceId: reversal.id,
+        date: now,
+      },
+    });
+    await tx.customer.update({
+      where: { id: payment.customerId, workspaceId: context.workspaceId },
+      data: { currentBalance: { increment: payment.amount } },
+    });
+    await tx.cashBankAccount.update({
+      where: { id: payment.cashBankAccountId, workspaceId: context.workspaceId },
+      data: { currentBalance: { decrement: payment.amount } },
+    });
+
+    for (const allocation of payment.allocations) {
+      if (!allocation.invoiceId || !allocation.invoice) continue;
+      const allocationAmount = new Prisma.Decimal(allocation.amount);
+      const nextPaid = allocation.invoice.paidAmount.minus(allocationAmount);
+      if (nextPaid.isNegative()) throw new PaymentDomainError("Payment reversal would make an invoice paid amount negative.");
+      const settled = nextPaid.plus(allocation.invoice.creditApplied);
+      const nextStatus = settled.greaterThanOrEqualTo(allocation.invoice.amount)
+        ? "PAID"
+        : settled.greaterThan(0)
+          ? "PARTIALLY_PAID"
+          : "UNPAID";
+      if (allocation.invoice.status !== "CANCELLED") {
+        await tx.invoice.update({
+          where: { id: allocation.invoice.id, workspaceId: context.workspaceId },
+          data: { paidAmount: nextPaid, status: nextStatus },
+        });
+      }
+      if (allocation.invoice.salesOrderId) {
+        await tx.salesOrder.updateMany({
+          where: { id: allocation.invoice.salesOrderId, workspaceId: context.workspaceId, status: { not: "CANCELLED" } },
+          data: { paidAmount: { decrement: allocationAmount }, balanceAmount: { increment: allocationAmount } },
+        });
+      }
+    }
+
+    await reverseGeneralLedgerEntries(tx, {
+      workspaceId: context.workspaceId,
+      sources: [{ sourceType: "RECEIPT", sourceId: payment.id }],
+      documentNo: `REV-${payment.documentNumber ?? reversalNumber}`,
+      date: now,
+      reason: `Reversed customer payment: ${cleanReason}`,
+      reversedById: context.userId,
+    });
+
+    await writeAudit(tx, {
+      workspaceId: context.workspaceId,
+      actorId: context.userId,
+      action: "customer.payment_reversed",
+      entityType: "Payment",
+      entityId: payment.id,
+      metadata: { reversalId: reversal.id, reversalNumber, reason: cleanReason, amount: payment.amount.toString() },
+    });
+
+    return { id: reversal.id, alreadyReversed: false as const };
   });
 }
