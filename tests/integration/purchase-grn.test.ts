@@ -409,7 +409,7 @@ describe("PO → GRN separation integration", () => {
 
     const grn = await createGoodsReceipt(context(), {
       purchaseOrderId: order.id,
-      items: [{ purchaseOrderItemId: purchase.items[0].id, receivedQuantity: 2, acceptedQuantity: 2, actualUnitCost: Number(purchase.items[0].unitCost) }],
+      items: [{ purchaseOrderItemId: purchase.items[0].id, receivedQuantity: 2, acceptedQuantity: 2, actualUnitCost: Number(purchase.items[0].unitCost), receivedWeightKg: 20, acceptedWeightKg: 20, ratePerKg: 100 }],
       idempotencyKey: `grn-weight-${runId}`,
     });
     expect(Number((await db.goodReceivedNote.findUniqueOrThrow({ where: { id: grn.id } })).totalAmount)).toBe(2000);
@@ -460,5 +460,3 @@ describe("PO → GRN separation integration", () => {
     await db.purchaseOrder.delete({ where: { id: historicalOrder.id } });
   });
 });
-
-
