@@ -146,7 +146,7 @@ describe("BusinessOS V1 production-readiness company scenario", () => {
     expect(Number(weightItem.totalWeight)).toBe(20);
     expect(Number(weightItem.unitCost)).toBe(1000);
     expect(Number(weightItem.totalCost)).toBe(2000);
-    await createGoodsReceipt(context(), { purchaseOrderId: weightPo.id, items: [{ purchaseOrderItemId: weightItem.id, receivedQuantity: 2, acceptedQuantity: 2, actualUnitCost: 1000 }], idempotencyKey: randomUUID() });
+    await createGoodsReceipt(context(), { purchaseOrderId: weightPo.id, items: [{ purchaseOrderItemId: weightItem.id, receivedQuantity: 2, acceptedQuantity: 2, actualUnitCost: 1000, receivedWeightKg: 20, acceptedWeightKg: 20, ratePerKg: 100 }], idempotencyKey: randomUUID() });
 
     const supplierReturn = await createSupplierReturn(context(), { purchaseOrderId: po.id, items: [{ itemId: item.id, quantity: 10 }], reason: "QA return", notes: "", idempotencyKey: randomUUID() });
     expect(Number((await db.supplierReturn.findUniqueOrThrow({ where: { id: supplierReturn.id } })).totalAmount)).toBe(1000);
@@ -224,5 +224,3 @@ describe("BusinessOS V1 production-readiness company scenario", () => {
     expect((await getPayablesAging(otherWorkspaceId)).totalOutstanding).toBe(0);
   }, 180_000);
 });
-
-
