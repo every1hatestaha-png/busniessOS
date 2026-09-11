@@ -3,10 +3,10 @@ import { cn } from "@/lib/utils";
 
 const tones: Record<string, string> = {
   ACTIVE: "border-emerald-200 bg-emerald-50 text-emerald-700", COMPLETED: "border-emerald-200 bg-emerald-50 text-emerald-700", RECEIVED: "border-emerald-200 bg-emerald-50 text-emerald-700", PAID: "border-emerald-200 bg-emerald-50 text-emerald-700", "In Stock": "border-emerald-200 bg-emerald-50 text-emerald-700", Clear: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  PROCESSING: "border-primary-200 bg-primary-50 text-primary-700", CONFIRMED: "border-primary-200 bg-primary-50 text-primary-700", ORDERED: "border-primary-200 bg-primary-50 text-primary-700", Normal: "border-primary-200 bg-primary-50 text-primary-700",
+  PROCESSING: "border-teal-200 bg-teal-50 text-teal-800", CONFIRMED: "border-teal-200 bg-teal-50 text-teal-800", ORDERED: "border-teal-200 bg-teal-50 text-teal-800", Normal: "border-teal-200 bg-teal-50 text-teal-800",
   PARTIALLY_RECEIVED: "border-amber-200 bg-amber-50 text-amber-700", PARTIALLY_PAID: "border-amber-200 bg-amber-50 text-amber-700", UNPAID: "border-amber-200 bg-amber-50 text-amber-700", "Low Stock": "border-amber-200 bg-amber-50 text-amber-700", "Near Limit": "border-amber-200 bg-amber-50 text-amber-700",
-  OVERDUE: "border-destructive-200 bg-destructive-50 text-destructive-700", "Out of Stock": "border-destructive-200 bg-destructive-50 text-destructive-700", "Over Limit": "border-destructive-200 bg-destructive-50 text-destructive-700", BLACKLISTED: "border-destructive-200 bg-destructive-50 text-destructive-700", CANCELLED: "border-destructive-200 bg-destructive-50 text-destructive-700", VOIDED: "border-destructive-200 bg-destructive-50 text-destructive-700",
-  Overdue: "border-destructive-200 bg-destructive-50 text-destructive-700",
+  OVERDUE: "border-red-200 bg-red-50 text-red-700", "Out of Stock": "border-red-200 bg-red-50 text-red-700", "Over Limit": "border-red-200 bg-red-50 text-red-700", BLACKLISTED: "border-red-200 bg-red-50 text-red-700", CANCELLED: "border-red-200 bg-red-50 text-red-700", VOIDED: "border-red-200 bg-red-50 text-red-700",
+  Overdue: "border-red-200 bg-red-50 text-red-700",
 };
 
 export function StatusBadge({ status }: { status: string }) {

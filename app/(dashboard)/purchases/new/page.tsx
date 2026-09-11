@@ -18,7 +18,7 @@ export default async function NewPurchasePage() {
           <ArrowLeft className="size-3.5" />Purchases
         </Link>
         <h1 className="text-xl font-semibold tracking-tight text-foreground">New Purchase Order</h1>
-        <p className="mt-0.5 text-xs text-slate-500">Creates an order commitment only. Inventory and payable are recorded through a GRN.</p>
+        <p className="mt-0.5 text-xs text-slate-500">Creates an order commitment only. Inventory and supplier payable are recorded when goods are received.</p>
       </div>
       <PurchaseForm suppliers={suppliers} products={products} />
     </div>

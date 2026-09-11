@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CalendarDays, MapPin, Phone, Plus, ReceiptText } from "lucide-react";
+import { ArrowLeft, CalendarDays, MapPin, Phone, Plus, Printer, ReceiptText } from "lucide-react";
 
 import { StatusBadge } from "@/components/business/status-badge";
 import { CancelSaleButton } from "@/components/sales/cancel-sale-button";
@@ -31,7 +31,7 @@ export default async function SaleDetailPage({ params }: { params: Promise<{ id:
   const canManageFinancials = canPerformAction(role, "financial.manage");
 
   return <div className="mx-auto max-w-[1600px] space-y-6">
-    <header className="flex items-end justify-between gap-4"><div><Link href="/sales" className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"><ArrowLeft className="size-3.5" />Sales</Link><div className="flex items-center gap-2"><h1 className="font-mono text-xl font-semibold tracking-tight text-foreground">{sale.orderNumber}</h1><StatusBadge status={sale.status} /></div><p className="mt-0.5 text-xs text-muted-foreground">{formatDate(sale.date)} · {sale.customer.companyName}</p></div><div className="flex items-center gap-2">{sale.status !== "CANCELLED" && canManageFinancials && <CancelSaleButton saleId={sale.id} orderNumber={sale.orderNumber} />}<Link href="/sales/new" className={cn(buttonVariants({ size: "sm" }), "gap-1")}><Plus className="size-3" />New Sale</Link></div></header>
+    <header className="flex items-end justify-between gap-4"><div><Link href="/sales" className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"><ArrowLeft className="size-3.5" />Sales</Link><div className="flex items-center gap-2"><h1 className="font-mono text-xl font-semibold tracking-tight text-foreground">{sale.orderNumber}</h1><StatusBadge status={sale.status} /></div><p className="mt-0.5 text-xs text-muted-foreground">{formatDate(sale.date)} · {sale.customer.companyName}</p></div><div className="flex items-center gap-2">{sale.status !== "CANCELLED" && canManageFinancials && <CancelSaleButton saleId={sale.id} orderNumber={sale.orderNumber} />}{sale.invoice && <Link href={`/invoices/${sale.invoice.id}`} className="inline-flex h-7 items-center justify-center rounded-md border px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50"><Printer className="mr-1 size-3.5" />Print Invoice</Link>}<Link href="/sales/new" className={cn(buttonVariants({ size: "sm" }), "gap-1")}><Plus className="size-3" />New Sale</Link></div></header>
 
     <div className="grid overflow-hidden rounded-md border bg-white sm:grid-cols-4 sm:divide-x"><Fact icon={CalendarDays} label="Order date" value={formatDate(sale.date)} /><Fact icon={ReceiptText} label="Line items" value={`${sale.items.length} product${sale.items.length === 1 ? "" : "s"}`} /><Fact label="Paid" value={formatPKR(sale.paidAmount)} /><Fact label="Balance due" value={formatPKR(sale.balanceAmount)} attention={sale.balanceAmount > 0} /></div>
 

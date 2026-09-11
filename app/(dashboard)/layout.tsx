@@ -21,7 +21,7 @@ export default async function DashboardLayout({
       <div className="hidden print:hidden lg:block">
         <Sidebar workspaceName={workspace.name} role={role} />
       </div>
-      <div className="flex flex-1 flex-col overflow-hidden print:block print:overflow-visible">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden print:block print:overflow-visible">
         <TopNav workspaceName={workspace.name} workspaceId={workspace.id} workspaces={workspaces} searchResults={searchResults} role={role} />
         <main className="flex-1 overflow-y-auto px-4 py-4 print:overflow-visible print:p-0 lg:px-6 lg:py-6">
           {children}

@@ -35,7 +35,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <MetricCard label="Outstanding balance" value={formatPKR(customer.currentBalance)} detail="Amount currently receivable" icon={CircleDollarSign} />
         <MetricCard label="Credit terms" value={`${customer.creditDays} days`} detail="Payment period for new invoices" icon={CreditCard} />
-        <MetricCard label="Monetary credit usage" value={credit.value} detail={credit.detail} icon={CreditCard} />
+        <MetricCard label="Credit limit" value={credit.value} detail={credit.detail} icon={CreditCard} />
         <MetricCard label="Total sales" value={formatPKR(customer.totalSales)} detail="Lifetime sales" icon={ShoppingCart} />
         <MetricCard label="Total payments" value={formatPKR(customer.totalPayments)} detail="Lifetime receipts" icon={CircleDollarSign} />
       </div>

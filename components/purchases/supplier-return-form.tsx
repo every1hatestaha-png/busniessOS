@@ -142,9 +142,9 @@ export function SupplierReturnForm({ purchaseOrderId, items, grns }: SupplierRet
           </label>
         );
       })}
-      <input name="reason" required maxLength={300} placeholder="Return reason" className="h-8 w-full rounded-md border px-2.5 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/15" />
-      <textarea name="notes" maxLength={1000} rows={2} placeholder="Notes" className="w-full rounded-md border px-2.5 py-2 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/15" />
-      {message && <p className="text-xs text-slate-700">{message}</p>}
+      <label className="block text-xs"><span className="mb-1 block font-medium text-slate-700">Return reason <span className="font-normal text-red-500">*</span></span><input name="reason" required maxLength={300} placeholder="e.g. Damaged, quality issue, excess stock" className="h-8 w-full rounded-md border px-2.5 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/15" /></label>
+      <label className="block text-xs"><span className="mb-1 block font-medium text-slate-700">Notes <span className="font-normal text-slate-400">(optional)</span></span><textarea name="notes" maxLength={1000} rows={2} placeholder="Additional notes" className="w-full rounded-md border px-2.5 py-2 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/15" /></label>
+      {message && <p role={message.includes("recorded") ? "status" : "alert"} className={`rounded-md px-3 py-2 text-xs font-medium ${message.includes("recorded") ? "border border-green-200 bg-green-50 text-green-800" : "border border-red-200 bg-red-50 text-red-800"}`}>{message}</p>}
       <Button type="submit" size="sm" disabled={busy}>{busy ? "Recording..." : "Record Supplier Return"}</Button>
     </form>
   );

@@ -684,11 +684,11 @@ function startOAuthCallbackListener(codeVerifier, state, mode) {
 
           res.writeHead(200, { "Content-Type": "text/html" });
           res.end(`<!DOCTYPE html>
-<html><head><title>BusinessOS — Authenticated</title></head>
+<html><head><title>MunshiOS — Authenticated</title></head>
 <body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;background:#0f172a;color:#f8fafc;">
 <div style="text-align:center;">
 <h1 style="font-size:24px;margin-bottom:16px;">Sign-in Successful</h1>
-<p style="color:#94a3b8;">You can return to BusinessOS.</p>
+<p style="color:#94a3b8;">You can return to MunshiOS.</p>
 <p style="color:#64748b;font-size:14px;margin-top:8px;">This window will close automatically.</p>
 </div>
 <script>setTimeout(()=>window.close(),3000);</script>
@@ -1041,7 +1041,7 @@ function createSplashWindow() {
     closable: true,
     show: false,
     center: true,
-    title: "BusinessOS",
+    title: "MunshiOS",
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -1085,7 +1085,7 @@ function createSplashWindow() {
 </style>
 </head>
 <body>
-  <div class="logo">BusinessOS</div>
+  <div class="logo">MunshiOS</div>
   <div class="status">Starting...</div>
   <div class="spinner"></div>
 </body>
@@ -1140,7 +1140,7 @@ function createMainWindow() {
     minWidth: MAIN_MIN_WIDTH,
     minHeight: MAIN_MIN_HEIGHT,
     show: false,
-    title: "BusinessOS",
+    title: "MunshiOS",
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -1201,9 +1201,9 @@ function createMainWindow() {
     if (quitting || !mainWindow || mainWindow.isDestroyed()) return;
     void dialog.showMessageBox(mainWindow, {
       type: "error",
-      title: "BusinessOS needs to reload",
+      title: "MunshiOS needs to reload",
       message: "The application window stopped unexpectedly.",
-      detail: "Reload BusinessOS to continue. Your saved records are not affected.",
+      detail: "Reload MunshiOS to continue. Your saved records are not affected.",
       buttons: ["Reload", "Close"],
       defaultId: 0,
       cancelId: 1,
@@ -1255,7 +1255,7 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock();
 _bootstrapLog("INFO", `STAGE: single-instance lock result=${hasSingleInstanceLock}`);
 
 if (!hasSingleInstanceLock) {
-  _bootstrapLog("WARN", "Another BusinessOS instance is already running. Quitting.");
+  _bootstrapLog("WARN", "Another MunshiOS instance is already running. Quitting.");
   app.quit();
 } else {
   app.on("second-instance", () => {
@@ -1305,8 +1305,8 @@ if (!hasSingleInstanceLock) {
       if (error instanceof Error && error.stack) appendLog("ERROR", error.stack);
       try {
         dialog.showErrorBox(
-          "BusinessOS could not start",
-          `The BusinessOS service could not be reached.\n\n${message}\n\nCheck the desktop log for details:\n${path.join(app.getPath("userData"), "logs", "desktop.log")}`
+          "MunshiOS could not start",
+          `The MunshiOS service could not be reached.\n\n${message}\n\nCheck the desktop log for details:\n${path.join(app.getPath("userData"), "logs", "desktop.log")}`
         );
       } catch (dialogErr) {
         appendLog("ERROR", `Could not show error dialog: ${dialogErr.message}`);

@@ -3,7 +3,7 @@
 import { useState, useSyncExternalStore } from "react";
 import { UserButton } from "@clerk/nextjs";
 import type { Role } from "@prisma/client";
-import { Bell, Menu, Search, X } from "lucide-react";
+import { Menu, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -28,7 +28,7 @@ export function TopNav({ workspaceName, workspaceId, workspaces, searchResults, 
           <SheetTrigger render={<Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open navigation menu" />}>
             <Menu className="size-5" />
           </SheetTrigger>
-          <SheetContent side="left" className="w-[236px] gap-0 p-0" showCloseButton={false} onClick={(event) => {
+          <SheetContent side="left" className="w-[260px] max-w-full gap-0 p-0" showCloseButton={false} onClick={(event) => {
             if ((event.target as HTMLElement).closest("a")) setMobileMenuOpen(false);
           }}>
             <SheetTitle className="sr-only">Navigation menu</SheetTitle>
@@ -43,9 +43,6 @@ export function TopNav({ workspaceName, workspaceId, workspaces, searchResults, 
           <WorkspaceSwitcher activeId={workspaceId} workspaces={workspaces} />
           <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileSearchOpen((open) => !open)} aria-label={mobileSearchOpen ? "Close search" : "Open search"}>
             {mobileSearchOpen ? <X /> : <Search />}
-          </Button>
-          <Button variant="ghost" size="icon" className="text-muted-foreground" aria-label="Notifications">
-            <Bell className="size-4" />
           </Button>
           {isDesktop ? <DesktopAccountMenu /> : null}
           {!isDesktop ? <div className="ml-1 flex items-center border-l pl-3"><UserButton /></div> : null}

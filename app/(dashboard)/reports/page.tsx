@@ -28,7 +28,7 @@ const sections = [
 export default async function ReportsPage() {
   await requirePermission("financial.manage");
   return (
-    <div className="mx-auto max-w-7xl space-y-7">
+    <div className="mx-auto max-w-[1600px] space-y-7">
       <header className="border-b border-neutral-200 pb-5"><p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Financial control</p><h1 className="mt-1 text-3xl font-bold tracking-tight">Reports Center</h1><p className="mt-1 text-sm text-neutral-500">Filter, review, and print reports generated from posted workspace records.</p></header>
       {sections.map((section) => <section key={section.title} className="space-y-3"><h2 className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">{section.title}</h2><div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">{section.reports.map(({ href, title, description, icon: Icon }) => (
         <Link key={href} href={href} className="group min-h-32 border border-neutral-200 bg-white p-4 transition hover:border-neutral-500 hover:bg-neutral-50">

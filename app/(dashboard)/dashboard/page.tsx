@@ -25,12 +25,12 @@ import { formatDate, formatPKR, getStockStatus } from "@/lib/utils";
 
 function KpiCard({ href, label, value, detail, icon: Icon }: { href: string; label: string; value: string; detail: string; icon: LucideIcon }) {
   return (
-    <Link href={href} className="group rounded-md border bg-white p-4 transition-colors hover:border-slate-300 hover:bg-slate-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30">
+    <Link href={href} className="group min-w-0 rounded-lg border bg-card p-4 shadow-premium transition-colors hover:border-primary/40 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs font-medium text-slate-500">{label}</p>
-        <span className="flex size-7 items-center justify-center rounded border bg-slate-50 text-slate-500 group-hover:bg-white"><Icon className="size-3.5" /></span>
+        <span className="flex size-7 shrink-0 items-center justify-center rounded border bg-accent text-accent-foreground"><Icon className="size-3.5" /></span>
       </div>
-      <p className="mt-3 text-[22px] font-semibold tracking-tight text-foreground tabular-nums">{value}</p>
+      <p className="mt-3 break-words text-[22px] font-semibold tracking-tight text-foreground tabular-nums">{value}</p>
       <p className="mt-1 text-[11px] text-slate-500">{detail}</p>
     </Link>
   );
@@ -38,12 +38,12 @@ function KpiCard({ href, label, value, detail, icon: Icon }: { href: string; lab
 
 function PanelHeading({ title, description, href, linkLabel = "View all" }: { title: string; description: string; href?: string; linkLabel?: string }) {
   return (
-    <CardHeader className="flex-row items-center justify-between border-b px-4 py-3">
+    <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
       <div>
         <CardTitle className="text-sm font-semibold text-slate-900">{title}</CardTitle>
         <p className="mt-0.5 text-[11px] text-slate-500">{description}</p>
       </div>
-      {href && <Link href={href} className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:text-blue-900 focus-visible:outline-none focus-visible:underline">{linkLabel}<ArrowRight className="size-3" /></Link>}
+      {href && <Link href={href} className="inline-flex items-center gap-1 text-xs font-medium text-accent-foreground hover:underline focus-visible:outline-none focus-visible:underline">{linkLabel}<ArrowRight className="size-3" /></Link>}
     </CardHeader>
   );
 }
@@ -57,7 +57,7 @@ function QuickAction({ href, label, detail, icon: Icon, primary = false }: { hre
       <span className={primary ? "flex size-7 items-center justify-center rounded bg-white/15" : "flex size-7 items-center justify-center rounded bg-slate-100 text-slate-600"}><Icon className="size-3.5" /></span>
       <span className="min-w-0">
         <span className="block text-xs font-semibold">{label}</span>
-        <span className={primary ? "block truncate text-[10px] text-blue-100" : "block truncate text-[10px] text-slate-500"}>{detail}</span>
+        <span className={primary ? "block text-[11px] text-white" : "block text-[11px] text-muted-foreground"}>{detail}</span>
       </span>
     </Link>
   );
@@ -77,9 +77,9 @@ export default async function DashboardPage() {
 
   const rendered = (
     <div className="mx-auto max-w-[1600px] space-y-6">
-      <header className="flex items-end justify-between gap-4">
+      <header className="flex flex-col items-start gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-xs text-slate-500"><span>{workspace.name}</span><span aria-hidden="true">/</span><span>{currentDate}</span></div>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500"><span>{workspace.name}</span><span aria-hidden="true">/</span><span>{currentDate}</span></div>
           <h1 className="mt-1 text-xl font-semibold tracking-tight text-foreground">Dashboard</h1>
           <p className="mt-0.5 text-xs text-slate-500">Welcome back, {user.firstName ?? "team"}. Here is today&apos;s operating view.</p>
         </div>
@@ -89,7 +89,9 @@ export default async function DashboardPage() {
       </header>
 
       {financials && (
-        <section aria-label="Financial overview" className="grid gap-3 lg:grid-cols-4">
+        <section aria-label="Financial overview" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <KpiCard href="/sales" label="Sales this month" value={formatPKR(financials.salesThisMonth)} detail="Current month sales" icon={ShoppingCart} />
+          <KpiCard href="/goods-receipts" label="Goods received this month" value={formatPKR(financials.purchasesThisMonth)} detail="Received purchasing, not ordered PO value" icon={PackageCheck} />
           <KpiCard href="/receivables" label="Receivables" value={formatPKR(financials.receivables)} detail="Customer account balances" icon={ReceiptText} />
           <KpiCard href="/payables" label="Payables" value={formatPKR(financials.payables)} detail="Supplier account balances" icon={Banknote} />
           <KpiCard href="/accounting/cash-bank" label="Cash & Bank" value={formatPKR(financials.cashBank)} detail="Active account balances" icon={Landmark} />

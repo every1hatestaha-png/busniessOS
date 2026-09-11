@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -21,19 +21,26 @@ export function SupplierPaymentForm({ supplierId, cashBankAccounts = [] }: { sup
   const [loadingPurchases, setLoadingPurchases] = useState(true);
   const [purchasesLoadError, setPurchasesLoadError] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [retryRequired, setRetryRequired] = useState(false);
+  const submittedForm = useRef<FormData | null>(null);
+  const [recorded, setRecorded] = useState(false);
+  const [purchaseLoadAttempt, setPurchaseLoadAttempt] = useState(0);
   const [idempotencyKey] = useState(() => crypto.randomUUID());
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
   useEffect(() => {
-    fetch(`/api/v1/suppliers/${supplierId}/purchases`)
+    const controller = new AbortController();
+    fetch(`/api/v1/suppliers/${supplierId}/purchases`, { signal: controller.signal })
       .then((r) => { if (!r.ok) throw new Error("Failed to load purchases"); return r.json(); })
-      .then((body) => { if (body.data) setPurchases(body.data); })
-      .catch(() => { setPurchases([]); setPurchasesLoadError(true); })
-      .finally(() => setLoadingPurchases(false));
-  }, [supplierId]);
+      .then((body) => { if (!Array.isArray(body.data)) throw new Error("Invalid purchases response"); if (!controller.signal.aborted) setPurchases(body.data); })
+      .catch(() => { if (!controller.signal.aborted) setPurchasesLoadError(true); })
+      .finally(() => { if (!controller.signal.aborted) setLoadingPurchases(false); });
+    return () => controller.abort();
+  }, [supplierId, purchaseLoadAttempt]);
 
   const gross = Object.values(allocations).reduce((sum, v) => sum + v, 0);
-  const net = Math.max(0, gross - Number(wht || 0));
+  const net = gross - Number(wht || 0);
+  const overWht = Number(wht || 0) > gross;
 
   function setAlloc(purchaseId: string, value: string) {
     const num = Math.max(0, parseFloat(value) || 0);
@@ -47,12 +54,14 @@ export function SupplierPaymentForm({ supplierId, cashBankAccounts = [] }: { sup
   return (
     <form
       className="rounded-xl border border-neutral-200 bg-white p-4"
+      aria-busy={busy}
       onSubmit={async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
-        if (busy) return;
+        if (busy || recorded || loadingPurchases || purchasesLoadError || overWht || gross === 0) return;
         setBusy(true);
         setMessage("");
-        const form = new FormData(event.currentTarget);
+        const form = retryRequired && submittedForm.current ? submittedForm.current : new FormData(event.currentTarget);
+        submittedForm.current = form;
         const allocEntries = Object.entries(allocations)
           .filter(([, v]) => v > 0)
           .map(([purchaseOrderId, amount]) => ({ purchaseOrderId, amount }));
@@ -72,45 +81,49 @@ export function SupplierPaymentForm({ supplierId, cashBankAccounts = [] }: { sup
             }),
           });
           const body = await response.json();
-          setMessage(response.ok ? "Voucher recorded." : body.error?.message ?? "Payment could not be recorded.");
+          setRetryRequired(!response.ok && response.status >= 500);
+          setMessage(response.ok ? "Voucher recorded." : response.status >= 500 ? "The result could not be confirmed. Your inputs are preserved and locked; retry the same voucher." : body.error?.message ?? "Payment could not be recorded. Review your inputs and try again.");
           if (response.ok) {
+            setRecorded(true);
+            setBusy(false);
             if (body.data?.id) router.push(`/accounting/payment-vouchers/${body.data.id}`);
             else router.refresh();
             return;
           }
         } catch {
-          setMessage("The result is unknown because the network request failed. Retry to safely reuse the same voucher key.");
+          setRetryRequired(true);
+          setMessage("The result is unknown because the request or response failed. Your inputs are preserved and locked; retry the same voucher with the same key.");
         }
         setBusy(false);
       }}
     >
-<div className="mb-4 flex items-start justify-between gap-4">
-        <div><h2 className="font-semibold">Supplier payment voucher</h2><p className="mt-1 text-xs text-neutral-500">Allocate gross settlement against open purchase bills. WHT is deducted from the net cash/bank payment.</p></div>
-        <div className="rounded-lg bg-neutral-950 px-3 py-2 text-right text-white"><p className="text-xs text-neutral-300">Net cash/bank payment</p><p className="font-semibold tabular-nums">{formatPKR(net)}</p></div>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
+        <div><h2 className="font-semibold">Supplier payment voucher</h2><p className="mt-1 text-xs text-neutral-500">Gross settlement is the total allocated to bills. Gross minus withholding tax (WHT) equals the net cash/bank payment.</p></div>
+        <div className="rounded-lg bg-neutral-950 px-3 py-2 text-right text-white"><p className="text-xs text-neutral-300">{overWht ? "Invalid net preview" : "Net cash/bank payment"}</p><p className="font-semibold tabular-nums">{formatPKR(net)}</p></div>
       </div>
+      <fieldset disabled={busy || recorded || retryRequired} className="min-w-0">
       <div className="grid gap-3 lg:grid-cols-6">
         <div className="lg:col-span-2">
-          <label className="mb-1 block text-xs font-medium text-neutral-500">Selected bills: {Object.values(allocations).filter((v) => v > 0).length}</label>
+          <p className="mb-1 block text-xs font-medium text-neutral-500">Selected bills: {Object.values(allocations).filter((v) => v > 0).length}</p>
           <div className="space-y-1 text-xs text-neutral-500">
             <div className="flex justify-between"><span>Gross liability settled (auto)</span><span className="tabular-nums font-medium">{formatPKR(gross)}</span></div>
             <div className="flex justify-between"><span>Less: WHT retained</span><span className="tabular-nums">{formatPKR(Number(wht || 0))}</span></div>
             <div className="flex justify-between border-t pt-1"><span>Net cash/bank payment</span><span className="tabular-nums font-semibold">{formatPKR(net)}</span></div>
           </div>
         </div>
-        <Input className="lg:col-span-1" min="0" step="0.01" type="number" name="withholdingTaxAmount" value={wht} onChange={(event) => setWht(event.target.value)} />
-        <label className="lg:col-span-1 block text-xs font-medium text-neutral-500">Withholding tax (reduces cash payment)</label>
-        <select name="cashBankAccountId" required className={`${fieldClass} lg:col-span-2`}><option value="">Pay from cash/bank</option>{cashBankAccounts.map((account) => <option key={account.cashBankAccountId} value={account.cashBankAccountId}>{account.name}{account.isBank && account.bankName ? ` · ${account.bankName}` : ""} · {formatPKR(account.currentBalance)}</option>)}</select>
-        <select name="method" className={fieldClass}><option value="CASH">Cash</option><option value="BANK_TRANSFER">Bank transfer</option><option value="CHEQUE">Cheque</option><option value="JAZZCASH">JazzCash</option><option value="EASYPAISA">Easypaisa</option><option value="OTHER">Other</option></select>
-        <Input name="reference" placeholder="Reference" />
-        <Input name="paymentDate" type="date" defaultValue={today} required />
+        <label className="grid gap-1 text-xs font-medium text-neutral-500 lg:col-span-2">Withholding tax (PKR)<Input min="0" max={gross} step="0.01" type="number" name="withholdingTaxAmount" value={wht} aria-invalid={overWht} onChange={(event) => setWht(event.target.value)} /></label>
+        <label className="grid gap-1 text-xs font-medium text-neutral-500 lg:col-span-2">Pay from cash/bank<select name="cashBankAccountId" required className={fieldClass}><option value="">Select cash/bank account</option>{cashBankAccounts.map((account) => <option key={account.cashBankAccountId} value={account.cashBankAccountId}>{account.name}{account.isBank && account.bankName ? ` · ${account.bankName}` : ""} · {formatPKR(account.currentBalance)}</option>)}</select></label>
+        <label className="grid gap-1 text-xs font-medium text-neutral-500 lg:col-span-2">Payment method<select name="method" className={fieldClass}><option value="CASH">Cash</option><option value="BANK_TRANSFER">Bank transfer</option><option value="CHEQUE">Cheque</option><option value="JAZZCASH">JazzCash</option><option value="EASYPAISA">Easypaisa</option><option value="OTHER">Other</option></select></label>
+        <label className="grid gap-1 text-xs font-medium text-neutral-500 lg:col-span-2">Reference (optional)<Input name="reference" maxLength={120} /></label>
+        <label className="grid gap-1 text-xs font-medium text-neutral-500 lg:col-span-2">Payment date<Input name="paymentDate" type="date" defaultValue={today} required /></label>
       </div>
 
       <div className="mt-4">
         <h3 className="mb-2 text-sm font-semibold">Allocate against purchase bills</h3>
         {loadingPurchases ? (
-          <p className="text-sm text-neutral-500">Loading open purchases...</p>
+          <p role="status" className="text-sm text-neutral-500">Loading open purchases...</p>
         ) : purchasesLoadError ? (
-          <p className="text-sm text-red-600">Open purchases could not be loaded. Retry before recording a voucher.</p>
+          <div><p role="alert" className="text-sm text-red-600">Open purchases could not be loaded. Your inputs are preserved. Retry before recording a voucher.</p><Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => { setLoadingPurchases(true); setPurchasesLoadError(false); setPurchaseLoadAttempt((attempt) => attempt + 1); }}>Retry loading purchases</Button></div>
         ) : purchases.length === 0 ? (
           <p className="text-sm text-amber-700">No open purchase bills available. Opening or other unallocated supplier payable cannot be settled here.</p>
         ) : (
@@ -140,8 +153,8 @@ export function SupplierPaymentForm({ supplierId, cashBankAccounts = [] }: { sup
                       <td className="py-2 pr-2 text-right font-semibold tabular-nums">{formatPKR(purchase.balanceAmount)}</td>
                       <td className="py-2 pr-2 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <input type="number" min="0" max={purchase.balanceAmount} step="0.01" value={allocated || ""} onChange={(e) => setAlloc(purchase.id, e.target.value)} className="h-7 w-28 rounded border border-neutral-200 px-2 text-right text-xs tabular-nums outline-none focus:ring-2 focus:ring-neutral-200" placeholder="0" />
-                          <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => allocateFull(purchase)}>Full</Button>
+                          <input aria-label={`Gross allocation for ${purchase.orderNumber} (PKR)`} type="number" min="0" max={purchase.balanceAmount} step="0.01" value={allocated || ""} onChange={(e) => setAlloc(purchase.id, e.target.value)} className="h-7 w-28 rounded border border-neutral-200 px-2 text-right text-xs tabular-nums outline-none focus:ring-2 focus:ring-neutral-200" placeholder="0" />
+                          <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" aria-label={`Allocate full payable for ${purchase.orderNumber}`} onClick={() => allocateFull(purchase)}>Full</Button>
                         </div>
                       </td>
                       <td className={`py-2 text-right tabular-nums ${remaining === 0 ? "text-green-600" : "text-neutral-500"}`}>{formatPKR(remaining)}</td>
@@ -154,11 +167,13 @@ export function SupplierPaymentForm({ supplierId, cashBankAccounts = [] }: { sup
         )}
       </div>
 
-      <textarea name="notes" rows={2} className="mt-3 w-full rounded-md border border-neutral-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-200" placeholder="Voucher notes" />
+      <label className="mt-3 grid gap-1 text-xs font-medium text-neutral-500">Voucher notes (optional)<textarea name="notes" maxLength={500} rows={2} className="w-full rounded-md border border-neutral-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-200" /></label>
+      </fieldset>
+      {overWht && <p role="alert" className="mt-3 text-sm text-red-600">Withholding tax cannot exceed the gross settlement. Reduce WHT or adjust bill allocations; the negative net preview is not a valid payment.</p>}
       {cashBankAccounts.length === 0 && <p className="mt-3 text-sm text-red-600">Create a cash/bank account before recording supplier vouchers.</p>}
       {gross === 0 && purchases.length > 0 && <p className="mt-3 text-sm text-amber-600">Allocate at least one purchase bill before recording.</p>}
        {message && <p role={message === "Voucher recorded." ? "status" : "alert"} className="mt-3 text-sm text-neutral-700">{message}</p>}
-       <Button type="submit" size="sm" disabled={busy || cashBankAccounts.length === 0 || gross === 0} className="mt-3">{busy ? "Recording..." : "Record voucher"}</Button>
+       <Button type="submit" size="sm" disabled={busy || recorded || loadingPurchases || purchasesLoadError || overWht || cashBankAccounts.length === 0 || gross === 0} className="mt-3">{busy ? "Recording..." : recorded ? "Voucher recorded" : retryRequired ? "Retry voucher" : "Record voucher"}</Button>
     </form>
   );
 }

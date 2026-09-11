@@ -12,7 +12,7 @@ export default async function SupplierReturnsPage() {
   const returns = await listSupplierReturns(workspaceId);
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-[1600px] space-y-6">
       <PageHeader
         title="Supplier Returns"
         description="Track goods returned to suppliers and associated debit notes."
