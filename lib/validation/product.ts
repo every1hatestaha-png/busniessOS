@@ -1,16 +1,16 @@
 import { z } from "zod";
 
 export const productSchema = z.object({
-  name: z.string().trim().min(2).max(160),
-  sku: z.string().trim().min(3).max(60).regex(/^[A-Za-z0-9-]+$/).transform((value) => value.toUpperCase()),
-  category: z.string().trim().min(2).max(80),
-  costPrice: z.coerce.number().min(0),
-  sellingPrice: z.coerce.number().positive(),
-  stockQuantity: z.coerce.number().min(0),
-  reorderLevel: z.coerce.number().min(0),
+  name: z.string().trim().min(2, "Product name must be at least 2 characters").max(160, "Product name is too long"),
+  sku: z.string().trim().min(3, "SKU must be at least 3 characters").max(60, "SKU is too long").regex(/^[A-Za-z0-9-]+$/, "SKU can contain only letters, numbers, and hyphens").transform((value) => value.toUpperCase()),
+  category: z.string().trim().min(2, "Category must be at least 2 characters").max(80, "Category is too long"),
+  costPrice: z.coerce.number().min(0, "Cost price cannot be negative"),
+  sellingPrice: z.coerce.number().positive("Selling price must be greater than zero"),
+  stockQuantity: z.coerce.number().min(0, "Opening stock cannot be negative"),
+  reorderLevel: z.coerce.number().min(0, "Reorder level cannot be negative"),
   unit: z.enum(["PIECE", "BOX", "CARTON", "KG", "SET", "LITER", "METER"]),
   status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).default("ACTIVE"),
-  description: z.string().trim().min(10).max(500),
+  description: z.string().trim().min(10, "Description must be at least 10 characters").max(500, "Description cannot exceed 500 characters"),
 });
 
 export const productEditSchema = productSchema.omit({ stockQuantity: true });
