@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 let db: typeof import("@/lib/server/db")["db"];
 let ensureDefaultAccounts: typeof import("@/lib/server/accounting")["ensureDefaultAccounts"];
 let createExpense: typeof import("@/lib/server/accounting")["createExpense"];
+let getProfitAndLoss: typeof import("@/lib/server/accounting")["getProfitAndLoss"];
 let reverseExpense: typeof import("@/lib/server/expense-reversals")["reverseExpense"];
 let getExpenseReversalState: typeof import("@/lib/server/expense-reversals")["getExpenseReversalState"];
 
@@ -19,7 +20,7 @@ describe("expense reversal", () => {
     const { config } = await import("dotenv");
     config({ path: ".env.local", quiet: true });
     ({ db } = await import("@/lib/server/db"));
-    ({ ensureDefaultAccounts, createExpense } = await import("@/lib/server/accounting"));
+    ({ ensureDefaultAccounts, createExpense, getProfitAndLoss } = await import("@/lib/server/accounting"));
     ({ reverseExpense, getExpenseReversalState } = await import("@/lib/server/expense-reversals"));
 
     const user = await db.user.create({ data: { clerkId: `expense-reversal-${runId}`, email: `expense-reversal-${runId}@example.invalid` } });
@@ -45,14 +46,15 @@ describe("expense reversal", () => {
     await db.$disconnect();
   }, 60_000);
 
-  it("reverses GL and restores cash without deleting the original expense", async () => {
+  it("reverses GL, restores cash, and removes the expense from P&L without deleting the voucher", async () => {
+    const expenseDate = new Date();
     const expense = await createExpense(
       { workspaceId, role: "OWNER", userId },
       {
         expenseAccountId,
         paymentAccountId,
         amount: 25,
-        expenseDate: new Date(),
+        expenseDate,
         payee: "QA Payee",
         reference: "QA-EXP-REV",
         notes: "Expense reversal test",
@@ -62,15 +64,19 @@ describe("expense reversal", () => {
 
     expect(Number((await db.cashBankAccount.findUniqueOrThrow({ where: { id: cashBankId } })).currentBalance)).toBe(75);
     expect((await getExpenseReversalState(workspaceId, expense.id))?.isReversed).toBe(false);
+    const pnlBefore = await getProfitAndLoss(workspaceId, { from: expenseDate, to: expenseDate });
+    expect(pnlBefore.operatingExpenses).toBe(25);
+    expect(pnlBefore.expenseCategories).toEqual(expect.arrayContaining([expect.objectContaining({ name: "Office Expense", amount: 25 })]));
 
     const reversed = await reverseExpense({ workspaceId, role: "OWNER", userId }, expense.id, "Duplicate voucher");
     expect(reversed.alreadyReversed).toBe(false);
 
-    const [persistedExpense, cash, glRows, state] = await Promise.all([
+    const [persistedExpense, cash, glRows, state, pnlAfter] = await Promise.all([
       db.expense.findUniqueOrThrow({ where: { id: expense.id } }),
       db.cashBankAccount.findUniqueOrThrow({ where: { id: cashBankId } }),
       db.generalLedgerEntry.findMany({ where: { workspaceId, OR: [{ sourceId: expense.id }, { reversalOfId: { not: null } }] } }),
       getExpenseReversalState(workspaceId, expense.id),
+      getProfitAndLoss(workspaceId, { from: expenseDate, to: new Date() }),
     ]);
 
     expect(persistedExpense.id).toBe(expense.id);
@@ -81,6 +87,8 @@ describe("expense reversal", () => {
     const debit = glRows.reduce((sum, row) => sum + Number(row.debit), 0);
     const credit = glRows.reduce((sum, row) => sum + Number(row.credit), 0);
     expect(debit).toBe(credit);
+    expect(pnlAfter.operatingExpenses).toBe(0);
+    expect(pnlAfter.expenseCategories.find((entry) => entry.name === "Office Expense")?.amount ?? 0).toBe(0);
 
     const repeated = await reverseExpense({ workspaceId, role: "OWNER", userId }, expense.id, "Duplicate voucher");
     expect(repeated.alreadyReversed).toBe(true);
