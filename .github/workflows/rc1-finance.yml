@@ -64,10 +64,26 @@ jobs:
         run: npx eslint app components lib
 
       - name: Production dependency audit
-        # Prisma CLI is a dev-only optional peer of @prisma/client. Excluding dev
-        # and peer packages audits the dependency graph shipped by the web runtime
-        # without masking vulnerabilities in direct/runtime dependencies.
-        run: npm audit --omit=dev --omit=peer --audit-level=high
+        # Audit a clean manifest containing only direct runtime dependencies.
+        # This avoids npm's root lockfile retaining the dev-only Prisma CLI through
+        # @prisma/client's optional peer relationship while still failing on any
+        # high-severity vulnerability reachable from the shipped runtime graph.
+        shell: bash
+        run: |
+          runtime_dir="$(mktemp -d)"
+          node - "$runtime_dir/package.json" <<'NODE'
+          const fs = require("node:fs");
+          const source = require("./package.json");
+          fs.writeFileSync(process.argv[2], JSON.stringify({
+            name: "munshios-runtime-audit",
+            version: source.version,
+            private: true,
+            dependencies: source.dependencies,
+          }, null, 2));
+          NODE
+          cd "$runtime_dir"
+          npm install --package-lock-only --ignore-scripts --omit=peer
+          npm audit --omit=peer --audit-level=high
 
   desktop-smoke:
     runs-on: windows-latest
