@@ -107,7 +107,7 @@ export async function createCustomerReturn(context: ServiceContext, input: Custo
     if (!order) throw new SaleDomainError("SALE_NOT_FOUND", "Sale not found.");
     const itemIds = data.items.map((item) => item.itemId);
     if (new Set(itemIds).size !== itemIds.length) throw new SaleDomainError("INVALID_RETURN", "Duplicate return items are not allowed.");
-    const previous = await tx.customerReturnItem.groupBy({ by: ["salesOrderItemId"], where: { salesOrderItemId: { in: itemIds }, customerReturn: { workspaceId: context.workspaceId } }, _sum: { quantity: true } });
+    const previous = await tx.customerReturnItem.groupBy({ by: ["salesOrderItemId"], where: { salesOrderItemId: { in: itemIds }, customerReturn: { workspaceId: context.workspaceId, creditNote: { is: { status: { not: "CANCELLED" } } } } }, _sum: { quantity: true } });
     const refundableBase = order.items.reduce((sum, entry) => sum.plus(entry.totalPrice), new Prisma.Decimal(0));
     const lines = data.items.map((item) => {
       const source = order.items.find((entry) => entry.id === item.itemId);
@@ -150,7 +150,7 @@ export async function createCustomerReturn(context: ServiceContext, input: Custo
 export async function cancelSale(context: ServiceContext, id: string, reverseInitialPayment: boolean) {
   if (!canPerformAction(context.role, "financial.manage")) throw new SaleDomainError("PERMISSION_DENIED", "Unauthorized");
   return withSerializableRetry(async (tx) => {
-    const order = await tx.salesOrder.findFirst({ where: { id, workspaceId: context.workspaceId }, include: { items: true, returns: { select: { id: true }, take: 1 }, invoices: { include: { payments: { where: { isReversed: false }, orderBy: { createdAt: "asc" } }, allocations: { where: { payment: { isReversed: false } }, select: { paymentId: true } }, creditAllocations: { select: { id: true }, take: 1 } } } } });
+    const order = await tx.salesOrder.findFirst({ where: { id, workspaceId: context.workspaceId }, include: { items: true, returns: { where: { creditNote: { is: { status: { not: "CANCELLED" } } } }, select: { id: true }, take: 1 }, invoices: { include: { payments: { where: { isReversed: false }, orderBy: { createdAt: "asc" } }, allocations: { where: { payment: { isReversed: false } }, select: { paymentId: true } }, creditAllocations: { select: { id: true }, take: 1 } } } } });
     if (!order) throw new SaleDomainError("CUSTOMER_NOT_FOUND", "Sale not found.");
     if (order.status === "CANCELLED") return { id: order.id };
     const invoice = order.invoices[0];
@@ -158,7 +158,7 @@ export async function cancelSale(context: ServiceContext, id: string, reverseIni
     const initial = activePayments.find((payment) => payment.notes === "Payment received with sale");
     const laterPayments = activePayments.filter((payment) => payment.id !== initial?.id);
     const laterAllocations = invoice?.allocations.filter((allocation) => allocation.paymentId !== initial?.id) ?? [];
-    if (order.returns.length) throw new SaleDomainError("INVALID_RETURN", "Sale cannot be cancelled after customer returns have been recorded.");
+    if (order.returns.length) throw new SaleDomainError("INVALID_RETURN", "Sale cannot be cancelled after active customer returns have been recorded.");
     if (invoice && (!invoice.creditApplied.isZero() || invoice.creditAllocations.length > 0)) throw new SaleDomainError("INVALID_TOTAL", "Sale cannot be cancelled after customer credit has been applied to its invoice.");
     if (laterPayments.length || laterAllocations.length > 0) throw new SaleDomainError("INVALID_TOTAL", "Sale cannot be cancelled after later payments have been recorded.");
     if (initial && !reverseInitialPayment) throw new SaleDomainError("INVALID_TOTAL", "Explicitly confirm reversal of the initial sale payment.");
@@ -198,7 +198,46 @@ export async function listSales(workspaceId: string) {
 }
 
 export async function getSale(workspaceId: string, id: string) {
-  const row = await db.salesOrder.findFirst({ where: { id, workspaceId }, include: { customer: true, items: { include: { product: { select: { name: true, sku: true } } } }, invoices: true, } });
+  const row = await db.salesOrder.findFirst({
+    where: { id, workspaceId },
+    include: {
+      customer: true,
+      items: { include: { product: { select: { name: true, sku: true } } } },
+      invoices: true,
+      returns: {
+        orderBy: { date: "desc" },
+        include: {
+          creditNote: { select: { id: true, number: true, status: true, amount: true, appliedAmount: true, remainingAmount: true } },
+          items: { select: { id: true, salesOrderItemId: true, productId: true, quantity: true, totalPrice: true } },
+        },
+      },
+    },
+  });
   if (!row) return null;
-  return { id: row.id, orderNumber: row.orderNumber, date: row.orderDate.toISOString(), status: row.status, subtotal: Number(row.subtotal), discount: Number(row.discount), total: Number(row.total), paidAmount: Number(row.paidAmount), balanceAmount: Number(row.balanceAmount), notes: row.notes ?? "", customer: { id: row.customer.id, name: row.customer.name, companyName: row.customer.companyName ?? row.customer.name, phone: row.customer.phone ?? "", address: row.customer.address ?? "", currentBalance: Number(row.customer.currentBalance), creditLimit: Number(row.customer.creditLimit) }, items: row.items.map((item) => ({ id: item.id, productName: item.productName ?? item.product.name, sku: item.productSku ?? item.product.sku ?? "", quantity: item.quantity, unitPrice: Number(item.unitPrice), discountPerUnit: Number(item.discountPerUnit), total: Number(item.totalPrice) })), invoice: row.invoices[0] ? { id: row.invoices[0].id, number: row.invoices[0].invoiceNumber } : null };
+  return {
+    id: row.id,
+    orderNumber: row.orderNumber,
+    date: row.orderDate.toISOString(),
+    status: row.status,
+    subtotal: Number(row.subtotal),
+    discount: Number(row.discount),
+    total: Number(row.total),
+    paidAmount: Number(row.paidAmount),
+    balanceAmount: Number(row.balanceAmount),
+    notes: row.notes ?? "",
+    customer: { id: row.customer.id, name: row.customer.name, companyName: row.customer.companyName ?? row.customer.name, phone: row.customer.phone ?? "", address: row.customer.address ?? "", currentBalance: Number(row.customer.currentBalance), creditLimit: Number(row.customer.creditLimit) },
+    items: row.items.map((item) => ({ id: item.id, productName: item.productName ?? item.product.name, sku: item.productSku ?? item.product.sku ?? "", quantity: item.quantity, unitPrice: Number(item.unitPrice), discountPerUnit: Number(item.discountPerUnit), total: Number(item.totalPrice) })),
+    invoice: row.invoices[0] ? { id: row.invoices[0].id, number: row.invoices[0].invoiceNumber } : null,
+    returns: row.returns.map((entry) => ({
+      id: entry.id,
+      number: entry.number,
+      date: entry.date.toISOString(),
+      reason: entry.reason ?? "",
+      total: Number(entry.totalAmount),
+      restock: entry.restock,
+      notes: entry.notes ?? "",
+      creditNote: entry.creditNote ? { id: entry.creditNote.id, number: entry.creditNote.number, status: entry.creditNote.status, amount: Number(entry.creditNote.amount), appliedAmount: Number(entry.creditNote.appliedAmount), remainingAmount: Number(entry.creditNote.remainingAmount) } : null,
+      items: entry.items.map((item) => ({ id: item.id, salesOrderItemId: item.salesOrderItemId, productId: item.productId, quantity: Number(item.quantity), total: Number(item.totalPrice) })),
+    })),
+  };
 }
