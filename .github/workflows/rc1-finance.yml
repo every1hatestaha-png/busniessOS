@@ -33,6 +33,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_test?sslmode=disable
       NODE_ENV: test
+      RUN_INTEGRATION_TESTS: "true"
 
     steps:
       - name: Checkout
@@ -56,11 +57,31 @@ jobs:
       - name: TypeScript gate
         run: npx tsc --noEmit
 
-      - name: Finance and regression tests
+      - name: Full unit and integration suite
         run: npm test
 
       - name: ESLint gate
         run: npx eslint app components lib
+
+  desktop-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/unused?sslmode=disable
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Desktop smoke tests
         run: npm run desktop:test
