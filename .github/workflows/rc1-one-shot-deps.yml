@@ -1,0 +1,38 @@
+name: RC1 One Shot Dependency Cleanup
+
+on:
+  push:
+    paths:
+      - ".github/workflows/rc1-one-shot-deps.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Move build-time shadcn CLI out of production dependencies
+        run: |
+          npm pkg delete dependencies.shadcn
+          npm pkg set 'devDependencies.shadcn=^4.19.0'
+          npm install --package-lock-only --ignore-scripts
+      - name: Apply non-breaking audit remediations to lockfile
+        run: npm audit fix --package-lock-only --ignore-scripts || true
+      - name: Show production audit after cleanup
+        run: npm audit --omit=dev --audit-level=high || true
+      - name: Commit cleanup and remove one-shot workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/rc1-one-shot-deps.yml
+          git add package.json package-lock.json
+          git commit -m "chore: harden production dependency graph"
+          git push origin HEAD:main
