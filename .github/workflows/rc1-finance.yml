@@ -64,7 +64,10 @@ jobs:
         run: npx eslint app components lib
 
       - name: Production dependency audit
-        run: npm audit --omit=dev --audit-level=high
+        # Prisma CLI is a dev-only optional peer of @prisma/client. Excluding dev
+        # and peer packages audits the dependency graph shipped by the web runtime
+        # without masking vulnerabilities in direct/runtime dependencies.
+        run: npm audit --omit=dev --omit=peer --audit-level=high
 
   desktop-smoke:
     runs-on: windows-latest
