@@ -11,9 +11,23 @@ export const metadata: Metadata = {
   description: "Har karobar ka digital system - Modern operating system for Pakistani businesses",
 };
 
+const clerkLocalization = {
+  signIn: {
+    start: {
+      title: "Sign in to MunshiOS",
+      titleCombined: "Continue to MunshiOS",
+    },
+  },
+  signUp: {
+    start: {
+      title: "Create your MunshiOS account",
+    },
+  },
+};
+
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <ClerkProvider afterSignOutUrl="/sign-in">
+    <ClerkProvider afterSignOutUrl="/sign-in" localization={clerkLocalization}>
       <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
         <body className="flex min-h-full flex-col">{children}</body>
       </html>
