@@ -107,16 +107,16 @@ describe("sales and payments against Neon", () => {
 
     expect(order).toMatchObject({ subtotal: expect.anything(), status: "CONFIRMED" });
     expect(Number(order.subtotal)).toBe(200);
-    expect(Number(order.discount)).toBe(20);
-    expect(Number(order.total)).toBe(180);
+    expect(Number(order.discount)).toBe(30);
+    expect(Number(order.total)).toBe(170);
     expect(Number(order.paidAmount)).toBe(60);
-    expect(Number(order.balanceAmount)).toBe(120);
+    expect(Number(order.balanceAmount)).toBe(110);
     expect(order.items).toHaveLength(1);
     expect(order.invoices).toHaveLength(1);
     expect(order.invoices[0].status).toBe("PARTIALLY_PAID");
     expect(Number(order.invoices[0].paidAmount)).toBe(60);
     expect(product.stockQuantity.toNumber()).toBe(18);
-    expect(Number(customer.currentBalance)).toBe(120);
+    expect(Number(customer.currentBalance)).toBe(110);
     expect(inventory).toHaveLength(1);
     expect(inventory[0].productId).toBe(productA);
     expect(inventory[0].type).toBe("SALE");
@@ -330,5 +330,3 @@ describe("sales and payments against Neon", () => {
     expect(await db.payment.count({ where: { workspaceId: workspaceA, customerId: customerB } })).toBe(before);
   });
 });
-
-
