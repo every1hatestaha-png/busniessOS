@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { teardownTestWorkspace } from "../finance-grade/helpers/db-helpers";
 
 let db: typeof import("@/lib/server/db")["db"];
 let ensureDefaultAccounts: typeof import("@/lib/server/accounting")["ensureDefaultAccounts"];
@@ -52,8 +53,7 @@ describe("supplier return cancellation", () => {
 
   afterAll(async () => {
     if (!db) return;
-    if (workspaceId) await db.workspace.delete({ where: { id: workspaceId } });
-    if (userId) await db.user.deleteMany({ where: { id: userId } });
+    if (workspaceId && userId) await teardownTestWorkspace(workspaceId, userId);
     await db.$disconnect();
   }, 60_000);
 
