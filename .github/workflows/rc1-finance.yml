@@ -48,9 +48,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Production dependency audit
-        run: npm audit --omit=dev --audit-level=high
-
       - name: Validate Prisma schema
         run: npx prisma validate
 
@@ -65,6 +62,9 @@ jobs:
 
       - name: ESLint gate
         run: npx eslint app components lib
+
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
 
   desktop-smoke:
     runs-on: windows-latest
