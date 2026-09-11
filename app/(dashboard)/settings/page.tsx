@@ -49,7 +49,7 @@ export default async function SettingsPage() {
       <MemberManager members={members} invitations={invitations} />
       <div className="border-t border-neutral-200 pt-6">
         <p className="text-xs text-neutral-400">
-          BusinessOS v{version}
+          MunshiOS v{version}
         </p>
       </div>
     </div>
