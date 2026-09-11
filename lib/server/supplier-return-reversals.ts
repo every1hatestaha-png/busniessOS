@@ -48,11 +48,14 @@ export async function cancelSupplierReturn(context: ServiceContext, supplierRetu
       });
       if (changed.count !== 1) throw new SupplierReturnReversalError("Inventory changed while cancelling this supplier return. Retry the cancellation.");
 
+      // InventoryTransactionType has no generic REVERSAL member. Use ADJUSTMENT
+      // with an explicit reversal reference rather than introducing a migration
+      // just for the movement label.
       await tx.inventoryTransaction.create({
         data: {
           workspaceId: context.workspaceId,
           productId: item.productId,
-          type: "REVERSAL",
+          type: "ADJUSTMENT",
           quantityChanged: item.quantity,
           unitCost: item.totalCost.div(item.quantity),
           reference: `REV-${supplierReturn.number}`,
