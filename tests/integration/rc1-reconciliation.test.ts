@@ -1,10 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createTestWorkspace, getDb, teardownTestWorkspace, verifyGLBalanced } from "../finance-grade/helpers/db-helpers";
-import { ownerContext } from "../finance-grade/helpers/context-helpers";
-
-let db: Awaited<ReturnType<typeof getDb>>;
+let db: typeof import("@/lib/server/db")["db"];
 let workspaceId = "";
 let userId = "";
 let customerId = "";
@@ -12,12 +9,24 @@ let productId = "";
 let cashBankAccountId = "";
 
 const runId = `rc1-${Date.now()}`;
+const context = () => ({ workspaceId, userId, role: "OWNER" as const });
+
+async function verifyGLBalanced() {
+  const totals = await db.generalLedgerEntry.aggregate({ where: { workspaceId }, _sum: { debit: true, credit: true } });
+  const totalDebit = Number(totals._sum.debit ?? 0);
+  const totalCredit = Number(totals._sum.credit ?? 0);
+  return { totalDebit, totalCredit, balanced: Math.abs(totalDebit - totalCredit) < 0.001 };
+}
 
 beforeAll(async () => {
-  db = await getDb();
-  const workspace = await createTestWorkspace(runId);
-  workspaceId = workspace.workspaceId;
-  userId = workspace.userId;
+  const { config } = await import("dotenv");
+  config({ path: ".env.local", quiet: true });
+  ({ db } = await import("@/lib/server/db"));
+
+  const user = await db.user.create({ data: { clerkId: `rc1-${runId}`, email: `rc1-${runId}@example.invalid` } });
+  userId = user.id;
+  const workspace = await db.workspace.create({ data: { name: `RC1 ${runId}`, members: { create: { userId, role: "OWNER" } } } });
+  workspaceId = workspace.id;
 
   const { ensureDefaultAccounts } = await import("@/lib/server/accounting");
   const { createProduct } = await import("@/lib/server/products");
@@ -54,19 +63,21 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  if (workspaceId && userId) await teardownTestWorkspace(workspaceId, userId);
+  if (!db) return;
+  if (workspaceId) await db.workspace.delete({ where: { id: workspaceId } }).catch(() => undefined);
+  if (userId) await db.user.delete({ where: { id: userId } }).catch(() => undefined);
+  await db.$disconnect();
 }, 60_000);
 
 describe("RC1 finance reconciliation", () => {
   it("reconciles sale, receipt, statement, AR, inventory, cash, GL, P&L and aging", async () => {
-    const context = ownerContext(workspaceId, userId);
     const { createSale } = await import("@/lib/server/sales");
     const { recordPayment } = await import("@/lib/server/payments");
     const { getCustomerStatement, getCurrentStockReport } = await import("@/lib/server/reports");
     const { getFinancialDashboard, getProfitAndLoss, getCashBankAccountLedger } = await import("@/lib/server/accounting");
     const { getReceivablesAging } = await import("@/lib/server/receivables");
 
-    const sale = await createSale(context, {
+    const sale = await createSale(context(), {
       customerId,
       items: [{ productId, quantity: 50, unitPrice: 1000, discountPerUnit: 50 }],
       orderDiscount: 0,
@@ -79,7 +90,7 @@ describe("RC1 finance reconciliation", () => {
     const invoice = await db.invoice.findFirstOrThrow({ where: { workspaceId, salesOrderId: sale.id } });
     expect(Number(invoice.amount)).toBe(47_500);
 
-    await recordPayment(context, {
+    await recordPayment(context(), {
       customerId,
       invoiceId: invoice.id,
       cashBankAccountId,
@@ -103,7 +114,7 @@ describe("RC1 finance reconciliation", () => {
       getProfitAndLoss(workspaceId),
       getReceivablesAging(workspaceId, { asOf: new Date(), timeZone: "Asia/Karachi" }),
       getCashBankAccountLedger(workspaceId, cashBankAccountId),
-      verifyGLBalanced(workspaceId),
+      verifyGLBalanced(),
     ]);
 
     expect(Number(customer.currentBalance)).toBe(37_500);
@@ -162,7 +173,6 @@ describe("RC1 finance reconciliation", () => {
   }, 60_000);
 
   it("keeps a sale-time receipt and its cancellation reconciled to cash", async () => {
-    const context = ownerContext(workspaceId, userId);
     const { createSale, cancelSale } = await import("@/lib/server/sales");
 
     const [cashBefore, customerBefore, productBefore] = await Promise.all([
@@ -171,7 +181,7 @@ describe("RC1 finance reconciliation", () => {
       db.product.findUniqueOrThrow({ where: { id: productId } }),
     ]);
 
-    const sale = await createSale(context, {
+    const sale = await createSale(context(), {
       customerId,
       items: [{ productId, quantity: 1, unitPrice: 1000, discountPerUnit: 0 }],
       orderDiscount: 0,
@@ -198,7 +208,7 @@ describe("RC1 finance reconciliation", () => {
     expect(Number(invoice.paidAmount)).toBe(500);
     expect(invoice.status).toBe("PARTIALLY_PAID");
 
-    await cancelSale(context, sale.id, true);
+    await cancelSale(context(), sale.id, true);
 
     const [cashAfterCancel, customerAfterCancel, productAfterCancel, cancelledSale, cancelledInvoice, gl] = await Promise.all([
       db.cashBankAccount.findUniqueOrThrow({ where: { id: cashBankAccountId } }),
@@ -206,7 +216,7 @@ describe("RC1 finance reconciliation", () => {
       db.product.findUniqueOrThrow({ where: { id: productId } }),
       db.salesOrder.findUniqueOrThrow({ where: { id: sale.id } }),
       db.invoice.findUniqueOrThrow({ where: { id: invoice.id } }),
-      verifyGLBalanced(workspaceId),
+      verifyGLBalanced(),
     ]);
 
     expect(Number(cashAfterCancel.currentBalance)).toBe(Number(cashBefore.currentBalance));
