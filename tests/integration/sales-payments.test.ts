@@ -17,6 +17,7 @@ let getProduct: typeof import("@/lib/server/products")["getProduct"];
 let ensureDefaultAccounts: typeof import("@/lib/server/accounting")["ensureDefaultAccounts"];
 let createCashBankAccount: typeof import("@/lib/server/accounting")["createCashBankAccount"];
 let getReceivablesAging: typeof import("@/lib/server/receivables")["getReceivablesAging"];
+let getInvoice: typeof import("@/lib/server/invoices")["getInvoice"];
 
 let workspaceA: string;
 let workspaceB: string;
@@ -54,6 +55,7 @@ describe("sales and payments against Neon", () => {
     ({ getProduct } = await import("@/lib/server/products"));
     ({ ensureDefaultAccounts, createCashBankAccount } = await import("@/lib/server/accounting"));
     ({ getReceivablesAging } = await import("@/lib/server/receivables"));
+    ({ getInvoice } = await import("@/lib/server/invoices"));
 
     const [userA, userB] = await Promise.all([
       db.user.create({ data: { clerkId: `test-clerk-a-${runId}`, email: `test-a-${runId}@example.invalid` } }),
@@ -129,6 +131,33 @@ describe("sales and payments against Neon", () => {
     expect(Number(paymentLedger?.credit)).toBe(60);
     expect(await getSale(workspaceB, result.id)).toBeNull();
     expect((await listSales(workspaceB)).some((sale) => sale.id === result.id)).toBe(false);
+  });
+
+  it("persists overridden actual weight and exposes it on sale and invoice DTOs", async () => {
+    const product = await db.product.create({ data: { workspaceId: workspaceA, name: `Weighted sale ${runId}`, sku: `weighted-sale-${runId}`, costPrice: 400, sellingPrice: 300, stockQuantity: 10, defaultWeightKg: 4.5 } });
+    const result = await createSale(context(workspaceA), {
+      customerId: customerA,
+      items: [{ productId: product.id, quantity: 3, pricingMode: "WEIGHT", unitWeight: 4.72, perKgRate: 285, unitPrice: 1, discountPerUnit: 5 }],
+      orderDiscount: 0,
+      paidAmount: 0,
+      notes: "Variable actual weight regression",
+      idempotencyKey: randomUUID(),
+    });
+
+    const [stored, sale, invoiceRow] = await Promise.all([
+      db.salesOrderItem.findFirstOrThrow({ where: { salesOrderId: result.id, productId: product.id } }),
+      getSale(workspaceA, result.id),
+      db.invoice.findUniqueOrThrow({ where: { salesOrderId: result.id }, select: { id: true } }),
+    ]);
+    const invoice = await getInvoice(workspaceA, invoiceRow.id);
+
+    expect(stored.pricingMode).toBe("WEIGHT");
+    expect(Number(stored.unitWeight)).toBe(4.72);
+    expect(Number(stored.totalWeight)).toBe(14.16);
+    expect(Number(stored.perKgRate)).toBe(285);
+    expect(Number(stored.unitPrice)).toBeCloseTo(1345.2, 2);
+    expect(sale?.items[0]).toMatchObject({ pricingMode: "WEIGHT", unitWeight: 4.72, totalWeight: 14.16, perKgRate: 285 });
+    expect(invoice?.order?.items[0]).toMatchObject({ pricingMode: "WEIGHT", unitWeight: 4.72, totalWeight: 14.16, perKgRate: 285 });
   });
 
   it("rolls back the entire sale when stock is insufficient", async () => {
