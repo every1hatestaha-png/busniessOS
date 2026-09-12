@@ -8,7 +8,13 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 
 export const metadata: Metadata = {
   title: "MunshiOS",
-  description: "Har karobar ka digital system - Modern operating system for Pakistani businesses",
+  applicationName: "MunshiOS",
+  description: "Har karobar ka digital system, modern operating system for Pakistani businesses",
+  icons: {
+    icon: "/brand/munshios-mark.svg",
+    shortcut: "/brand/munshios-mark.svg",
+    apple: "/brand/munshios-mark.svg",
+  },
 };
 
 const clerkLocalization = {

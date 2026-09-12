@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { Role } from "@prisma/client";
@@ -56,9 +57,11 @@ export function Sidebar({ workspaceName, role }: { workspaceName: string; role: 
   return (
     <aside className="flex h-full w-[260px] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <div className="flex h-16 shrink-0 items-center gap-3 border-b border-sidebar-border px-4">
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-base font-bold text-sidebar-primary-foreground">M</div>
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] p-1.5 shadow-sm">
+          <Image src="/brand/munshios-mark.svg" alt="MunshiOS" width={40} height={40} priority className="size-full" />
+        </div>
         <div className="min-w-0 leading-tight">
-          <p className="text-base font-semibold tracking-tight text-white">MunshiOS</p>
+          <p className="text-base font-semibold tracking-[-0.02em] text-white">MunshiOS</p>
           <p className="mt-0.5 truncate text-[11px] text-slate-400" title={workspaceName}>{workspaceName}</p>
         </div>
       </div>
