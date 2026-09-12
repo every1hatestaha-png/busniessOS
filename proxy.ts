@@ -16,7 +16,13 @@ const handleProxy = clerkMiddleware(async (auth, request) => {
     d4ProxyLog(`root request URL origin=${request.nextUrl.origin} pathname=${path}`);
   }
 
-  if (path.startsWith("/desktop-auth") || path === "/api/desktop-config") {
+  if (
+    path.startsWith("/desktop-auth") ||
+    path === "/api/desktop-config" ||
+    path.startsWith("/forgot-password") ||
+    path.startsWith("/account-recovery") ||
+    path.startsWith("/recovery")
+  ) {
     return NextResponse.next();
   }
 
@@ -66,6 +72,6 @@ export { handleProxy as proxy };
 
 export const config = {
   matcher: [
-    "/((?!_next|sign-in|sign-up|desktop-auth|api/webhooks|api/health|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/((?!_next|sign-in|sign-up|forgot-password|account-recovery|recovery|desktop-auth|api/webhooks|api/health|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
   ],
 };
