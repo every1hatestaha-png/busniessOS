@@ -62,7 +62,7 @@ export function Sidebar({ workspaceName, role }: { workspaceName: string; role: 
           <p className="mt-0.5 truncate text-[11px] text-slate-400" title={workspaceName}>{workspaceName}</p>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto px-2.5 py-3 [scrollbar-width:thin]">
+      <div className="flex-1 overflow-y-auto px-2.5 py-3">
         <nav aria-label="Primary navigation" className="space-y-4">
           {sections.map((section) => {
             const visibleRoutes = section.routes.filter((route) => role !== "STAFF" || !route.financial);
