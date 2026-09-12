@@ -42,13 +42,13 @@ describe("sale validation", () => {
     if (!result.success) expect(result.error.issues[0]?.message).toBe("Combine duplicate products into one line.");
   });
 
-  it("rejects discount per unit that exceeds unit price", () => {
+  it("rejects discount per unit that exceeds the effective unit price", () => {
     const input = validSale();
     input.items[0].unitPrice = 100;
     input.items[0].discountPerUnit = 150;
     const result = saleSchema.safeParse(input);
     expect(result.success).toBe(false);
-    if (!result.success) expect(result.error.issues[0]?.message).toBe("Discount per unit cannot exceed unit price.");
+    if (!result.success) expect(result.error.issues[0]?.message).toBe("Discount per unit cannot exceed the effective unit price.");
   });
 
   it("accepts discount per unit equal to unit price (zero line total)", () => {
@@ -59,13 +59,13 @@ describe("sale validation", () => {
     expect(result.success).toBe(true);
   });
 
-  it("rejects discount per unit exceeding unit price", () => {
+  it("rejects discount per unit exceeding the effective unit price", () => {
     const input = validSale();
     input.items[0].unitPrice = 100;
     input.items[0].discountPerUnit = 150;
     const result = saleSchema.safeParse(input);
     expect(result.success).toBe(false);
-    if (!result.success) expect(result.error.issues[0]?.message).toBe("Discount per unit cannot exceed unit price.");
+    if (!result.success) expect(result.error.issues[0]?.message).toBe("Discount per unit cannot exceed the effective unit price.");
   });
 });
 
