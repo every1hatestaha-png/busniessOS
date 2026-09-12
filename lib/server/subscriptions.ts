@@ -5,58 +5,14 @@ import { redirect } from "next/navigation";
 
 import { db } from "@/lib/server/db";
 import { getCurrentUser, requireWorkspace } from "@/lib/server/auth";
+import {
+  computeWorkspaceAccess,
+  type SubscriptionSnapshot,
+  type SubscriptionStatus,
+  type WorkspaceAccess,
+} from "@/lib/subscriptions/access";
 
-type SubscriptionStatus = "TRIALING" | "ACTIVE" | "PAST_DUE" | "EXPIRED" | "CANCELLED" | "SUSPENDED";
-
-type SubscriptionRow = {
-  id: string;
-  workspaceId: string;
-  planId: string | null;
-  planCode: string | null;
-  planName: string | null;
-  status: SubscriptionStatus;
-  trialStartedAt: Date | null;
-  trialEndsAt: Date | null;
-  currentPeriodStart: Date | null;
-  currentPeriodEnd: Date | null;
-  graceEndsAt: Date | null;
-  overrideUntil: Date | null;
-  suspendedAt: Date | null;
-  suspensionReason: string | null;
-};
-
-export type WorkspaceAccess = SubscriptionRow & {
-  allowed: boolean;
-  reason: "suspended" | "override" | "trial" | "active" | "grace" | "expired";
-  daysRemaining: number | null;
-};
-
-function daysUntil(date: Date | null) {
-  if (!date) return null;
-  return Math.max(0, Math.ceil((date.getTime() - Date.now()) / 86_400_000));
-}
-
-function computeAccess(row: SubscriptionRow): WorkspaceAccess {
-  const now = Date.now();
-  const isFuture = (date: Date | null) => Boolean(date && date.getTime() > now);
-
-  if (row.status === "SUSPENDED") {
-    return { ...row, allowed: false, reason: "suspended", daysRemaining: null };
-  }
-  if (isFuture(row.overrideUntil)) {
-    return { ...row, allowed: true, reason: "override", daysRemaining: daysUntil(row.overrideUntil) };
-  }
-  if (row.status === "TRIALING" && isFuture(row.trialEndsAt)) {
-    return { ...row, allowed: true, reason: "trial", daysRemaining: daysUntil(row.trialEndsAt) };
-  }
-  if (row.status === "ACTIVE" && (!row.currentPeriodEnd || isFuture(row.currentPeriodEnd))) {
-    return { ...row, allowed: true, reason: "active", daysRemaining: daysUntil(row.currentPeriodEnd) };
-  }
-  if (isFuture(row.graceEndsAt)) {
-    return { ...row, allowed: true, reason: "grace", daysRemaining: daysUntil(row.graceEndsAt) };
-  }
-  return { ...row, allowed: false, reason: "expired", daysRemaining: 0 };
-}
+export type { WorkspaceAccess } from "@/lib/subscriptions/access";
 
 export async function ensureWorkspaceSubscription(workspaceId: string) {
   const id = `sub_${randomUUID().replaceAll("-", "")}`;
@@ -78,7 +34,7 @@ export async function ensureWorkspaceSubscription(workspaceId: string) {
 
 export async function getWorkspaceAccess(workspaceId: string): Promise<WorkspaceAccess> {
   await ensureWorkspaceSubscription(workspaceId);
-  const rows = await db.$queryRaw<SubscriptionRow[]>`
+  const rows = await db.$queryRaw<SubscriptionSnapshot[]>`
     SELECT
       s."id",
       s."workspaceId",
@@ -101,7 +57,7 @@ export async function getWorkspaceAccess(workspaceId: string): Promise<Workspace
   `;
 
   if (!rows[0]) throw new Error("Workspace subscription could not be initialized.");
-  return computeAccess(rows[0]);
+  return computeWorkspaceAccess(rows[0]);
 }
 
 export async function requireWorkspaceAccess() {
