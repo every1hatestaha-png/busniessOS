@@ -9,6 +9,7 @@ import { z, ZodError, type ZodType } from "zod";
 
 import { canPerformAction, type Permission } from "@/lib/server/authorization";
 import { db } from "@/lib/server/db";
+import { getWorkspaceAccess } from "@/lib/server/subscriptions";
 
 export type ApiContext = {
   user: {
@@ -81,6 +82,21 @@ export async function requireApiContext(permission?: Permission): Promise<ApiCon
   }
   if (permission && !canPerformAction(membership.role, permission)) {
     throw new ApiError(403, "FORBIDDEN", "You do not have permission to perform this action.");
+  }
+
+  // Preserve read-only access after expiry while blocking all permissions that
+  // can mutate workspace or financial state.
+  if (permission && permission !== "business.read") {
+    const access = await getWorkspaceAccess(membership.workspaceId);
+    if (!access.allowed) {
+      throw new ApiError(
+        403,
+        "SUBSCRIPTION_REQUIRED",
+        access.reason === "suspended"
+          ? "This workspace is suspended."
+          : "The workspace trial or subscription has expired.",
+      );
+    }
   }
 
   return {
