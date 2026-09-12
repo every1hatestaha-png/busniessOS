@@ -1,0 +1,54 @@
+name: One Shot Responsive Sidebars
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-shot-responsive-sidebars.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Delay side-panel layouts until wide desktop widths
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          targets = [
+            Path('components/purchases/purchase-form.tsx'),
+            Path('components/goods-receipts/goods-receipt-form.tsx'),
+            Path('app/(dashboard)/sales/[id]/page.tsx'),
+            Path('app/(dashboard)/invoices/[id]/page.tsx'),
+            Path('app/(dashboard)/purchases/[id]/page.tsx'),
+            Path('app/(dashboard)/goods-receipts/[id]/page.tsx'),
+            Path('app/(dashboard)/customers/[id]/page.tsx'),
+            Path('app/(dashboard)/khata/page.tsx'),
+            Path('app/(dashboard)/accounting/cash-bank/page.tsx'),
+          ]
+          changed = 0
+          for p in targets:
+            if not p.exists(): continue
+            s = p.read_text()
+            before = s
+            s = s.replace('xl:grid-cols-[minmax(0,1fr)_', '2xl:grid-cols-[minmax(0,1fr)_')
+            s = s.replace('xl:sticky xl:top-6', '2xl:sticky 2xl:top-6')
+            s = s.replace('className="sticky top-6 gap-0', 'className="gap-0 2xl:sticky 2xl:top-6')
+            if s != before:
+              p.write_text(s)
+              changed += 1
+          if changed == 0: raise SystemExit('no responsive sidebar patterns changed')
+          print(f'updated {changed} files')
+          PY
+          rm .github/workflows/one-shot-responsive-sidebars.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add components/purchases/purchase-form.tsx components/goods-receipts/goods-receipt-form.tsx 'app/(dashboard)/sales/[id]/page.tsx' 'app/(dashboard)/invoices/[id]/page.tsx' 'app/(dashboard)/purchases/[id]/page.tsx' 'app/(dashboard)/goods-receipts/[id]/page.tsx' 'app/(dashboard)/customers/[id]/page.tsx' 'app/(dashboard)/khata/page.tsx' 'app/(dashboard)/accounting/cash-bank/page.tsx' .github/workflows/one-shot-responsive-sidebars.yml
+          git commit -m "ui: stop detail sidebars squeezing standard desktop widths"
+          git push origin main
