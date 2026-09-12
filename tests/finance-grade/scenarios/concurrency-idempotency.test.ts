@@ -37,8 +37,7 @@ beforeAll(async () => {
   supplier1Id = sup.id;
 
   const { createCustomer } = await import("@/lib/server/customers");
-  const cust = await createCustomer(ctx, { name: "Concurrency Customer", companyName: "Test", phone: "", city: "Lahore", creditDays: 30, creditLimit: 500000, openingBalance: 0 });
-  customer1Id = cust.id;
+  customer1Id = await createCustomer(ctx, { name: "Concurrency Customer", companyName: "Test", phone: "", city: "Lahore", creditDays: 30, creditLimit: 500000, openingBalance: 0 });
 
   const { createProduct } = await import("@/lib/server/products");
   product1Id = await createProduct(workspaceId, { name: "Concurrency Product", sku: `CONC-${Date.now()}`, category: "Test", costPrice: 500, sellingPrice: 800, stockQuantity: 100, reorderLevel: 10, unit: "PIECE", status: "ACTIVE", description: "" });
@@ -67,30 +66,25 @@ describe("F6: Concurrency and Idempotency", () => {
       idempotencyKey: key,
     });
 
-    // Should return the same PO
     expect(po1.id).toBe(po2.id);
-
-    // Only one PO should exist
     const count = await db.purchaseOrder.count({ where: { workspaceId, idempotencyKey: key } });
     expect(count).toBe(1);
 
-    // Cleanup
     await db.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: po1.id } });
     await db.purchaseOrder.delete({ where: { id: po1.id } });
   });
 
-  it("6.2 Same idempotency key with different params is rejected", async () => {
+  it("6.2 Same idempotency key with different params remains single-write", async () => {
     const { createPurchase } = await import("@/lib/server/purchases");
     const key = `idem-po-diff-${runId}`;
 
-    await createPurchase(ctx, {
+    const po1 = await createPurchase(ctx, {
       supplierId: supplier1Id,
       items: [{ productId: product1Id, quantity: 10, unitCost: 500 }],
       pricingMode: "UNIT",
       idempotencyKey: key,
     });
 
-    // Different quantity with same key should return existing (not create new)
     const po2 = await createPurchase(ctx, {
       supplierId: supplier1Id,
       items: [{ productId: product1Id, quantity: 20, unitCost: 500 }],
@@ -98,22 +92,18 @@ describe("F6: Concurrency and Idempotency", () => {
       idempotencyKey: key,
     });
 
-    // Should return the first PO (idempotent)
+    expect(po2.id).toBe(po1.id);
     const count = await db.purchaseOrder.count({ where: { workspaceId, idempotencyKey: key } });
     expect(count).toBe(1);
 
-    // Cleanup
     await db.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: po2.id } });
     await db.purchaseOrder.delete({ where: { id: po2.id } });
   });
 
   it("6.3 Two sales competing for same stock — one succeeds, one fails", async () => {
     const { createSale } = await import("@/lib/server/sales");
-
-    // Set stock to exactly 5
     await db.product.update({ where: { id: product1Id }, data: { stockQuantity: 5 } });
 
-    // Try to sell 5 units twice concurrently
     const results = await Promise.allSettled([
       createSale(ctx, {
         customerId: customer1Id,
@@ -129,16 +119,11 @@ describe("F6: Concurrency and Idempotency", () => {
 
     const succeeded = results.filter((r) => r.status === "fulfilled");
     const failed = results.filter((r) => r.status === "rejected");
-
-    // Exactly one should succeed
     expect(succeeded.length).toBe(1);
     expect(failed.length).toBe(1);
 
-    // Stock should be 0
     const stock = await getProductStock(workspaceId, product1Id);
     expect(stock).toBe(0);
-
-    // GL should still be balanced
     const glBalanced = await verifyGLBalanced(workspaceId);
     expect(glBalanced.balanced).toBe(true);
   });
@@ -169,12 +154,9 @@ describe("F6: Concurrency and Idempotency", () => {
     });
 
     expect(grn1.id).toBe(grn2.id);
-
-    // Only one GRN should exist
     const count = await db.goodReceivedNote.count({ where: { workspaceId, idempotencyKey: key } });
     expect(count).toBe(1);
 
-    // Cleanup
     await db.goodReceivedNoteItem.deleteMany({ where: { goodReceivedNoteId: grn1.id } });
     await db.goodReceivedNote.delete({ where: { id: grn1.id } });
     await db.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: po.id } });
@@ -185,7 +167,6 @@ describe("F6: Concurrency and Idempotency", () => {
     const { createSale } = await import("@/lib/server/sales");
     const key = crypto.randomUUID();
 
-    // Simulate double-click: two identical calls with same idempotency key
     const sale1 = await createSale(ctx, {
       customerId: customer1Id,
       items: [{ productId: product1Id, quantity: 1, unitPrice: 800, discountPerUnit: 0 }],
@@ -199,20 +180,16 @@ describe("F6: Concurrency and Idempotency", () => {
     });
 
     expect(sale1.id).toBe(sale2.id);
-
     const count = await db.salesOrder.count({ where: { workspaceId, idempotencyKey: key } });
     expect(count).toBe(1);
   });
 
-  it("6.6 Page refresh during save — no duplicate records", async () => {
+  it("6.6 Page refresh during save — createSupplier has no idempotency contract", async () => {
     const { createSupplier } = await import("@/lib/server/suppliers");
-    const key = `sup-idem-${runId}`;
 
     const sup1 = await createSupplier(ctx, { name: "Refresh Test", companyName: "Test", phone: "", city: "Karachi", openingBalance: 0 });
-    // Simulate refresh: call again (would normally be different request)
     const sup2 = await createSupplier(ctx, { name: "Refresh Test", companyName: "Test", phone: "", city: "Karachi", openingBalance: 0 });
 
-    // Both should succeed (no idempotency key on create)
     expect(sup1.id).toBeDefined();
     expect(sup2.id).toBeDefined();
   });
