@@ -1,6 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
 import { db } from "@/lib/server/db";
@@ -70,7 +71,29 @@ export async function requireWorkspaceAccess() {
 export async function requirePlatformOwner() {
   const user = await getCurrentUser();
   const configuredOwner = process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL?.trim().toLowerCase();
-  if (!configuredOwner || user.email.toLowerCase() !== configuredOwner) redirect("/dashboard");
+  if (!configuredOwner) redirect("/dashboard");
+
+  // Platform authorization must follow the authenticated Clerk identity, not a
+  // potentially stale email stored in the local users table. The local row may
+  // pre-date an email change/relink while the Clerk session is still correct.
+  const session = await auth({ acceptsToken: ["session_token", "oauth_token"] });
+  const userId = "userId" in session ? session.userId : null;
+  if (!userId) redirect("/sign-in");
+
+  const clerkUser = await (await clerkClient()).users.getUser(userId);
+  const primaryEmailAddress =
+    clerkUser.emailAddresses.find((email) => email.id === clerkUser.primaryEmailAddressId) ??
+    clerkUser.emailAddresses[0];
+  const authenticatedEmail = primaryEmailAddress?.emailAddress?.trim().toLowerCase();
+
+  if (
+    !authenticatedEmail ||
+    primaryEmailAddress?.verification?.status !== "verified" ||
+    authenticatedEmail !== configuredOwner
+  ) {
+    redirect("/dashboard");
+  }
+
   return user;
 }
 
@@ -120,96 +143,121 @@ export async function getPlatformDashboard() {
     ORDER BY w."createdAt" DESC
   `;
 
-  const now = Date.now();
-  const active = workspaces.filter((w) => {
-    if (w.status === "SUSPENDED") return false;
-    if (w.status === "ACTIVE" && (!w.currentPeriodEnd || w.currentPeriodEnd.getTime() > now)) return true;
-    if (w.status === "TRIALING" && w.trialEndsAt && w.trialEndsAt.getTime() > now) return true;
-    return Boolean(w.graceEndsAt && w.graceEndsAt.getTime() > now);
-  }).length;
-
-  return {
-    workspaces,
-    metrics: {
-      total: workspaces.length,
-      active,
-      trials: workspaces.filter((w) => w.status === "TRIALING" && w.trialEndsAt && w.trialEndsAt.getTime() > now).length,
-      paid: workspaces.filter((w) => w.status === "ACTIVE").length,
-      suspended: workspaces.filter((w) => w.status === "SUSPENDED").length,
-      expired: workspaces.filter((w) => w.status === "EXPIRED" || w.status === "CANCELLED" || (w.status === "TRIALING" && (!w.trialEndsAt || w.trialEndsAt.getTime() <= now))).length,
+  const metrics = workspaces.reduce(
+    (acc, workspace) => {
+      acc.total += 1;
+      if (workspace.status === "TRIALING") acc.trials += 1;
+      if (workspace.status === "ACTIVE") acc.paid += 1;
+      if (workspace.status === "SUSPENDED") acc.suspended += 1;
+      if (workspace.status === "EXPIRED") acc.expired += 1;
+      if (workspace.status === "TRIALING" || workspace.status === "ACTIVE" || workspace.status === "GRACE") acc.active += 1;
+      return acc;
     },
-  };
+    { total: 0, active: 0, trials: 0, paid: 0, suspended: 0, expired: 0 },
+  );
+
+  return { workspaces, metrics };
 }
 
-async function writeSubscriptionEvent(workspaceId: string, subscriptionId: string, actorUserId: string, type: string, metadata: object) {
+async function writeSubscriptionAudit(input: {
+  workspaceId: string;
+  action: string;
+  beforeState: unknown;
+  afterState: unknown;
+}) {
+  const actor = await getCurrentUser();
   await db.$executeRaw`
-    INSERT INTO "subscription_events" ("id", "workspaceId", "subscriptionId", "actorUserId", "type", "metadata")
-    VALUES (${`evt_${randomUUID().replaceAll("-", "")}`}, ${workspaceId}, ${subscriptionId}, ${actorUserId}, ${type}, ${JSON.stringify(metadata)}::jsonb)
+    INSERT INTO "subscription_events" (
+      "id", "workspaceId", "actorUserId", "action", "beforeState", "afterState"
+    )
+    VALUES (
+      ${`sevt_${randomUUID().replaceAll("-", "")}`},
+      ${input.workspaceId},
+      ${actor.id},
+      ${input.action},
+      ${JSON.stringify(input.beforeState)}::jsonb,
+      ${JSON.stringify(input.afterState)}::jsonb
+    )
   `;
 }
 
-export async function extendTrial(workspaceId: string, days: number) {
-  const actor = await requirePlatformOwner();
-  const safeDays = Math.max(1, Math.min(365, Math.trunc(days)));
-  const rows = await db.$queryRaw<{ id: string }[]>`
+async function getSubscriptionRow(workspaceId: string) {
+  const rows = await db.$queryRaw<Record<string, unknown>[]>`
+    SELECT s.*, p."code" AS "planCode", p."name" AS "planName"
+    FROM "workspace_subscriptions" s
+    LEFT JOIN "saas_plans" p ON p."id" = s."planId"
+    WHERE s."workspaceId" = ${workspaceId}
+    LIMIT 1
+  `;
+  return rows[0] ?? null;
+}
+
+export async function extendWorkspaceTrial(workspaceId: string, days: number) {
+  await requirePlatformOwner();
+  const before = await getSubscriptionRow(workspaceId);
+  await db.$executeRaw`
     UPDATE "workspace_subscriptions"
     SET
       "status" = 'TRIALING',
-      "trialEndsAt" = GREATEST(COALESCE("trialEndsAt", CURRENT_TIMESTAMP), CURRENT_TIMESTAMP) + (${safeDays} * INTERVAL '1 day'),
+      "trialEndsAt" = GREATEST(COALESCE("trialEndsAt", CURRENT_TIMESTAMP), CURRENT_TIMESTAMP) + (${days} * INTERVAL '1 day'),
       "suspendedAt" = NULL,
       "suspensionReason" = NULL,
       "updatedAt" = CURRENT_TIMESTAMP
     WHERE "workspaceId" = ${workspaceId}
-    RETURNING "id"
   `;
-  if (!rows[0]) throw new Error("Subscription not found.");
-  await writeSubscriptionEvent(workspaceId, rows[0].id, actor.id, "TRIAL_EXTENDED", { days: safeDays });
+  const after = await getSubscriptionRow(workspaceId);
+  await writeSubscriptionAudit({ workspaceId, action: "trial.extended", beforeState: before, afterState: after });
 }
 
-export async function activateSubscription(workspaceId: string, planCode: string, days = 30) {
-  const actor = await requirePlatformOwner();
-  const safeDays = Math.max(1, Math.min(3660, Math.trunc(days)));
-  const rows = await db.$queryRaw<{ id: string }[]>`
-    UPDATE "workspace_subscriptions" s
+export async function activateWorkspaceSubscription(workspaceId: string, planCode: string, days: number) {
+  await requirePlatformOwner();
+  const before = await getSubscriptionRow(workspaceId);
+  await db.$executeRaw`
+    UPDATE "workspace_subscriptions"
     SET
-      "planId" = p."id",
+      "planId" = (SELECT "id" FROM "saas_plans" WHERE "code" = ${planCode} LIMIT 1),
       "status" = 'ACTIVE',
       "currentPeriodStart" = CURRENT_TIMESTAMP,
-      "currentPeriodEnd" = CURRENT_TIMESTAMP + (${safeDays} * INTERVAL '1 day'),
+      "currentPeriodEnd" = CURRENT_TIMESTAMP + (${days} * INTERVAL '1 day'),
       "graceEndsAt" = NULL,
       "suspendedAt" = NULL,
       "suspensionReason" = NULL,
       "updatedAt" = CURRENT_TIMESTAMP
-    FROM "saas_plans" p
-    WHERE s."workspaceId" = ${workspaceId} AND p."code" = ${planCode} AND p."isActive" = true
-    RETURNING s."id"
+    WHERE "workspaceId" = ${workspaceId}
   `;
-  if (!rows[0]) throw new Error("Subscription or plan not found.");
-  await writeSubscriptionEvent(workspaceId, rows[0].id, actor.id, "SUBSCRIPTION_ACTIVATED", { planCode, days: safeDays });
+  const after = await getSubscriptionRow(workspaceId);
+  await writeSubscriptionAudit({ workspaceId, action: "subscription.activated", beforeState: before, afterState: after });
 }
 
-export async function suspendSubscription(workspaceId: string, reason: string) {
-  const actor = await requirePlatformOwner();
-  const cleanReason = reason.trim().slice(0, 500) || "Suspended by platform owner";
-  const rows = await db.$queryRaw<{ id: string }[]>`
+export async function grantWorkspaceGrace(workspaceId: string, days: number) {
+  await requirePlatformOwner();
+  const before = await getSubscriptionRow(workspaceId);
+  await db.$executeRaw`
     UPDATE "workspace_subscriptions"
-    SET "status" = 'SUSPENDED', "suspendedAt" = CURRENT_TIMESTAMP, "suspensionReason" = ${cleanReason}, "updatedAt" = CURRENT_TIMESTAMP
+    SET
+      "status" = 'GRACE',
+      "graceEndsAt" = CURRENT_TIMESTAMP + (${days} * INTERVAL '1 day'),
+      "suspendedAt" = NULL,
+      "suspensionReason" = NULL,
+      "updatedAt" = CURRENT_TIMESTAMP
     WHERE "workspaceId" = ${workspaceId}
-    RETURNING "id"
   `;
-  if (!rows[0]) throw new Error("Subscription not found.");
-  await writeSubscriptionEvent(workspaceId, rows[0].id, actor.id, "SUBSCRIPTION_SUSPENDED", { reason: cleanReason });
+  const after = await getSubscriptionRow(workspaceId);
+  await writeSubscriptionAudit({ workspaceId, action: "subscription.grace_granted", beforeState: before, afterState: after });
 }
 
-export async function grantGracePeriod(workspaceId: string, days: number) {
-  const actor = await requirePlatformOwner();
-  const safeDays = Math.max(1, Math.min(90, Math.trunc(days)));
-  const rows = await db.$queryRaw<{ id: string }[]>`
+export async function suspendWorkspaceSubscription(workspaceId: string, reason: string) {
+  await requirePlatformOwner();
+  const before = await getSubscriptionRow(workspaceId);
+  await db.$executeRaw`
     UPDATE "workspace_subscriptions"
-    SET "graceEndsAt" = CURRENT_TIMESTAMP + (${safeDays} * INTERVAL '1 day'), "updatedAt" = CURRENT_TIMESTAMP
+    SET
+      "status" = 'SUSPENDED',
+      "suspendedAt" = CURRENT_TIMESTAMP,
+      "suspensionReason" = ${reason},
+      "updatedAt" = CURRENT_TIMESTAMP
     WHERE "workspaceId" = ${workspaceId}
-    RETURNING "id"
   `;
-  if (!rows[0]) throw new Error("Subscription not found.");
-  await writeSubscriptionEvent(workspaceId, rows[0].id, actor.id, "GRACE_GRANTED", { days: safeDays });
+  const after = await getSubscriptionRow(workspaceId);
+  await writeSubscriptionAudit({ workspaceId, action: "subscription.suspended", beforeState: before, afterState: after });
 }
