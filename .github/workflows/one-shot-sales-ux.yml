@@ -1,0 +1,48 @@
+name: One Shot Sales UX Hardening
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-shot-sales-ux.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Patch sales form UX
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('components/sales/sales-order-form.tsx')
+          s = p.read_text()
+
+          old = '''    {actionState.error && <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-800"><AlertCircle className="mt-0.5 size-4 shrink-0" /><p className="text-sm font-medium">{actionState.error}</p></div>}'''
+          new = '''    {actionState.error && <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-800"><AlertCircle className="mt-0.5 size-4 shrink-0" /><p className="text-sm font-medium">{actionState.error}</p></div>}\n    {Object.keys(errors).length > 0 && !actionState.error && <div role="alert" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900"><AlertCircle className="mt-0.5 size-4 shrink-0" /><p className="text-sm font-medium">Please fix the highlighted order fields. Weight-priced items require an actual kg/unit and rate/kg before the sale can be created.</p></div>}'''
+          if old not in s:
+              raise SystemExit('action error anchor not found')
+          s = s.replace(old, new, 1)
+
+          old2 = '''{line?.pricingMode === "WEIGHT" && <span className="mt-1 block text-[10px] font-medium text-emerald-700">Actual {Number(line?.unitWeight || 0).toFixed(3)} kg/unit · {formatPKR(Number(line?.perKgRate || 0))}/kg · total {(Number(line?.unitWeight || 0) * Number(line?.quantity || 0)).toFixed(3)} kg</span>}'''
+          new2 = '''{line?.pricingMode === "WEIGHT" && <span className="mt-1 block text-[10px] font-medium text-emerald-700">Actual {Number(line?.unitWeight || 0).toFixed(3)} kg/unit · {formatPKR(Number(line?.perKgRate || 0))}/kg · total {(Number(line?.unitWeight || 0) * Number(line?.quantity || 0)).toFixed(3)} kg</span>}{line?.pricingMode === "WEIGHT" && (errors.items?.[index]?.unitWeight?.message || errors.items?.[index]?.perKgRate?.message) && <span className="mt-1 block text-[10px] font-medium text-red-600">{errors.items?.[index]?.unitWeight?.message || errors.items?.[index]?.perKgRate?.message}</span>}'''
+          if old2 not in s:
+              raise SystemExit('weight status anchor not found')
+          s = s.replace(old2, new2, 1)
+
+          s = s.replace('Add products, quantities, rates and per-unit discounts.', 'Add products, quantities, unit or weight pricing, and per-unit discounts.', 1)
+          p.write_text(s)
+          PY
+
+          rm .github/workflows/one-shot-sales-ux.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add components/sales/sales-order-form.tsx .github/workflows/one-shot-sales-ux.yml
+          git commit -m "fix: make sales validation immediate and visible"
+          git push origin main
