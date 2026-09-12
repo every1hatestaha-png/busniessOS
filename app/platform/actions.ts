@@ -8,6 +8,7 @@ import {
   grantWorkspaceGrace,
   suspendWorkspaceSubscription,
 } from "@/lib/server/subscriptions";
+import { deleteCustomerWorkspaceAccount } from "@/lib/server/platform-admin";
 
 function readWorkspaceId(formData: FormData) {
   const value = formData.get("workspaceId");
@@ -41,5 +42,12 @@ export async function suspendSubscriptionAction(formData: FormData) {
   const workspaceId = readWorkspaceId(formData);
   const reason = String(formData.get("reason") ?? "");
   await suspendWorkspaceSubscription(workspaceId, reason);
+  revalidatePath("/platform");
+}
+
+export async function deleteCustomerAccountAction(formData: FormData) {
+  const workspaceId = readWorkspaceId(formData);
+  const confirmation = String(formData.get("confirmName") ?? "");
+  await deleteCustomerWorkspaceAccount(workspaceId, confirmation);
   revalidatePath("/platform");
 }
