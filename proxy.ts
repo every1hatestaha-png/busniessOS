@@ -21,6 +21,15 @@ const handleProxy = clerkMiddleware(async (auth, request) => {
     return NextResponse.next();
   }
 
+  // Keep the web root as a safe entry point. app/page.tsx resolves the session
+  // and redirects signed-out visitors to /sign-in, while all real app routes
+  // remain protected below. This also avoids Clerk dev-browser protection
+  // rewriting a fresh visit to the site root into a 404 before the page can
+  // perform its own auth-aware redirect.
+  if (!isElectron && path === "/") {
+    return NextResponse.next();
+  }
+
   if (isApiV1Request(path) && request.method === "OPTIONS") {
     return corsPreflightResponse(request);
   }
