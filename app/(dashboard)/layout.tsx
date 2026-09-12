@@ -11,19 +11,18 @@ export default async function DashboardLayout({
   const { workspace, role } = await requireWorkspace();
   const workspaces = await listCurrentUserWorkspaces();
 
-  const rendered = (
-    <div className="flex h-screen w-full overflow-hidden bg-background text-foreground print:block print:h-auto print:overflow-visible print:bg-white">
+  return (
+    <div className="flex min-h-dvh w-full min-w-0 bg-background text-foreground print:block print:min-h-0 print:bg-white">
       <PrintShortcutRouter />
-      <div className="hidden print:hidden lg:block">
+      <div className="sticky top-0 hidden h-dvh shrink-0 print:hidden lg:block">
         <Sidebar workspaceName={workspace.name} role={role} />
       </div>
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden print:block print:overflow-visible">
+      <div className="min-w-0 flex-1 print:block">
         <TopNav workspaceName={workspace.name} workspaceId={workspace.id} workspaces={workspaces} role={role} />
-        <main className="flex-1 overflow-y-auto px-4 py-4 print:overflow-visible print:p-0 lg:px-6 lg:py-6">
+        <main className="min-w-0 overflow-x-hidden px-4 py-4 print:overflow-visible print:p-0 sm:px-5 lg:px-6 lg:py-6">
           {children}
         </main>
       </div>
     </div>
   );
-  return rendered;
 }
