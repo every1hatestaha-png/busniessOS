@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { requirePermission } from "@/lib/server/authorization";
-import { createSale, SaleDomainError } from "@/lib/server/sales";
+import { SaleDomainError } from "@/lib/server/sales";
+import { createSaleWithTax } from "@/lib/server/sales-tax";
 import { saleSchema, type SaleInput } from "@/lib/validation/sale";
 
 export type CreateSaleState = { error?: string };
@@ -22,7 +23,7 @@ export async function createSaleAction(
 
   let saleId: string;
   try {
-    const sale = await createSale({ ...context, userId: context.user.id }, parsed.data);
+    const sale = await createSaleWithTax({ ...context, userId: context.user.id }, parsed.data);
     saleId = sale.id;
   } catch (error) {
     if (error instanceof SaleDomainError) {

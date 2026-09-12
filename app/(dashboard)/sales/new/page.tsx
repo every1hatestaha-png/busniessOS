@@ -1,4 +1,4 @@
-import { SalesOrderForm } from "@/components/sales/sales-order-form";
+import { SalesOrderFormTax } from "@/components/sales/sales-order-form-tax";
 import { canPerformAction, requirePermission } from "@/lib/server/authorization";
 import { getCashBankAccounts } from "@/lib/server/accounting";
 import { db } from "@/lib/server/db";
@@ -7,8 +7,6 @@ export default async function NewSalePage() {
   const { workspaceId, role } = await requirePermission("sales.create");
   const canRecordPayments = canPerformAction(role, "payments.record");
 
-  // Keep this high-frequency screen lean: fetch only active records and only the
-  // columns the form renders instead of serializing full customer/product DTOs.
   const [customerRows, productRows, cashBankAccounts] = await Promise.all([
     db.customer.findMany({
       where: { workspaceId, status: "ACTIVE" },
@@ -32,6 +30,7 @@ export default async function NewSalePage() {
     currentBalance: Number(customer.currentBalance),
     status: customer.status,
   }));
+
   const products = productRows.map((product) => ({
     id: product.id,
     name: product.name,
@@ -43,5 +42,5 @@ export default async function NewSalePage() {
     defaultWeightKg: product.defaultWeightKg ? Number(product.defaultWeightKg) : null,
   }));
 
-  return <SalesOrderForm customers={customers} products={products} cashBankAccounts={cashBankAccounts} canRecordPayments={canRecordPayments} />;
+  return <SalesOrderFormTax customers={customers} products={products} cashBankAccounts={cashBankAccounts} canRecordPayments={canRecordPayments} />;
 }
