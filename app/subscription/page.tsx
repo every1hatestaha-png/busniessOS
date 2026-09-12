@@ -76,7 +76,9 @@ export default async function SubscriptionPage() {
             {access.allowed && (
               <Link href="/dashboard" className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800">Open MunshiOS</Link>
             )}
-            <a href="mailto:support@munshios.com" className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50">Contact support</a>
+            {!access.allowed && (
+              <p className="self-center text-sm text-slate-600">Contact the MunshiOS account owner to renew or restore access.</p>
+            )}
           </div>
         </section>
       </div>
