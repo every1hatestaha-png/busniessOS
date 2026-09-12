@@ -1,0 +1,128 @@
+name: Weighted Sales One Shot
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply weighted product and sales patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"pattern not found in {path}: {old[:80]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          # Prisma: catalog default weight + immutable sale weight snapshot.
+          replace_once('prisma/schema.prisma',
+              '  reorderLevel  Decimal       @default(0) @db.Decimal(15, 4)\n  unit          ProductUnit   @default(PIECE)',
+              '  reorderLevel    Decimal       @default(0) @db.Decimal(15, 4)\n  defaultWeightKg Decimal?      @db.Decimal(10, 3)\n  unit            ProductUnit   @default(PIECE)')
+          replace_once('prisma/schema.prisma',
+              '  totalPrice      Decimal  @db.Decimal(15, 2)\n  productName  String?',
+              '  totalPrice      Decimal  @db.Decimal(15, 2)\n  pricingMode     PricingMode @default(UNIT)\n  unitWeight      Decimal? @db.Decimal(10, 3)\n  totalWeight     Decimal? @db.Decimal(15, 3)\n  perKgRate       Decimal? @db.Decimal(15, 2)\n  productName  String?')
+
+          mig = Path('prisma/migrations/20260912070000_weighted_sales_defaults')
+          mig.mkdir(parents=True, exist_ok=True)
+          (mig / 'migration.sql').write_text('''ALTER TABLE "products" ADD COLUMN "defaultWeightKg" DECIMAL(10,3);\nALTER TABLE "sales_order_items" ADD COLUMN "pricingMode" "PricingMode" NOT NULL DEFAULT 'UNIT', ADD COLUMN "unitWeight" DECIMAL(10,3), ADD COLUMN "totalWeight" DECIMAL(15,3), ADD COLUMN "perKgRate" DECIMAL(15,2);\n''')
+
+          # Product validation + persistence.
+          replace_once('lib/validation/product.ts',
+              '  reorderLevel: z.coerce.number().min(0, "Reorder level cannot be negative"),\n  unit:',
+              '  reorderLevel: z.coerce.number().min(0, "Reorder level cannot be negative"),\n  defaultWeightKg: z.preprocess((value) => value === "" || value == null ? undefined : value, z.coerce.number().positive("Default weight must be greater than zero").max(100000).optional()),\n  unit:')
+
+          replace_once('lib/server/products.ts',
+              '  reorderLevel: number;\n  unit: ProductUnit;',
+              '  reorderLevel: number;\n  defaultWeightKg: number | null;\n  unit: ProductUnit;')
+          replace_once('lib/server/products.ts',
+              '  reorderLevel: { toNumber(): number };\n  unit: ProductUnit;',
+              '  reorderLevel: { toNumber(): number };\n  defaultWeightKg: { toNumber(): number } | null;\n  unit: ProductUnit;')
+          replace_once('lib/server/products.ts',
+              '    reorderLevel: product.reorderLevel.toNumber(),\n    createdAt:',
+              '    reorderLevel: product.reorderLevel.toNumber(),\n    defaultWeightKg: product.defaultWeightKg?.toNumber() ?? null,\n    createdAt:')
+          replace_once('lib/server/products.ts',
+              '        reorderLevel: input.reorderLevel,\n        unit: input.unit,',
+              '        reorderLevel: input.reorderLevel,\n        defaultWeightKg: input.defaultWeightKg ?? null,\n        unit: input.unit,')
+          replace_once('lib/server/products.ts',
+              '        reorderLevel: input.reorderLevel,\n        unit: input.unit,\n        status: input.status,',
+              '        reorderLevel: input.reorderLevel,\n        defaultWeightKg: input.defaultWeightKg ?? null,\n        unit: input.unit,\n        status: input.status,')
+
+          # Product form: editable catalog suggestion only, never a locked transaction fact.
+          replace_once('components/inventory/product-form.tsx',
+              '    Object.entries(values).forEach(([key, value]) => formData.set(key, String(value)));',
+              '    Object.entries(values).forEach(([key, value]) => { if (value !== undefined && value !== null) formData.set(key, String(value)); });')
+          replace_once('components/inventory/product-form.tsx',
+              '          <div className={fieldClass}>\n            <label className={labelClass} htmlFor="sellingPrice">Selling price</label>\n            <Input id="sellingPrice" type="number" min="1" step="1" placeholder="0" aria-invalid={!!errors.sellingPrice} {...register("sellingPrice")} />\n            {errors.sellingPrice && <p className={errorClass}>{errors.sellingPrice.message}</p>}\n          </div>',
+              '          <div className={fieldClass}>\n            <label className={labelClass} htmlFor="sellingPrice">Selling price / default rate</label>\n            <Input id="sellingPrice" type="number" min="1" step="1" placeholder="0" aria-invalid={!!errors.sellingPrice} {...register("sellingPrice")} />\n            <p className="text-[11px] text-neutral-500">Used as unit price normally, or as the suggested rate/kg for weight-priced sales.</p>\n            {errors.sellingPrice && <p className={errorClass}>{errors.sellingPrice.message}</p>}\n          </div>\n          <div className={fieldClass}>\n            <label className={labelClass} htmlFor="defaultWeightKg">Default weight per {selectedUnit?.toLowerCase() || "unit"} (kg)</label>\n            <Input id="defaultWeightKg" type="number" min="0.001" step="0.001" placeholder="Optional, e.g. 4.500" aria-invalid={!!errors.defaultWeightKg} {...register("defaultWeightKg", { setValueAs: (value) => value === "" ? undefined : Number(value) })} />\n            <p className="text-[11px] text-neutral-500">Suggestion only. PO, GRN and sales transactions can override the actual weight every time.</p>\n            {errors.defaultWeightKg && <p className={errorClass}>{errors.defaultWeightKg.message}</p>}\n          </div>')
+
+          # Sale input contract.
+          replace_once('lib/validation/sale.ts',
+              '    unitPrice: z.number().positive("Invalid selling price.").max(100000000, "Invalid selling price."),\n    discountPerUnit:',
+              '    pricingMode: z.enum(["UNIT", "WEIGHT"]).default("UNIT"),\n    unitWeight: z.number().positive().max(100000).optional(),\n    perKgRate: z.number().positive().max(100000000).optional(),\n    unitPrice: z.number().positive("Invalid selling price.").max(100000000, "Invalid selling price."),\n    discountPerUnit:')
+          replace_once('lib/validation/sale.ts',
+              '  sale.items.forEach((item, index) => {\n    if (item.discountPerUnit > item.unitPrice) context.addIssue({ code: "custom", path: ["items", index, "discountPerUnit"], message: "Discount per unit cannot exceed unit price." });\n  });',
+              '  sale.items.forEach((item, index) => {\n    if (item.pricingMode === "WEIGHT" && (!item.unitWeight || !item.perKgRate)) context.addIssue({ code: "custom", path: ["items", index, "unitWeight"], message: "Enter actual weight and rate/kg for weight pricing." });\n    const effectiveUnitPrice = item.pricingMode === "WEIGHT" && item.unitWeight && item.perKgRate ? item.unitWeight * item.perKgRate : item.unitPrice;\n    if (item.discountPerUnit > effectiveUnitPrice) context.addIssue({ code: "custom", path: ["items", index, "discountPerUnit"], message: "Discount per unit cannot exceed the effective unit price." });\n  });')
+
+          # Server is authoritative for weighted math and stores transaction-time weight.
+          replace_once('lib/server/sales.ts',
+              '    const lines = data.items.map((item) => {\n      const gross = new Prisma.Decimal(item.unitPrice).mul(item.quantity);\n      const discountPerUnit = new Prisma.Decimal(item.discountPerUnit);\n      const discount = discountPerUnit.mul(item.quantity);\n      return { ...item, total: gross.minus(discount) };\n    });',
+              '    const lines = data.items.map((item) => {\n      const unitPrice = item.pricingMode === "WEIGHT" ? new Prisma.Decimal(item.unitWeight!).mul(item.perKgRate!) : new Prisma.Decimal(item.unitPrice);\n      const totalWeight = item.pricingMode === "WEIGHT" ? new Prisma.Decimal(item.unitWeight!).mul(item.quantity) : null;\n      const gross = unitPrice.mul(item.quantity);\n      const discountPerUnit = new Prisma.Decimal(item.discountPerUnit);\n      const discount = discountPerUnit.mul(item.quantity);\n      return { ...item, unitPrice, totalWeight, total: gross.minus(discount) };\n    });')
+          replace_once('lib/server/sales.ts',
+              '      await tx.salesOrderItem.create({ data: { salesOrderId: order.id, productId: line.productId, productName: product.name, productSku: product.sku, quantity: line.quantity, unitPrice: line.unitPrice, discountPerUnit: line.discountPerUnit, totalPrice: line.total } });',
+              '      await tx.salesOrderItem.create({ data: { salesOrderId: order.id, productId: line.productId, productName: product.name, productSku: product.sku, quantity: line.quantity, unitPrice: line.unitPrice, discountPerUnit: line.discountPerUnit, totalPrice: line.total, pricingMode: line.pricingMode, unitWeight: line.pricingMode === "WEIGHT" ? line.unitWeight : null, totalWeight: line.totalWeight, perKgRate: line.pricingMode === "WEIGHT" ? line.perKgRate : null } });')
+
+          # Sales UI data + editable actual weight/rate. Existing math continues from authoritative effective unitPrice.
+          replace_once('components/sales/sales-order-form.tsx',
+              'type ProductOption = { id: string; name: string; sku: string; sellingPrice: number; stockQuantity: number; status: "ACTIVE" | "INACTIVE" | "ARCHIVED"; unit: string };',
+              'type ProductOption = { id: string; name: string; sku: string; sellingPrice: number; stockQuantity: number; status: "ACTIVE" | "INACTIVE" | "ARCHIVED"; unit: string; defaultWeightKg: number | null };')
+          replace_once('components/sales/sales-order-form.tsx',
+              'defaultValues: { customerId: "", items: [{ productId: "", quantity: 1, unitPrice: 0, discountPerUnit: 0 }],',
+              'defaultValues: { customerId: "", items: [{ productId: "", quantity: 1, pricingMode: "UNIT", unitWeight: undefined, perKgRate: undefined, unitPrice: 0, discountPerUnit: 0 }],')
+          replace_once('components/sales/sales-order-form.tsx',
+              '    if (product) setValue(`items.${index}.unitPrice`, product.sellingPrice, { shouldValidate: true, shouldDirty: true });\n  }',
+              '    if (product) {\n      const weighted = Boolean(product.defaultWeightKg && product.defaultWeightKg > 0);\n      setValue(`items.${index}.pricingMode`, weighted ? "WEIGHT" : "UNIT", { shouldValidate: true, shouldDirty: true });\n      setValue(`items.${index}.unitWeight`, weighted ? product.defaultWeightKg! : undefined, { shouldValidate: true, shouldDirty: true });\n      setValue(`items.${index}.perKgRate`, weighted ? product.sellingPrice : undefined, { shouldValidate: true, shouldDirty: true });\n      setValue(`items.${index}.unitPrice`, weighted ? product.defaultWeightKg! * product.sellingPrice : product.sellingPrice, { shouldValidate: true, shouldDirty: true });\n    }\n  }\n\n  function setPricing(index: number, mode: "UNIT" | "WEIGHT") {\n    const product = products.find((entry) => entry.id === items[index]?.productId);\n    setValue(`items.${index}.pricingMode`, mode, { shouldValidate: true, shouldDirty: true });\n    if (mode === "WEIGHT") {\n      const weight = Number(items[index]?.unitWeight || product?.defaultWeightKg || 0);\n      const rate = Number(items[index]?.perKgRate || product?.sellingPrice || 0);\n      if (weight > 0) setValue(`items.${index}.unitWeight`, weight, { shouldValidate: true, shouldDirty: true });\n      if (rate > 0) setValue(`items.${index}.perKgRate`, rate, { shouldValidate: true, shouldDirty: true });\n      if (weight > 0 && rate > 0) setValue(`items.${index}.unitPrice`, weight * rate, { shouldValidate: true, shouldDirty: true });\n    } else if (product) setValue(`items.${index}.unitPrice`, product.sellingPrice, { shouldValidate: true, shouldDirty: true });\n  }\n\n  function setWeightValue(index: number, field: "unitWeight" | "perKgRate", value: number) {\n    setValue(`items.${index}.${field}`, value, { shouldValidate: true, shouldDirty: true });\n    const weight = field === "unitWeight" ? value : Number(items[index]?.unitWeight || 0);\n    const rate = field === "perKgRate" ? value : Number(items[index]?.perKgRate || 0);\n    if (weight > 0 && rate > 0) setValue(`items.${index}.unitPrice`, weight * rate, { shouldValidate: true, shouldDirty: true });\n  }')
+          replace_once('components/sales/sales-order-form.tsx',
+              'onClick={() => append({ productId: "", quantity: 1, unitPrice: 0, discountPerUnit: 0 })}',
+              'onClick={() => append({ productId: "", quantity: 1, pricingMode: "UNIT", unitWeight: undefined, perKgRate: undefined, unitPrice: 0, discountPerUnit: 0 })}')
+          replace_once('components/sales/sales-order-form.tsx',
+              '{selectedProduct && <span className="mt-1 block text-[10px] text-slate-500">Available {selectedProduct.stockQuantity} {selectedProduct.unit.toLowerCase()}</span>}</Field>',
+              '{selectedProduct && <><span className="mt-1 block text-[10px] text-slate-500">Available {selectedProduct.stockQuantity} {selectedProduct.unit.toLowerCase()}</span><div className="mt-2 grid grid-cols-[100px_1fr_1fr] gap-1.5"><select aria-label="Pricing mode" value={line?.pricingMode ?? "UNIT"} onChange={(event) => setPricing(index, event.target.value as "UNIT" | "WEIGHT")} className={fieldClass}><option value="UNIT">By unit</option><option value="WEIGHT">By weight</option></select>{line?.pricingMode === "WEIGHT" && <><Input aria-label="Actual weight per unit kg" type="number" min="0.001" step="0.001" value={line?.unitWeight ?? ""} onChange={(event) => setWeightValue(index, "unitWeight", Number(event.target.value))} placeholder="kg/unit" className="text-right text-xs" /><Input aria-label="Rate per kg" type="number" min="0.01" step="0.01" value={line?.perKgRate ?? ""} onChange={(event) => setWeightValue(index, "perKgRate", Number(event.target.value))} placeholder="Rs/kg" className="text-right text-xs" /></>}</div>{line?.pricingMode === "WEIGHT" && <span className="mt-1 block text-[10px] font-medium text-emerald-700">Actual {Number(line?.unitWeight || 0).toFixed(3)} kg/unit · {formatPKR(Number(line?.perKgRate || 0))}/kg · total {(Number(line?.unitWeight || 0) * Number(line?.quantity || 0)).toFixed(3)} kg</span>}</>}</Field>')
+          replace_once('components/sales/sales-order-form.tsx',
+              '<Input type="number" min="0" step="1" className="text-right text-sm" {...register(`items.${index}.unitPrice`, { valueAsNumber: true })} />',
+              '<Input type="number" min="0" step="0.01" readOnly={line?.pricingMode === "WEIGHT"} className="text-right text-sm read-only:bg-slate-50" {...register(`items.${index}.unitPrice`, { valueAsNumber: true })} />')
+
+          # Purchase form: catalog weight pre-fills but remains editable per PO line.
+          replace_once('components/purchases/purchase-form.tsx',
+              'type Product = { id: string; name: string; unit: string };',
+              'type Product = { id: string; name: string; unit: string; defaultWeightKg: number | null };')
+          replace_once('components/purchases/purchase-form.tsx',
+              '  const updateLine = (index: number, field: keyof LineItem, value: string) => setLines((current) => current.map((line, lineIndex) => lineIndex === index ? { ...line, [field]: value } : line));',
+              '  const updateLine = (index: number, field: keyof LineItem, value: string) => setLines((current) => current.map((line, lineIndex) => lineIndex === index ? { ...line, [field]: value } : line));\n  const selectProduct = (index: number, productId: string) => setLines((current) => current.map((line, lineIndex) => { if (lineIndex !== index) return line; const product = products.find((entry) => entry.id === productId); return { ...line, productId, unitWeight: pricingMode === "WEIGHT" && product?.defaultWeightKg ? String(product.defaultWeightKg) : line.unitWeight }; }));\n  const changePricingMode = (mode: "UNIT" | "WEIGHT") => { setPricingMode(mode); if (mode === "WEIGHT") setLines((current) => current.map((line) => { const product = products.find((entry) => entry.id === line.productId); return { ...line, unitWeight: line.unitWeight || (product?.defaultWeightKg ? String(product.defaultWeightKg) : "") }; })); };')
+          replace_once('components/purchases/purchase-form.tsx',
+              'onChange={(event) => setPricingMode(event.target.value as "UNIT" | "WEIGHT")}',
+              'onChange={(event) => changePricingMode(event.target.value as "UNIT" | "WEIGHT")}')
+          replace_once('components/purchases/purchase-form.tsx',
+              'onChange={(event) => updateLine(index, "productId", event.target.value)}',
+              'onChange={(event) => selectProduct(index, event.target.value)}')
+
+          # Remove this one-shot workflow from the resulting commit.
+          Path('.github/workflows/weighted-sales-one-shot.yml').unlink()
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'feat: editable weight defaults and weighted sales'
+          git push
