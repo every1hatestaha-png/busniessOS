@@ -4,7 +4,6 @@ import { NextResponse } from "next/server";
 import { applyCorsHeaders, corsPreflightResponse, isApiV1Request } from "@/lib/server/cors";
 
 function d4ProxyLog(message: string) {
-  console.info(`[D4][proxy] ${message}`);
 }
 
 const handleProxy = clerkMiddleware(async (auth, request) => {

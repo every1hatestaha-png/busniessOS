@@ -8,26 +8,19 @@ import { cookies, headers } from "next/headers";
 import { db } from "@/lib/server/db";
 
 export const getCurrentUser = cache(async () => {
-  console.info("[D4][root] before currentUser");
   const session = await auth({ acceptsToken: ["session_token", "oauth_token"] });
   const userId = "userId" in session ? session.userId : null;
   const tokenType = "tokenType" in session ? session.tokenType : "none";
   const requestHeaders = await headers();
   const isElectron = (requestHeaders.get("user-agent") || "").includes("Electron");
 
-  console.info(`[D4][auth] auth().userId present=${userId ? "YES" : "NO"} tokenType=${tokenType}`);
 
   if (!userId) {
-    console.info("[D4][auth] BusinessOS user found=NO");
-    console.info("[D4][workspace] workspace found=NO");
     redirect(isElectron ? "/desktop-auth" : "/sign-in");
   }
 
-  console.info("[D4][root] after currentUser");
-  console.info("[D4][auth] DB user query started");
   const existing = await db.user.findUnique({ where: { clerkId: userId } });
   if (existing) {
-    console.info("[D4][auth] BusinessOS user found=YES");
     return existing;
   }
 
@@ -35,7 +28,6 @@ export const getCurrentUser = cache(async () => {
   // Use the canonical user ID from auth() and the backend client so OAuth
   // bearer requests can provision the local BusinessOS user correctly.
   const clerkUser = await (await clerkClient()).users.getUser(userId);
-  console.info("[D4][auth] BusinessOS user found=NO; provisioning from Clerk");
 
   const primaryEmail = clerkUser.emailAddresses.find(
     (email) => email.id === clerkUser.primaryEmailAddressId,
@@ -60,16 +52,12 @@ export const getCurrentUser = cache(async () => {
     },
   });
 
-  console.info("[D4][auth] BusinessOS user found=YES");
   return user;
 });
 
 const getCurrentUserWorkspaceMemberships = cache(async () => {
-  console.info("[D4][root] before workspace lookup");
   const user = await getCurrentUser();
-  console.info("[D4][root] after currentUser");
   const activeWorkspaceId = (await cookies()).get("businessos_workspace")?.value;
-  console.info("[D4][workspace] workspace query started");
   const memberships = await db.workspaceMember.findMany({
     where: { userId: user.id },
     orderBy: { createdAt: "asc" },
@@ -83,13 +71,9 @@ export const getCurrentWorkspace = cache(async () => {
   const membership = memberships.find((entry) => entry.workspaceId === activeWorkspaceId) ?? memberships[0];
 
   if (!membership) {
-    console.info("[D4][workspace] workspace found=NO");
-    console.info("[D4][root] after workspace lookup");
     return null;
   }
 
-  console.info(`[D4][workspace] workspace found=YES members=${memberships.length}`);
-  console.info("[D4][root] after workspace lookup");
 
   return {
     user,
@@ -105,12 +89,9 @@ export async function listCurrentUserWorkspaces() {
 }
 
 export async function requireWorkspace() {
-  console.info("[D4][root] requireWorkspace entered");
   const context = await getCurrentWorkspace();
   if (!context) {
-    console.info("[D4][root] requireWorkspace redirecting to /onboarding");
     redirect("/onboarding");
   }
-  console.info("[D4][root] requireWorkspace resolved");
   return context;
 }

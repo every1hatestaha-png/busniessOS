@@ -64,10 +64,7 @@ function QuickAction({ href, label, detail, icon: Icon, primary = false }: { hre
 }
 
 export default async function DashboardPage() {
-  console.info("[D4][root] dashboard page entered");
-  console.info("[D4][root] dashboard page before workspace resolution");
   const { user, workspace, role } = await requireWorkspace();
-  console.info("[D4][root] dashboard page after workspace resolution");
   const canViewFinancials = canPerformAction(role, "financial.manage");
   const [financials, activity] = await Promise.all([
     canViewFinancials ? getFinancialDashboard(workspace.id) : Promise.resolve(null),
@@ -199,6 +196,5 @@ export default async function DashboardPage() {
       </section>
     </div>
   );
-  console.info("[D4][root] dashboard page render completed");
   return rendered;
 }
