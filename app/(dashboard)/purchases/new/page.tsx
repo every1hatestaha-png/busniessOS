@@ -9,7 +9,11 @@ export default async function NewPurchasePage() {
   const { workspaceId } = await requirePermission("financial.manage");
   const [suppliers, products] = await Promise.all([
     db.supplier.findMany({ where: { workspaceId }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    db.product.findMany({ where: { workspaceId, status: "ACTIVE" }, select: { id: true, name: true, unit: true }, orderBy: { name: "asc" } }),
+    db.product.findMany({
+      where: { workspaceId, status: "ACTIVE" },
+      select: { id: true, name: true, unit: true, defaultWeightKg: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">
@@ -20,7 +24,7 @@ export default async function NewPurchasePage() {
         <h1 className="text-xl font-semibold tracking-tight text-foreground">New Purchase Order</h1>
         <p className="mt-0.5 text-xs text-slate-500">Creates an order commitment only. Inventory and supplier payable are recorded when goods are received.</p>
       </div>
-      <PurchaseForm suppliers={suppliers} products={products} />
+      <PurchaseForm suppliers={suppliers} products={products.map((product) => ({ ...product, defaultWeightKg: product.defaultWeightKg?.toNumber() ?? null }))} />
     </div>
   );
 }
