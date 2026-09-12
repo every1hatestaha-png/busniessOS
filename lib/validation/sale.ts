@@ -27,4 +27,6 @@ export const saleSchema = z.object({
   if (sale.paidAmount > 0 && !sale.cashBankAccountId) context.addIssue({ code: "custom", path: ["cashBankAccountId"], message: "Select the cash/bank account receiving this payment." });
 });
 
-export type SaleInput = z.infer<typeof saleSchema>;
+// Callers may omit pricingMode; parsing normalizes it to UNIT. This keeps existing
+// API/tests backward compatible while allowing new weighted-sale fields.
+export type SaleInput = z.input<typeof saleSchema>;
