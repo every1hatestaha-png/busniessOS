@@ -25,7 +25,7 @@ const orderSchema = saleSchema.superRefine((order, context) => {
 type OrderFormInput = z.input<typeof orderSchema>;
 type OrderFormValues = z.output<typeof orderSchema>;
 type CustomerOption = { id: string; name: string; companyName: string; phone: string; creditLimit: number; currentBalance: number; status: "ACTIVE" | "INACTIVE" | "BLACKLISTED" };
-type ProductOption = { id: string; name: string; sku: string; sellingPrice: number; stockQuantity: number; status: "ACTIVE" | "INACTIVE" | "ARCHIVED"; unit: string };
+type ProductOption = { id: string; name: string; sku: string; sellingPrice: number; stockQuantity: number; status: "ACTIVE" | "INACTIVE" | "ARCHIVED"; unit: string; defaultWeightKg: number | null };
 type CashBankOption = { cashBankAccountId: string; name: string; currentBalance: number; isBank: boolean; bankName?: string | null };
 
 const fieldClass = "h-9 w-full rounded-md border border-input bg-white px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15";
@@ -34,7 +34,7 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
   const [actionState, submitAction, isPending] = useActionState(createSaleAction, {} as CreateSaleState);
   const { control, register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<OrderFormInput, unknown, OrderFormValues>({
     resolver: zodResolver(orderSchema),
-    defaultValues: { customerId: "", items: [{ productId: "", quantity: 1, unitPrice: 0, discountPerUnit: 0 }], orderDiscount: 0, paidAmount: 0, cashBankAccountId: "", notes: "", idempotencyKey: "00000000-0000-0000-0000-000000000000" },
+    defaultValues: { customerId: "", items: [{ productId: "", quantity: 1, pricingMode: "UNIT", unitWeight: undefined, perKgRate: undefined, unitPrice: 0, discountPerUnit: 0 }], orderDiscount: 0, paidAmount: 0, cashBankAccountId: "", notes: "", idempotencyKey: "00000000-0000-0000-0000-000000000000" },
   });
   const { fields, append, remove } = useFieldArray({ control, name: "items" });
   const items = useWatch({ control, name: "items" }) ?? [];
@@ -50,7 +50,32 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
   function selectProduct(index: number, productId: string) {
     setValue(`items.${index}.productId`, productId, { shouldValidate: true, shouldDirty: true });
     const product = products.find((entry) => entry.id === productId);
-    if (product) setValue(`items.${index}.unitPrice`, product.sellingPrice, { shouldValidate: true, shouldDirty: true });
+    if (product) {
+      const weighted = Boolean(product.defaultWeightKg && product.defaultWeightKg > 0);
+      setValue(`items.${index}.pricingMode`, weighted ? "WEIGHT" : "UNIT", { shouldValidate: true, shouldDirty: true });
+      setValue(`items.${index}.unitWeight`, weighted ? product.defaultWeightKg! : undefined, { shouldValidate: true, shouldDirty: true });
+      setValue(`items.${index}.perKgRate`, weighted ? product.sellingPrice : undefined, { shouldValidate: true, shouldDirty: true });
+      setValue(`items.${index}.unitPrice`, weighted ? product.defaultWeightKg! * product.sellingPrice : product.sellingPrice, { shouldValidate: true, shouldDirty: true });
+    }
+  }
+
+  function setPricing(index: number, mode: "UNIT" | "WEIGHT") {
+    const product = products.find((entry) => entry.id === items[index]?.productId);
+    setValue(`items.${index}.pricingMode`, mode, { shouldValidate: true, shouldDirty: true });
+    if (mode === "WEIGHT") {
+      const weight = Number(items[index]?.unitWeight || product?.defaultWeightKg || 0);
+      const rate = Number(items[index]?.perKgRate || product?.sellingPrice || 0);
+      if (weight > 0) setValue(`items.${index}.unitWeight`, weight, { shouldValidate: true, shouldDirty: true });
+      if (rate > 0) setValue(`items.${index}.perKgRate`, rate, { shouldValidate: true, shouldDirty: true });
+      if (weight > 0 && rate > 0) setValue(`items.${index}.unitPrice`, weight * rate, { shouldValidate: true, shouldDirty: true });
+    } else if (product) setValue(`items.${index}.unitPrice`, product.sellingPrice, { shouldValidate: true, shouldDirty: true });
+  }
+
+  function setWeightValue(index: number, field: "unitWeight" | "perKgRate", value: number) {
+    setValue(`items.${index}.${field}`, value, { shouldValidate: true, shouldDirty: true });
+    const weight = field === "unitWeight" ? value : Number(items[index]?.unitWeight || 0);
+    const rate = field === "perKgRate" ? value : Number(items[index]?.perKgRate || 0);
+    if (weight > 0 && rate > 0) setValue(`items.${index}.unitPrice`, weight * rate, { shouldValidate: true, shouldDirty: true });
   }
 
   function submitOrder(values: OrderFormValues) {
@@ -79,7 +104,7 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
         </Card>
 
         <Card className="gap-0 overflow-hidden rounded-lg border py-0 shadow-sm ring-0">
-          <CardHeader className="flex-row items-center justify-between border-b bg-slate-50/60 px-5 py-4"><div><CardTitle className="text-sm font-semibold">Line Items</CardTitle><p className="mt-0.5 text-xs text-slate-500">Add products, quantities, rates and per-unit discounts.</p></div><Button type="button" variant="outline" size="sm" onClick={() => append({ productId: "", quantity: 1, unitPrice: 0, discountPerUnit: 0 })}><Plus />Add line</Button></CardHeader>
+          <CardHeader className="flex-row items-center justify-between border-b bg-slate-50/60 px-5 py-4"><div><CardTitle className="text-sm font-semibold">Line Items</CardTitle><p className="mt-0.5 text-xs text-slate-500">Add products, quantities, rates and per-unit discounts.</p></div><Button type="button" variant="outline" size="sm" onClick={() => append({ productId: "", quantity: 1, pricingMode: "UNIT", unitWeight: undefined, perKgRate: undefined, unitPrice: 0, discountPerUnit: 0 })}><Plus />Add line</Button></CardHeader>
           <CardContent className="overflow-x-auto p-0">
             <div className="min-w-[720px]"><div className="grid grid-cols-[minmax(210px,1fr)_80px_110px_105px_120px_36px] gap-2 border-b bg-slate-50 px-5 py-2.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500"><span>Product</span><span className="text-right">Qty</span><span className="text-right">Unit price</span><span className="text-right">Disc/unit</span><span className="text-right">Line total</span><span /></div>
             {fields.map((field, index) => {
@@ -87,9 +112,9 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
               const lineTotal = Math.max(0, (line?.quantity || 0) * (line?.unitPrice || 0) - (line?.quantity || 0) * (line?.discountPerUnit || 0));
               const selectedProduct = products.find((product) => product.id === line?.productId);
               return <div key={field.id} className="grid grid-cols-[minmax(210px,1fr)_80px_110px_105px_120px_36px] items-start gap-2 border-b px-5 py-3 last:border-0">
-                <Field error={errors.items?.[index]?.productId?.message}><select value={line?.productId ?? ""} onChange={(event) => selectProduct(index, event.target.value)} className={fieldClass}><option value="">Select product</option>{products.filter((product) => product.status === "ACTIVE").map((product) => <option key={product.id} value={product.id}>{product.name} ({product.sku})</option>)}</select>{selectedProduct && <span className="mt-1 block text-[10px] text-slate-500">Available {selectedProduct.stockQuantity} {selectedProduct.unit.toLowerCase()}</span>}</Field>
+                <Field error={errors.items?.[index]?.productId?.message}><select value={line?.productId ?? ""} onChange={(event) => selectProduct(index, event.target.value)} className={fieldClass}><option value="">Select product</option>{products.filter((product) => product.status === "ACTIVE").map((product) => <option key={product.id} value={product.id}>{product.name} ({product.sku})</option>)}</select>{selectedProduct && <><span className="mt-1 block text-[10px] text-slate-500">Available {selectedProduct.stockQuantity} {selectedProduct.unit.toLowerCase()}</span><div className="mt-2 grid grid-cols-[100px_1fr_1fr] gap-1.5"><select aria-label="Pricing mode" value={line?.pricingMode ?? "UNIT"} onChange={(event) => setPricing(index, event.target.value as "UNIT" | "WEIGHT")} className={fieldClass}><option value="UNIT">By unit</option><option value="WEIGHT">By weight</option></select>{line?.pricingMode === "WEIGHT" && <><Input aria-label="Actual weight per unit kg" type="number" min="0.001" step="0.001" value={line?.unitWeight ?? ""} onChange={(event) => setWeightValue(index, "unitWeight", Number(event.target.value))} placeholder="kg/unit" className="text-right text-xs" /><Input aria-label="Rate per kg" type="number" min="0.01" step="0.01" value={line?.perKgRate ?? ""} onChange={(event) => setWeightValue(index, "perKgRate", Number(event.target.value))} placeholder="Rs/kg" className="text-right text-xs" /></>}</div>{line?.pricingMode === "WEIGHT" && <span className="mt-1 block text-[10px] font-medium text-emerald-700">Actual {Number(line?.unitWeight || 0).toFixed(3)} kg/unit · {formatPKR(Number(line?.perKgRate || 0))}/kg · total {(Number(line?.unitWeight || 0) * Number(line?.quantity || 0)).toFixed(3)} kg</span>}</>}</Field>
                 <Field error={errors.items?.[index]?.quantity?.message}><Input type="number" min="1" step="1" className="text-right text-sm" {...register(`items.${index}.quantity`, { valueAsNumber: true })} /></Field>
-                <Field error={errors.items?.[index]?.unitPrice?.message}><Input type="number" min="0" step="1" className="text-right text-sm" {...register(`items.${index}.unitPrice`, { valueAsNumber: true })} /></Field>
+                <Field error={errors.items?.[index]?.unitPrice?.message}><Input type="number" min="0" step="0.01" readOnly={line?.pricingMode === "WEIGHT"} className="text-right text-sm read-only:bg-slate-50" {...register(`items.${index}.unitPrice`, { valueAsNumber: true })} /></Field>
                 <Field error={errors.items?.[index]?.discountPerUnit?.message}><Input type="number" min="0" step="1" className="text-right text-sm" {...register(`items.${index}.discountPerUnit`, { valueAsNumber: true })} /></Field>
                 <div className="flex h-9 items-center justify-end text-sm font-semibold tabular-nums">{formatPKR(lineTotal)}</div>
                 <Button type="button" variant="ghost" size="icon" disabled={fields.length === 1} onClick={() => remove(index)} aria-label={`Remove line ${index + 1}`}><Trash2 className="text-red-600" /></Button>

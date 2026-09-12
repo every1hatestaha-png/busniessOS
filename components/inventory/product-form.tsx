@@ -68,7 +68,7 @@ export function ProductForm({ product }: ProductFormProps) {
 
   function submit(values: ProductFormValues) {
     const formData = new FormData();
-    Object.entries(values).forEach(([key, value]) => formData.set(key, String(value)));
+    Object.entries(values).forEach(([key, value]) => { if (value !== undefined && value !== null) formData.set(key, String(value)); });
     startTransition(() => formAction(formData));
   }
 
@@ -110,9 +110,16 @@ export function ProductForm({ product }: ProductFormProps) {
             {errors.costPrice && <p className={errorClass}>{errors.costPrice.message}</p>}
           </div>
           <div className={fieldClass}>
-            <label className={labelClass} htmlFor="sellingPrice">Selling price</label>
+            <label className={labelClass} htmlFor="sellingPrice">Selling price / default rate</label>
             <Input id="sellingPrice" type="number" min="1" step="1" placeholder="0" aria-invalid={!!errors.sellingPrice} {...register("sellingPrice")} />
+            <p className="text-[11px] text-neutral-500">Used as unit price normally, or as the suggested rate/kg for weight-priced sales.</p>
             {errors.sellingPrice && <p className={errorClass}>{errors.sellingPrice.message}</p>}
+          </div>
+          <div className={fieldClass}>
+            <label className={labelClass} htmlFor="defaultWeightKg">Default weight per {selectedUnit?.toLowerCase() || "unit"} (kg)</label>
+            <Input id="defaultWeightKg" type="number" min="0.001" step="0.001" placeholder="Optional, e.g. 4.500" aria-invalid={!!errors.defaultWeightKg} {...register("defaultWeightKg", { setValueAs: (value) => value === "" ? undefined : Number(value) })} />
+            <p className="text-[11px] text-neutral-500">Suggestion only. PO, GRN and sales transactions can override the actual weight every time.</p>
+            {errors.defaultWeightKg && <p className={errorClass}>{errors.defaultWeightKg.message}</p>}
           </div>
           {!product && <div className={fieldClass}>
             <label className={labelClass} htmlFor="stockQuantity">Opening stock{isKgMode ? " (kg)" : ""}</label>

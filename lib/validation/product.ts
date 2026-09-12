@@ -8,6 +8,7 @@ export const productSchema = z.object({
   sellingPrice: z.coerce.number().positive("Selling price must be greater than zero"),
   stockQuantity: z.coerce.number().min(0, "Opening stock cannot be negative"),
   reorderLevel: z.coerce.number().min(0, "Reorder level cannot be negative"),
+  defaultWeightKg: z.preprocess((value) => value === "" || value == null ? undefined : value, z.coerce.number().positive("Default weight must be greater than zero").max(100000).optional()),
   unit: z.enum(["PIECE", "BOX", "CARTON", "KG", "SET", "LITER", "METER"]),
   status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).default("ACTIVE"),
   description: z.string().trim().min(10, "Description must be at least 10 characters").max(500, "Description cannot exceed 500 characters"),

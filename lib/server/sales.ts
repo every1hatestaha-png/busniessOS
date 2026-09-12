@@ -29,10 +29,12 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
     if (products.length !== data.items.length) throw new SaleDomainError("PRODUCT_NOT_FOUND", "One or more products are unavailable.");
 
     const lines = data.items.map((item) => {
-      const gross = new Prisma.Decimal(item.unitPrice).mul(item.quantity);
+      const unitPrice = item.pricingMode === "WEIGHT" ? new Prisma.Decimal(item.unitWeight!).mul(item.perKgRate!) : new Prisma.Decimal(item.unitPrice);
+      const totalWeight = item.pricingMode === "WEIGHT" ? new Prisma.Decimal(item.unitWeight!).mul(item.quantity) : null;
+      const gross = unitPrice.mul(item.quantity);
       const discountPerUnit = new Prisma.Decimal(item.discountPerUnit);
       const discount = discountPerUnit.mul(item.quantity);
-      return { ...item, total: gross.minus(discount) };
+      return { ...item, unitPrice, totalWeight, total: gross.minus(discount) };
     });
     const subtotal = lines.reduce((sum, line) => sum.plus(new Prisma.Decimal(line.unitPrice).mul(line.quantity)), new Prisma.Decimal(0));
     const lineDiscount = lines.reduce((sum, line) => sum.plus(new Prisma.Decimal(line.discountPerUnit).mul(line.quantity)), new Prisma.Decimal(0));
@@ -75,7 +77,7 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
       costOfGoodsSold = costOfGoodsSold.plus(product.costPrice.mul(line.quantity));
       const changed = await tx.product.updateMany({ where: { id: line.productId, workspaceId: context.workspaceId, stockQuantity: { gte: line.quantity } }, data: { stockQuantity: { decrement: line.quantity } } });
       if (changed.count !== 1) throw new SaleDomainError("INSUFFICIENT_STOCK", `Unable to create sale because ${product.name} does not have sufficient inventory. Available quantity: ${product.stockQuantity.toString()}.`);
-      await tx.salesOrderItem.create({ data: { salesOrderId: order.id, productId: line.productId, productName: product.name, productSku: product.sku, quantity: line.quantity, unitPrice: line.unitPrice, discountPerUnit: line.discountPerUnit, totalPrice: line.total } });
+      await tx.salesOrderItem.create({ data: { salesOrderId: order.id, productId: line.productId, productName: product.name, productSku: product.sku, quantity: line.quantity, unitPrice: line.unitPrice, discountPerUnit: line.discountPerUnit, totalPrice: line.total, pricingMode: line.pricingMode, unitWeight: line.pricingMode === "WEIGHT" ? line.unitWeight : null, totalWeight: line.totalWeight, perKgRate: line.pricingMode === "WEIGHT" ? line.perKgRate : null } });
       await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: line.productId, type: "SALE", quantityChanged: -line.quantity, unitCost: product.costPrice, reference: orderNumber } });
     }
 
