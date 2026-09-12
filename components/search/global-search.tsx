@@ -29,12 +29,7 @@ export function GlobalSearch({ className, autoFocus = false, onNavigate }: { cla
 
   useEffect(() => {
     const term = query.trim();
-    if (term.length < 2) {
-      requestRef.current?.abort();
-      setMatches([]);
-      setLoading(false);
-      return;
-    }
+    if (term.length < 2) return;
     const timer = window.setTimeout(async () => {
       requestRef.current?.abort();
       const controller = new AbortController();
@@ -71,7 +66,17 @@ export function GlobalSearch({ className, autoFocus = false, onNavigate }: { cla
         type="search"
         value={query}
         autoFocus={autoFocus}
-        onChange={(event) => { setQuery(event.target.value); setOpen(true); setActiveIndex(0); }}
+        onChange={(event) => {
+          const value = event.target.value;
+          setQuery(value);
+          setOpen(true);
+          setActiveIndex(0);
+          if (value.trim().length < 2) {
+            requestRef.current?.abort();
+            setMatches([]);
+            setLoading(false);
+          }
+        }}
         onFocus={() => setOpen(true)}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown") { event.preventDefault(); setActiveIndex((index) => Math.min(index + 1, Math.max(0, matches.length - 1))); }
