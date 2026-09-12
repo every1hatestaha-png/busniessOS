@@ -1,7 +1,9 @@
 import path from "node:path";
 import { defineConfig } from "vitest/config";
+import { financeGradeHarnessNormalizer } from "./tests/finance-grade/harness-normalizer";
 
 export default defineConfig({
+  plugins: [financeGradeHarnessNormalizer()],
   resolve: {
     alias: [
       { find: "server-only", replacement: path.resolve(process.cwd(), "tests/stubs/server-only.ts") },
