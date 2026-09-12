@@ -21,8 +21,8 @@ export function TopNav({ workspaceName, workspaceId, workspaces, role }: { works
   );
 
   return (
-    <header className="relative z-40 flex min-h-16 flex-wrap items-center border-b bg-white px-4 print:hidden sm:px-6">
-      <div className="flex w-full items-center gap-3">
+    <header className="sticky top-0 z-40 flex min-h-16 flex-wrap items-center border-b bg-white/95 px-4 backdrop-blur print:hidden sm:px-6">
+      <div className="flex w-full min-w-0 items-center gap-3">
         <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
           <SheetTrigger render={<Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open navigation menu" />}>
             <Menu className="size-5" />
@@ -36,9 +36,9 @@ export function TopNav({ workspaceName, workspaceId, workspaces, role }: { works
         </Sheet>
 
         <span className="max-w-40 truncate text-base font-bold tracking-tight lg:hidden" title={workspaceName}>{workspaceName}</span>
-        <GlobalSearch className="hidden max-w-[520px] lg:block" />
+        <GlobalSearch className="hidden min-w-0 max-w-[520px] flex-1 lg:block" />
 
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <WorkspaceSwitcher activeId={workspaceId} workspaces={workspaces} />
           <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileSearchOpen((open) => !open)} aria-label={mobileSearchOpen ? "Close search" : "Open search"}>
             {mobileSearchOpen ? <X /> : <Search />}
@@ -47,7 +47,7 @@ export function TopNav({ workspaceName, workspaceId, workspaces, role }: { works
           {!isDesktop ? <div className="ml-1 flex items-center border-l pl-3"><UserButton /></div> : null}
         </div>
       </div>
-      {mobileSearchOpen && <GlobalSearch autoFocus onNavigate={() => setMobileSearchOpen(false)} className="mt-3 lg:hidden" />}
+      {mobileSearchOpen && <GlobalSearch autoFocus onNavigate={() => setMobileSearchOpen(false)} className="mt-3 w-full lg:hidden" />}
     </header>
   );
 }
