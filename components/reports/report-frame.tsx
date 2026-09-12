@@ -14,7 +14,7 @@ export function ReportFrame({ workspace, title, from, to, subtitle, filters, chi
         <PrintButton label="Print report" disabled={!printable} />
       </div>
       {filters}
-      <article data-print-orientation={orientation} className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm print:rounded-none print:border-0 print:p-0 print:shadow-none">
+      <article data-print-surface data-print-orientation={orientation} className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm print:rounded-none print:border-0 print:p-0 print:shadow-none">
         <ReportCompanyHeader workspace={workspace} title={title} from={from} to={to} subtitle={subtitle} />
         <div className="mt-5">{children}</div>
       </article>
