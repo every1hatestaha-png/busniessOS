@@ -31,7 +31,7 @@ export default async function KhataPage() {
         <MetricCard label="Overdue" value={formatPKR(summary.overdueAmount)} detail="Past-due invoice balances" icon={AlertTriangle} />
       </div>
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="overflow-hidden rounded-md border bg-white">
           <div className="border-b px-4 py-3"><h2 className="text-sm font-semibold">Customer credit position</h2><p className="mt-0.5 text-[11px] text-muted-foreground">Sales, collections, outstanding balance, and approved credit.</p></div>
           {summary.customers.length > 0 ? (
@@ -55,7 +55,7 @@ export default async function KhataPage() {
             </div>
           ) : <p className="px-4 py-12 text-center text-sm text-neutral-500">No customer accounts have been added yet.</p>}
          </div>
-         <div className="rounded-md border bg-white p-4 xl:sticky xl:top-6"><div className="mb-4"><h2 className="text-sm font-semibold">Record payment</h2><p className="mt-0.5 text-[11px] text-muted-foreground">Unallocated receipts reduce the customer account balance.</p></div>{canRecordPayments ? <RecordPaymentForm customers={paymentCustomers} cashBankAccounts={cashBankAccounts} /> : <p className="text-xs text-muted-foreground">Your role cannot record payments.</p>}</div>
+         <div className="rounded-md border bg-white p-4 2xl:sticky 2xl:top-6"><div className="mb-4"><h2 className="text-sm font-semibold">Record payment</h2><p className="mt-0.5 text-[11px] text-muted-foreground">Unallocated receipts reduce the customer account balance.</p></div>{canRecordPayments ? <RecordPaymentForm customers={paymentCustomers} cashBankAccounts={cashBankAccounts} /> : <p className="text-xs text-muted-foreground">Your role cannot record payments.</p>}</div>
        </div>
       </div>
   );

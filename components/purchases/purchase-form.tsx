@@ -46,7 +46,7 @@ export function PurchaseForm({ suppliers, products }: { suppliers: Array<{ id: s
     setBusy(false);
   }
 
-  return <form onSubmit={submit} className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+  return <form onSubmit={submit} className="grid items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
     <div className="space-y-4">
       <Card className="gap-0 rounded-md border py-0 shadow-none ring-0"><CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm font-semibold">Supplier & Document</CardTitle></CardHeader><CardContent className="grid gap-4 p-4 md:grid-cols-3"><Field label="Supplier"><select required name="supplierId" className={fieldClass}><option value="">Choose supplier</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></Field><Field label="Department" hint="Optional"><Input name="department" placeholder="Department" /></Field><Field label="Expected delivery" hint="Optional"><Input name="expectedDeliveryDate" type="date" /></Field></CardContent></Card>
 
@@ -64,7 +64,7 @@ export function PurchaseForm({ suppliers, products }: { suppliers: Array<{ id: s
       <Card className="gap-0 rounded-md border py-0 shadow-none ring-0"><CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm font-semibold">Notes</CardTitle></CardHeader><CardContent className="p-4"><textarea name="notes" placeholder="Purchase instructions or internal notes" rows={3} className={`${fieldClass} h-auto resize-y py-2`} maxLength={1000} /></CardContent></Card>
     </div>
 
-    <Card className="sticky top-6 gap-0 rounded-md border py-0 shadow-none ring-0"><CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm font-semibold">Purchase Summary</CardTitle></CardHeader><CardContent className="space-y-4 p-4"><div><p className="text-[10px] uppercase tracking-wide text-slate-500">Estimated ordered value</p><p className="mt-1 text-xl font-semibold tabular-nums">{formatPKR(computeTotal())}</p></div><div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-[11px] leading-relaxed text-blue-900">This order does not create inventory or supplier payable. Post a goods receipt when stock arrives.</div>{message && <p role="alert" className="text-xs text-red-600">{message}</p>}<Button disabled={busy || !suppliers.length || !products.length} type="submit" className="w-full">{busy ? "Creating..." : "Create Purchase Order"}</Button></CardContent></Card>
+    <Card className="gap-0 2xl:sticky 2xl:top-6 rounded-md border py-0 shadow-none ring-0"><CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm font-semibold">Purchase Summary</CardTitle></CardHeader><CardContent className="space-y-4 p-4"><div><p className="text-[10px] uppercase tracking-wide text-slate-500">Estimated ordered value</p><p className="mt-1 text-xl font-semibold tabular-nums">{formatPKR(computeTotal())}</p></div><div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-[11px] leading-relaxed text-blue-900">This order does not create inventory or supplier payable. Post a goods receipt when stock arrives.</div>{message && <p role="alert" className="text-xs text-red-600">{message}</p>}<Button disabled={busy || !suppliers.length || !products.length} type="submit" className="w-full">{busy ? "Creating..." : "Create Purchase Order"}</Button></CardContent></Card>
   </form>;
 }
 

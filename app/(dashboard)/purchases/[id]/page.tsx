@@ -96,7 +96,7 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
         </Card>
       )}
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-4">
           <Card className="gap-0 rounded-md border py-0 shadow-none ring-0">
             <CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm font-semibold">Purchase Order Lines</CardTitle></CardHeader>
@@ -193,7 +193,7 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
           </Card>
         </div>
 
-        <div className="space-y-4 xl:sticky xl:top-6">
+        <div className="space-y-4 2xl:sticky 2xl:top-6">
           <SummaryCard title="Purchase Order Summary"><SummaryRow label="Subtotal" value={formatPKR(purchase.subtotal)} />{purchase.discount > 0 && <SummaryRow label="Discount" value={`- ${formatPKR(purchase.discount)}`} />}<SummaryRow label="Ordered value" value={formatPKR(purchase.total)} strong /></SummaryCard>
           <SummaryCard title="Receiving Summary"><SummaryRow label="Accepted GRN value" value={formatPKR(purchase.goodsReceivedValue)} /><SummaryRow label="Remaining order value" value={formatPKR(purchase.remainingValueToReceive)} strong /></SummaryCard>
           <SummaryCard title="Payment Summary"><SummaryRow label="Paid to supplier" value={formatPKR(purchase.paid)} /><div className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-950"><span className="text-xs font-medium">Outstanding payable</span><span className="text-base font-semibold tabular-nums">{formatPKR(purchase.outstanding)}</span></div><Link href={`/suppliers/${purchase.supplier.id}`} className="inline-flex h-8 w-full items-center justify-center rounded-md border text-xs font-medium text-slate-700 hover:bg-slate-50">View Supplier Khata</Link></SummaryCard>

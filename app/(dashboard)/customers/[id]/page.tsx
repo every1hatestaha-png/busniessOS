@@ -39,7 +39,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         <MetricCard label="Total sales" value={formatPKR(customer.totalSales)} detail="Lifetime sales" icon={ShoppingCart} />
         <MetricCard label="Total payments" value={formatPKR(customer.totalPayments)} detail="Lifetime receipts" icon={CircleDollarSign} />
       </div>
-      <div className={`grid items-start gap-4 ${customer.currentBalance > 0 && canRecordPayments ? "xl:grid-cols-[minmax(0,1fr)_360px]" : ""}`}><CustomerDetailsTabs customer={customer} />{customer.currentBalance > 0 && canRecordPayments && <div className="rounded-xl border bg-white p-4"><h2 className="font-semibold">Record receipt</h2><p className="mb-4 mt-1 text-xs text-neutral-500">Unallocated receipt against this customer account.</p><RecordPaymentForm customers={[{ id: customer.id, name: customer.companyName, balance: customer.currentBalance }]} cashBankAccounts={cashBankAccounts} /></div>}</div>
+      <div className={`grid items-start gap-4 ${customer.currentBalance > 0 && canRecordPayments ? "2xl:grid-cols-[minmax(0,1fr)_360px]" : ""}`}><CustomerDetailsTabs customer={customer} />{customer.currentBalance > 0 && canRecordPayments && <div className="rounded-xl border bg-white p-4"><h2 className="font-semibold">Record receipt</h2><p className="mb-4 mt-1 text-xs text-neutral-500">Unallocated receipt against this customer account.</p><RecordPaymentForm customers={[{ id: customer.id, name: customer.companyName, balance: customer.currentBalance }]} cashBankAccounts={cashBankAccounts} /></div>}</div>
     </div>
   );
 }

@@ -49,7 +49,7 @@ export default async function GoodsReceiptDetailPage({ params }: { params: Promi
 
       <div className="grid overflow-hidden rounded-md border bg-white sm:grid-cols-4 sm:divide-x"><Fact label="PO reference" value={grn.purchaseOrder.orderNumber} mono /><Fact label="Supplier" value={grn.supplier.name} /><Fact label="Receipt date" value={formatDate(grn.receiptDate)} /><Fact label="Accepted value" value={formatPKR(grn.totalAmount)} /></div>
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-4">
           <Card className="gap-0 rounded-md border py-0 shadow-none ring-0">
             <CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm font-semibold">Receipt Lines</CardTitle><p className="text-[11px] text-slate-500">Physical delivery, accepted stock, and remaining PO capacity.</p></CardHeader>
@@ -96,7 +96,7 @@ export default async function GoodsReceiptDetailPage({ params }: { params: Promi
           </Card>
         </div>
 
-        <Card className="sticky top-6 gap-0 rounded-md border py-0 shadow-none ring-0">
+        <Card className="gap-0 2xl:sticky 2xl:top-6 rounded-md border py-0 shadow-none ring-0">
           <CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm font-semibold">Receipt Summary</CardTitle></CardHeader>
           <CardContent className="space-y-3 p-4 text-xs">
              <SummaryRow label="GRN Number" value={grn.grnNumber} mono />
