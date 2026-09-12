@@ -1,5 +1,6 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopNav } from "@/components/layout/top-nav";
+import { PrintShortcutRouter } from "@/components/documents/print-shortcut-router";
 import { listCurrentUserWorkspaces, requireWorkspace } from "@/lib/server/auth";
 import { getSearchResults } from "@/lib/server/search";
 
@@ -18,6 +19,7 @@ export default async function DashboardLayout({
 
   const rendered = (
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground print:block print:h-auto print:overflow-visible print:bg-white">
+      <PrintShortcutRouter />
       <div className="hidden print:hidden lg:block">
         <Sidebar workspaceName={workspace.name} role={role} />
       </div>
