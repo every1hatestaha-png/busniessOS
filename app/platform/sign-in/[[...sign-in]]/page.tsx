@@ -43,7 +43,7 @@ export default function PlatformSignInPage() {
           />
         </div>
 
-        <p className="mt-5 text-center text-xs text-[#94a3b8]">MunshiOS platform administration • Authorized owner access only</p>
+        <p className="mt-5 text-center text-xs text-[#94a3b8]">MunshiOS owner portal • Authorized access only</p>
       </div>
     </main>
   );
