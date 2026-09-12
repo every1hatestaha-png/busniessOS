@@ -1,0 +1,40 @@
+name: One Shot Purchase Performance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-shot-purchase-performance.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Batch purchase order item writes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('lib/server/purchases.ts')
+          s = p.read_text()
+          old = '''    const lines = data.items.map((item) => {\n      const product = products.find((p) => p.id === item.productId)!;\n      const unitCost = data.pricingMode === "WEIGHT"\n        ? new Prisma.Decimal(item.unitWeight!).mul(item.perKgRate!)\n        : new Prisma.Decimal(item.unitCost);\n      const totalCost = unitCost.mul(item.quantity);\n      return { ...item, unitCost, totalCost, product };\n    });'''
+          new = '''    const productById = new Map(products.map((product) => [product.id, product]));\n    const lines = data.items.map((item) => {\n      const product = productById.get(item.productId)!;\n      const unitCost = data.pricingMode === "WEIGHT"\n        ? new Prisma.Decimal(item.unitWeight!).mul(item.perKgRate!)\n        : new Prisma.Decimal(item.unitCost);\n      const totalCost = unitCost.mul(item.quantity);\n      return { ...item, unitCost, totalCost, product };\n    });'''
+          if old not in s: raise SystemExit('product lines anchor not found')
+          s = s.replace(old, new, 1)
+          old = '''    for (const line of lines) {\n      const itemData: Prisma.PurchaseOrderItemCreateManyInput = {\n        purchaseOrderId: order.id,\n        productId: line.productId,\n        productName: line.product.name,\n        productSku: line.product.sku,\n        quantity: line.quantity,\n        unitCost: line.unitCost,\n        totalCost: line.totalCost,\n      };\n\n      if (data.pricingMode === "WEIGHT" && line.unitWeight != null && line.perKgRate != null) {\n        const totalWeight = new Prisma.Decimal(line.unitWeight).mul(line.quantity);\n        itemData.unitWeight = line.unitWeight;\n        itemData.totalWeight = totalWeight;\n        itemData.perKgRate = line.perKgRate;\n      }\n\n      await tx.purchaseOrderItem.create({ data: itemData });\n    }'''
+          new = '''    await tx.purchaseOrderItem.createMany({\n      data: lines.map((line): Prisma.PurchaseOrderItemCreateManyInput => {\n        const itemData: Prisma.PurchaseOrderItemCreateManyInput = {\n          purchaseOrderId: order.id, productId: line.productId, productName: line.product.name, productSku: line.product.sku,\n          quantity: line.quantity, unitCost: line.unitCost, totalCost: line.totalCost,\n        };\n        if (data.pricingMode === "WEIGHT" && line.unitWeight != null && line.perKgRate != null) {\n          itemData.unitWeight = line.unitWeight;\n          itemData.totalWeight = new Prisma.Decimal(line.unitWeight).mul(line.quantity);\n          itemData.perKgRate = line.perKgRate;\n        }\n        return itemData;\n      }),\n    });'''
+          if old not in s: raise SystemExit('purchase item loop anchor not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          rm .github/workflows/one-shot-purchase-performance.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/server/purchases.ts .github/workflows/one-shot-purchase-performance.yml
+          git commit -m "perf: batch purchase order line writes"
+          git push origin main
