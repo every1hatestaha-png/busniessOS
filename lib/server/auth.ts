@@ -10,10 +10,8 @@ import { db } from "@/lib/server/db";
 export const getCurrentUser = cache(async () => {
   const session = await auth({ acceptsToken: ["session_token", "oauth_token"] });
   const userId = "userId" in session ? session.userId : null;
-  const tokenType = "tokenType" in session ? session.tokenType : "none";
   const requestHeaders = await headers();
   const isElectron = (requestHeaders.get("user-agent") || "").includes("Electron");
-
 
   if (!userId) {
     redirect(isElectron ? "/desktop-auth" : "/sign-in");
@@ -24,35 +22,48 @@ export const getCurrentUser = cache(async () => {
     return existing;
   }
 
-  // currentUser() uses the default session-token mode in the installed SDK.
-  // Use the canonical user ID from auth() and the backend client so OAuth
-  // bearer requests can provision the local BusinessOS user correctly.
+  // Resolve the authenticated Clerk identity from the backend. This also lets
+  // us safely reconnect an existing MunshiOS user if Clerk ever issues a new
+  // user ID for the same verified email address.
   const clerkUser = await (await clerkClient()).users.getUser(userId);
 
-  const primaryEmail = clerkUser.emailAddresses.find(
-    (email) => email.id === clerkUser.primaryEmailAddressId,
-  )?.emailAddress ?? clerkUser.emailAddresses[0]?.emailAddress;
+  const primaryEmailAddress =
+    clerkUser.emailAddresses.find((email) => email.id === clerkUser.primaryEmailAddressId) ??
+    clerkUser.emailAddresses[0];
 
+  const primaryEmail = primaryEmailAddress?.emailAddress?.trim().toLowerCase();
   if (!primaryEmail) {
-    throw new Error("Your Clerk account needs an email address before using BusinessOS.");
+    throw new Error("Your Clerk account needs an email address before using MunshiOS.");
   }
 
-  const user = await db.user.upsert({
-    where: { clerkId: userId },
-    create: {
+  if (primaryEmailAddress?.verification?.status !== "verified") {
+    throw new Error("Verify your email address before using MunshiOS.");
+  }
+
+  // Email is unique in MunshiOS. If a verified Clerk identity with the same
+  // email appears under a new Clerk ID, reconnect it to the existing local
+  // user instead of creating an empty account and orphaning workspace data.
+  const existingByEmail = await db.user.findUnique({ where: { email: primaryEmail } });
+  if (existingByEmail) {
+    return db.user.update({
+      where: { id: existingByEmail.id },
+      data: {
+        clerkId: userId,
+        email: primaryEmail,
+        firstName: clerkUser.firstName,
+        lastName: clerkUser.lastName,
+      },
+    });
+  }
+
+  return db.user.create({
+    data: {
       clerkId: userId,
       email: primaryEmail,
       firstName: clerkUser.firstName,
       lastName: clerkUser.lastName,
     },
-    update: {
-      email: primaryEmail,
-      firstName: clerkUser.firstName,
-      lastName: clerkUser.lastName,
-    },
   });
-
-  return user;
 });
 
 const getCurrentUserWorkspaceMemberships = cache(async () => {
@@ -74,7 +85,6 @@ export const getCurrentWorkspace = cache(async () => {
     return null;
   }
 
-
   return {
     user,
     workspace: membership.workspace,
@@ -85,7 +95,11 @@ export const getCurrentWorkspace = cache(async () => {
 
 export async function listCurrentUserWorkspaces() {
   const { memberships } = await getCurrentUserWorkspaceMemberships();
-  return memberships.map((membership) => ({ workspaceId: membership.workspaceId, role: membership.role, workspace: { name: membership.workspace.name } }));
+  return memberships.map((membership) => ({
+    workspaceId: membership.workspaceId,
+    role: membership.role,
+    workspace: { name: membership.workspace.name },
+  }));
 }
 
 export async function requireWorkspace() {
