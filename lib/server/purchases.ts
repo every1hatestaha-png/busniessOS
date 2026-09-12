@@ -94,8 +94,9 @@ export async function createPurchase(context: ServiceContext, input: PurchaseInp
     });
     if (products.length !== data.items.length) throw new PurchaseDomainError("PRODUCT_NOT_FOUND", "One or more products are unavailable.");
 
+    const productById = new Map(products.map((product) => [product.id, product]));
     const lines = data.items.map((item) => {
-      const product = products.find((p) => p.id === item.productId)!;
+      const product = productById.get(item.productId)!;
       const unitCost = data.pricingMode === "WEIGHT"
         ? new Prisma.Decimal(item.unitWeight!).mul(item.perKgRate!)
         : new Prisma.Decimal(item.unitCost);
@@ -124,26 +125,20 @@ export async function createPurchase(context: ServiceContext, input: PurchaseInp
       select: { id: true, orderNumber: true, orderDate: true },
     });
 
-    for (const line of lines) {
-      const itemData: Prisma.PurchaseOrderItemCreateManyInput = {
-        purchaseOrderId: order.id,
-        productId: line.productId,
-        productName: line.product.name,
-        productSku: line.product.sku,
-        quantity: line.quantity,
-        unitCost: line.unitCost,
-        totalCost: line.totalCost,
-      };
-
-      if (data.pricingMode === "WEIGHT" && line.unitWeight != null && line.perKgRate != null) {
-        const totalWeight = new Prisma.Decimal(line.unitWeight).mul(line.quantity);
-        itemData.unitWeight = line.unitWeight;
-        itemData.totalWeight = totalWeight;
-        itemData.perKgRate = line.perKgRate;
-      }
-
-      await tx.purchaseOrderItem.create({ data: itemData });
-    }
+    await tx.purchaseOrderItem.createMany({
+      data: lines.map((line): Prisma.PurchaseOrderItemCreateManyInput => {
+        const itemData: Prisma.PurchaseOrderItemCreateManyInput = {
+          purchaseOrderId: order.id, productId: line.productId, productName: line.product.name, productSku: line.product.sku,
+          quantity: line.quantity, unitCost: line.unitCost, totalCost: line.totalCost,
+        };
+        if (data.pricingMode === "WEIGHT" && line.unitWeight != null && line.perKgRate != null) {
+          itemData.unitWeight = line.unitWeight;
+          itemData.totalWeight = new Prisma.Decimal(line.unitWeight).mul(line.quantity);
+          itemData.perKgRate = line.perKgRate;
+        }
+        return itemData;
+      }),
+    });
 
     await writeAudit(tx, {
       workspaceId: context.workspaceId,
