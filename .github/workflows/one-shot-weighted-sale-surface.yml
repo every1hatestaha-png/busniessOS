@@ -1,0 +1,75 @@
+name: One Shot Weighted Sale Surface
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-shot-weighted-sale-surface.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Surface weighted sale metadata
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          # Sale DTO
+          p = Path('lib/server/sales.ts')
+          s = p.read_text()
+          old = 'items: row.items.map((item) => ({ id: item.id, productName: item.productName ?? item.product.name, sku: item.productSku ?? item.product.sku ?? "", quantity: item.quantity, unitPrice: Number(item.unitPrice), discountPerUnit: Number(item.discountPerUnit), total: Number(item.totalPrice) })),'
+          new = 'items: row.items.map((item) => ({ id: item.id, productName: item.productName ?? item.product.name, sku: item.productSku ?? item.product.sku ?? "", quantity: item.quantity, unitPrice: Number(item.unitPrice), discountPerUnit: Number(item.discountPerUnit), total: Number(item.totalPrice), pricingMode: item.pricingMode, unitWeight: item.unitWeight ? Number(item.unitWeight) : null, totalWeight: item.totalWeight ? Number(item.totalWeight) : null, perKgRate: item.perKgRate ? Number(item.perKgRate) : null })),'
+          if old not in s: raise SystemExit('sale DTO anchor not found')
+          p.write_text(s.replace(old, new, 1))
+
+          # Invoice DTO
+          p = Path('lib/server/invoices.ts')
+          s = p.read_text()
+          old = 'invoice.salesOrderId ? db.$queryRaw<Array<{ id: string; productName: string | null; fallbackProductName: string; productSku: string | null; fallbackSku: string | null; unit: string; quantity: number; unitPrice: Prisma.Decimal; discountPerUnit: Prisma.Decimal; totalPrice: Prisma.Decimal }>>`'
+          new = 'invoice.salesOrderId ? db.$queryRaw<Array<{ id: string; productName: string | null; fallbackProductName: string; productSku: string | null; fallbackSku: string | null; unit: string; quantity: number; unitPrice: Prisma.Decimal; discountPerUnit: Prisma.Decimal; totalPrice: Prisma.Decimal; pricingMode: "UNIT" | "WEIGHT"; unitWeight: Prisma.Decimal | null; totalWeight: Prisma.Decimal | null; perKgRate: Prisma.Decimal | null }>>`'
+          if old not in s: raise SystemExit('invoice item type anchor not found')
+          s = s.replace(old, new, 1)
+          old = 'SELECT soi."id", soi."productName", p."name" AS "fallbackProductName", soi."productSku", p."sku" AS "fallbackSku", p."unit"::text AS "unit", soi."quantity", soi."unitPrice", soi."discountPerUnit", soi."totalPrice"'
+          new = 'SELECT soi."id", soi."productName", p."name" AS "fallbackProductName", soi."productSku", p."sku" AS "fallbackSku", p."unit"::text AS "unit", soi."quantity", soi."unitPrice", soi."discountPerUnit", soi."totalPrice", soi."pricingMode", soi."unitWeight", soi."totalWeight", soi."perKgRate"'
+          if old not in s: raise SystemExit('invoice select anchor not found')
+          s = s.replace(old, new, 1)
+          old = 'items: items.map((item) => ({ id: item.id, name: item.productName ?? item.fallbackProductName, sku: item.productSku ?? item.fallbackSku ?? "", unit: item.unit, quantity: Number(item.quantity), unitPrice: Number(item.unitPrice), discountPerUnit: Number(item.discountPerUnit), total: Number(item.totalPrice) }))'
+          new = 'items: items.map((item) => ({ id: item.id, name: item.productName ?? item.fallbackProductName, sku: item.productSku ?? item.fallbackSku ?? "", unit: item.unit, quantity: Number(item.quantity), unitPrice: Number(item.unitPrice), discountPerUnit: Number(item.discountPerUnit), total: Number(item.totalPrice), pricingMode: item.pricingMode, unitWeight: item.unitWeight ? Number(item.unitWeight) : null, totalWeight: item.totalWeight ? Number(item.totalWeight) : null, perKgRate: item.perKgRate ? Number(item.perKgRate) : null }))'
+          if old not in s: raise SystemExit('invoice map anchor not found')
+          p.write_text(s.replace(old, new, 1))
+
+          # Sale detail UI
+          p = Path('app/(dashboard)/sales/[id]/page.tsx')
+          s = p.read_text()
+          old = '{item.sku && <p className="font-mono text-[10px] text-slate-500">{item.sku}</p>}'
+          new = '{item.sku && <p className="font-mono text-[10px] text-slate-500">{item.sku}</p>}{item.pricingMode === "WEIGHT" && <p className="mt-0.5 text-[10px] font-medium text-emerald-700">{item.unitWeight?.toFixed(3)} kg/unit · total {item.totalWeight?.toFixed(3)} kg · {formatPKR(item.perKgRate ?? 0)}/kg</p>}'
+          if old not in s: raise SystemExit('sale detail product anchor not found')
+          p.write_text(s.replace(old, new, 1))
+
+          # Invoice normal UI (print styling intentionally untouched)
+          p = Path('app/(dashboard)/invoices/[id]/page.tsx')
+          s = p.read_text()
+          old = '<TableCell className="whitespace-normal break-words pl-6 font-medium sm:pl-8">{item.name}</TableCell>'
+          new = '<TableCell className="whitespace-normal break-words pl-6 font-medium sm:pl-8"><span>{item.name}</span>{item.pricingMode === "WEIGHT" && <span className="mt-0.5 block text-[10px] font-medium text-emerald-700">{item.unitWeight?.toFixed(3)} kg/unit · total {item.totalWeight?.toFixed(3)} kg</span>}</TableCell>'
+          if old not in s: raise SystemExit('invoice description anchor not found')
+          s = s.replace(old, new, 1)
+          old = '<TableCell className="text-right tabular-nums">{formatPKR(item.unitPrice)}</TableCell>'
+          new = '<TableCell className="text-right tabular-nums">{item.pricingMode === "WEIGHT" ? <><span>{formatPKR(item.perKgRate ?? 0)}/kg</span><span className="block text-[10px] text-neutral-500">{formatPKR(item.unitPrice)}/unit</span></> : formatPKR(item.unitPrice)}</TableCell>'
+          if old not in s: raise SystemExit('invoice rate anchor not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+
+          rm .github/workflows/one-shot-weighted-sale-surface.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/server/sales.ts lib/server/invoices.ts 'app/(dashboard)/sales/[id]/page.tsx' 'app/(dashboard)/invoices/[id]/page.tsx' .github/workflows/one-shot-weighted-sale-surface.yml
+          git commit -m "feat: surface actual weight across sales and invoices"
+          git push origin main
