@@ -13,7 +13,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:finance": "vitest run tests/finance-grade",
+    "test:finance": "vitest run --config vitest.finance.config.mts",
     "postinstall": "prisma generate",
     "desktop:dev": "node desktop/dev.cjs",
     "desktop:build": "npm run build && npm run desktop:package",
