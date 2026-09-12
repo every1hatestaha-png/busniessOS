@@ -21,16 +21,12 @@ const handleProxy = clerkMiddleware(async (auth, request) => {
     path === "/api/desktop-config" ||
     path.startsWith("/forgot-password") ||
     path.startsWith("/account-recovery") ||
-    path.startsWith("/recovery")
+    path.startsWith("/recovery") ||
+    path.startsWith("/platform/sign-in")
   ) {
     return NextResponse.next();
   }
 
-  // Keep the web root as a safe entry point. app/page.tsx resolves the session
-  // and redirects signed-out visitors to /sign-in, while all real app routes
-  // remain protected below. This also avoids Clerk dev-browser protection
-  // rewriting a fresh visit to the site root into a 404 before the page can
-  // perform its own auth-aware redirect.
   if (!isElectron && path === "/") {
     return NextResponse.next();
   }
@@ -72,6 +68,6 @@ export { handleProxy as proxy };
 
 export const config = {
   matcher: [
-    "/((?!_next|sign-in|sign-up|forgot-password|account-recovery|recovery|desktop-auth|api/webhooks|api/health|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/((?!_next|sign-in|sign-up|forgot-password|account-recovery|recovery|platform/sign-in|desktop-auth|api/webhooks|api/health|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
   ],
 };
