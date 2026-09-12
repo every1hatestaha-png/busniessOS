@@ -8,11 +8,17 @@ export async function GET(request: NextRequest) {
   const q = request.nextUrl.searchParams.get("q")?.trim() ?? "";
   if (q.length < 2) return NextResponse.json({ results: [] satisfies SearchResult[] });
   const term = q.slice(0, 80);
+  const customerNameMatch = {
+    OR: [
+      { name: { contains: term, mode: "insensitive" as const } },
+      { companyName: { contains: term, mode: "insensitive" as const } },
+    ],
+  };
   const [customers, products, sales, invoices] = await Promise.all([
     db.customer.findMany({ where: { workspaceId, OR: [{ name: { contains: term, mode: "insensitive" } }, { companyName: { contains: term, mode: "insensitive" } }, { phone: { contains: term } }] }, take: 5, orderBy: { updatedAt: "desc" }, select: { id: true, name: true, companyName: true, phone: true } }),
     db.product.findMany({ where: { workspaceId, OR: [{ name: { contains: term, mode: "insensitive" } }, { sku: { contains: term, mode: "insensitive" } }] }, take: 5, orderBy: { updatedAt: "desc" }, select: { id: true, name: true, sku: true, stockQuantity: true } }),
-    db.salesOrder.findMany({ where: { workspaceId, orderNumber: { contains: term, mode: "insensitive" } }, take: 5, orderBy: { updatedAt: "desc" }, select: { id: true, orderNumber: true, total: true, customer: { select: { companyName: true, name: true } } } }),
-    db.invoice.findMany({ where: { workspaceId, invoiceNumber: { contains: term, mode: "insensitive" } }, take: 5, orderBy: { updatedAt: "desc" }, select: { id: true, invoiceNumber: true, amount: true, customer: { select: { companyName: true, name: true } } } }),
+    db.salesOrder.findMany({ where: { workspaceId, OR: [{ orderNumber: { contains: term, mode: "insensitive" } }, { customer: { is: customerNameMatch } }] }, take: 5, orderBy: { updatedAt: "desc" }, select: { id: true, orderNumber: true, total: true, customer: { select: { companyName: true, name: true } } } }),
+    db.invoice.findMany({ where: { workspaceId, OR: [{ invoiceNumber: { contains: term, mode: "insensitive" } }, { customer: { is: customerNameMatch } }] }, take: 5, orderBy: { updatedAt: "desc" }, select: { id: true, invoiceNumber: true, amount: true, customer: { select: { companyName: true, name: true } } } }),
   ]);
   const results: SearchResult[] = [
     ...customers.map((x) => ({ id: x.id, type: "Customer" as const, title: x.companyName ?? x.name, detail: `${x.name} · ${x.phone ?? "No phone"}`, href: `/customers/${x.id}` })),
