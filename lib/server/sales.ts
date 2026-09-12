@@ -71,15 +71,25 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
     const invoiceNumber = await nextDocumentNumber(tx, context.workspaceId, "INVOICE");
     const order = await tx.salesOrder.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, orderNumber, status: "CONFIRMED", subtotal, discount, total, paidAmount: paid, balanceAmount: total.minus(paid), notes: data.notes || null, idempotencyKey: data.idempotencyKey }, select: { id: true, orderDate: true } });
     let costOfGoodsSold = new Prisma.Decimal(0);
+    const productById = new Map(products.map((product) => [product.id, product]));
 
+    // Keep the guarded stock decrements serialized so overselling remains impossible,
+    // then batch the append-only line and inventory writes to reduce transaction round trips.
     for (const line of lines) {
-      const product = products.find((entry) => entry.id === line.productId)!;
+      const product = productById.get(line.productId)!;
       costOfGoodsSold = costOfGoodsSold.plus(product.costPrice.mul(line.quantity));
       const changed = await tx.product.updateMany({ where: { id: line.productId, workspaceId: context.workspaceId, stockQuantity: { gte: line.quantity } }, data: { stockQuantity: { decrement: line.quantity } } });
       if (changed.count !== 1) throw new SaleDomainError("INSUFFICIENT_STOCK", `Unable to create sale because ${product.name} does not have sufficient inventory. Available quantity: ${product.stockQuantity.toString()}.`);
-      await tx.salesOrderItem.create({ data: { salesOrderId: order.id, productId: line.productId, productName: product.name, productSku: product.sku, quantity: line.quantity, unitPrice: line.unitPrice, discountPerUnit: line.discountPerUnit, totalPrice: line.total, pricingMode: line.pricingMode, unitWeight: line.pricingMode === "WEIGHT" ? line.unitWeight : null, totalWeight: line.totalWeight, perKgRate: line.pricingMode === "WEIGHT" ? line.perKgRate : null } });
-      await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: line.productId, type: "SALE", quantityChanged: -line.quantity, unitCost: product.costPrice, reference: orderNumber } });
     }
+
+    await tx.salesOrderItem.createMany({ data: lines.map((line) => {
+      const product = productById.get(line.productId)!;
+      return { salesOrderId: order.id, productId: line.productId, productName: product.name, productSku: product.sku, quantity: line.quantity, unitPrice: line.unitPrice, discountPerUnit: line.discountPerUnit, totalPrice: line.total, pricingMode: line.pricingMode, unitWeight: line.pricingMode === "WEIGHT" ? line.unitWeight : null, totalWeight: line.totalWeight, perKgRate: line.pricingMode === "WEIGHT" ? line.perKgRate : null };
+    }) });
+    await tx.inventoryTransaction.createMany({ data: lines.map((line) => {
+      const product = productById.get(line.productId)!;
+      return { workspaceId: context.workspaceId, productId: line.productId, type: "SALE" as const, quantityChanged: -line.quantity, unitCost: product.costPrice, reference: orderNumber };
+    }) });
 
     const dueDate = new Date(order.orderDate);
     dueDate.setDate(dueDate.getDate() + customer.creditDays);
