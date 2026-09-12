@@ -2,9 +2,17 @@ import type { Role } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const requireWorkspaceMock = vi.hoisted(() => vi.fn());
+const getWorkspaceAccessMock = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/server/auth", () => ({ requireWorkspace: requireWorkspaceMock }));
+vi.mock("@/lib/server/subscriptions", () => ({ getWorkspaceAccess: getWorkspaceAccessMock }));
 
-import { canPerformAction, ForbiddenError, requirePermission, type Permission } from "@/lib/server/authorization";
+import {
+  canPerformAction,
+  ForbiddenError,
+  requirePermission,
+  SubscriptionRequiredError,
+  type Permission,
+} from "@/lib/server/authorization";
 
 const allPermissions: Permission[] = [
   "business.read",
@@ -26,7 +34,12 @@ const authorizationMatrix: Record<Role, Permission[]> = {
 };
 
 describe("authorization matrix", () => {
-  beforeEach(() => requireWorkspaceMock.mockReset());
+  beforeEach(() => {
+    requireWorkspaceMock.mockReset();
+    getWorkspaceAccessMock.mockReset();
+    getWorkspaceAccessMock.mockResolvedValue({ allowed: true, reason: "active" });
+  });
+
   it.each(Object.entries(authorizationMatrix) as [Role, Permission[]][])(
     "grants exactly the configured permissions to %s",
     (role, allowedPermissions) => {
@@ -38,14 +51,37 @@ describe("authorization matrix", () => {
     },
   );
 
-  it("allows a manager to create sales", async () => {
+  it("allows a manager to create sales when the workspace has access", async () => {
     requireWorkspaceMock.mockResolvedValue({ role: "MANAGER", workspaceId: "workspace" });
     await expect(requirePermission("sales.create")).resolves.toMatchObject({ role: "MANAGER" });
+    expect(getWorkspaceAccessMock).toHaveBeenCalledWith("workspace");
   });
 
   it("allows staff to create sales but blocks workspace management", async () => {
     requireWorkspaceMock.mockResolvedValue({ role: "STAFF", workspaceId: "workspace" });
     await expect(requirePermission("sales.create")).resolves.toBeTruthy();
     await expect(requirePermission("workspace.manage")).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it("keeps business.read available after expiry", async () => {
+    requireWorkspaceMock.mockResolvedValue({ role: "OWNER", workspaceId: "workspace" });
+    getWorkspaceAccessMock.mockResolvedValue({ allowed: false, reason: "expired" });
+
+    await expect(requirePermission("business.read")).resolves.toBeTruthy();
+    expect(getWorkspaceAccessMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks mutation permissions after expiry", async () => {
+    requireWorkspaceMock.mockResolvedValue({ role: "OWNER", workspaceId: "workspace" });
+    getWorkspaceAccessMock.mockResolvedValue({ allowed: false, reason: "expired" });
+
+    await expect(requirePermission("sales.create")).rejects.toBeInstanceOf(SubscriptionRequiredError);
+  });
+
+  it("blocks mutation permissions while suspended", async () => {
+    requireWorkspaceMock.mockResolvedValue({ role: "OWNER", workspaceId: "workspace" });
+    getWorkspaceAccessMock.mockResolvedValue({ allowed: false, reason: "suspended" });
+
+    await expect(requirePermission("financial.manage")).rejects.toBeInstanceOf(SubscriptionRequiredError);
   });
 });
