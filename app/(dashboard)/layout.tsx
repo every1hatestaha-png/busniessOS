@@ -1,14 +1,15 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopNav } from "@/components/layout/top-nav";
 import { PrintShortcutRouter } from "@/components/documents/print-shortcut-router";
-import { listCurrentUserWorkspaces, requireWorkspace } from "@/lib/server/auth";
+import { listCurrentUserWorkspaces } from "@/lib/server/auth";
+import { requireWorkspaceAccess } from "@/lib/server/subscriptions";
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { workspace, role } = await requireWorkspace();
+  const { workspace, role } = await requireWorkspaceAccess();
   const workspaces = await listCurrentUserWorkspaces();
 
   return (
