@@ -1,0 +1,36 @@
+name: One Shot Repo Hygiene
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-shot-repo-hygiene.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Remove local IDE snapshots from production repository
+        shell: bash
+        run: |
+          if [ -d .vs ]; then git rm -r .vs; fi
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('.gitignore')
+          s = p.read_text()
+          if '\n.vs/\n' not in '\n' + s:
+            s += '\n# local IDE state / AI snapshots\n.vs/\n'
+          p.write_text(s)
+          PY
+          rm .github/workflows/one-shot-repo-hygiene.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .gitignore .github/workflows/one-shot-repo-hygiene.yml
+          git commit -m "chore: remove Visual Studio snapshots from repo"
+          git push origin main
