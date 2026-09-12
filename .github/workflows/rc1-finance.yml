@@ -7,9 +7,6 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 concurrency:
   group: rc1-finance-${{ github.ref }}
   cancel-in-progress: true
@@ -41,76 +38,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Apply one-shot finance-grade harness repair
-        if: ${{ hashFiles('.github/workflows/rc1-finance-grade-patch.yml') != '' }}
-        shell: python
-        run: |
-          from pathlib import Path
-          import re
-
-          p = Path('tests/finance-grade/scenarios/long-running-simulation.test.ts')
-          s = p.read_text()
-          s = s.replace('customerIds.push(cust.id);', 'customerIds.push(cust);')
-          s = s.replace('oracle.seedCustomer({ id: cust.id,', 'oracle.seedCustomer({ id: cust,')
-          s = re.sub(r'idempotencyKey: `sim-sale-[^`]+`', 'idempotencyKey: crypto.randomUUID()', s)
-          p.write_text(s)
-
-          p = Path('tests/finance-grade/scenarios/purchase-lifecycle.test.ts')
-          s = p.read_text()
-          s = s.replace('1.3 Full GRN (remaining 50 units) — inventory fully increased, AP = full PO', '1.3 Receive remaining product 1 units — PO remains partial while other lines are open')
-          s = s.replace('expect(poRecord.status).toBe("RECEIVED");', 'expect(poRecord.status).toBe("PARTIALLY_RECEIVED");', 1)
-          p.write_text(s)
-
-          p = Path('tests/finance-grade/oracle/accounting-oracle.ts')
-          s = p.read_text()
-          s = s.replace('  private payments: OraclePayment[] = [];', '  private payments: OraclePayment[] = [];\n  private openingProductStock = new Map<string, number>();\n  private openingSupplierBalance = new Map<string, number>();\n  private openingCustomerBalance = new Map<string, number>();')
-          s = s.replace('  seedProduct(p: OracleProduct) {\n    this.products.set(p.id, { ...p });\n  }', '  seedProduct(p: OracleProduct) {\n    this.products.set(p.id, { ...p });\n    this.openingProductStock.set(p.id, p.stockQuantity);\n  }')
-          s = s.replace('  seedSupplier(s: OracleSupplier) {\n    this.suppliers.set(s.id, { ...s });\n  }', '  seedSupplier(s: OracleSupplier) {\n    this.suppliers.set(s.id, { ...s });\n    this.openingSupplierBalance.set(s.id, s.currentBalance);\n  }')
-          s = s.replace('  seedCustomer(c: OracleCustomer) {\n    this.customers.set(c.id, { ...c });\n  }', '  seedCustomer(c: OracleCustomer) {\n    this.customers.set(c.id, { ...c });\n    this.openingCustomerBalance.set(c.id, c.currentBalance);\n  }')
-          old = '''  recordInventoryTransaction(tx: OracleInventoryTransaction) {
-            this.inventoryTransactions.push(tx);
-            const product = this.products.get(tx.productId);
-            if (!product) throw new Error(`Oracle: product ${tx.productId} not found`);
-            product.stockQuantity = roundQuantity(product.stockQuantity + tx.quantityChanged);
-            if (product.stockQuantity < 0) {
-              throw new Error(`Oracle: negative stock for ${product.name} (${product.stockQuantity})`);
-            }
-          }'''
-          if old not in s:
-            old = '''  recordInventoryTransaction(tx: OracleInventoryTransaction) {
-    this.inventoryTransactions.push(tx);
-    const product = this.products.get(tx.productId);
-    if (!product) throw new Error(`Oracle: product ${tx.productId} not found`);
-    product.stockQuantity = roundQuantity(product.stockQuantity + tx.quantityChanged);
-    if (product.stockQuantity < 0) {
-      throw new Error(`Oracle: negative stock for ${product.name} (${product.stockQuantity})`);
-    }
-  }'''
-          new = '''  recordInventoryTransaction(tx: OracleInventoryTransaction) {
-    if (!this.products.has(tx.productId)) throw new Error(`Oracle: product ${tx.productId} not found`);
-    this.inventoryTransactions.push(tx);
-  }'''
-          if old not in s:
-            raise SystemExit('oracle inventory recorder marker not found')
-          s = s.replace(old, new)
-          s = s.replace('const ledgerBalance = entries.reduce((s, e) => s + e.debit - e.credit, 0);', 'const ledgerBalance = (this.openingCustomerBalance.get(customerId) ?? 0) + entries.reduce((s, e) => s + e.debit - e.credit, 0);')
-          s = s.replace('const ledgerBalance = entries.reduce((s, e) => s + e.credit - e.debit, 0);', 'const ledgerBalance = (this.openingSupplierBalance.get(supplierId) ?? 0) + entries.reduce((s, e) => s + e.credit - e.debit, 0);')
-          s = s.replace('const calculatedStock = txs.reduce((s, t) => s + t.quantityChanged, 0);', 'const calculatedStock = (this.openingProductStock.get(productId) ?? 0) + txs.reduce((s, t) => s + t.quantityChanged, 0);')
-          p.write_text(s)
-
-      - name: Persist one-shot finance-grade repair
-        if: ${{ hashFiles('.github/workflows/rc1-finance-grade-patch.yml') != '' }}
-        shell: bash
-        run: |
-          rm .github/workflows/rc1-finance-grade-patch.yml
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tests/finance-grade .github/workflows/rc1-finance-grade-patch.yml
-          git commit -m "test: repair finance-grade oracle and stale fixtures"
-          git push
 
       - name: Setup Node
         uses: actions/setup-node@v4
