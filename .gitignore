@@ -51,3 +51,6 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# local IDE state / AI snapshots
+.vs/
