@@ -18,12 +18,8 @@ export default function SignInPage() {
 
         <div className="relative w-full max-w-[650px] rounded-[28px] border border-teal-500/55 bg-[#07151d]/82 px-6 py-9 shadow-[0_28px_80px_rgba(0,0,0,0.28)] backdrop-blur-xl sm:px-10 sm:py-11 lg:px-12 xl:px-16">
           <div className="mb-8">
-            <h1 className="text-4xl font-semibold tracking-[-0.04em] text-white sm:text-[42px]">
-              Welcome back
-            </h1>
-            <p className="mt-2 text-base text-slate-400 sm:text-lg">
-              Sign in to manage your business
-            </p>
+            <h1 className="text-4xl font-semibold tracking-[-0.04em] text-white sm:text-[42px]">Welcome back</h1>
+            <p className="mt-2 text-base text-slate-400 sm:text-lg">Sign in to manage your business</p>
           </div>
 
           <SignIn
@@ -34,10 +30,6 @@ export default function SignInPage() {
               variables: {
                 colorPrimary: "#14b8a6",
                 colorBackground: "transparent",
-                colorText: "#f8fafc",
-                colorTextSecondary: "#94a3b8",
-                colorInputBackground: "#0b1921",
-                colorInputText: "#f8fafc",
                 borderRadius: "0.75rem",
               },
               elements: {
@@ -48,13 +40,10 @@ export default function SignInPage() {
                 main: "gap-5",
                 form: "gap-5",
                 formFieldLabel: "mb-2 text-sm font-medium text-slate-100",
-                formFieldInput:
-                  "h-12 rounded-xl border border-slate-600/75 bg-[#0b1921] px-4 text-slate-100 shadow-none placeholder:text-slate-500 focus:border-teal-400 focus:ring-1 focus:ring-teal-400",
+                formFieldInput: "h-12 rounded-xl border border-slate-600/75 bg-[#0b1921] px-4 text-slate-100 shadow-none placeholder:text-slate-500 focus:border-teal-400 focus:ring-1 focus:ring-teal-400",
                 formFieldInputShowPasswordButton: "text-slate-400 hover:text-slate-200",
-                formButtonPrimary:
-                  "h-12 rounded-xl bg-gradient-to-r from-[#13bfa8] to-[#11947f] text-sm font-semibold normal-case text-white shadow-none hover:opacity-95",
-                socialButtonsBlockButton:
-                  "h-12 rounded-xl border border-slate-700 bg-[#0b1921] text-slate-100 shadow-none hover:bg-[#10232c]",
+                formButtonPrimary: "h-12 rounded-xl bg-gradient-to-r from-[#13bfa8] to-[#11947f] text-sm font-semibold normal-case text-white shadow-none hover:opacity-95",
+                socialButtonsBlockButton: "h-12 rounded-xl border border-slate-700 bg-[#0b1921] text-slate-100 shadow-none hover:bg-[#10232c]",
                 socialButtonsBlockButtonText: "font-medium text-slate-100",
                 dividerLine: "bg-slate-700/70",
                 dividerText: "text-xs text-slate-500",
