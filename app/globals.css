@@ -193,6 +193,23 @@
     color: black !important;
   }
 
+  /*
+   * When a screen contains an official printable document/report, Ctrl+P must
+   * print that surface only. Keep its ancestor chain alive, hide every sibling
+   * branch, and let the canonical surface occupy the paper normally.
+   */
+  body:has([data-print-surface], [data-document]) *:not([data-print-surface]):not([data-print-surface] *):not([data-document]):not([data-document] *):not(:has([data-print-surface], [data-document])) {
+    display: none !important;
+  }
+
+  [data-print-surface],
+  [data-document] {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+  }
+
   [data-print-orientation="landscape"] {
     page: landscape;
   }
