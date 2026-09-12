@@ -2,7 +2,6 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { TopNav } from "@/components/layout/top-nav";
 import { PrintShortcutRouter } from "@/components/documents/print-shortcut-router";
 import { listCurrentUserWorkspaces, requireWorkspace } from "@/lib/server/auth";
-import { getSearchResults } from "@/lib/server/search";
 
 export default async function DashboardLayout({
   children,
@@ -14,7 +13,7 @@ export default async function DashboardLayout({
   const { workspace, role } = await requireWorkspace();
   console.info("[D4][root] after workspace resolution");
   console.info(`[D4][dashboard] request success=YES workspaceFound=YES role=${role}`);
-  const [searchResults, workspaces] = await Promise.all([getSearchResults(workspace.id), listCurrentUserWorkspaces()]);
+  const workspaces = await listCurrentUserWorkspaces();
   console.info("[D4][root] before page render");
 
   const rendered = (
@@ -24,7 +23,7 @@ export default async function DashboardLayout({
         <Sidebar workspaceName={workspace.name} role={role} />
       </div>
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden print:block print:overflow-visible">
-        <TopNav workspaceName={workspace.name} workspaceId={workspace.id} workspaces={workspaces} searchResults={searchResults} role={role} />
+        <TopNav workspaceName={workspace.name} workspaceId={workspace.id} workspaces={workspaces} role={role} />
         <main className="flex-1 overflow-y-auto px-4 py-4 print:overflow-visible print:p-0 lg:px-6 lg:py-6">
           {children}
         </main>
