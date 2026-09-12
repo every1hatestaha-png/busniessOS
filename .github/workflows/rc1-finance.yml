@@ -60,6 +60,9 @@ jobs:
       - name: Full unit and integration suite
         run: npm test
 
+      - name: Finance-grade scenario suite
+        run: npm run test:finance
+
       - name: ESLint gate
         run: npx eslint app components lib
 
