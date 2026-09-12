@@ -8,14 +8,6 @@ export default function AccountRecoveryPage() {
         path="/account-recovery"
         forceRedirectUrl="/dashboard"
         signUpUrl="/sign-up"
-        appearance={{
-          variables: {
-            colorPrimary: "#18c4ad",
-            colorBackground: "#07151d",
-            colorText: "#ffffff",
-            colorTextSecondary: "#94a3b8",
-          },
-        }}
       />
     </main>
   );
