@@ -180,17 +180,27 @@ async function writeSubscriptionAudit(input: {
   afterState: unknown;
 }) {
   const actor = await getCurrentUser();
+  const beforeRecord = input.beforeState && typeof input.beforeState === "object"
+    ? input.beforeState as Record<string, unknown>
+    : null;
+  const afterRecord = input.afterState && typeof input.afterState === "object"
+    ? input.afterState as Record<string, unknown>
+    : null;
+  const subscriptionId = String(afterRecord?.id ?? beforeRecord?.id ?? "").trim();
+  if (!subscriptionId) throw new Error("Subscription audit could not resolve the subscription id.");
+  const metadata = JSON.stringify({ beforeState: input.beforeState, afterState: input.afterState });
+
   await db.$executeRaw`
     INSERT INTO "subscription_events" (
-      "id", "workspaceId", "actorUserId", "action", "beforeState", "afterState"
+      "id", "workspaceId", "subscriptionId", "actorUserId", "type", "metadata"
     )
     VALUES (
       ${`sevt_${randomUUID().replaceAll("-", "")}`},
       ${input.workspaceId},
+      ${subscriptionId},
       ${actor.id},
       ${input.action},
-      ${JSON.stringify(input.beforeState)}::jsonb,
-      ${JSON.stringify(input.afterState)}::jsonb
+      ${metadata}::jsonb
     )
   `;
 }
