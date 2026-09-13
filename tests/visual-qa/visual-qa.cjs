@@ -77,6 +77,7 @@ const TEST_SCENARIOS = [
   ...Object.entries(ids.grns).map(([name, id]) => ({ name: `grn-${name}`, url: `/goods-receipts/${id}/print?autoprint=0`, waitFor: "[data-document]" })),
   { name: "supplier-return", url: `/supplier-returns/${ids.supplierReturn}`, waitFor: "h1" },
   { name: "payment-receipt", url: `/payments/${ids.paymentReceipt}`, waitFor: "[data-document]" },
+  { name: "supplier-payment-voucher", url: `/accounting/payment-vouchers/${ids.supplierPaymentVoucher}`, waitFor: "[data-document]" },
   { name: "expense-voucher", url: `/accounting/expenses/${ids.expenseVoucher}`, waitFor: "[data-document]" },
   { name: "customer-statement", url: `/reports/customer-statement?partyId=${ids.reports.customerId}&from=${from}&to=${today}`, waitFor: "article" },
   { name: "supplier-statement", url: `/reports/supplier-statement?partyId=${ids.reports.supplierId}&from=${from}&to=${today}`, waitFor: "article" },
@@ -110,7 +111,6 @@ async function capturePage(url, name) {
 
     win.loadURL(`${DEV_SERVER}${url}`).then(async () => {
       try {
-        // Wait for content to load
         await new Promise(r => setTimeout(r, 2000));
 
         const found = await win.webContents.executeJavaScript(`
@@ -130,7 +130,6 @@ async function capturePage(url, name) {
         if (!found) throw new Error(`Expected content did not render at ${win.webContents.getURL()}`);
         if (new URL(win.webContents.getURL()).pathname.startsWith("/desktop-auth")) throw new Error("Authentication redirected to desktop-auth");
 
-        // Capture screenshot
         const screenshotPath = path.join(OUTPUT_DIR, `${name}.png`);
         await win.webContents.capturePage().then(img => {
           fs.writeFileSync(screenshotPath, img.toPNG());
@@ -145,11 +144,10 @@ async function capturePage(url, name) {
         });
         win.webContents.debugger.detach();
 
-        // Capture PDF using printToPDF
         const pdfPath = path.join(OUTPUT_DIR, `${name}.pdf`);
         const pdfData = await win.webContents.printToPDF({
           landscape: false,
-          marginsType: 1, // default
+          marginsType: 1,
           printBackground: true,
           printSelectionOnly: false,
           pageSize: "A4",
@@ -157,7 +155,6 @@ async function capturePage(url, name) {
         });
         fs.writeFileSync(pdfPath, pdfData);
 
-        // Capture HTML for inspection
         const html = await win.webContents.executeJavaScript("document.documentElement.outerHTML");
         const htmlPath = path.join(OUTPUT_DIR, `${name}.html`);
         fs.writeFileSync(htmlPath, html);
@@ -217,5 +214,4 @@ async function run() {
 
 app.whenReady().then(run).catch(e => { console.error(e); stopDevServer(); app.exit(1); });
 
-// Timeout
 setTimeout(() => { console.error("Visual QA timed out"); stopDevServer(); app.exit(1); }, 1_800_000);
