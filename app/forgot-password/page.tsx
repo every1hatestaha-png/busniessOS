@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSignIn } from "@clerk/nextjs";
 
@@ -14,7 +14,14 @@ export default function ForgotPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
+  const [resendSeconds, setResendSeconds] = useState(0);
   const busy = fetchStatus === "fetching" || actionBusy;
+
+  useEffect(() => {
+    if (resendSeconds <= 0) return;
+    const timer = window.setInterval(() => setResendSeconds((value) => Math.max(0, value - 1)), 1000);
+    return () => window.clearInterval(timer);
+  }, [resendSeconds]);
 
   async function runOnce(action: () => Promise<void>) {
     if (busy) return;
@@ -54,7 +61,35 @@ export default function ForgotPasswordPage() {
       }
 
       setEmail(identifier);
+      setResendSeconds(60);
       setStep("code");
+    });
+  }
+
+  async function resendCode() {
+    if (resendSeconds > 0 || busy) return;
+    await runOnce(async () => {
+      setError("");
+      const { error: sendError } = await signIn.resetPasswordEmailCode.sendCode();
+      if (sendError) {
+        setError("We could not resend a code right now. Please wait and try again.");
+        return;
+      }
+      setCode("");
+      setResendSeconds(60);
+    });
+  }
+
+  async function restartRecovery() {
+    if (busy) return;
+    await runOnce(async () => {
+      await signIn.reset();
+      setCode("");
+      setPassword("");
+      setConfirmPassword("");
+      setError("");
+      setResendSeconds(0);
+      setStep("email");
     });
   }
 
@@ -142,6 +177,10 @@ export default function ForgotPasswordPage() {
             <input inputMode="numeric" autoComplete="one-time-code" required disabled={busy} value={code} onChange={(e) => setCode(e.target.value)} placeholder="Reset code" className="h-12 w-full rounded-xl border border-slate-600/80 bg-[#0b1921] px-4 text-sm tracking-[0.25em] text-white outline-none focus:border-teal-400 disabled:opacity-60" />
             {error && <p className="text-sm text-rose-300">{error}</p>}
             <button type="submit" disabled={busy} className="h-12 w-full rounded-xl bg-gradient-to-r from-[#18c4ad] to-[#10967f] text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60">{busy ? "Verifying..." : "Verify code"}</button>
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <button type="button" disabled={busy || resendSeconds > 0} onClick={resendCode} className="text-teal-300 hover:text-teal-200 disabled:cursor-not-allowed disabled:text-slate-500">{resendSeconds > 0 ? `Resend in ${resendSeconds}s` : "Resend code"}</button>
+              <button type="button" disabled={busy} onClick={restartRecovery} className="text-slate-400 hover:text-white disabled:opacity-50">Use a different email</button>
+            </div>
           </form>
         )}
 

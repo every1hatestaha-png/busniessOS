@@ -1,6 +1,7 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
+import { checkAppRateLimit } from "@/lib/request-rate-limit";
 import { applyCorsHeaders, corsPreflightResponse, isApiV1Request } from "@/lib/server/cors";
 
 function d4ProxyLog(message: string) {
@@ -12,6 +13,14 @@ const handleProxy = clerkMiddleware(
     const userAgent = request.headers.get("user-agent") || "";
     const isElectron = userAgent.includes("Electron");
     const authHeader = request.headers.get("authorization");
+
+    const limited = checkAppRateLimit(request, path);
+    if (limited) {
+      return NextResponse.json(
+        { error: "Too many requests. Please retry shortly." },
+        { status: 429, headers: { "Retry-After": String(limited.retryAfter), "Cache-Control": "no-store" } },
+      );
+    }
 
     if (isElectron && (path === "/" || path === "/dashboard")) {
       d4ProxyLog(`root request URL origin=${request.nextUrl.origin} pathname=${path}`);
