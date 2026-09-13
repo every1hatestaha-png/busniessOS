@@ -6,68 +6,73 @@ import { applyCorsHeaders, corsPreflightResponse, isApiV1Request } from "@/lib/s
 function d4ProxyLog(message: string) {
 }
 
-const handleProxy = clerkMiddleware(async (auth, request) => {
-  const path = request.nextUrl.pathname;
-  const userAgent = request.headers.get("user-agent") || "";
-  const isElectron = userAgent.includes("Electron");
-  const authHeader = request.headers.get("authorization");
+const handleProxy = clerkMiddleware(
+  async (auth, request) => {
+    const path = request.nextUrl.pathname;
+    const userAgent = request.headers.get("user-agent") || "";
+    const isElectron = userAgent.includes("Electron");
+    const authHeader = request.headers.get("authorization");
 
-  if (isElectron && (path === "/" || path === "/dashboard")) {
-    d4ProxyLog(`root request URL origin=${request.nextUrl.origin} pathname=${path}`);
-  }
-
-  if (
-    path.startsWith("/desktop-auth") ||
-    path === "/api/desktop-config" ||
-    path.startsWith("/forgot-password") ||
-    path.startsWith("/account-recovery") ||
-    path.startsWith("/recovery") ||
-    path.startsWith("/platform/sign-in")
-  ) {
-    return NextResponse.next();
-  }
-
-  if (!isElectron && path === "/") {
-    return NextResponse.next();
-  }
-
-  if (isApiV1Request(path) && request.method === "OPTIONS") {
-    return corsPreflightResponse(request);
-  }
-
-  if (isElectron) {
-    if (!authHeader) {
-      d4ProxyLog(`Electron request path=${path} Authorization header attached=NO; redirecting to /desktop-auth`);
-      return NextResponse.redirect(new URL("/desktop-auth", request.url));
+    if (isElectron && (path === "/" || path === "/dashboard")) {
+      d4ProxyLog(`root request URL origin=${request.nextUrl.origin} pathname=${path}`);
     }
 
-    d4ProxyLog(`Electron request path=${path} Authorization header attached=YES`);
-    try {
-      const protectedAuth = await auth.protect({ token: ["session_token", "oauth_token"] });
-      d4ProxyLog(`auth.protect passed=YES userIdPresent=${protectedAuth.userId ? "YES" : "NO"}`);
+    if (
+      path.startsWith("/desktop-auth") ||
+      path === "/api/desktop-config" ||
+      path.startsWith("/forgot-password") ||
+      path.startsWith("/account-recovery") ||
+      path.startsWith("/recovery") ||
+      path.startsWith("/platform/sign-in")
+    ) {
       return NextResponse.next();
-    } catch (error) {
-      const errorName = error instanceof Error ? error.name : "unknown";
-      d4ProxyLog(`auth.protect passed=NO error=${errorName}`);
-      throw error;
     }
-  }
 
-  if (!isApiV1Request(path)) {
-    await auth.protect();
-  }
+    if (!isElectron && path === "/") {
+      return NextResponse.next();
+    }
 
-  if (isApiV1Request(path)) {
-    return applyCorsHeaders(NextResponse.next(), request.headers.get("origin"));
-  }
+    if (isApiV1Request(path) && request.method === "OPTIONS") {
+      return corsPreflightResponse(request);
+    }
 
-  return NextResponse.next();
-});
+    if (isElectron) {
+      if (!authHeader) {
+        d4ProxyLog(`Electron request path=${path} Authorization header attached=NO; redirecting to /desktop-auth`);
+        return NextResponse.redirect(new URL("/desktop-auth", request.url));
+      }
+
+      d4ProxyLog(`Electron request path=${path} Authorization header attached=YES`);
+      try {
+        const protectedAuth = await auth.protect({ token: ["session_token", "oauth_token"] });
+        d4ProxyLog(`auth.protect passed=YES userIdPresent=${protectedAuth.userId ? "YES" : "NO"}`);
+        return NextResponse.next();
+      } catch (error) {
+        const errorName = error instanceof Error ? error.name : "unknown";
+        d4ProxyLog(`auth.protect passed=NO error=${errorName}`);
+        throw error;
+      }
+    }
+
+    if (!isApiV1Request(path)) {
+      await auth.protect();
+    }
+
+    if (isApiV1Request(path)) {
+      return applyCorsHeaders(NextResponse.next(), request.headers.get("origin"));
+    }
+
+    return NextResponse.next();
+  },
+  { contentSecurityPolicy: {} },
+);
 
 export { handleProxy as proxy };
 
 export const config = {
   matcher: [
     "/((?!_next|sign-in|sign-up|forgot-password|account-recovery|recovery|platform/sign-in|desktop-auth|api/webhooks|api/health|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/(api|trpc)(.*)",
+    "/__clerk/(.*)",
   ],
 };
