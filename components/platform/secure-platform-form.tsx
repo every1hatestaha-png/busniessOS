@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useRef, useState } from "react";
 import { useReverification } from "@clerk/nextjs";
 
 export function SecurePlatformForm({
@@ -13,15 +14,28 @@ export function SecurePlatformForm({
   children: ReactNode;
 }) {
   const verifiedAction = useReverification(action);
+  const inFlight = useRef(false);
+  const [pending, setPending] = useState(false);
 
   return (
     <form
       className={className}
+      aria-busy={pending}
       action={async (formData) => {
-        await verifiedAction(formData);
+        if (inFlight.current) return;
+        inFlight.current = true;
+        setPending(true);
+        try {
+          await verifiedAction(formData);
+        } finally {
+          inFlight.current = false;
+          setPending(false);
+        }
       }}
     >
-      {children}
+      <fieldset disabled={pending} className="contents disabled:pointer-events-none disabled:opacity-60">
+        {children}
+      </fieldset>
     </form>
   );
 }
