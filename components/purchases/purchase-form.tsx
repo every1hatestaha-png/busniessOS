@@ -29,6 +29,7 @@ export function PurchaseForm({ suppliers, products }: { suppliers: Array<{ id: s
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy) return;
     setBusy(true);
     setMessage("");
     const form = new FormData(event.currentTarget);
@@ -39,14 +40,36 @@ export function PurchaseForm({ suppliers, products }: { suppliers: Array<{ id: s
       return item;
     });
     if (!items.length) { setMessage("Add at least one line item."); setBusy(false); return; }
-    const response = await fetch("/api/v1/purchases", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key }, body: JSON.stringify({ supplierId: form.get("supplierId"), items, notes: form.get("notes") || "", expectedDeliveryDate: form.get("expectedDeliveryDate") || undefined, department: form.get("department") || "", pricingMode }) });
-    const body = await response.json();
-    if (response.ok && body.data?.id) { router.push(`/purchases/${body.data.id}`); router.refresh(); return; }
-    setMessage(body.error?.message ?? "Could not create purchase order.");
-    setBusy(false);
+
+    try {
+      const response = await fetch("/api/v1/purchases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Idempotency-Key": key },
+        body: JSON.stringify({ supplierId: form.get("supplierId"), items, notes: form.get("notes") || "", expectedDeliveryDate: form.get("expectedDeliveryDate") || undefined, department: form.get("department") || "", pricingMode }),
+      });
+
+      let body: { data?: { id?: string }; error?: { message?: string } } = {};
+      try {
+        body = await response.json();
+      } catch {
+        // Preserve a safe fallback when an upstream failure returns HTML or an empty body.
+      }
+
+      if (response.ok && body.data?.id) {
+        router.push(`/purchases/${body.data.id}`);
+        router.refresh();
+        return;
+      }
+
+      setMessage(body.error?.message ?? "Could not create purchase order. Please try again.");
+    } catch {
+      setMessage("Network error. Please try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  return <form onSubmit={submit} className="grid items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
+  return <form onSubmit={submit} aria-busy={busy} className="grid items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
     <div className="space-y-4">
       <Card className="gap-0 rounded-md border py-0 shadow-none ring-0"><CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm font-semibold">Supplier & Document</CardTitle></CardHeader><CardContent className="grid gap-4 p-4 md:grid-cols-3"><Field label="Supplier"><select required name="supplierId" className={fieldClass}><option value="">Choose supplier</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></Field><Field label="Department" hint="Optional"><Input name="department" placeholder="Department" /></Field><Field label="Expected delivery" hint="Optional"><Input name="expectedDeliveryDate" type="date" /></Field></CardContent></Card>
 
