@@ -29,6 +29,8 @@ const handleProxy = clerkMiddleware(
     if (
       path.startsWith("/desktop-auth") ||
       path === "/api/desktop-config" ||
+      path === "/api/health" ||
+      path === "/api/webhooks/clerk" ||
       path.startsWith("/forgot-password") ||
       path.startsWith("/account-recovery") ||
       path.startsWith("/recovery") ||
