@@ -33,14 +33,10 @@ export function CustomerTable({ customers }: { customers: CustomerListItem[] }) 
         <div className="flex flex-col gap-2 sm:flex-row">
           <span className="hidden items-center text-neutral-400 lg:flex"><SlidersHorizontal className="h-4 w-4" /></span>
           <select className={selectClassName} value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Filter by status">
-            <option value="ALL">All statuses</option>
-            <option value="ACTIVE">Active</option>
-            <option value="INACTIVE">Inactive</option>
-            <option value="BLACKLISTED">Blacklisted</option>
+            <option value="ALL">All statuses</option><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option><option value="BLACKLISTED">Blacklisted</option>
           </select>
           <select className={selectClassName} value={city} onChange={(event) => setCity(event.target.value)} aria-label="Filter by city">
-            <option value="ALL">All cities</option>
-            {cities.map((item) => <option key={item} value={item}>{item}</option>)}
+            <option value="ALL">All cities</option>{cities.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </div>
       </div>
@@ -50,7 +46,7 @@ export function CustomerTable({ customers }: { customers: CustomerListItem[] }) 
           <TableBody>
             {filtered.map((customer) => (
               <TableRow key={customer.id}>
-                <TableCell><Link href={`/customers/${customer.id}`} className="font-medium text-neutral-950 hover:underline">{customer.companyName}</Link><p className="text-xs text-neutral-500">{customer.name}</p></TableCell>
+                <TableCell><Link prefetch={false} href={`/customers/${customer.id}`} className="font-medium text-neutral-950 hover:underline">{customer.companyName}</Link><p className="text-xs text-neutral-500">{customer.name}</p></TableCell>
                 <TableCell className="text-right"><p className="font-semibold tabular-nums">{formatPKR(customer.currentBalance)}</p><StatusBadge status={getCreditStatus(customer.currentBalance, customer.creditLimit)} /></TableCell>
                 <TableCell className="text-right tabular-nums">{customer.creditLimit > 0 ? formatPKR(customer.creditLimit) : "Not configured"}</TableCell>
                 <TableCell><StatusBadge status={customer.status} /></TableCell>
