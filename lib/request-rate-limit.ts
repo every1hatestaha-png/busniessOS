@@ -21,7 +21,7 @@ export function checkAppRateLimit(request: Request, pathname: string) {
   if (!ip) return null;
 
   let limit = 0;
-  let windowMs = 60_000;
+  const windowMs = 60_000;
 
   if (pathname.startsWith("/api/v1/")) {
     limit = request.method === "GET" ? 180 : 60;
