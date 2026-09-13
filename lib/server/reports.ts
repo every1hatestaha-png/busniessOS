@@ -1,7 +1,8 @@
 import "server-only";
 
 import { db } from "@/lib/server/db";
-import { businessDateKey, businessDayEnd, businessDayStart, businessMonthStart } from "@/lib/server/business-time";
+import { businessDayEnd, businessDayStart, businessMonthStart } from "@/lib/server/business-time";
+import { sortStatementRowsByBusinessDay } from "@/lib/statement-order";
 import { Prisma } from "@prisma/client";
 
 export type StatementFilters = { from?: Date; to?: Date; search?: string };
@@ -15,12 +16,6 @@ type StatementEntry = {
   credit: number;
   runningBalance: number;
   href: string | null;
-};
-
-type StatementRow = {
-  id: string;
-  date: Date;
-  createdAt: Date;
 };
 
 function statementRange(filters: StatementFilters) {
@@ -37,16 +32,6 @@ function statementHref(type: string, referenceId: string | null) {
   return null;
 }
 
-function sortStatementRows<T extends StatementRow>(rows: T[]) {
-  return [...rows].sort((left, right) => {
-    const businessDateCompare = businessDateKey(left.date).localeCompare(businessDateKey(right.date));
-    if (businessDateCompare !== 0) return businessDateCompare;
-    const createdAtCompare = left.createdAt.getTime() - right.createdAt.getTime();
-    if (createdAtCompare !== 0) return createdAtCompare;
-    return left.id.localeCompare(right.id);
-  });
-}
-
 export async function getCustomerStatement(workspaceId: string, customerId: string, filters: StatementFilters = {}) {
   const { from, to } = statementRange(filters);
   const customer = await db.customer.findFirst({ where: { id: customerId, workspaceId }, select: { id: true, name: true, companyName: true, phone: true, email: true, address: true, city: true } });
@@ -60,7 +45,7 @@ export async function getCustomerStatement(workspaceId: string, customerId: stri
     }),
   ]);
   let runningBalance = Number(opening._sum.debit ?? 0) - Number(opening._sum.credit ?? 0);
-  const allEntries: StatementEntry[] = sortStatementRows(rows).map((row) => {
+  const allEntries: StatementEntry[] = sortStatementRowsByBusinessDay(rows).map((row) => {
     const debit = Number(row.debit);
     const credit = Number(row.credit);
     runningBalance = new Prisma.Decimal(runningBalance).plus(debit).minus(credit).toNumber();
@@ -84,7 +69,7 @@ export async function getSupplierStatement(workspaceId: string, supplierId: stri
     }),
   ]);
   let runningBalance = Number(opening._sum.credit ?? 0) - Number(opening._sum.debit ?? 0);
-  const allEntries: StatementEntry[] = sortStatementRows(rows).map((row) => {
+  const allEntries: StatementEntry[] = sortStatementRowsByBusinessDay(rows).map((row) => {
     const debit = Number(row.debit);
     const credit = Number(row.credit);
     runningBalance = new Prisma.Decimal(runningBalance).plus(credit).minus(debit).toNumber();
