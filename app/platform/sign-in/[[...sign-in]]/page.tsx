@@ -19,7 +19,6 @@ export default function PlatformSignInPage() {
             routing="path"
             path="/platform/sign-in"
             forceRedirectUrl="/platform"
-            signUpUrl="/sign-up"
             appearance={{
               variables: {
                 colorPrimary: "#059669",
@@ -35,7 +34,7 @@ export default function PlatformSignInPage() {
                 formFieldLabel: "text-[#334155]",
                 formFieldInput: "border-[#dfe7e2] bg-white text-[#0f172a] shadow-none focus:border-[#059669] focus:ring-2 focus:ring-[#059669]/15",
                 formButtonPrimary: "bg-[#059669] text-white shadow-none hover:bg-[#047857] focus:bg-[#047857]",
-                footerActionLink: "text-[#059669] hover:text-[#047857]",
+                footerAction: "hidden",
                 identityPreviewEditButton: "text-[#059669] hover:text-[#047857]",
                 formResendCodeLink: "text-[#059669] hover:text-[#047857]",
               },
