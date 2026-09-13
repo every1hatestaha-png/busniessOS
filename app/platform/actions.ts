@@ -1,5 +1,6 @@
 "use server";
 
+import { auth, reverificationError } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 
 import {
@@ -30,7 +31,17 @@ function readDays(formData: FormData, fallback: number, max: number) {
   return days;
 }
 
+async function requireRecentPlatformMfa() {
+  const session = await auth.protect();
+  if (!session.has({ reverification: "strict_mfa" })) {
+    return reverificationError("strict_mfa");
+  }
+  return null;
+}
+
 export async function extendTrialAction(formData: FormData) {
+  const verificationError = await requireRecentPlatformMfa();
+  if (verificationError) return verificationError;
   const workspaceId = readWorkspaceId(formData);
   const days = readDays(formData, 7, 365);
   await extendWorkspaceTrial(workspaceId, days);
@@ -38,6 +49,8 @@ export async function extendTrialAction(formData: FormData) {
 }
 
 export async function activateSubscriptionAction(formData: FormData) {
+  const verificationError = await requireRecentPlatformMfa();
+  if (verificationError) return verificationError;
   const workspaceId = readWorkspaceId(formData);
   const planCode = String(formData.get("planCode") ?? "starter").trim().toLowerCase();
   if (!ALLOWED_PLANS.has(planCode)) throw new Error("Invalid subscription plan.");
@@ -47,6 +60,8 @@ export async function activateSubscriptionAction(formData: FormData) {
 }
 
 export async function grantGraceAction(formData: FormData) {
+  const verificationError = await requireRecentPlatformMfa();
+  if (verificationError) return verificationError;
   const workspaceId = readWorkspaceId(formData);
   const days = readDays(formData, 7, 90);
   await grantWorkspaceGrace(workspaceId, days);
@@ -54,6 +69,8 @@ export async function grantGraceAction(formData: FormData) {
 }
 
 export async function suspendSubscriptionAction(formData: FormData) {
+  const verificationError = await requireRecentPlatformMfa();
+  if (verificationError) return verificationError;
   const workspaceId = readWorkspaceId(formData);
   const reason = String(formData.get("reason") ?? "").trim();
   if (!reason || reason.length > 240) throw new Error("Suspension reason must be between 1 and 240 characters.");
@@ -62,6 +79,8 @@ export async function suspendSubscriptionAction(formData: FormData) {
 }
 
 export async function deleteCustomerAccountAction(formData: FormData) {
+  const verificationError = await requireRecentPlatformMfa();
+  if (verificationError) return verificationError;
   const workspaceId = readWorkspaceId(formData);
   const confirmation = String(formData.get("confirmName") ?? "").trim();
   if (!confirmation || confirmation.length > 200) throw new Error("Type the exact business name to confirm deletion.");
