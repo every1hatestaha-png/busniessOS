@@ -10,6 +10,7 @@ import {
   suspendWorkspaceSubscription,
 } from "@/lib/server/subscriptions";
 import { deleteCustomerWorkspaceAccount } from "@/lib/server/platform-admin";
+import { assertPlatformMfaEnabled } from "@/lib/server/platform-security";
 
 const ALLOWED_PLANS = new Set(["starter", "business", "pro"]);
 
@@ -32,6 +33,7 @@ function readDays(formData: FormData, fallback: number, max: number) {
 }
 
 async function requireRecentPlatformMfa() {
+  await assertPlatformMfaEnabled();
   const session = await auth.protect();
   if (!session.has({ reverification: "strict_mfa" })) {
     return reverificationError("strict_mfa");
