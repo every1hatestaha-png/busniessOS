@@ -12,6 +12,9 @@ export const saleSchema = z.object({
     discountPerUnit: z.number().nonnegative().max(100000000),
   })).min(1).max(100),
   orderDiscount: z.number().nonnegative().max(100000000),
+  taxEnabled: z.boolean().default(false),
+  taxRate: z.number().nonnegative().max(100).default(18),
+  taxMode: z.enum(["EXCLUSIVE", "INCLUSIVE"]).default("EXCLUSIVE"),
   paidAmount: z.number().nonnegative().max(100000000),
   cashBankAccountId: z.string().uuid().optional().or(z.literal("")),
   notes: z.string().trim().max(500).default(""),
@@ -24,9 +27,9 @@ export const saleSchema = z.object({
     const effectiveUnitPrice = item.pricingMode === "WEIGHT" && item.unitWeight && item.perKgRate ? item.unitWeight * item.perKgRate : item.unitPrice;
     if (item.discountPerUnit > effectiveUnitPrice) context.addIssue({ code: "custom", path: ["items", index, "discountPerUnit"], message: "Discount per unit cannot exceed the effective unit price." });
   });
+  if (sale.taxEnabled && sale.taxRate <= 0) context.addIssue({ code: "custom", path: ["taxRate"], message: "Choose a sales tax rate greater than 0%." });
   if (sale.paidAmount > 0 && !sale.cashBankAccountId) context.addIssue({ code: "custom", path: ["cashBankAccountId"], message: "Select the cash/bank account receiving this payment." });
 });
 
-// Callers may omit pricingMode; parsing normalizes it to UNIT. This keeps existing
-// API/tests backward compatible while allowing new weighted-sale fields.
+// Callers may omit pricing/tax settings; parsing normalizes them to safe defaults.
 export type SaleInput = z.input<typeof saleSchema>;
