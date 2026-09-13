@@ -2,6 +2,7 @@ import "server-only";
 
 import { db } from "@/lib/server/db";
 import { businessDayEnd, businessDayStart, businessMonthStart } from "@/lib/server/business-time";
+import { sortStatementRowsByBusinessDay } from "@/lib/statement-order";
 import { Prisma } from "@prisma/client";
 
 export type StatementFilters = { from?: Date; to?: Date; search?: string };
@@ -40,11 +41,11 @@ export async function getCustomerStatement(workspaceId: string, customerId: stri
     db.ledgerEntry.findMany({
       where: { workspaceId, customerId, date: { gte: from, lte: to } },
       orderBy: [{ date: "asc" }, { createdAt: "asc" }, { id: "asc" }],
-      select: { id: true, date: true, type: true, referenceId: true, description: true, debit: true, credit: true },
+      select: { id: true, date: true, createdAt: true, type: true, referenceId: true, description: true, debit: true, credit: true },
     }),
   ]);
   let runningBalance = Number(opening._sum.debit ?? 0) - Number(opening._sum.credit ?? 0);
-  const allEntries: StatementEntry[] = rows.map((row) => {
+  const allEntries: StatementEntry[] = sortStatementRowsByBusinessDay(rows).map((row) => {
     const debit = Number(row.debit);
     const credit = Number(row.credit);
     runningBalance = new Prisma.Decimal(runningBalance).plus(debit).minus(credit).toNumber();
@@ -64,11 +65,11 @@ export async function getSupplierStatement(workspaceId: string, supplierId: stri
     db.ledgerEntry.findMany({
       where: { workspaceId, supplierId, date: { gte: from, lte: to } },
       orderBy: [{ date: "asc" }, { createdAt: "asc" }, { id: "asc" }],
-      select: { id: true, date: true, type: true, referenceId: true, description: true, debit: true, credit: true },
+      select: { id: true, date: true, createdAt: true, type: true, referenceId: true, description: true, debit: true, credit: true },
     }),
   ]);
   let runningBalance = Number(opening._sum.credit ?? 0) - Number(opening._sum.debit ?? 0);
-  const allEntries: StatementEntry[] = rows.map((row) => {
+  const allEntries: StatementEntry[] = sortStatementRowsByBusinessDay(rows).map((row) => {
     const debit = Number(row.debit);
     const credit = Number(row.credit);
     runningBalance = new Prisma.Decimal(runningBalance).plus(credit).minus(debit).toNumber();
