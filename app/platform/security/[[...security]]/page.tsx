@@ -35,8 +35,7 @@ export default async function PlatformSecurityPage() {
 
         <div className="flex justify-center overflow-hidden rounded-2xl border border-[#e2e8e5] bg-white p-3 shadow-sm sm:p-6">
           <UserProfile
-            routing="path"
-            path="/platform/security"
+            routing="hash"
             appearance={{
               variables: { colorPrimary: "#059669", colorBackground: "#ffffff", borderRadius: "0.75rem" },
               elements: {
