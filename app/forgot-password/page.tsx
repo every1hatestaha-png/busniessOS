@@ -21,8 +21,8 @@ export default function ForgotPasswordPage() {
     setActionBusy(true);
     try {
       await action();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Something went wrong. Please try again.");
+    } catch {
+      setError("Something went wrong. Please wait a moment and try again.");
     } finally {
       setActionBusy(false);
     }
@@ -43,13 +43,13 @@ export default function ForgotPasswordPage() {
       await signIn.reset();
       const { error: createError } = await signIn.create({ identifier });
       if (createError) {
-        setError(createError.message || "We could not start password recovery. Please wait a moment and try again.");
+        setError("We could not start password recovery. Please wait a moment and try again.");
         return;
       }
 
       const { error: sendError } = await signIn.resetPasswordEmailCode.sendCode();
       if (sendError) {
-        setError(sendError.message || "We could not send the reset code. Please wait before requesting another code.");
+        setError("We could not send a reset code right now. Please wait before trying again.");
         return;
       }
 
@@ -62,10 +62,15 @@ export default function ForgotPasswordPage() {
     event.preventDefault();
     await runOnce(async () => {
       setError("");
+      const enteredCode = code.trim();
+      if (!enteredCode) {
+        setError("Enter the reset code from your email.");
+        return;
+      }
 
-      const { error: verifyError } = await signIn.resetPasswordEmailCode.verifyCode({ code: code.trim() });
+      const { error: verifyError } = await signIn.resetPasswordEmailCode.verifyCode({ code: enteredCode });
       if (verifyError) {
-        setError(verifyError.message || "That reset code is invalid or expired.");
+        setError("That reset code is invalid or expired.");
         return;
       }
 
@@ -92,7 +97,7 @@ export default function ForgotPasswordPage() {
         signOutOfOtherSessions: true,
       });
       if (passwordError) {
-        setError(passwordError.message || "We could not update the password.");
+        setError("We could not update the password. Please restart password recovery and try again.");
         return;
       }
 
@@ -106,7 +111,7 @@ export default function ForgotPasswordPage() {
           },
         });
         if (finalizeError) {
-          setError("Password changed, but sign-in could not be finalized. Return to sign in and use the new password.");
+          setError("Password changed. Return to sign in and use the new password.");
         }
         return;
       }
