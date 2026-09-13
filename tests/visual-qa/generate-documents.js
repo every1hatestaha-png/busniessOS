@@ -90,7 +90,8 @@ async function main() {
 
   async function createInvoiceScenario(name, overrides = {}) {
     const customerId = overrides.customerId || ids.customer1Id;
-    const items = overrides.items || [{ productId: ids.productPieceId, quantity: 1, unitPrice: 250, discount: 0 }];
+    const items = overrides.items || [{ productId: ids.productPieceId, quantity: 1, unitPrice: 250, discountPerUnit: 0 }];
+    const total = items.reduce((sum, item) => sum + item.quantity * (item.unitPrice - (item.discountPerUnit || 0)), 0);
 
     const order = await prisma.salesOrder.create({
       data: {
@@ -98,19 +99,20 @@ async function main() {
         customerId,
         orderNumber: `SO-VQA-${name}-${randomUUID().slice(0, 8)}`,
         status: overrides.status || "CONFIRMED",
-        subtotal: items.reduce((sum, i) => sum + i.quantity * i.unitPrice - i.discount, 0),
-        total: items.reduce((sum, i) => sum + i.quantity * i.unitPrice - i.discount, 0),
-        balanceAmount: items.reduce((sum, i) => sum + i.quantity * i.unitPrice - i.discount, 0),
+        subtotal: total,
+        total,
+        balanceAmount: total,
         orderDate: overrides.issuedAt || new Date(),
         items: {
           create: items.map(item => {
             const p = productNameMap[item.productId];
-            const lineTotal = item.quantity * item.unitPrice - (item.discount || 0);
+            const discountPerUnit = item.discountPerUnit || 0;
+            const lineTotal = item.quantity * (item.unitPrice - discountPerUnit);
             return {
               productId: item.productId,
               quantity: item.quantity,
               unitPrice: item.unitPrice,
-              discount: item.discount || 0,
+              discountPerUnit,
               totalPrice: lineTotal,
               productName: p.name,
               productSku: p.sku,
@@ -121,6 +123,7 @@ async function main() {
       include: { items: true }
     });
 
+    const paidAmount = overrides.paidAmount || 0;
     const invoice = await prisma.invoice.create({
       data: {
         workspaceId: ids.workspaceId,
@@ -128,16 +131,17 @@ async function main() {
         salesOrderId: order.id,
         invoiceNumber: `INV-VQA-${name}-${randomUUID().slice(0, 8)}`,
         amount: new Prisma.Decimal(order.total),
-        paidAmount: new Prisma.Decimal(overrides.paidAmount || 0),
+        paidAmount: new Prisma.Decimal(paidAmount),
         creditApplied: new Prisma.Decimal(0),
-        status: overrides.invoiceStatus || (overrides.paidAmount >= order.total ? "PAID" : overrides.paidAmount > 0 ? "PARTIALLY_PAID" : "UNPAID"),
+        status: overrides.invoiceStatus || (paidAmount >= Number(order.total) ? "PAID" : paidAmount > 0 ? "PARTIALLY_PAID" : "UNPAID"),
         issuedAt: overrides.issuedAt || new Date(),
         dueDate: overrides.dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       }
     });
 
-    if (overrides.paidAmount && overrides.paidAmount > 0) {
+    if (paidAmount > 0) {
       const cashBankAccount = await prisma.cashBankAccount.findFirst({ where: { workspaceId: ids.workspaceId, isActive: true } });
+      if (!cashBankAccount) throw new Error("Active cash/bank account is required for paid invoice fixtures.");
       const paymentNumber = `RCPT-VQA-${name}-${randomUUID().slice(0, 8)}`;
       await prisma.payment.create({
         data: {
@@ -146,8 +150,8 @@ async function main() {
           invoiceId: invoice.id,
           cashBankAccountId: cashBankAccount.id,
           documentNumber: paymentNumber,
-          amount: new Prisma.Decimal(overrides.paidAmount),
-          netAmount: new Prisma.Decimal(overrides.paidAmount),
+          amount: new Prisma.Decimal(paidAmount),
+          netAmount: new Prisma.Decimal(paidAmount),
           method: "CASH",
           reference: `Payment for ${invoice.invoiceNumber}`,
           paymentDate: new Date(),
@@ -159,18 +163,16 @@ async function main() {
     return { order, invoice };
   }
 
-  console.log("Creating invoices...");
-
-  await createInvoiceScenario("1-line", { customerId: ids.customer1Id, items: [{ productId: ids.productPieceId, quantity: 1, unitPrice: 250, discount: 0 }] });
+  await createInvoiceScenario("1-line", { customerId: ids.customer1Id, items: [{ productId: ids.productPieceId, quantity: 1, unitPrice: 250, discountPerUnit: 0 }] });
 
   await createInvoiceScenario("5-line", {
     customerId: ids.customer1Id,
     items: [
-      { productId: ids.productPieceId, quantity: 2, unitPrice: 250, discount: 10 },
-      { productId: ids.productLongDescId, quantity: 1, unitPrice: 850, discount: 50 },
-      { productId: ids.productWeightId, quantity: 10, unitPrice: 280, discount: 0 },
-      { productId: ids.productWeightHeavyId, quantity: 5, unitPrice: 285, discount: 20 },
-      { productId: ids.productPieceId, quantity: 3, unitPrice: 250, discount: 0 },
+      { productId: ids.productPieceId, quantity: 2, unitPrice: 250, discountPerUnit: 10 },
+      { productId: ids.productLongDescId, quantity: 1, unitPrice: 850, discountPerUnit: 50 },
+      { productId: ids.productWeightId, quantity: 10, unitPrice: 280, discountPerUnit: 0 },
+      { productId: ids.productWeightHeavyId, quantity: 5, unitPrice: 285, discountPerUnit: 20 },
+      { productId: ids.productPieceId, quantity: 3, unitPrice: 250, discountPerUnit: 0 },
     ]
   });
 
@@ -178,7 +180,7 @@ async function main() {
     productId: i % 2 === 0 ? ids.productPieceId : ids.productLongDescId,
     quantity: (i % 5) + 1,
     unitPrice: i % 2 === 0 ? 250 : 850,
-    discount: i % 3 === 0 ? 25 : 0,
+    discountPerUnit: i % 3 === 0 ? 25 : 0,
   }));
   await createInvoiceScenario("25-line", { customerId: ids.customer1Id, items: items25 });
 
@@ -186,29 +188,23 @@ async function main() {
     productId: [ids.productPieceId, ids.productLongDescId, ids.productWeightId, ids.productWeightHeavyId][i % 4],
     quantity: (i % 10) + 1,
     unitPrice: [250, 850, 280, 285][i % 4],
-    discount: i % 7 === 0 ? 50 : 0,
+    discountPerUnit: i % 7 === 0 ? 50 : 0,
   }));
   await createInvoiceScenario("100-line", { customerId: ids.customer1Id, items: items100 });
 
-  await createInvoiceScenario("long-name", { customerId: ids.customerLongNameId, items: [{ productId: ids.productPieceId, quantity: 3, unitPrice: 250, discount: 0 }] });
-
-  await createInvoiceScenario("decimal-qty", { customerId: ids.customer1Id, items: [{ productId: ids.productWeightId, quantity: 4.60, unitPrice: 280, discount: 0 }] });
-
-  await createInvoiceScenario("weight-qty", { customerId: ids.customer1Id, items: [{ productId: ids.productWeightId, quantity: 25.5, unitPrice: 280, discount: 0 }] });
-
-  await createInvoiceScenario("large-pkr", { customerId: ids.customer1Id, items: [{ productId: ids.productPieceId, quantity: 1000, unitPrice: 50000, discount: 0 }] });
-
-  await createInvoiceScenario("partial-paid", { customerId: ids.customer1Id, items: [{ productId: ids.productPieceId, quantity: 10, unitPrice: 250, discount: 0 }], paidAmount: 1500, invoiceStatus: "PARTIALLY_PAID" });
-
-  await createInvoiceScenario("paid", { customerId: ids.customer1Id, items: [{ productId: ids.productPieceId, quantity: 5, unitPrice: 250, discount: 0 }], paidAmount: 1250, invoiceStatus: "PAID" });
-
-  await createInvoiceScenario("void", { customerId: ids.customer1Id, items: [{ productId: ids.productPieceId, quantity: 1, unitPrice: 250, discount: 0 }], status: "CANCELLED", invoiceStatus: "CANCELLED" });
+  await createInvoiceScenario("long-name", { customerId: ids.customerLongNameId, items: [{ productId: ids.productPieceId, quantity: 3, unitPrice: 250, discountPerUnit: 0 }] });
+  await createInvoiceScenario("decimal-qty", { customerId: ids.customer1Id, items: [{ productId: ids.productWeightId, quantity: 4.60, unitPrice: 280, discountPerUnit: 0 }] });
+  await createInvoiceScenario("weight-qty", { customerId: ids.customer1Id, items: [{ productId: ids.productWeightId, quantity: 25.5, unitPrice: 280, discountPerUnit: 0 }] });
+  await createInvoiceScenario("large-pkr", { customerId: ids.customer1Id, items: [{ productId: ids.productPieceId, quantity: 1000, unitPrice: 50000, discountPerUnit: 0 }] });
+  await createInvoiceScenario("partial-paid", { customerId: ids.customer1Id, items: [{ productId: ids.productPieceId, quantity: 10, unitPrice: 250, discountPerUnit: 0 }], paidAmount: 1500, invoiceStatus: "PARTIALLY_PAID" });
+  await createInvoiceScenario("paid", { customerId: ids.customer1Id, items: [{ productId: ids.productPieceId, quantity: 5, unitPrice: 250, discountPerUnit: 0 }], paidAmount: 1250, invoiceStatus: "PAID" });
+  await createInvoiceScenario("void", { customerId: ids.customer1Id, items: [{ productId: ids.productPieceId, quantity: 1, unitPrice: 250, discountPerUnit: 0 }], status: "CANCELLED", invoiceStatus: "CANCELLED" });
 
   for (const ageDays of [15, 45, 75, 120]) {
     const issuedAt = new Date(Date.now() - ageDays * 24 * 60 * 60 * 1000);
     await createInvoiceScenario(`aging-${ageDays}`, {
       customerId: ids.customer1Id,
-      items: [{ productId: ids.productPieceId, quantity: ageDays, unitPrice: 250, discount: 0 }],
+      items: [{ productId: ids.productPieceId, quantity: ageDays, unitPrice: 250, discountPerUnit: 0 }],
       issuedAt,
       dueDate: new Date(issuedAt.getTime() + 30 * 24 * 60 * 60 * 1000),
       invoiceStatus: ageDays > 30 ? "OVERDUE" : "UNPAID",
@@ -223,7 +219,6 @@ async function main() {
   async function createPOScenario(name, overrides = {}) {
     const supplierId = overrides.supplierId || ids.supplier1Id;
     const items = overrides.items || [{ productId: ids.productPieceId, quantity: 10, unitCost: 150, unit: "PIECE" }];
-
     const totalAmount = items.reduce((sum, item) => sum.plus(itemAmount(item)), decimal(0));
 
     const order = await prisma.purchaseOrder.create({
@@ -301,10 +296,8 @@ async function main() {
 
     const items = po.items.map(item => {
       const lineAmount = item.perKgRate
-        ? (overrides.acceptedWeight || item.quantity * (item.unitWeight || 1)) * item.perKgRate
-        : (overrides.acceptedQty || item.quantity) * item.unitCost;
-      const totalCost = lineAmount;
-
+        ? (overrides.acceptedWeight || Number(item.quantity) * Number(item.unitWeight || 1)) * Number(item.perKgRate)
+        : (overrides.acceptedQty || Number(item.quantity)) * Number(item.unitCost);
       return {
         purchaseOrderItemId: item.id,
         productId: item.productId,
@@ -312,16 +305,15 @@ async function main() {
         receivedQuantity: overrides.receivedQty || item.quantity,
         acceptedQuantity: overrides.acceptedQty || item.quantity,
         unitCost: item.unitCost,
-        totalCost,
-        receivedWeightKg: item.perKgRate ? (overrides.receivedWeight || item.quantity * (item.unitWeight || 1)) : null,
-        acceptedWeightKg: item.perKgRate ? (overrides.acceptedWeight || item.quantity * (item.unitWeight || 1)) : null,
+        totalCost: lineAmount,
+        receivedWeightKg: item.perKgRate ? (overrides.receivedWeight || Number(item.quantity) * Number(item.unitWeight || 1)) : null,
+        acceptedWeightKg: item.perKgRate ? (overrides.acceptedWeight || Number(item.quantity) * Number(item.unitWeight || 1)) : null,
         ratePerKg: item.perKgRate || null,
         lineAmount,
       };
     });
 
     const totalAmount = items.reduce((sum, item) => sum.plus(item.totalCost), decimal(0));
-
     const grn = await prisma.goodReceivedNote.create({
       data: {
         workspaceId: ids.workspaceId,
@@ -341,9 +333,6 @@ async function main() {
         where: { id: item.purchaseOrderItemId },
         data: { receivedQuantity: { increment: item.acceptedQuantity } }
       });
-    }
-
-    for (const item of items) {
       await prisma.inventoryTransaction.create({
         data: {
           workspaceId: ids.workspaceId,
@@ -373,9 +362,7 @@ async function main() {
 
   const basicPO = await prisma.purchaseOrder.findFirst({ where: { workspaceId: ids.workspaceId, orderNumber: { startsWith: "PO-VQA-basic" } }, include: { items: true } });
   if (basicPO) await createGRNScenario("basic", { po: basicPO });
-
   await createGRNScenario("weighted", { po: weightPO });
-
   await createGRNScenario("multi", { po: multiPO });
 
   console.log("GRNs created");
@@ -409,9 +396,7 @@ async function main() {
         reason: "Quality inspection failure - dented packaging",
         totalAmount: returnAmount,
         status: "POSTED",
-        items: {
-          create: returnItems,
-        }
+        items: { create: returnItems }
       }
     });
     documentIds.supplierReturn = supplierReturn.id;
@@ -419,8 +404,8 @@ async function main() {
 
   console.log("Supplier return created");
 
-  // ===== PAYMENT RECEIPT =====
-  console.log("Creating payment receipts...");
+  // ===== PAYMENT RECEIPT + SUPPLIER PAYMENT VOUCHER =====
+  console.log("Creating payment documents...");
 
   const cashBank = await prisma.cashBankAccount.findUnique({ where: { id: ids.cashAccountId } });
   const paymentReceipt = await prisma.payment.findFirst({
@@ -429,7 +414,24 @@ async function main() {
   if (!paymentReceipt) throw new Error("Partial-payment receipt was not generated.");
   documentIds.paymentReceipt = paymentReceipt.id;
 
-  console.log("Payment receipt created");
+  const supplierPaymentVoucher = await prisma.payment.create({
+    data: {
+      workspaceId: ids.workspaceId,
+      supplierId: ids.supplier1Id,
+      cashBankAccountId: ids.bankAccountId,
+      documentNumber: `BPV-VQA-${randomUUID().slice(0, 8)}`,
+      amount: new Prisma.Decimal(12500),
+      netAmount: new Prisma.Decimal(12000),
+      withholdingTaxAmount: new Prisma.Decimal(500),
+      method: "BANK_TRANSFER",
+      reference: "Visual QA supplier settlement",
+      notes: "Print/PDF regression fixture",
+      paymentDate: new Date(),
+    }
+  });
+  documentIds.supplierPaymentVoucher = supplierPaymentVoucher.id;
+
+  console.log("Payment documents created");
 
   // ===== EXPENSE VOUCHER =====
   console.log("Creating expense vouchers...");
@@ -515,12 +517,11 @@ async function main() {
     { workspaceId: ids.workspaceId, accountId: accountByCode.CASH_IN_HAND.id, sourceType: "EXPENSE", sourceId: expense.id, documentNo: expense.voucherNumber, date: expense.expenseDate, narration: expense.notes || "Office supplies", debit: 0, credit: expense.amount },
   ] });
 
-  if (paymentReceipt) {
-    await prisma.generalLedgerEntry.createMany({ data: [
-      { workspaceId: ids.workspaceId, accountId: accountByCode.CASH_IN_HAND.id, sourceType: "RECEIPT", sourceId: paymentReceipt.id, documentNo: paymentReceipt.documentNumber, date: paymentReceipt.paymentDate, narration: paymentReceipt.reference || "Customer receipt", debit: paymentReceipt.amount, credit: 0 },
-      { workspaceId: ids.workspaceId, accountId: accountByCode.ACCOUNTS_RECEIVABLE.id, sourceType: "RECEIPT", sourceId: paymentReceipt.id, documentNo: paymentReceipt.documentNumber, date: paymentReceipt.paymentDate, narration: paymentReceipt.reference || "Customer receipt", debit: 0, credit: paymentReceipt.amount },
-    ] });
-  }
+  await prisma.generalLedgerEntry.createMany({ data: [
+    { workspaceId: ids.workspaceId, accountId: accountByCode.CASH_IN_HAND.id, sourceType: "RECEIPT", sourceId: paymentReceipt.id, documentNo: paymentReceipt.documentNumber, date: paymentReceipt.paymentDate, narration: paymentReceipt.reference || "Customer receipt", debit: paymentReceipt.amount, credit: 0 },
+    { workspaceId: ids.workspaceId, accountId: accountByCode.ACCOUNTS_RECEIVABLE.id, sourceType: "RECEIPT", sourceId: paymentReceipt.id, documentNo: paymentReceipt.documentNumber, date: paymentReceipt.paymentDate, narration: paymentReceipt.reference || "Customer receipt", debit: 0, credit: paymentReceipt.amount },
+  ] });
+
   await prisma.cashBankAccount.update({ where: { id: ids.cashAccountId }, data: { currentBalance: 36500 } });
 
   console.log("Report data generated");
@@ -538,8 +539,8 @@ async function main() {
   console.log("\nAll visual QA documents created successfully!");
 }
 
-main().catch(async e => {
-  console.error(e);
+main().catch(async error => {
+  console.error(error);
   await prisma.$disconnect();
   process.exit(1);
 });
