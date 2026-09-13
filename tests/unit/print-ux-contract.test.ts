@@ -37,7 +37,7 @@ describe("print UX regression contracts", () => {
   it("keeps the Electron Ctrl/Cmd+P print accelerator wired", () => {
     const electronMain = source("desktop/main.cjs");
     expect(electronMain).toContain("before-input-event");
-    expect(electronMain).toContain('input.key.toLowerCase() === "p"');
+    expect(electronMain).toContain('input.key.toLowerCase() !== "p"');
     expect(electronMain).toContain("webContents.print");
   });
 });
