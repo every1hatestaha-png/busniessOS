@@ -15,7 +15,23 @@ import {
 
 export type { WorkspaceAccess } from "@/lib/subscriptions/access";
 
+const PLATFORM_PLANS = new Set(["starter", "business", "pro"]);
+
+function assertWorkspaceId(workspaceId: string) {
+  const value = workspaceId.trim();
+  if (!value || value.length > 128) throw new Error("Invalid workspace.");
+  return value;
+}
+
+function assertDays(days: number, max: number) {
+  if (!Number.isInteger(days) || days < 1 || days > max) {
+    throw new Error(`Days must be a whole number between 1 and ${max}.`);
+  }
+  return days;
+}
+
 export async function ensureWorkspaceSubscription(workspaceId: string) {
+  const safeWorkspaceId = assertWorkspaceId(workspaceId);
   const id = `sub_${randomUUID().replaceAll("-", "")}`;
   await db.$executeRaw`
     INSERT INTO "workspace_subscriptions" (
@@ -23,7 +39,7 @@ export async function ensureWorkspaceSubscription(workspaceId: string) {
     )
     VALUES (
       ${id},
-      ${workspaceId},
+      ${safeWorkspaceId},
       (SELECT "id" FROM "saas_plans" WHERE "code" = 'starter' LIMIT 1),
       'TRIALING',
       CURRENT_TIMESTAMP,
@@ -34,7 +50,8 @@ export async function ensureWorkspaceSubscription(workspaceId: string) {
 }
 
 export async function getWorkspaceAccess(workspaceId: string): Promise<WorkspaceAccess> {
-  await ensureWorkspaceSubscription(workspaceId);
+  const safeWorkspaceId = assertWorkspaceId(workspaceId);
+  await ensureWorkspaceSubscription(safeWorkspaceId);
   const rows = await db.$queryRaw<SubscriptionSnapshot[]>`
     SELECT
       s."id",
@@ -53,7 +70,7 @@ export async function getWorkspaceAccess(workspaceId: string): Promise<Workspace
       s."suspensionReason"
     FROM "workspace_subscriptions" s
     LEFT JOIN "saas_plans" p ON p."id" = s."planId"
-    WHERE s."workspaceId" = ${workspaceId}
+    WHERE s."workspaceId" = ${safeWorkspaceId}
     LIMIT 1
   `;
 
@@ -69,16 +86,12 @@ export async function requireWorkspaceAccess() {
 }
 
 export async function requirePlatformOwner() {
-  const user = await getCurrentUser();
   const configuredOwner = process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL?.trim().toLowerCase();
   if (!configuredOwner) redirect("/dashboard");
 
-  // Platform authorization must follow the authenticated Clerk identity, not a
-  // potentially stale email stored in the local users table. The local row may
-  // pre-date an email change/relink while the Clerk session is still correct.
   const session = await auth({ acceptsToken: ["session_token", "oauth_token"] });
   const userId = "userId" in session ? session.userId : null;
-  if (!userId) redirect("/sign-in");
+  if (!userId) redirect("/platform/sign-in");
 
   const clerkUser = await (await clerkClient()).users.getUser(userId);
   const primaryEmailAddress =
@@ -94,6 +107,7 @@ export async function requirePlatformOwner() {
     redirect("/dashboard");
   }
 
+  const user = await getCurrentUser();
   return user;
 }
 
@@ -182,11 +196,12 @@ async function writeSubscriptionAudit(input: {
 }
 
 async function getSubscriptionRow(workspaceId: string) {
+  const safeWorkspaceId = assertWorkspaceId(workspaceId);
   const rows = await db.$queryRaw<Record<string, unknown>[]>`
     SELECT s.*, p."code" AS "planCode", p."name" AS "planName"
     FROM "workspace_subscriptions" s
     LEFT JOIN "saas_plans" p ON p."id" = s."planId"
-    WHERE s."workspaceId" = ${workspaceId}
+    WHERE s."workspaceId" = ${safeWorkspaceId}
     LIMIT 1
   `;
   return rows[0] ?? null;
@@ -194,70 +209,85 @@ async function getSubscriptionRow(workspaceId: string) {
 
 export async function extendWorkspaceTrial(workspaceId: string, days: number) {
   await requirePlatformOwner();
-  const before = await getSubscriptionRow(workspaceId);
+  const safeWorkspaceId = assertWorkspaceId(workspaceId);
+  const safeDays = assertDays(days, 365);
+  const before = await getSubscriptionRow(safeWorkspaceId);
+  if (!before) throw new Error("Customer subscription not found.");
   await db.$executeRaw`
     UPDATE "workspace_subscriptions"
     SET
       "status" = 'TRIALING',
-      "trialEndsAt" = GREATEST(COALESCE("trialEndsAt", CURRENT_TIMESTAMP), CURRENT_TIMESTAMP) + (${days} * INTERVAL '1 day'),
+      "trialEndsAt" = GREATEST(COALESCE("trialEndsAt", CURRENT_TIMESTAMP), CURRENT_TIMESTAMP) + (${safeDays} * INTERVAL '1 day'),
       "suspendedAt" = NULL,
       "suspensionReason" = NULL,
       "updatedAt" = CURRENT_TIMESTAMP
-    WHERE "workspaceId" = ${workspaceId}
+    WHERE "workspaceId" = ${safeWorkspaceId}
   `;
-  const after = await getSubscriptionRow(workspaceId);
-  await writeSubscriptionAudit({ workspaceId, action: "trial.extended", beforeState: before, afterState: after });
+  const after = await getSubscriptionRow(safeWorkspaceId);
+  await writeSubscriptionAudit({ workspaceId: safeWorkspaceId, action: "trial.extended", beforeState: before, afterState: after });
 }
 
 export async function activateWorkspaceSubscription(workspaceId: string, planCode: string, days: number) {
   await requirePlatformOwner();
-  const before = await getSubscriptionRow(workspaceId);
+  const safeWorkspaceId = assertWorkspaceId(workspaceId);
+  const safePlanCode = planCode.trim().toLowerCase();
+  if (!PLATFORM_PLANS.has(safePlanCode)) throw new Error("Invalid subscription plan.");
+  const safeDays = assertDays(days, 1095);
+  const before = await getSubscriptionRow(safeWorkspaceId);
+  if (!before) throw new Error("Customer subscription not found.");
   await db.$executeRaw`
     UPDATE "workspace_subscriptions"
     SET
-      "planId" = (SELECT "id" FROM "saas_plans" WHERE "code" = ${planCode} LIMIT 1),
+      "planId" = (SELECT "id" FROM "saas_plans" WHERE "code" = ${safePlanCode} LIMIT 1),
       "status" = 'ACTIVE',
       "currentPeriodStart" = CURRENT_TIMESTAMP,
-      "currentPeriodEnd" = CURRENT_TIMESTAMP + (${days} * INTERVAL '1 day'),
+      "currentPeriodEnd" = CURRENT_TIMESTAMP + (${safeDays} * INTERVAL '1 day'),
       "graceEndsAt" = NULL,
       "suspendedAt" = NULL,
       "suspensionReason" = NULL,
       "updatedAt" = CURRENT_TIMESTAMP
-    WHERE "workspaceId" = ${workspaceId}
+    WHERE "workspaceId" = ${safeWorkspaceId}
   `;
-  const after = await getSubscriptionRow(workspaceId);
-  await writeSubscriptionAudit({ workspaceId, action: "subscription.activated", beforeState: before, afterState: after });
+  const after = await getSubscriptionRow(safeWorkspaceId);
+  await writeSubscriptionAudit({ workspaceId: safeWorkspaceId, action: "subscription.activated", beforeState: before, afterState: after });
 }
 
 export async function grantWorkspaceGrace(workspaceId: string, days: number) {
   await requirePlatformOwner();
-  const before = await getSubscriptionRow(workspaceId);
+  const safeWorkspaceId = assertWorkspaceId(workspaceId);
+  const safeDays = assertDays(days, 90);
+  const before = await getSubscriptionRow(safeWorkspaceId);
+  if (!before) throw new Error("Customer subscription not found.");
   await db.$executeRaw`
     UPDATE "workspace_subscriptions"
     SET
       "status" = 'GRACE',
-      "graceEndsAt" = CURRENT_TIMESTAMP + (${days} * INTERVAL '1 day'),
+      "graceEndsAt" = CURRENT_TIMESTAMP + (${safeDays} * INTERVAL '1 day'),
       "suspendedAt" = NULL,
       "suspensionReason" = NULL,
       "updatedAt" = CURRENT_TIMESTAMP
-    WHERE "workspaceId" = ${workspaceId}
+    WHERE "workspaceId" = ${safeWorkspaceId}
   `;
-  const after = await getSubscriptionRow(workspaceId);
-  await writeSubscriptionAudit({ workspaceId, action: "subscription.grace_granted", beforeState: before, afterState: after });
+  const after = await getSubscriptionRow(safeWorkspaceId);
+  await writeSubscriptionAudit({ workspaceId: safeWorkspaceId, action: "subscription.grace_granted", beforeState: before, afterState: after });
 }
 
 export async function suspendWorkspaceSubscription(workspaceId: string, reason: string) {
   await requirePlatformOwner();
-  const before = await getSubscriptionRow(workspaceId);
+  const safeWorkspaceId = assertWorkspaceId(workspaceId);
+  const safeReason = reason.trim();
+  if (!safeReason || safeReason.length > 240) throw new Error("Suspension reason must be between 1 and 240 characters.");
+  const before = await getSubscriptionRow(safeWorkspaceId);
+  if (!before) throw new Error("Customer subscription not found.");
   await db.$executeRaw`
     UPDATE "workspace_subscriptions"
     SET
       "status" = 'SUSPENDED',
       "suspendedAt" = CURRENT_TIMESTAMP,
-      "suspensionReason" = ${reason},
+      "suspensionReason" = ${safeReason},
       "updatedAt" = CURRENT_TIMESTAMP
-    WHERE "workspaceId" = ${workspaceId}
+    WHERE "workspaceId" = ${safeWorkspaceId}
   `;
-  const after = await getSubscriptionRow(workspaceId);
-  await writeSubscriptionAudit({ workspaceId, action: "subscription.suspended", beforeState: before, afterState: after });
+  const after = await getSubscriptionRow(safeWorkspaceId);
+  await writeSubscriptionAudit({ workspaceId: safeWorkspaceId, action: "subscription.suspended", beforeState: before, afterState: after });
 }
