@@ -62,14 +62,14 @@ export function PayablesTable({ report, suppliers, filters }: { report: Payables
           <TableBody>
             {items.map((item) => (
               <TableRow key={item.purchaseId}>
-                <TableCell className="font-medium"><Link href={`/suppliers/${item.supplierId}`} className="hover:underline">{item.supplierName}</Link></TableCell>
-                <TableCell className="font-mono"><Link href={`/purchases/${item.purchaseId}`} className="hover:underline">{item.documentNumber}</Link></TableCell>
+                <TableCell className="font-medium"><Link prefetch={false} href={`/suppliers/${item.supplierId}`} className="hover:underline">{item.supplierName}</Link></TableCell>
+                <TableCell className="font-mono"><Link prefetch={false} href={`/purchases/${item.purchaseId}`} className="hover:underline">{item.documentNumber}</Link></TableCell>
                 <TableCell>{formatDate(item.purchaseDate)}</TableCell>
                 <TableCell className="text-right tabular-nums">{formatPKR(item.originalAmount)}</TableCell>
                 <TableCell className="text-right font-semibold tabular-nums">{formatPKR(item.outstandingAmount)}</TableCell>
                 <TableCell className="text-right tabular-nums">{item.ageDays}</TableCell>
                 <TableCell>{item.bucket === "current" ? "Current" : item.bucket}</TableCell>
-                <TableCell className="text-right print:hidden"><Link href={`/suppliers/${item.supplierId}`} className={buttonVariants({ size: "xs" })}>Pay Supplier</Link></TableCell>
+                <TableCell className="text-right print:hidden"><Link prefetch={false} href={`/suppliers/${item.supplierId}`} className={buttonVariants({ size: "xs" })}>Pay Supplier</Link></TableCell>
               </TableRow>
             ))}
             {!items.length && <TableRow><TableCell colSpan={8} className="h-32 text-center text-neutral-500">No outstanding payables match these filters.</TableCell></TableRow>}
