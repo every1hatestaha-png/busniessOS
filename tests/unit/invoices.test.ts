@@ -55,6 +55,7 @@ describe("getInvoice", () => {
     expect(invoice).toMatchObject({ total: 47500, paid: 0, creditApplied: 0, balance: 47500, status: "UNPAID" });
     expect(invoice?.order).toEqual({
       id: "sale_1", number: "SO-000001", subtotal: 50000, discount: 2500,
+      taxableAmount: 47500, gstRate: 0, gstAmount: 0,
       items: [{
         id: "item_1", name: "Saved product", sku: "SAVED-SKU", unit: "PIECE", quantity: 50,
         unitPrice: 1000, discountPerUnit: 50, total: 47500, pricingMode: "UNIT",
@@ -63,6 +64,6 @@ describe("getInvoice", () => {
     });
     const item = invoice!.order!.items[0];
     expect(item.quantity * (item.unitPrice - item.discountPerUnit)).toBe(item.total);
-    expect(invoice!.order!.subtotal - invoice!.order!.discount).toBe(invoice!.total);
+    expect(invoice!.order!.taxableAmount + invoice!.order!.gstAmount).toBe(invoice!.total);
   });
 });
