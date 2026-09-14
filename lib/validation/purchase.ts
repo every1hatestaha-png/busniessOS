@@ -15,7 +15,7 @@ export const purchaseSchema = z.object({
   expectedDeliveryDate: z.coerce.date().optional(),
   department: z.string().trim().max(200).optional(),
   pricingMode: z.enum(["UNIT", "WEIGHT"]).optional(),
-  gstRate: z.coerce.number().min(0).max(100).default(18),
+  gstRate: z.coerce.number().min(0).max(100).default(0),
   idempotencyKey: z.string().trim().min(8).max(200),
 }).superRefine((purchase, context) => {
   if (purchase.pricingMode !== "WEIGHT") return;
