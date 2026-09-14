@@ -12,6 +12,7 @@ export const saleSchema = z.object({
     discountPerUnit: z.number().nonnegative().max(100000000),
   })).min(1).max(100),
   orderDiscount: z.number().nonnegative().max(100000000),
+  gstRate: z.number().min(0).max(100).default(18),
   paidAmount: z.number().nonnegative().max(100000000),
   cashBankAccountId: z.string().uuid().optional().or(z.literal("")),
   notes: z.string().trim().max(500).default(""),
@@ -27,6 +28,5 @@ export const saleSchema = z.object({
   if (sale.paidAmount > 0 && !sale.cashBankAccountId) context.addIssue({ code: "custom", path: ["cashBankAccountId"], message: "Select the cash/bank account receiving this payment." });
 });
 
-// Callers may omit pricingMode; parsing normalizes it to UNIT. This keeps existing
-// API/tests backward compatible while allowing new weighted-sale fields.
+// Callers may omit pricingMode and gstRate; parsing normalizes them to safe defaults.
 export type SaleInput = z.input<typeof saleSchema>;
