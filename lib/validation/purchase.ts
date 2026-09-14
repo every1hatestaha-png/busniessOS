@@ -15,6 +15,7 @@ export const purchaseSchema = z.object({
   expectedDeliveryDate: z.coerce.date().optional(),
   department: z.string().trim().max(200).optional(),
   pricingMode: z.enum(["UNIT", "WEIGHT"]).optional(),
+  gstRate: z.coerce.number().min(0).max(100).default(18),
   idempotencyKey: z.string().trim().min(8).max(200),
 }).superRefine((purchase, context) => {
   if (purchase.pricingMode !== "WEIGHT") return;
@@ -25,7 +26,7 @@ export const purchaseSchema = z.object({
   });
 });
 
-export type PurchaseInput = z.infer<typeof purchaseSchema>;
+export type PurchaseInput = z.input<typeof purchaseSchema>;
 
 export const goodsReceiptSchema = z.object({
   purchaseOrderId: z.uuid(),
