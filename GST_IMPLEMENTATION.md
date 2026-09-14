@@ -10,4 +10,4 @@ Sales orders now support an editable GST percentage.
 - API callers that omit `gstRate` remain at 0% for backward compatibility. The interactive MunshiOS sales form explicitly supplies the 18% default.
 - Existing historical sales derive 0% GST because their stored total equals their post-discount taxable amount.
 
-Purchase validation accepts a GST rate for forward compatibility, but purchase accounting and GRN posting remain unchanged in this batch. This prevents purchase inventory valuation and supplier payable logic from being changed without a dedicated accounting migration and full GRN lifecycle test pass.
+Purchase orders and GRN accounting are intentionally unchanged in this batch. Purchase GST should be introduced separately so inventory valuation, supplier payables, supplier returns, GRN edits, cancellations, and reversals change together and remain financially consistent.
