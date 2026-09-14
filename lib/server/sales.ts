@@ -39,9 +39,11 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
     const subtotal = lines.reduce((sum, line) => sum.plus(new Prisma.Decimal(line.unitPrice).mul(line.quantity)), new Prisma.Decimal(0));
     const lineDiscount = lines.reduce((sum, line) => sum.plus(new Prisma.Decimal(line.discountPerUnit).mul(line.quantity)), new Prisma.Decimal(0));
     const discount = lineDiscount.plus(data.orderDiscount);
-    const total = subtotal.minus(discount);
+    const taxableAmount = subtotal.minus(discount);
+    const gstAmount = taxableAmount.isPositive() ? taxableAmount.mul(new Prisma.Decimal(data.gstRate).div(100)).toDecimalPlaces(2) : new Prisma.Decimal(0);
+    const total = taxableAmount.plus(gstAmount);
     const paid = new Prisma.Decimal(data.paidAmount);
-    if (total.isNegative() || paid.greaterThan(total)) throw new SaleDomainError("INVALID_TOTAL", "Payment or discount exceeds the order total.");
+    if (taxableAmount.isNegative() || paid.greaterThan(total)) throw new SaleDomainError("INVALID_TOTAL", "Payment or discount exceeds the order total.");
     if (paid.greaterThan(0) && !canPerformAction(context.role, "payments.record")) throw new SaleDomainError("PAYMENT_PERMISSION_DENIED", "You do not have permission to record a payment with this sale.");
     const additionalCredit = total.minus(paid);
     if (customer.creditLimit.greaterThan(0)) {
@@ -73,8 +75,6 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
     let costOfGoodsSold = new Prisma.Decimal(0);
     const productById = new Map(products.map((product) => [product.id, product]));
 
-    // Keep the guarded stock decrements serialized so overselling remains impossible,
-    // then batch the append-only line and inventory writes to reduce transaction round trips.
     for (const line of lines) {
       const product = productById.get(line.productId)!;
       costOfGoodsSold = costOfGoodsSold.plus(product.costPrice.mul(line.quantity));
@@ -103,7 +103,7 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
       await tx.customer.update({ where: { id: customer.id, workspaceId: context.workspaceId }, data: { currentBalance: { decrement: paid } } });
     }
     await postSaleToGeneralLedger(tx, { workspaceId: context.workspaceId, saleId: order.id, orderNumber, date: order.orderDate, revenue: total, costOfGoodsSold, cashReceived: paid, cashBankAccountId });
-    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "sale.created", entityType: "SalesOrder", entityId: order.id, metadata: { orderNumber, total: total.toString() } });
+    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "sale.created", entityType: "SalesOrder", entityId: order.id, metadata: { orderNumber, taxableAmount: taxableAmount.toString(), gstRate: data.gstRate, gstAmount: gstAmount.toString(), total: total.toString() } });
     return { id: order.id };
   });
 }
@@ -227,6 +227,9 @@ export async function getSale(workspaceId: string, id: string) {
     },
   });
   if (!row) return null;
+  const taxableAmount = Math.max(0, Number(row.subtotal) - Number(row.discount));
+  const gstAmount = Math.max(0, Number(row.total) - taxableAmount);
+  const gstRate = taxableAmount > 0 ? Number(((gstAmount / taxableAmount) * 100).toFixed(4)) : 0;
   return {
     id: row.id,
     orderNumber: row.orderNumber,
@@ -234,6 +237,9 @@ export async function getSale(workspaceId: string, id: string) {
     status: row.status,
     subtotal: Number(row.subtotal),
     discount: Number(row.discount),
+    taxableAmount,
+    gstRate,
+    gstAmount,
     total: Number(row.total),
     paidAmount: Number(row.paidAmount),
     balanceAmount: Number(row.balanceAmount),
