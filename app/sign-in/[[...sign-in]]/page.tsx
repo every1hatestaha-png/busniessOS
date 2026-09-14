@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useSignIn } from "@clerk/nextjs";
+import { useClerk, useSignIn } from "@clerk/nextjs";
 import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 import visual0 from "./login-visual-v2-0";
 import visual1 from "./login-visual-v2-1";
@@ -12,12 +12,16 @@ import visual3 from "./login-visual-v2-3";
 
 const LOGIN_VISUAL = `data:image/webp;base64,${visual0}${visual1}${visual2}${visual3}`;
 
+type VerificationStrategy = "email_code" | "phone_code" | "totp" | "backup_code";
+
 export default function SignInPage() {
   const { signIn, errors, fetchStatus } = useSignIn();
+  const { signOut } = useClerk();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
+  const [verificationStrategy, setVerificationStrategy] = useState<VerificationStrategy | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [localError, setLocalError] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
@@ -48,10 +52,44 @@ export default function SignInPage() {
     if (error) setLocalError("We could not finish signing you in. Please try again.");
   }
 
+  async function beginSecondFactor(preferDeviceTrustEmail = false) {
+    const supported = new Set((signIn.supportedSecondFactors ?? []).map((factor) => factor.strategy));
+    let strategy: VerificationStrategy | null = null;
+
+    if (preferDeviceTrustEmail && supported.has("email_code")) strategy = "email_code";
+    else if (supported.has("email_code")) strategy = "email_code";
+    else if (supported.has("phone_code")) strategy = "phone_code";
+    else if (supported.has("totp")) strategy = "totp";
+    else if (supported.has("backup_code")) strategy = "backup_code";
+
+    if (!strategy) {
+      setLocalError("This account requires a verification method that is not available. Use account recovery or contact the administrator.");
+      return;
+    }
+
+    if (strategy === "email_code") {
+      const { error } = await signIn.mfa.sendEmailCode();
+      if (error) {
+        setLocalError("We could not send the verification email. Please try again.");
+        return;
+      }
+    } else if (strategy === "phone_code") {
+      const { error } = await signIn.mfa.sendPhoneCode();
+      if (error) {
+        setLocalError("We could not send the verification code. Please try again.");
+        return;
+      }
+    }
+
+    setCode("");
+    setVerificationStrategy(strategy);
+  }
+
   async function handleSignIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await runOnce(async () => {
       setLocalError("");
+      setVerificationStrategy(null);
       const identifier = email.trim().toLowerCase();
       if (!identifier || !password) {
         setLocalError("Enter your email and password.");
@@ -60,7 +98,7 @@ export default function SignInPage() {
 
       const { error } = await signIn.password({ emailAddress: identifier, password });
       if (error) {
-        setLocalError("Email or password is incorrect.");
+        setLocalError(errors.fields.identifier?.message || errors.fields.password?.message || "Email or password is incorrect.");
         return;
       }
 
@@ -70,20 +108,17 @@ export default function SignInPage() {
       }
 
       if (signIn.status === "needs_client_trust") {
-        const emailFactor = signIn.supportedSecondFactors.find((factor) => factor.strategy === "email_code");
-        if (emailFactor) {
-          const { error: mfaError } = await signIn.mfa.sendEmailCode();
-          if (mfaError) {
-            setLocalError("We could not send the verification code. Please try again.");
-            return;
-          }
-          setCode("");
-          return;
-        }
+        await beginSecondFactor(true);
+        return;
       }
 
       if (signIn.status === "needs_second_factor") {
-        setLocalError("Additional verification is required for this account.");
+        await beginSecondFactor(false);
+        return;
+      }
+
+      if (signIn.status === "needs_new_password") {
+        setLocalError("This account needs a new password. Use Forgot password to continue securely.");
         return;
       }
 
@@ -91,29 +126,75 @@ export default function SignInPage() {
     });
   }
 
-  async function handleTrustCode(event: FormEvent<HTMLFormElement>) {
+  async function handleVerification(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await runOnce(async () => {
       setLocalError("");
-      const { error } = await signIn.mfa.verifyEmailCode({ code: code.trim() });
+      const value = code.trim();
+      if (!value || !verificationStrategy) {
+        setLocalError("Enter the verification code.");
+        return;
+      }
+
+      let error: unknown = null;
+      if (verificationStrategy === "email_code") ({ error } = await signIn.mfa.verifyEmailCode({ code: value }));
+      else if (verificationStrategy === "phone_code") ({ error } = await signIn.mfa.verifyPhoneCode({ code: value }));
+      else if (verificationStrategy === "totp") ({ error } = await signIn.mfa.verifyTOTP({ code: value }));
+      else ({ error } = await signIn.mfa.verifyBackupCode({ code: value }));
+
       if (error) {
         setLocalError("That verification code is not valid.");
         return;
       }
-      if (signIn.status === "complete") await finishSignIn();
+
+      if (signIn.status === "complete") {
+        await finishSignIn();
+        return;
+      }
+
+      if (signIn.status === "needs_client_trust") {
+        await beginSecondFactor(true);
+        return;
+      }
+
+      setLocalError("More verification is required. Please try again.");
     });
   }
 
-  async function resendTrustCode() {
+  async function resendVerificationCode() {
     await runOnce(async () => {
       setLocalError("");
-      const { error } = await signIn.mfa.sendEmailCode();
-      if (error) setLocalError("We could not send another code yet. Please wait a moment and try again.");
+      if (verificationStrategy === "email_code") {
+        const { error } = await signIn.mfa.sendEmailCode();
+        if (error) setLocalError("We could not send another code yet. Please wait a moment and try again.");
+      } else if (verificationStrategy === "phone_code") {
+        const { error } = await signIn.mfa.sendPhoneCode();
+        if (error) setLocalError("We could not send another code yet. Please wait a moment and try again.");
+      }
     });
   }
 
-  const trustCheck = signIn.status === "needs_client_trust";
+  async function startOver() {
+    await runOnce(async () => {
+      await signIn.reset();
+      setVerificationStrategy(null);
+      setCode("");
+      setPassword("");
+      setLocalError("");
+    });
+  }
+
+  async function resetSavedSession() {
+    await runOnce(async () => {
+      await signIn.reset();
+      await signOut({ redirectUrl: "/sign-in" });
+    });
+  }
+
+  const verificationActive = verificationStrategy !== null;
   const fieldError = errors.fields.identifier?.message || errors.fields.password?.message || errors.fields.code?.message || localError;
+  const verificationTitle = verificationStrategy === "totp" ? "Authenticator verification" : verificationStrategy === "backup_code" ? "Backup code verification" : "Verify your account";
+  const verificationHelp = verificationStrategy === "email_code" ? "Enter the verification code sent to your email." : verificationStrategy === "phone_code" ? "Enter the verification code sent to your phone." : verificationStrategy === "totp" ? "Enter the code from your authenticator app." : "Enter one of your unused backup codes.";
 
   return (
     <main className="min-h-dvh w-full overflow-x-hidden bg-[#06131a] text-white">
@@ -127,7 +208,7 @@ export default function SignInPage() {
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_85%_85%,rgba(13,148,136,0.23),transparent_34%),linear-gradient(180deg,#06131a_0%,#07161e_100%)]" />
 
           <div className="relative w-full max-w-[646px] rounded-[28px] border border-teal-500/50 bg-[#07151d]/88 px-6 py-9 shadow-[0_28px_80px_rgba(0,0,0,0.3)] backdrop-blur-xl sm:px-10 sm:py-11 lg:px-12 xl:px-14">
-            {!trustCheck ? (
+            {!verificationActive ? (
               <>
                 <div className="mb-8">
                   <h1 className="text-4xl font-semibold tracking-[-0.04em] text-white sm:text-[42px]">Welcome back</h1>
@@ -166,21 +247,23 @@ export default function SignInPage() {
 
                 <div className="my-7 flex items-center gap-4"><div className="h-px flex-1 bg-slate-700/70" /><span className="text-xs text-slate-500">or</span><div className="h-px flex-1 bg-slate-700/70" /></div>
                 <p className="text-center text-sm text-slate-400">New to MunshiOS? <Link href="/sign-up" className="font-medium text-teal-300 hover:text-teal-200">Create account</Link></p>
+                <button type="button" disabled={busy} onClick={() => void resetSavedSession()} className="mt-4 w-full text-center text-xs text-slate-500 transition hover:text-slate-300 disabled:opacity-50">Login stuck in this browser? Reset saved session</button>
               </>
             ) : (
               <>
                 <div className="mb-8">
-                  <h1 className="text-3xl font-semibold tracking-[-0.03em]">Verify this device</h1>
-                  <p className="mt-2 text-sm text-slate-400">Enter the verification code sent to your email.</p>
+                  <h1 className="text-3xl font-semibold tracking-[-0.03em]">{verificationTitle}</h1>
+                  <p className="mt-2 text-sm text-slate-400">{verificationHelp}</p>
                 </div>
-                <form onSubmit={handleTrustCode} className="space-y-5">
+                <form onSubmit={handleVerification} className="space-y-5">
                   <div>
-                    <label htmlFor="trust-code" className="mb-2 block text-sm font-medium text-slate-100">Verification code</label>
-                    <input id="trust-code" inputMode="numeric" autoComplete="one-time-code" required disabled={busy} value={code} onChange={(e) => setCode(e.target.value)} className="h-12 w-full rounded-xl border border-slate-600/80 bg-[#0b1921] px-4 text-sm tracking-[0.25em] text-white outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400 disabled:opacity-60" />
+                    <label htmlFor="verification-code" className="mb-2 block text-sm font-medium text-slate-100">Verification code</label>
+                    <input id="verification-code" inputMode={verificationStrategy === "backup_code" ? "text" : "numeric"} autoComplete="one-time-code" required disabled={busy} value={code} onChange={(e) => setCode(e.target.value)} className="h-12 w-full rounded-xl border border-slate-600/80 bg-[#0b1921] px-4 text-sm tracking-[0.18em] text-white outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400 disabled:opacity-60" />
                   </div>
                   {fieldError && <p className="text-sm text-rose-300">{fieldError}</p>}
                   <button disabled={busy} className="h-12 w-full rounded-xl bg-gradient-to-r from-[#18c4ad] to-[#10967f] text-sm font-semibold disabled:opacity-60">{busy ? "Verifying..." : "Verify and continue"}</button>
-                  <button type="button" disabled={busy} onClick={() => void resendTrustCode()} className="w-full text-center text-sm text-teal-300 disabled:opacity-60">Send another code</button>
+                  {(verificationStrategy === "email_code" || verificationStrategy === "phone_code") && <button type="button" disabled={busy} onClick={() => void resendVerificationCode()} className="w-full text-center text-sm text-teal-300 disabled:opacity-60">Send another code</button>}
+                  <button type="button" disabled={busy} onClick={() => void startOver()} className="w-full text-center text-sm text-slate-400 hover:text-slate-200 disabled:opacity-60">Start over</button>
                 </form>
               </>
             )}
