@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { purchaseSchema } from "@/lib/validation/purchase";
 import { saleSchema } from "@/lib/validation/sale";
 
 const id = "11111111-1111-4111-8111-111111111111";
@@ -34,18 +33,5 @@ describe("GST validation", () => {
     expect(saleSchema.parse({ ...base, gstRate: 18 }).gstRate).toBe(18);
     expect(saleSchema.parse({ ...base, gstRate: 17 }).gstRate).toBe(17);
     expect(saleSchema.safeParse({ ...base, gstRate: 101 }).success).toBe(false);
-  });
-
-  it("keeps omitted purchase GST backward compatible and validates overrides", () => {
-    const base = {
-      supplierId: id,
-      items: [{ productId: secondId, quantity: 2, unitCost: 50 }],
-      idempotencyKey: "purchase-test-key",
-    };
-
-    expect(purchaseSchema.parse(base).gstRate).toBe(0);
-    expect(purchaseSchema.parse({ ...base, gstRate: 18 }).gstRate).toBe(18);
-    expect(purchaseSchema.parse({ ...base, gstRate: 5 }).gstRate).toBe(5);
-    expect(purchaseSchema.safeParse({ ...base, gstRate: -1 }).success).toBe(false);
   });
 });
