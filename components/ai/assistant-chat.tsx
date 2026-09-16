@@ -44,22 +44,25 @@ export function AssistantChat({ workspaceId, workspaceName }: { workspaceId: str
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(storageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw) as { version?: number; chats?: SavedChat[] };
-        const chats = Array.isArray(parsed.chats) ? parsed.chats.slice(0, MAX_SAVED_CHATS) : [];
-        setSavedChats(chats);
-        if (chats[0]) {
-          setActiveChatId(chats[0].id);
-          setMessages(chats[0].messages.length ? chats[0].messages : [welcomeMessage(workspaceName)]);
+    const frame = window.requestAnimationFrame(() => {
+      try {
+        const raw = window.localStorage.getItem(storageKey);
+        if (raw) {
+          const parsed = JSON.parse(raw) as { version?: number; chats?: SavedChat[] };
+          const chats = Array.isArray(parsed.chats) ? parsed.chats.slice(0, MAX_SAVED_CHATS) : [];
+          setSavedChats(chats);
+          if (chats[0]) {
+            setActiveChatId(chats[0].id);
+            setMessages(chats[0].messages.length ? chats[0].messages : [welcomeMessage(workspaceName)]);
+          }
         }
+      } catch {
+        window.localStorage.removeItem(storageKey);
+      } finally {
+        setHydrated(true);
       }
-    } catch {
-      window.localStorage.removeItem(storageKey);
-    } finally {
-      setHydrated(true);
-    }
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [storageKey, workspaceName]);
 
   useEffect(() => {
