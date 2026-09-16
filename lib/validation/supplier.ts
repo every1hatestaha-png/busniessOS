@@ -29,7 +29,10 @@ export const supplierPaymentSchema = z.object({
   amount: z.coerce.number().positive().max(999_999_999),
   withholdingTaxAmount: z.coerce.number().min(0).max(999_999_999).default(0),
   cashBankAccountId: z.uuid().optional().or(z.literal("")),
-  allocations: z.array(supplierPaymentAllocationSchema).min(1).max(100),
+  // Keep this optional at the input boundary so older callers receive the domain
+  // error from recordSupplierPayment instead of becoming TypeScript-incompatible.
+  // Parsed service data always contains an array.
+  allocations: z.array(supplierPaymentAllocationSchema).max(100).optional().default([]),
   method: z.enum(["CASH", "BANK_TRANSFER", "JAZZCASH", "EASYPAISA", "CHEQUE", "CREDIT_CARD", "MOBILE_WALLET", "OTHER"]),
   reference: z.string().trim().max(120).optional().default(""),
   notes: z.string().trim().max(500).optional().default(""),
