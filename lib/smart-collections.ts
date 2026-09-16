@@ -1,5 +1,8 @@
+import { splitContactPhones } from "@/lib/contact-phones";
+
 export type CollectionLanguage = "roman-urdu" | "english";
 export type CollectionStatus = "CURRENT" | "DUE" | "OVERDUE" | "CRITICAL" | "REVIEW";
+export type CollectionPriority = "URGENT" | "HIGH" | "NORMAL" | "REVIEW" | "NONE";
 
 export type CollectionDocument = {
   documentNumber: string;
@@ -18,16 +21,25 @@ export type CollectionCustomerInput = {
   items: CollectionDocument[];
 };
 
+export type WhatsAppContact = {
+  raw: string;
+  normalized: string;
+  isPrimary: boolean;
+};
+
 export type SmartCollectionRow = {
   customerId: string;
   customerName: string;
   phone: string;
+  phoneNumbers: string[];
   whatsappPhone: string | null;
+  whatsappPhones: WhatsAppContact[];
   currentBalance: number;
   creditDays: number;
   oldestAgeDays: number | null;
   daysPastTerms: number | null;
   status: CollectionStatus;
+  priority: CollectionPriority;
   pendingReferences: string[];
   needsContact: boolean;
 };
@@ -67,6 +79,14 @@ export function getCollectionStatus(oldestAgeDays: number | null, creditDays: nu
   return { status: "CURRENT" as const, daysPastTerms: 0 };
 }
 
+export function getCollectionPriority(status: CollectionStatus): CollectionPriority {
+  if (status === "CRITICAL") return "URGENT";
+  if (status === "OVERDUE") return "HIGH";
+  if (status === "DUE") return "NORMAL";
+  if (status === "REVIEW") return "REVIEW";
+  return "NONE";
+}
+
 export function buildSmartCollectionRows(customers: CollectionCustomerInput[]) {
   const priority: Record<CollectionStatus, number> = { CRITICAL: 0, OVERDUE: 1, DUE: 2, REVIEW: 3, CURRENT: 4 };
   return customers
@@ -85,16 +105,24 @@ export function buildSmartCollectionRows(customers: CollectionCustomerInput[]) {
         .filter((item) => !item.isOpeningBalance)
         .map((item) => item.documentNumber)
         .filter(Boolean))].slice(0, 4);
+      const phoneNumbers = splitContactPhones(customer.phone);
+      const whatsappPhones = phoneNumbers.flatMap<WhatsAppContact>((raw, index) => {
+        const normalized = normalizeWhatsAppPhone(raw);
+        return normalized ? [{ raw, normalized, isPrimary: index === 0 }] : [];
+      });
       return {
         customerId: customer.customerId,
         customerName: customer.customerName,
-        phone: customer.phone,
-        whatsappPhone: normalizeWhatsAppPhone(customer.phone),
+        phone: phoneNumbers[0] ?? "",
+        phoneNumbers,
+        whatsappPhone: whatsappPhones[0]?.normalized ?? null,
+        whatsappPhones,
         currentBalance: roundMoney(customer.currentBalance),
         creditDays: Math.max(0, customer.creditDays),
         oldestAgeDays: ageForTerms,
         daysPastTerms,
         status,
+        priority: getCollectionPriority(status),
         pendingReferences,
         needsContact: status === "DUE" || status === "OVERDUE" || status === "CRITICAL",
       };
@@ -111,7 +139,7 @@ export function summarizeSmartCollections(rows: SmartCollectionRow[]): SmartColl
     criticalAmount: roundMoney(criticalRows.reduce((sum, row) => sum + row.currentBalance, 0)),
     contactCount: dueRows.length,
     criticalCount: criticalRows.length,
-    missingPhoneCount: dueRows.filter((row) => !row.whatsappPhone).length,
+    missingPhoneCount: dueRows.filter((row) => row.whatsappPhones.length === 0).length,
   };
 }
 
@@ -119,33 +147,87 @@ function formatRupees(amount: number) {
   return `Rs ${amount.toLocaleString("en-PK", { minimumFractionDigits: Number.isInteger(amount) ? 0 : 2, maximumFractionDigits: 2 })}`;
 }
 
-function referenceLine(row: SmartCollectionRow) {
-  if (!row.pendingReferences.length) return "";
-  return ` Pending reference(s): ${row.pendingReferences.join(", ")}.`;
+function referenceText(row: SmartCollectionRow) {
+  return row.pendingReferences.length ? row.pendingReferences.join(", ") : "Account balance";
+}
+
+function englishReminderMeta(row: SmartCollectionRow) {
+  if (row.status === "CRITICAL") return {
+    title: "IMPORTANT PAYMENT FOLLOW-UP",
+    statusLine: `${row.daysPastTerms} days past payment terms`,
+    action: "Please prioritize settlement and confirm the expected payment date.",
+  };
+  if (row.status === "OVERDUE") return {
+    title: "PAYMENT FOLLOW-UP",
+    statusLine: `${row.daysPastTerms} day${row.daysPastTerms === 1 ? "" : "s"} past payment terms`,
+    action: "Kindly confirm the payment status or expected payment date.",
+  };
+  if (row.status === "DUE") return {
+    title: "PAYMENT REMINDER",
+    statusLine: "Payment is due according to the account terms",
+    action: "Kindly confirm the payment status or expected payment date.",
+  };
+  if (row.status === "REVIEW") return {
+    title: "ACCOUNT BALANCE CONFIRMATION",
+    statusLine: "Balance date requires manual confirmation",
+    action: "Kindly confirm the current balance and expected payment plan.",
+  };
+  return {
+    title: "ACCOUNT BALANCE UPDATE",
+    statusLine: "Within current payment terms",
+    action: "This is an account balance update for your records.",
+  };
+}
+
+function romanUrduReminderMeta(row: SmartCollectionRow) {
+  if (row.status === "CRITICAL") return {
+    title: "IMPORTANT PAYMENT FOLLOW-UP",
+    statusLine: `${row.daysPastTerms} din payment terms se late`,
+    action: "Meherbani karke payment ko priority dein aur expected payment date confirm kar dein.",
+  };
+  if (row.status === "OVERDUE") return {
+    title: "PAYMENT FOLLOW-UP",
+    statusLine: `${row.daysPastTerms} din payment terms se late`,
+    action: "Meherbani karke payment status ya expected payment date confirm kar dein.",
+  };
+  if (row.status === "DUE") return {
+    title: "PAYMENT REMINDER",
+    statusLine: "Payment account terms ke mutabiq due hai",
+    action: "Meherbani karke payment status ya expected payment date confirm kar dein.",
+  };
+  if (row.status === "REVIEW") return {
+    title: "ACCOUNT BALANCE CONFIRMATION",
+    statusLine: "Balance ki date manual confirmation chahti hai",
+    action: "Meherbani karke current balance aur expected payment plan confirm kar dein.",
+  };
+  return {
+    title: "ACCOUNT BALANCE UPDATE",
+    statusLine: "Payment abhi current terms ke andar hai",
+    action: "Ye sirf aapke record ke liye account balance update hai.",
+  };
 }
 
 export function buildCollectionMessage(row: SmartCollectionRow, workspaceName: string, language: CollectionLanguage = "roman-urdu") {
   const amount = formatRupees(row.currentBalance);
-  const refs = referenceLine(row);
+  const references = referenceText(row);
 
   if (language === "english") {
-    const timing = row.status === "CRITICAL" || row.status === "OVERDUE"
-      ? ` This is ${row.daysPastTerms} day${row.daysPastTerms === 1 ? "" : "s"} past the agreed payment terms.`
-      : row.status === "DUE"
-        ? " The payment is now due according to the account terms."
-        : "";
-    return `Assalam-o-Alaikum ${row.customerName}, our records show an outstanding balance of ${amount}.${timing}${refs} Kindly confirm the payment status or expected payment date. Thank you.\n— ${workspaceName}`;
+    const meta = englishReminderMeta(row);
+    return `*${meta.title}*\n*${workspaceName}*\n\nAssalam-o-Alaikum ${row.customerName},\n\nThis is a reminder regarding your account with us.\n\n*Outstanding:* ${amount}\n*Status:* ${meta.statusLine}\n*Reference(s):* ${references}\n\n${meta.action}\n\nIf payment has already been made, please share the payment reference so we can update our records.\n\nThank you,\n*Accounts — ${workspaceName}*`;
   }
 
-  const timing = row.status === "CRITICAL" || row.status === "OVERDUE"
-    ? ` Ye payment terms se ${row.daysPastTerms} din overdue hai.`
-    : row.status === "DUE"
-      ? " Ye payment ab account terms ke mutabiq due hai."
-      : "";
-  return `Assalam-o-Alaikum ${row.customerName}, aapke account mein ${amount} outstanding show ho raha hai.${timing}${refs} Kindly payment status ya expected payment date confirm kar dein. Shukriya.\n— ${workspaceName}`;
+  const meta = romanUrduReminderMeta(row);
+  return `*${meta.title}*\n*${workspaceName}*\n\nAssalam-o-Alaikum ${row.customerName},\n\nAapke account ke hawale se payment reminder share kar rahe hain.\n\n*Outstanding:* ${amount}\n*Status:* ${meta.statusLine}\n*Reference(s):* ${references}\n\n${meta.action}\n\nAgar payment ho chuki hai to payment reference share kar dein taake hum record update kar saken.\n\nShukriya,\n*Accounts — ${workspaceName}*`;
 }
 
-export function buildWhatsAppUrl(row: SmartCollectionRow, workspaceName: string, language: CollectionLanguage = "roman-urdu") {
-  if (!row.whatsappPhone) return null;
-  return `https://wa.me/${row.whatsappPhone}?text=${encodeURIComponent(buildCollectionMessage(row, workspaceName, language))}`;
+export function buildWhatsAppUrlForMessage(phone: string, message: string) {
+  const normalized = normalizeWhatsAppPhone(phone);
+  if (!normalized) return null;
+  return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
+}
+
+export function buildWhatsAppUrl(row: SmartCollectionRow, workspaceName: string, language: CollectionLanguage = "roman-urdu", phone?: string) {
+  const target = phone ?? row.whatsappPhones[0]?.raw ?? row.whatsappPhone;
+  if (!target) return null;
+  return buildWhatsAppUrlForMessage(target, buildCollectionMessage(row, workspaceName, language));
 }
