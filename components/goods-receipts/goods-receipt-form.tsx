@@ -43,24 +43,27 @@ export function GoodsReceiptForm({ purchaseOrderId, poNumber, supplierName, item
   const [receipts, setReceipts] = useState<ReceiptItem[]>(initialReceipts);
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(draftKey);
-      if (raw) {
-        const draft = JSON.parse(raw) as Partial<GrnDraft>;
-        if (draft.version === 1 && Array.isArray(draft.receipts)) {
-          const savedById = new Map(draft.receipts.map((entry) => [entry.purchaseOrderItemId, entry]));
-          setReceipts(initialReceipts.map((entry) => savedById.get(entry.purchaseOrderItemId) ?? entry));
-          setReceiptDate(typeof draft.receiptDate === "string" ? draft.receiptDate : "");
-          setReceivedBy(typeof draft.receivedBy === "string" ? draft.receivedBy : "");
-          setCheckedBy(typeof draft.checkedBy === "string" ? draft.checkedBy : "");
-          setNotes(typeof draft.notes === "string" ? draft.notes : "");
+    const frame = window.requestAnimationFrame(() => {
+      try {
+        const raw = window.localStorage.getItem(draftKey);
+        if (raw) {
+          const draft = JSON.parse(raw) as Partial<GrnDraft>;
+          if (draft.version === 1 && Array.isArray(draft.receipts)) {
+            const savedById = new Map(draft.receipts.map((entry) => [entry.purchaseOrderItemId, entry]));
+            setReceipts(initialReceipts.map((entry) => savedById.get(entry.purchaseOrderItemId) ?? entry));
+            setReceiptDate(typeof draft.receiptDate === "string" ? draft.receiptDate : "");
+            setReceivedBy(typeof draft.receivedBy === "string" ? draft.receivedBy : "");
+            setCheckedBy(typeof draft.checkedBy === "string" ? draft.checkedBy : "");
+            setNotes(typeof draft.notes === "string" ? draft.notes : "");
+          }
         }
+      } catch {
+        window.localStorage.removeItem(draftKey);
+      } finally {
+        setHydrated(true);
       }
-    } catch {
-      window.localStorage.removeItem(draftKey);
-    } finally {
-      setHydrated(true);
-    }
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [draftKey, initialReceipts]);
 
   const isDirty = receiptDate !== "" || receivedBy !== "" || checkedBy !== "" || notes !== "" || JSON.stringify(receipts) !== JSON.stringify(initialReceipts);
