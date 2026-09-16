@@ -28,7 +28,10 @@ export async function getGoodsReceiptWithHistory(workspaceId: string, id: string
       workspaceId,
       purchaseOrderId: current.purchaseOrderId,
       status: "ACTIVE",
-      createdAt: { lt: current.createdAt },
+      OR: [
+        { createdAt: { lt: current.createdAt } },
+        { createdAt: current.createdAt, grnNumber: { lt: grn.grnNumber } },
+      ],
     },
     select: {
       id: true,
@@ -39,7 +42,7 @@ export async function getGoodsReceiptWithHistory(workspaceId: string, id: string
         },
       },
     },
-    orderBy: { createdAt: "asc" },
+    orderBy: [{ createdAt: "asc" }, { grnNumber: "asc" }],
   });
 
   const previousAcceptedByItem = new Map<string, number>();
