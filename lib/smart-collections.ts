@@ -81,7 +81,10 @@ export function buildSmartCollectionRows(customers: CollectionCustomerInput[]) {
           ? null
           : customer.oldestAgeDays;
       const { status, daysPastTerms } = getCollectionStatus(ageForTerms, customer.creditDays);
-      const pendingReferences = [...new Set(customer.items.map((item) => item.documentNumber).filter(Boolean))].slice(0, 4);
+      const pendingReferences = [...new Set(customer.items
+        .filter((item) => !item.isOpeningBalance)
+        .map((item) => item.documentNumber)
+        .filter(Boolean))].slice(0, 4);
       return {
         customerId: customer.customerId,
         customerName: customer.customerName,
