@@ -34,14 +34,12 @@ export async function cancelCustomerReturn(context: ServiceContext, customerRetu
     if (customerReturn.restock) {
       for (const item of customerReturn.items) {
         if (item.quantity.lte(0)) throw new CustomerReturnReversalError("Customer return contains an invalid non-positive quantity.");
-        const [product, returnMovement] = await Promise.all([
-          tx.product.findFirst({ where: { id: item.productId, workspaceId: context.workspaceId }, select: { id: true, stockQuantity: true, costPrice: true } }),
-          tx.inventoryTransaction.findFirst({
-            where: { workspaceId: context.workspaceId, productId: item.productId, type: "RETURN_IN", reference: customerReturn.number },
-            orderBy: { createdAt: "asc" },
-            select: { unitCost: true },
-          }),
-        ]);
+        const product = await tx.product.findFirst({ where: { id: item.productId, workspaceId: context.workspaceId }, select: { id: true, stockQuantity: true, costPrice: true } });
+        const returnMovement = await tx.inventoryTransaction.findFirst({
+          where: { workspaceId: context.workspaceId, productId: item.productId, type: "RETURN_IN", reference: customerReturn.number },
+          orderBy: { createdAt: "asc" },
+          select: { unitCost: true },
+        });
         if (!product || !returnMovement?.unitCost) throw new CustomerReturnReversalError("Historical return inventory cost is unavailable; automatic cancellation is unsafe.");
         if (product.stockQuantity.lt(item.quantity)) throw new CustomerReturnReversalError("Returned stock has already been consumed. Restore sufficient stock before cancelling this return.");
 
