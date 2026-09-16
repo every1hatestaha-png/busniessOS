@@ -254,7 +254,7 @@ model User {
   clerkId   String   @unique
   email     String   @unique
   firstName String?
-  lastName  String?
+  lastName String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -343,21 +343,21 @@ model Supplier {
 }
 
 model Product {
-  id            String        @id @default(uuid())
-  workspaceId   String
-  name          String
-  sku           String?
-  description   String?
-  category      String?
-  costPrice     Decimal       @default(0) @db.Decimal(15, 2)
-  sellingPrice  Decimal       @default(0) @db.Decimal(15, 2)
-  stockQuantity Decimal       @default(0) @db.Decimal(15, 4)
+  id              String        @id @default(uuid())
+  workspaceId     String
+  name            String
+  sku             String?
+  description     String?
+  category        String?
+  costPrice       Decimal       @default(0) @db.Decimal(15, 2)
+  sellingPrice    Decimal       @default(0) @db.Decimal(15, 2)
+  stockQuantity   Decimal       @default(0) @db.Decimal(15, 4)
   reorderLevel    Decimal       @default(0) @db.Decimal(15, 4)
   defaultWeightKg Decimal?      @db.Decimal(10, 3)
   unit            ProductUnit   @default(PIECE)
-  status        ProductStatus @default(ACTIVE)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  status          ProductStatus @default(ACTIVE)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   workspace             Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   inventoryTransactions InventoryTransaction[]
@@ -540,21 +540,21 @@ model SalesOrder {
 }
 
 model SalesOrderItem {
-  id           String   @id @default(uuid())
-  salesOrderId String
-  productId    String
-  quantity        Decimal  @db.Decimal(15, 4)
-  unitPrice       Decimal  @db.Decimal(15, 2)
-  discountPerUnit Decimal  @default(0) @db.Decimal(15, 2)
-  totalPrice      Decimal  @db.Decimal(15, 2)
+  id              String      @id @default(uuid())
+  salesOrderId    String
+  productId       String
+  quantity        Decimal     @db.Decimal(15, 4)
+  unitPrice       Decimal     @db.Decimal(15, 2)
+  discountPerUnit Decimal     @default(0) @db.Decimal(15, 2)
+  totalPrice      Decimal     @db.Decimal(15, 2)
   pricingMode     PricingMode @default(UNIT)
-  unitWeight      Decimal? @db.Decimal(10, 3)
-  totalWeight     Decimal? @db.Decimal(15, 3)
-  perKgRate       Decimal? @db.Decimal(15, 2)
-  productName  String?
-  productSku   String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  unitWeight      Decimal?    @db.Decimal(10, 3)
+  totalWeight     Decimal?    @db.Decimal(15, 3)
+  perKgRate       Decimal?    @db.Decimal(15, 2)
+  productName     String?
+  productSku      String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
   salesOrder SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
   product    Product    @relation(fields: [productId], references: [id], onDelete: Restrict)
@@ -642,9 +642,9 @@ model GoodReceivedNote {
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
-  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  supplier           Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  purchaseOrder      PurchaseOrder       @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  workspace          Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  supplier           Supplier               @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  purchaseOrder      PurchaseOrder          @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
   items              GoodReceivedNoteItem[]
   supplierReturns    SupplierReturn[]
   paymentAllocations PaymentAllocation[]
@@ -1021,7 +1021,6 @@ model SupplierReturn {
 
 model SupplierReturnItem {
   id                     String    @id @default(uuid())
-  workspaceId            String?
   supplierReturnId       String
   purchaseOrderItemId    String
   productId              String
