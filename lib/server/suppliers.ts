@@ -12,6 +12,144 @@ import { canPerformAction } from "@/lib/server/authorization";
 
 export class SupplierDomainError extends Error {}
 
+type SupplierSettlementTarget = {
+  id: string;
+  grnNumber: string;
+  receiptDate: string;
+  purchaseOrderId: string;
+  orderNumber: string;
+  totalAmount: number;
+  settledAmount: number;
+  outstandingAmount: number;
+};
+
+type SupplierSettlementSnapshot = {
+  supplierId: string;
+  currentBalance: number;
+  openingBalance: {
+    originalAmount: number;
+    settledAmount: number;
+    outstandingAmount: number;
+  };
+  grns: SupplierSettlementTarget[];
+};
+
+async function buildSupplierSettlementSnapshot(tx: Prisma.TransactionClient, workspaceId: string, supplierId: string): Promise<SupplierSettlementSnapshot | null> {
+  const supplier = await tx.supplier.findFirst({
+    where: { id: supplierId, workspaceId },
+    select: { id: true, currentBalance: true },
+  });
+  if (!supplier) return null;
+
+  const [openingLedger, openingPayments, grns] = await Promise.all([
+    tx.ledgerEntry.aggregate({
+      where: { workspaceId, supplierId, type: "OPENING_BALANCE" },
+      _sum: { debit: true, credit: true },
+    }),
+    tx.paymentAllocation.aggregate({
+      where: {
+        workspaceId,
+        isSupplierOpeningBalance: true,
+        payment: { supplierId, isReversed: false, reversalOfId: null },
+      },
+      _sum: { amount: true },
+    }),
+    tx.goodReceivedNote.findMany({
+      where: { workspaceId, supplierId, status: "ACTIVE" },
+      orderBy: [{ receiptDate: "asc" }, { createdAt: "asc" }, { grnNumber: "asc" }],
+      select: {
+        id: true,
+        grnNumber: true,
+        receiptDate: true,
+        createdAt: true,
+        purchaseOrderId: true,
+        totalAmount: true,
+        purchaseOrder: { select: { orderNumber: true, balanceAmount: true } },
+        paymentAllocations: {
+          where: { payment: { supplierId, isReversed: false, reversalOfId: null } },
+          select: { amount: true },
+        },
+        supplierReturns: {
+          where: { status: "POSTED" },
+          select: { totalAmount: true },
+        },
+      },
+    }),
+  ]);
+
+  const originalOpening = new Prisma.Decimal(openingLedger._sum.credit ?? 0).minus(openingLedger._sum.debit ?? 0);
+  const openingSettled = new Prisma.Decimal(openingPayments._sum.amount ?? 0);
+  const openingOutstanding = Prisma.Decimal.max(0, originalOpening.minus(openingSettled));
+
+  const grouped = new Map<string, typeof grns>();
+  for (const grn of grns) {
+    const list = grouped.get(grn.purchaseOrderId) ?? [];
+    list.push(grn);
+    grouped.set(grn.purchaseOrderId, list);
+  }
+
+  const targets: SupplierSettlementTarget[] = [];
+  for (const purchaseGrns of grouped.values()) {
+    const totalLiability = purchaseGrns.reduce((sum, grn) => sum.plus(grn.totalAmount), new Prisma.Decimal(0));
+    const purchaseOutstanding = Prisma.Decimal.max(0, Prisma.Decimal.min(totalLiability, purchaseGrns[0].purchaseOrder.balanceAmount));
+    const aggregateReduction = Prisma.Decimal.max(0, totalLiability.minus(purchaseOutstanding));
+
+    const rows = purchaseGrns.map((grn) => {
+      const directPayments = grn.paymentAllocations.reduce((sum, allocation) => sum.plus(allocation.amount), new Prisma.Decimal(0));
+      const linkedReturns = grn.supplierReturns.reduce((sum, supplierReturn) => sum.plus(supplierReturn.totalAmount), new Prisma.Decimal(0));
+      const directReduction = Prisma.Decimal.min(grn.totalAmount, directPayments.plus(linkedReturns));
+      return {
+        grn,
+        remaining: Prisma.Decimal.max(0, grn.totalAmount.minus(directReduction)),
+        directReduction,
+      };
+    });
+
+    const knownReduction = rows.reduce((sum, row) => sum.plus(row.directReduction), new Prisma.Decimal(0));
+    let legacyOrUnlinkedReduction = Prisma.Decimal.max(0, aggregateReduction.minus(knownReduction));
+
+    // Historical PO-level payments and returns that were not tied to a GRN are
+    // applied FIFO for display/allocation capacity only. New payments are always
+    // persisted against explicit GRNs.
+    for (const row of rows) {
+      if (legacyOrUnlinkedReduction.lte(0)) break;
+      const applied = Prisma.Decimal.min(row.remaining, legacyOrUnlinkedReduction);
+      row.remaining = row.remaining.minus(applied);
+      legacyOrUnlinkedReduction = legacyOrUnlinkedReduction.minus(applied);
+    }
+
+    for (const row of rows) {
+      const total = new Prisma.Decimal(row.grn.totalAmount);
+      const outstanding = Prisma.Decimal.max(0, row.remaining);
+      targets.push({
+        id: row.grn.id,
+        grnNumber: row.grn.grnNumber,
+        receiptDate: row.grn.receiptDate.toISOString(),
+        purchaseOrderId: row.grn.purchaseOrderId,
+        orderNumber: row.grn.purchaseOrder.orderNumber,
+        totalAmount: total.toNumber(),
+        settledAmount: total.minus(outstanding).toNumber(),
+        outstandingAmount: outstanding.toNumber(),
+      });
+    }
+  }
+
+  return {
+    supplierId: supplier.id,
+    currentBalance: Number(supplier.currentBalance),
+    openingBalance: {
+      originalAmount: originalOpening.toNumber(),
+      settledAmount: Prisma.Decimal.min(originalOpening, openingSettled).toNumber(),
+      outstandingAmount: openingOutstanding.toNumber(),
+    },
+    grns: targets.sort((a, b) => a.receiptDate.localeCompare(b.receiptDate) || a.grnNumber.localeCompare(b.grnNumber)),
+  };
+}
+
+export async function getSupplierSettlementTargets(workspaceId: string, supplierId: string) {
+  return db.$transaction((tx) => buildSupplierSettlementSnapshot(tx, workspaceId, supplierId));
+}
+
 export async function listSuppliers(workspaceId: string) {
   const rows = await db.supplier.findMany({ where: { workspaceId }, orderBy: { name: "asc" }, include: { _count: { select: { purchaseOrders: true } }, purchaseOrders: { select: { totalAmount: true } } } });
   return rows.map((row) => ({ ...row, currentBalance: Number(row.currentBalance), totalPurchases: row.purchaseOrders.reduce((sum, order) => sum + Number(order.totalAmount), 0), purchases: undefined }));
@@ -44,7 +182,6 @@ export async function createSupplier(context: ServiceContext, input: SupplierInp
     if (openingBalance > 0) {
       const openingAmount = new Prisma.Decimal(openingBalance);
       const documentNo = `OPEN-SUP-${supplier.id.slice(0, 8).toUpperCase()}`;
-      // Supplier ledger entry: opening payable (we owe them)
       await tx.ledgerEntry.create({
         data: {
           workspaceId: context.workspaceId,
@@ -93,48 +230,139 @@ export async function deleteSupplier(context: ServiceContext, id: string) {
 
 export async function recordSupplierPayment(context: ServiceContext, supplierId: string, input: SupplierPaymentInput) {
   if (!canPerformAction(context.role, "payments.record")) throw new SupplierDomainError("Unauthorized");
-  const data = supplierPaymentSchema.parse(input); const amount = new Prisma.Decimal(data.amount); const withholdingTaxAmount = new Prisma.Decimal(data.withholdingTaxAmount ?? 0); const netAmount = amount.minus(withholdingTaxAmount);
+  const data = supplierPaymentSchema.parse(input);
+  const amount = new Prisma.Decimal(data.amount);
+  const withholdingTaxAmount = new Prisma.Decimal(data.withholdingTaxAmount ?? 0);
+  const netAmount = amount.minus(withholdingTaxAmount);
+
   return withSerializableRetry(async (tx) => {
     if (data.idempotencyKey) {
-      const existing = await tx.payment.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true, customerId: true, supplierId: true, amount: true, withholdingTaxAmount: true, cashBankAccountId: true, method: true, allocations: { select: { purchaseOrderId: true, amount: true } } } });
+      const existing = await tx.payment.findFirst({
+        where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey },
+        select: {
+          id: true,
+          customerId: true,
+          supplierId: true,
+          amount: true,
+          withholdingTaxAmount: true,
+          cashBankAccountId: true,
+          method: true,
+          allocations: { select: { purchaseOrderId: true, goodReceivedNoteId: true, isSupplierOpeningBalance: true, amount: true } },
+        },
+      });
       if (existing) {
-        const requested = data.allocations ?? [];
-        const sameAllocations = requested.length === existing.allocations.length && requested.every((entry) => existing.allocations.some((allocation) => allocation.purchaseOrderId === entry.purchaseOrderId && allocation.amount.equals(entry.amount)));
-        if (existing.customerId || existing.supplierId !== supplierId || !existing.amount.equals(data.amount) || !existing.withholdingTaxAmount.equals(data.withholdingTaxAmount ?? 0) || existing.cashBankAccountId !== data.cashBankAccountId || existing.method !== data.method || !sameAllocations) throw new SupplierDomainError("This idempotency key was already used for a different payment request.");
+        const sameCore = !existing.customerId && existing.supplierId === supplierId && existing.amount.equals(data.amount) && existing.withholdingTaxAmount.equals(data.withholdingTaxAmount ?? 0) && existing.cashBankAccountId === data.cashBankAccountId && existing.method === data.method;
+        const sameAllocations = data.allocations.every((requested) => {
+          const matching = existing.allocations.filter((allocation) => requested.openingBalance ? allocation.isSupplierOpeningBalance : requested.goodReceivedNoteId ? allocation.goodReceivedNoteId === requested.goodReceivedNoteId : allocation.purchaseOrderId === requested.purchaseOrderId);
+          return matching.reduce((sum, allocation) => sum.plus(allocation.amount), new Prisma.Decimal(0)).equals(requested.amount);
+        }) && existing.allocations.reduce((sum, allocation) => sum.plus(allocation.amount), new Prisma.Decimal(0)).equals(amount);
+        if (!sameCore || !sameAllocations) throw new SupplierDomainError("This idempotency key was already used for a different payment request.");
         return { id: existing.id };
       }
     }
-    const supplier = await tx.supplier.findFirst({ where: { id: supplierId, workspaceId: context.workspaceId }, select: { id: true, currentBalance: true } });
-    if (!supplier) throw new SupplierDomainError("Supplier not found.");
+
+    const snapshot = await buildSupplierSettlementSnapshot(tx, context.workspaceId, supplierId);
+    if (!snapshot) throw new SupplierDomainError("Supplier not found.");
     if (!data.cashBankAccountId) throw new SupplierDomainError("Select a cash/bank account for this voucher.");
     if (withholdingTaxAmount.greaterThan(amount)) throw new SupplierDomainError("Withholding tax cannot exceed the gross payment amount.");
     if (netAmount.lessThan(0)) throw new SupplierDomainError("Net payment cannot be negative.");
+
     const cashBankAccount = await tx.cashBankAccount.findFirst({ where: { id: data.cashBankAccountId, workspaceId: context.workspaceId, isActive: true }, select: { id: true } });
     if (!cashBankAccount) throw new SupplierDomainError("Cash/bank account is unavailable.");
-    if (amount.greaterThan(supplier.currentBalance)) throw new SupplierDomainError("Payment cannot exceed supplier payable.");
-    const requestedAllocations = data.allocations ?? [];
-    if (!requestedAllocations.length) throw new SupplierDomainError("Allocate this payment to one or more purchase bills.");
-    const allocationTotal = requestedAllocations.reduce((sum, entry) => sum.plus(entry.amount), new Prisma.Decimal(0));
+    if (amount.greaterThan(snapshot.currentBalance)) throw new SupplierDomainError("Payment cannot exceed supplier payable.");
+
+    const allocationTotal = data.allocations.reduce((sum, entry) => sum.plus(entry.amount), new Prisma.Decimal(0));
     if (!allocationTotal.equals(amount)) throw new SupplierDomainError("Payment allocations must equal the gross payment amount.");
-    const purchaseIds = requestedAllocations.map((entry) => entry.purchaseOrderId);
-    if (new Set(purchaseIds).size !== purchaseIds.length) throw new SupplierDomainError("Duplicate purchase allocations are not allowed.");
-    const purchases = await tx.purchaseOrder.findMany({ where: { id: { in: purchaseIds }, workspaceId: context.workspaceId, supplierId, status: { not: "CANCELLED" } }, select: { id: true, balanceAmount: true } });
-    if (purchases.length !== requestedAllocations.length) throw new SupplierDomainError("One or more purchases are unavailable.");
-    for (const allocation of requestedAllocations) {
-      const purchase = purchases.find((entry) => entry.id === allocation.purchaseOrderId)!;
-      if (new Prisma.Decimal(allocation.amount).greaterThan(purchase.balanceAmount)) throw new SupplierDomainError("Payment exceeds purchase balance or purchase is unavailable.");
+
+    const openingCapacity = new Prisma.Decimal(snapshot.openingBalance.outstandingAmount);
+    let openingRemaining = openingCapacity;
+    const grnRemaining = new Map(snapshot.grns.map((grn) => [grn.id, new Prisma.Decimal(grn.outstandingAmount)]));
+    const grnById = new Map(snapshot.grns.map((grn) => [grn.id, grn]));
+    const normalized = new Map<string, { goodReceivedNoteId: string | null; purchaseOrderId: string | null; isSupplierOpeningBalance: boolean; amount: Prisma.Decimal }>();
+
+    const addNormalized = (key: string, target: { goodReceivedNoteId: string | null; purchaseOrderId: string | null; isSupplierOpeningBalance: boolean }, value: Prisma.Decimal) => {
+      const existing = normalized.get(key);
+      if (existing) existing.amount = existing.amount.plus(value);
+      else normalized.set(key, { ...target, amount: value });
+    };
+
+    for (const allocation of data.allocations) {
+      let remaining = new Prisma.Decimal(allocation.amount);
+      if (allocation.openingBalance) {
+        if (remaining.greaterThan(openingRemaining)) throw new SupplierDomainError("Payment exceeds the remaining supplier opening balance.");
+        openingRemaining = openingRemaining.minus(remaining);
+        addNormalized("opening", { goodReceivedNoteId: null, purchaseOrderId: null, isSupplierOpeningBalance: true }, remaining);
+        continue;
+      }
+
+      if (allocation.goodReceivedNoteId) {
+        const target = grnById.get(allocation.goodReceivedNoteId);
+        const capacity = grnRemaining.get(allocation.goodReceivedNoteId);
+        if (!target || !capacity) throw new SupplierDomainError("One or more GRNs are unavailable or already settled.");
+        if (remaining.greaterThan(capacity)) throw new SupplierDomainError(`Payment exceeds outstanding amount for ${target.grnNumber}.`);
+        grnRemaining.set(target.id, capacity.minus(remaining));
+        addNormalized(`grn:${target.id}`, { goodReceivedNoteId: target.id, purchaseOrderId: target.purchaseOrderId, isSupplierOpeningBalance: false }, remaining);
+        continue;
+      }
+
+      // Compatibility for old callers/tests: a legacy PO request is never persisted
+      // as a PO-only settlement. It is normalized FIFO into the PO's surviving GRNs.
+      const poTargets = snapshot.grns.filter((grn) => grn.purchaseOrderId === allocation.purchaseOrderId && (grnRemaining.get(grn.id)?.gt(0) ?? false));
+      if (!poTargets.length) throw new SupplierDomainError("This purchase has no unpaid active GRNs. Supplier payments must be settled against GRNs.");
+      for (const target of poTargets) {
+        if (remaining.lte(0)) break;
+        const capacity = grnRemaining.get(target.id) ?? new Prisma.Decimal(0);
+        const applied = Prisma.Decimal.min(capacity, remaining);
+        if (applied.lte(0)) continue;
+        grnRemaining.set(target.id, capacity.minus(applied));
+        remaining = remaining.minus(applied);
+        addNormalized(`grn:${target.id}`, { goodReceivedNoteId: target.id, purchaseOrderId: target.purchaseOrderId, isSupplierOpeningBalance: false }, applied);
+      }
+      if (remaining.gt(0)) throw new SupplierDomainError("Payment exceeds the unpaid GRN liability for this purchase.");
     }
+
     const number = await nextDocumentNumber(tx, context.workspaceId, "BANK_PAYMENT_VOUCHER");
     const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, supplierId, cashBankAccountId: cashBankAccount.id, documentNumber: number, idempotencyKey: data.idempotencyKey, amount, netAmount, withholdingTaxAmount, method: data.method, reference: data.reference || null, notes: data.notes || null, paymentDate: data.paymentDate } });
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, supplierId, type: "PAYMENT_MADE", debit: amount, description: `Supplier payment ${number}`, referenceId: payment.id, date: data.paymentDate } });
     await tx.supplier.update({ where: { id: supplierId, workspaceId: context.workspaceId }, data: { currentBalance: { decrement: amount } } });
     await postSupplierPaymentToGeneralLedger(tx, { workspaceId: context.workspaceId, paymentId: payment.id, documentNo: number, date: data.paymentDate, amount, withholdingTaxAmount, cashBankAccountId: cashBankAccount.id });
-    for (const allocation of requestedAllocations) {
-      const allocationAmount = new Prisma.Decimal(allocation.amount);
-      await tx.paymentAllocation.create({ data: { workspaceId: context.workspaceId, paymentId: payment.id, purchaseOrderId: allocation.purchaseOrderId, amount: allocationAmount } });
-      await tx.purchaseOrder.update({ where: { id: allocation.purchaseOrderId, workspaceId: context.workspaceId }, data: { paidAmount: { increment: allocationAmount }, balanceAmount: { decrement: allocationAmount } } });
+
+    const purchaseTotals = new Map<string, Prisma.Decimal>();
+    for (const allocation of normalized.values()) {
+      await tx.paymentAllocation.create({
+        data: {
+          workspaceId: context.workspaceId,
+          paymentId: payment.id,
+          purchaseOrderId: allocation.purchaseOrderId,
+          goodReceivedNoteId: allocation.goodReceivedNoteId,
+          isSupplierOpeningBalance: allocation.isSupplierOpeningBalance,
+          amount: allocation.amount,
+        },
+      });
+      if (allocation.purchaseOrderId) purchaseTotals.set(allocation.purchaseOrderId, (purchaseTotals.get(allocation.purchaseOrderId) ?? new Prisma.Decimal(0)).plus(allocation.amount));
     }
-    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "supplier.payment_recorded", entityType: "Payment", entityId: payment.id, metadata: { supplierId, amount: data.amount, withholdingTaxAmount: withholdingTaxAmount.toString(), netAmount: netAmount.toString(), documentNumber: number, allocations: requestedAllocations.map((a) => ({ purchaseOrderId: a.purchaseOrderId, amount: a.amount })) } });
+
+    for (const [purchaseOrderId, settled] of purchaseTotals) {
+      const purchase = await tx.purchaseOrder.findFirst({ where: { id: purchaseOrderId, workspaceId: context.workspaceId, supplierId, status: { not: "CANCELLED" } }, select: { id: true, balanceAmount: true } });
+      if (!purchase || settled.greaterThan(purchase.balanceAmount)) throw new SupplierDomainError("Payment exceeds the current GRN-backed purchase liability.");
+      await tx.purchaseOrder.update({ where: { id: purchaseOrderId, workspaceId: context.workspaceId }, data: { paidAmount: { increment: settled }, balanceAmount: { decrement: settled } } });
+    }
+
+    await writeAudit(tx, {
+      workspaceId: context.workspaceId,
+      actorId: context.userId,
+      action: "supplier.payment_recorded",
+      entityType: "Payment",
+      entityId: payment.id,
+      metadata: {
+        supplierId,
+        amount: data.amount,
+        withholdingTaxAmount: withholdingTaxAmount.toString(),
+        netAmount: netAmount.toString(),
+        documentNumber: number,
+        allocations: Array.from(normalized.values()).map((allocation) => ({ goodReceivedNoteId: allocation.goodReceivedNoteId, openingBalance: allocation.isSupplierOpeningBalance, amount: allocation.amount.toString() })),
+      },
+    });
     return { id: payment.id };
   });
 }
@@ -145,7 +373,7 @@ export async function getSupplierPaymentVoucher(workspaceId: string, paymentId: 
     include: {
       supplier: true,
       cashBankAccount: { include: { account: true } },
-      allocations: { include: { purchaseOrder: true } },
+      allocations: { include: { purchaseOrder: true, goodReceivedNote: true } },
       workspace: true,
     },
   });
@@ -163,6 +391,14 @@ export async function getSupplierPaymentVoucher(workspaceId: string, paymentId: 
     supplier: payment.supplier ? { name: payment.supplier.name, companyName: payment.supplier.companyName, phone: payment.supplier.phone, address: payment.supplier.address, city: payment.supplier.city } : null,
     cashBankAccount: payment.cashBankAccount ? { name: payment.cashBankAccount.name, code: payment.cashBankAccount.account.code, isBank: payment.cashBankAccount.isBank, bankName: payment.cashBankAccount.bankName, accountTitle: payment.cashBankAccount.accountTitle, accountNumber: payment.cashBankAccount.accountNumber } : null,
     workspace: { name: payment.workspace.name, phone: payment.workspace.phone, email: payment.workspace.email, address: payment.workspace.address, city: payment.workspace.city, country: payment.workspace.country },
-    allocations: payment.allocations.map((allocation) => ({ id: allocation.id, amount: Number(allocation.amount), purchaseOrder: allocation.purchaseOrder ? { orderNumber: allocation.purchaseOrder.orderNumber, orderDate: allocation.purchaseOrder.orderDate.toISOString(), totalAmount: Number(allocation.purchaseOrder.totalAmount) } : null })),
+    allocations: payment.allocations.map((allocation) => ({
+      id: allocation.id,
+      amount: Number(allocation.amount),
+      targetType: allocation.isSupplierOpeningBalance ? "OPENING_BALANCE" as const : allocation.goodReceivedNote ? "GRN" as const : "LEGACY_PURCHASE" as const,
+      reference: allocation.isSupplierOpeningBalance ? "Opening Balance" : allocation.goodReceivedNote?.grnNumber ?? allocation.purchaseOrder?.orderNumber ?? "-",
+      date: allocation.goodReceivedNote?.receiptDate.toISOString() ?? allocation.purchaseOrder?.orderDate.toISOString() ?? null,
+      purchaseOrder: allocation.purchaseOrder ? { orderNumber: allocation.purchaseOrder.orderNumber, orderDate: allocation.purchaseOrder.orderDate.toISOString(), totalAmount: Number(allocation.purchaseOrder.totalAmount) } : null,
+      goodReceivedNote: allocation.goodReceivedNote ? { grnNumber: allocation.goodReceivedNote.grnNumber, receiptDate: allocation.goodReceivedNote.receiptDate.toISOString(), totalAmount: Number(allocation.goodReceivedNote.totalAmount) } : null,
+    })),
   };
 }
