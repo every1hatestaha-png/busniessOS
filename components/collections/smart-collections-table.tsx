@@ -26,7 +26,7 @@ function StatusPill({ status }: { status: CollectionStatus }) {
 export function SmartCollectionsTable({ rows, workspaceName }: { rows: SmartCollectionRow[]; workspaceName: string }) {
   const [language, setLanguage] = useState<CollectionLanguage>("roman-urdu");
   const [query, setQuery] = useState("");
-  const [showAll, setShowAll] = useState(false);
+  const [showAll, setShowAll] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const visibleRows = useMemo(() => {
