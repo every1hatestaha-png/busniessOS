@@ -4,6 +4,7 @@ import {
   buildCollectionMessage,
   buildSmartCollectionRows,
   buildWhatsAppUrl,
+  buildWhatsAppUrlForMessage,
   normalizeWhatsAppPhone,
   summarizeSmartCollections,
 } from "@/lib/smart-collections";
@@ -25,9 +26,23 @@ describe("Smart Collections", () => {
     ]);
 
     expect(rows.map((row) => row.customerId)).toEqual(["critical", "overdue", "current"]);
-    expect(rows[0]).toMatchObject({ status: "CRITICAL", daysPastTerms: 35, needsContact: true });
-    expect(rows[1]).toMatchObject({ status: "OVERDUE", daysPastTerms: 5, needsContact: true });
-    expect(rows[2]).toMatchObject({ status: "CURRENT", needsContact: false });
+    expect(rows[0]).toMatchObject({ status: "CRITICAL", priority: "URGENT", daysPastTerms: 35, needsContact: true });
+    expect(rows[1]).toMatchObject({ status: "OVERDUE", priority: "HIGH", daysPastTerms: 5, needsContact: true });
+    expect(rows[2]).toMatchObject({ status: "CURRENT", priority: "NONE", needsContact: false });
+  });
+
+  it("supports multiple customer numbers and keeps the first as primary", () => {
+    const [row] = buildSmartCollectionRows([
+      { customerId: "multi", customerName: "Multi Contact Co", phone: "03001234567\n03217654321\n+44 7700 900123", creditDays: 30, currentBalance: 15_000, oldestAgeDays: 31, items: [{ documentNumber: "INV-0010", outstandingAmount: 15_000, ageDays: 31 }] },
+    ]);
+
+    expect(row.phoneNumbers).toEqual(["03001234567", "03217654321", "+44 7700 900123"]);
+    expect(row.whatsappPhones.map((phone) => phone.normalized)).toEqual(["923001234567", "923217654321", "447700900123"]);
+    expect(row.whatsappPhones[0].isPrimary).toBe(true);
+    expect(row.whatsappPhone).toBe("923001234567");
+
+    const secondNumberUrl = buildWhatsAppUrl(row, "Arshad Sons", "roman-urdu", "03217654321");
+    expect(secondNumberUrl).toMatch(/^https:\/\/wa\.me\/923217654321\?text=/);
   });
 
   it("does not invent due dates or overdue days for opening balances", () => {
@@ -35,28 +50,35 @@ describe("Smart Collections", () => {
       { customerId: "opening", customerName: "Opening Co", phone: "03001234567", creditDays: 60, currentBalance: 5_378_159, oldestAgeDays: 0, items: [{ documentNumber: "OPENING BALANCE", outstandingAmount: 5_378_159, ageDays: 0, isOpeningBalance: true }] },
     ]);
 
-    expect(row).toMatchObject({ status: "REVIEW", oldestAgeDays: null, daysPastTerms: null, needsContact: false });
+    expect(row).toMatchObject({ status: "REVIEW", priority: "REVIEW", oldestAgeDays: null, daysPastTerms: null, needsContact: false });
     const message = buildCollectionMessage(row, "Arshad Sons", "roman-urdu");
     expect(message).toContain("Rs 5,378,159");
+    expect(message).toContain("ACCOUNT BALANCE CONFIRMATION");
     expect(message).not.toContain("overdue");
     expect(message).not.toContain("due hai");
   });
 
-  it("uses the authoritative account balance in the reminder and preserves human invoice references", () => {
+  it("uses authoritative balance and professional status-aware reminder formatting", () => {
     const [row] = buildSmartCollectionRows([
       { customerId: "c1", customerName: "Pak Star", phone: "03001234567", creditDays: 10, currentBalance: 450_387, oldestAgeDays: 18, items: [{ documentNumber: "INV-0042", outstandingAmount: 500_000, ageDays: 18 }] },
     ]);
 
     const message = buildCollectionMessage(row, "Arshad Sons", "roman-urdu");
-    expect(message).toContain("Rs 450,387");
-    expect(message).toContain("8 din overdue");
-    expect(message).toContain("INV-0042");
-    expect(message).toContain("Arshad Sons");
+    expect(message).toContain("*PAYMENT FOLLOW-UP*");
+    expect(message).toContain("*Outstanding:* Rs 450,387");
+    expect(message).toContain("*Status:* 8 din payment terms se late");
+    expect(message).toContain("*Reference(s):* INV-0042");
+    expect(message).toContain("*Accounts — Arshad Sons*");
     expect(message).not.toContain("500,000");
 
     const url = buildWhatsAppUrl(row, "Arshad Sons", "english");
     expect(url).toMatch(/^https:\/\/wa\.me\/923001234567\?text=/);
-    expect(decodeURIComponent(url!.split("text=")[1])).toContain("outstanding balance of Rs 450,387");
+    const decoded = decodeURIComponent(url!.split("text=")[1]);
+    expect(decoded).toContain("*Outstanding:* Rs 450,387");
+    expect(decoded).toContain("8 days past payment terms");
+
+    const editedUrl = buildWhatsAppUrlForMessage("03001234567", "Custom approved reminder");
+    expect(decodeURIComponent(editedUrl!.split("text=")[1])).toBe("Custom approved reminder");
   });
 
   it("summarizes only due customers as collection work", () => {

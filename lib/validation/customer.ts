@@ -1,11 +1,32 @@
 import { z } from "zod";
 
+import { MAX_CONTACT_PHONES, splitContactPhones } from "@/lib/contact-phones";
+
 const money = z.string().trim().regex(/^\d+(\.\d{1,2})?$/, "Enter a valid non-negative amount");
+
+const customerPhones = z.string().trim().min(10, "Enter at least one valid phone number").max(220, "Phone numbers are too long").superRefine((value, ctx) => {
+  const phones = splitContactPhones(value, MAX_CONTACT_PHONES + 1);
+  if (!phones.length) {
+    ctx.addIssue({ code: "custom", message: "Enter at least one valid phone number" });
+    return;
+  }
+  if (phones.length > MAX_CONTACT_PHONES) {
+    ctx.addIssue({ code: "custom", message: `You can save up to ${MAX_CONTACT_PHONES} phone numbers per customer` });
+    return;
+  }
+  for (const phone of phones) {
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length < 10 || digits.length > 15) {
+      ctx.addIssue({ code: "custom", message: `Check phone number: ${phone}` });
+      return;
+    }
+  }
+});
 
 const baseCustomerSchema = z.object({
   name: z.string().trim().min(2, "Customer name must be at least 2 characters").max(120, "Customer name is too long"),
   companyName: z.string().trim().min(2, "Company name must be at least 2 characters").max(160, "Company name is too long"),
-  phone: z.string().trim().min(10, "Enter a valid phone number").max(30, "Phone number is too long"),
+  phone: customerPhones,
   email: z.string().trim().email("Enter a valid email address"),
   city: z.string().trim().min(2, "City must be at least 2 characters").max(80, "City name is too long"),
   address: z.string().trim().min(5, "Address must be at least 5 characters").max(300, "Address is too long"),

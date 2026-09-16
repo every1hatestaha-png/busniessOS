@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { StatusBadge } from "@/components/business/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { splitContactPhones } from "@/lib/contact-phones";
 import type { CustomerDetail } from "@/lib/server/customers";
 import { calculateLedgerRunningBalance, formatDate, formatPKR } from "@/lib/utils";
 
@@ -18,6 +19,7 @@ function EmptySection({ children }: { children: string }) {
 export function CustomerDetailsTabs({ customer }: { customer: CustomerDetail }) {
   const [activeTab, setActiveTab] = useState<Tab>("Khata");
   const { orders, payments, invoices } = customer;
+  const phones = splitContactPhones(customer.phone);
   const ledger = calculateLedgerRunningBalance(customer.ledgerEntries);
   const humanReferences = new Map<string, string>();
   for (const order of orders) humanReferences.set(order.id, order.orderNumber);
@@ -35,7 +37,7 @@ export function CustomerDetailsTabs({ customer }: { customer: CustomerDetail }) 
       <div role="tabpanel">
         {activeTab === "Overview" && (
           <div className="grid gap-6 p-4 sm:p-6 lg:grid-cols-2">
-            <section><h2 className="mb-4 font-semibold">Contact information</h2><dl className="space-y-3 text-sm"><div><dt className="text-neutral-500">Contact person</dt><dd className="font-medium">{customer.name}</dd></div><div><dt className="text-neutral-500">Phone</dt><dd className="font-medium">{customer.phone}</dd></div><div><dt className="text-neutral-500">Email</dt><dd className="break-all font-medium">{customer.email}</dd></div><div><dt className="text-neutral-500">Address</dt><dd className="font-medium">{customer.address}</dd></div></dl></section>
+            <section><h2 className="mb-4 font-semibold">Contact information</h2><dl className="space-y-3 text-sm"><div><dt className="text-neutral-500">Contact person</dt><dd className="font-medium">{customer.name}</dd></div><div><dt className="text-neutral-500">Phone / WhatsApp</dt><dd className="mt-1 flex flex-wrap gap-1.5">{phones.length ? phones.map((phone, index) => <span key={phone} className="inline-flex items-center rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 font-medium"><span>{phone}</span>{index === 0 && <span className="ml-1.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-700">Primary</span>}</span>) : <span className="font-medium">No phone saved</span>}</dd></div><div><dt className="text-neutral-500">Email</dt><dd className="break-all font-medium">{customer.email}</dd></div><div><dt className="text-neutral-500">Address</dt><dd className="font-medium">{customer.address}</dd></div></dl></section>
             <section><h2 className="mb-4 font-semibold">Account details</h2><dl className="space-y-3 text-sm"><div><dt className="text-neutral-500">Status</dt><dd className="mt-1"><StatusBadge status={customer.status} /></dd></div><div><dt className="text-neutral-500">Credit days</dt><dd className="font-medium">{customer.creditDays} days</dd></div><div><dt className="text-neutral-500">Monetary credit limit</dt><dd className="font-medium">{customer.creditLimit > 0 ? formatPKR(customer.creditLimit) : "Not configured"}</dd></div><div><dt className="text-neutral-500">Credit position</dt><dd className="font-medium">{customer.creditLimit > 0 ? (customer.currentBalance <= customer.creditLimit ? `${formatPKR(customer.creditLimit - Math.max(0, customer.currentBalance))} available` : `${formatPKR(customer.currentBalance - customer.creditLimit)} over limit`) : "No monetary credit limit set"}</dd></div><div><dt className="text-neutral-500">Notes</dt><dd className="font-medium">{customer.notes || "No account notes"}</dd></div></dl></section>
           </div>
         )}

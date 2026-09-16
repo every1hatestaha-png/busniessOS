@@ -12,6 +12,7 @@ import {
 } from "@/app/(dashboard)/customers/actions";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { serializeContactPhones, splitContactPhones } from "@/lib/contact-phones";
 import {
   customerSchema,
   type CustomerEditInput,
@@ -40,7 +41,11 @@ export function CustomerForm({ customer }: CustomerFormProps) {
   });
 
   function onSubmit(values: FormValues) {
-    startTransition(() => submitAction(values));
+    const normalized = {
+      ...values,
+      phone: serializeContactPhones(splitContactPhones(values.phone)),
+    };
+    startTransition(() => submitAction(normalized));
   }
 
   const error = (name: keyof FormValues) => {
@@ -55,7 +60,12 @@ export function CustomerForm({ customer }: CustomerFormProps) {
         <div className="grid gap-4 md:grid-cols-2">
           <div className={fieldClassName}><label className={labelClassName} htmlFor="name">Contact name</label><Input id="name" {...register("name")} aria-invalid={!!errors.name} placeholder="Ahmed Ali" />{error("name")}</div>
           <div className={fieldClassName}><label className={labelClassName} htmlFor="companyName">Company name</label><Input id="companyName" {...register("companyName")} aria-invalid={!!errors.companyName} placeholder="Ahmed Autos" />{error("companyName")}</div>
-          <div className={fieldClassName}><label className={labelClassName} htmlFor="phone">Phone</label><Input id="phone" {...register("phone")} aria-invalid={!!errors.phone} placeholder="0300 1234567" />{error("phone")}</div>
+          <div className={`${fieldClassName} md:col-span-2`}>
+            <label className={labelClassName} htmlFor="phone">Phone / WhatsApp numbers</label>
+            <textarea id="phone" {...register("phone")} rows={3} aria-invalid={!!errors.phone} placeholder={"0300 1234567\n0321 7654321"} className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm leading-6 outline-none focus:ring-2 focus:ring-neutral-200" />
+            <p className="text-xs text-neutral-500">Add up to 6 numbers, one per line. The first number is treated as the primary contact; Smart Collections lets you choose any valid WhatsApp number before sending a reminder.</p>
+            {error("phone")}
+          </div>
           <div className={fieldClassName}><label className={labelClassName} htmlFor="email">Email</label><Input id="email" type="email" {...register("email")} aria-invalid={!!errors.email} placeholder="accounts@company.pk" />{error("email")}</div>
           <div className={fieldClassName}><label className={labelClassName} htmlFor="city">City</label><Input id="city" {...register("city")} aria-invalid={!!errors.city} placeholder="Lahore" />{error("city")}</div>
           <div className={fieldClassName}><label className={labelClassName} htmlFor="status">Status</label><select id="status" {...register("status")} className="h-8 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-neutral-200"><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option><option value="BLACKLISTED">Blacklisted</option></select>{error("status")}</div>
