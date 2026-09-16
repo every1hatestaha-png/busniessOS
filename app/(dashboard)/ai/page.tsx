@@ -6,7 +6,7 @@ export default function AIPage() {
       <div>
         <p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">Ask MunshiOS</p>
         <h1 className="text-2xl font-bold tracking-tight text-neutral-950 sm:text-3xl">Your live business, in plain language</h1>
-        <p className="mt-1 text-sm text-neutral-500 sm:text-base">Ask in English or Roman Urdu. Answers are scoped to your current workspace and role; Gemini adds flexible reasoning when configured.</p>
+        <p className="mt-1 text-sm text-neutral-500 sm:text-base">Ask in English or Roman Urdu. Answers are scoped to your current workspace and role; Groq adds fast natural-language reasoning when available.</p>
       </div>
       <AssistantChat />
     </div>
