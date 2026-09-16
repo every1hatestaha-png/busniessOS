@@ -5,6 +5,7 @@ export type CollectionDocument = {
   documentNumber: string;
   outstandingAmount: number;
   ageDays: number;
+  isOpeningBalance?: boolean;
 };
 
 export type CollectionCustomerInput = {
@@ -71,7 +72,15 @@ export function buildSmartCollectionRows(customers: CollectionCustomerInput[]) {
   return customers
     .filter((customer) => customer.currentBalance > 0)
     .map<SmartCollectionRow>((customer) => {
-      const { status, daysPastTerms } = getCollectionStatus(customer.oldestAgeDays, customer.creditDays);
+      // Opening balances do not preserve the original invoice/due date. Never
+      // invent overdue days from the date the opening balance was entered.
+      const datedItems = customer.items.filter((item) => !item.isOpeningBalance);
+      const ageForTerms = datedItems.length
+        ? Math.max(...datedItems.map((item) => item.ageDays))
+        : customer.items.some((item) => item.isOpeningBalance)
+          ? null
+          : customer.oldestAgeDays;
+      const { status, daysPastTerms } = getCollectionStatus(ageForTerms, customer.creditDays);
       const pendingReferences = [...new Set(customer.items.map((item) => item.documentNumber).filter(Boolean))].slice(0, 4);
       return {
         customerId: customer.customerId,
@@ -80,7 +89,7 @@ export function buildSmartCollectionRows(customers: CollectionCustomerInput[]) {
         whatsappPhone: normalizeWhatsAppPhone(customer.phone),
         currentBalance: roundMoney(customer.currentBalance),
         creditDays: Math.max(0, customer.creditDays),
-        oldestAgeDays: customer.oldestAgeDays,
+        oldestAgeDays: ageForTerms,
         daysPastTerms,
         status,
         pendingReferences,
@@ -107,15 +116,14 @@ function formatRupees(amount: number) {
   return `Rs ${amount.toLocaleString("en-PK", { minimumFractionDigits: Number.isInteger(amount) ? 0 : 2, maximumFractionDigits: 2 })}`;
 }
 
-function referenceLine(row: SmartCollectionRow, language: CollectionLanguage) {
+function referenceLine(row: SmartCollectionRow) {
   if (!row.pendingReferences.length) return "";
-  const references = row.pendingReferences.join(", ");
-  return language === "english" ? ` Pending reference(s): ${references}.` : ` Pending reference(s): ${references}.`;
+  return ` Pending reference(s): ${row.pendingReferences.join(", ")}.`;
 }
 
 export function buildCollectionMessage(row: SmartCollectionRow, workspaceName: string, language: CollectionLanguage = "roman-urdu") {
   const amount = formatRupees(row.currentBalance);
-  const refs = referenceLine(row, language);
+  const refs = referenceLine(row);
 
   if (language === "english") {
     const timing = row.status === "CRITICAL" || row.status === "OVERDUE"
