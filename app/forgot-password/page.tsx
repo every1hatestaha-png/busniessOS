@@ -2,10 +2,12 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useSignIn } from "@clerk/nextjs";
+import { useAuth, useClerk, useSignIn } from "@clerk/nextjs";
 
 export default function ForgotPasswordPage() {
   const { signIn, fetchStatus } = useSignIn();
+  const { isLoaded, isSignedIn } = useAuth();
+  const { signOut } = useClerk();
   const router = useRouter();
   const [step, setStep] = useState<"email" | "code" | "password">("email");
   const [email, setEmail] = useState("");
@@ -14,8 +16,32 @@ export default function ForgotPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
+  const [sessionPreparing, setSessionPreparing] = useState(true);
   const [resendSeconds, setResendSeconds] = useState(0);
-  const busy = fetchStatus === "fetching" || actionBusy;
+  const busy = fetchStatus === "fetching" || actionBusy || sessionPreparing;
+
+  useEffect(() => {
+    if (!isLoaded) return;
+
+    if (!isSignedIn) {
+      setSessionPreparing(false);
+      return;
+    }
+
+    let cancelled = false;
+    setSessionPreparing(true);
+    setError("");
+
+    void signOut({ redirectUrl: "/forgot-password?recovery=1" }).catch(() => {
+      if (cancelled) return;
+      setSessionPreparing(false);
+      setError("We could not prepare password recovery. Please refresh this page and try again.");
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoaded, isSignedIn, signOut]);
 
   useEffect(() => {
     if (resendSeconds <= 0) return;
@@ -50,13 +76,19 @@ export default function ForgotPasswordPage() {
       await signIn.reset();
       const { error: createError } = await signIn.create({ identifier });
       if (createError) {
-        setError("We could not start password recovery. Please wait a moment and try again.");
+        const message = typeof createError === "object" && createError && "message" in createError
+          ? String(createError.message)
+          : "";
+        setError(message || "We could not start password recovery. Please refresh the page and try again.");
         return;
       }
 
       const { error: sendError } = await signIn.resetPasswordEmailCode.sendCode();
       if (sendError) {
-        setError("We could not send a reset code right now. Please wait before trying again.");
+        const message = typeof sendError === "object" && sendError && "message" in sendError
+          ? String(sendError.message)
+          : "";
+        setError(message || "We could not send a reset code right now. Please wait before trying again.");
         return;
       }
 
@@ -140,31 +172,33 @@ export default function ForgotPasswordPage() {
         const { error: finalizeError } = await signIn.finalize({
           navigate: ({ session, decorateUrl }) => {
             if (session?.currentTask) return;
-            const url = decorateUrl("/dashboard");
+            const url = decorateUrl("/platform/sign-in?reauth=1");
             if (url.startsWith("http")) window.location.href = url;
             else router.push(url);
           },
         });
         if (finalizeError) {
-          setError("Password changed. Return to sign in and use the new password.");
+          setError("Password changed. Return to owner sign in and use the new password.");
         }
         return;
       }
 
-      setError("Password was updated. Return to sign in and use the new password.");
+      router.push("/platform/sign-in?reauth=1");
     });
   }
 
   return (
     <main className="grid min-h-dvh place-items-center bg-[#06131a] px-5 py-10 text-white">
       <section className="w-full max-w-lg rounded-[28px] border border-teal-500/50 bg-[#07151d] p-7 shadow-2xl sm:p-10">
-        <button type="button" disabled={busy} onClick={() => router.push("/sign-in")} className="mb-6 text-sm text-slate-400 hover:text-white disabled:opacity-50">← Back to sign in</button>
+        <button type="button" disabled={busy} onClick={() => router.push("/platform/sign-in")} className="mb-6 text-sm text-slate-400 hover:text-white disabled:opacity-50">← Back to owner sign in</button>
         <h1 className="text-3xl font-semibold tracking-[-0.03em]">Reset your password</h1>
         <p className="mt-2 text-sm leading-6 text-slate-400">
-          {step === "email" ? "Enter your account email and we will send a password reset code." : step === "code" ? `Enter the code sent to ${email}.` : "Choose a new password for your MunshiOS account."}
+          {sessionPreparing ? "Preparing secure password recovery..." : step === "email" ? "Enter your account email and we will send a password reset code." : step === "code" ? `Enter the code sent to ${email}.` : "Choose a new password for your MunshiOS account."}
         </p>
 
-        {step === "email" && (
+        {sessionPreparing && <div className="mt-8 rounded-xl border border-slate-700 bg-[#0b1921] px-4 py-4 text-sm text-slate-300">Signing out the current session so Clerk can start a clean password recovery attempt...</div>}
+
+        {!sessionPreparing && step === "email" && (
           <form onSubmit={sendCode} className="mt-8 space-y-5">
             <input type="email" autoComplete="email" required disabled={busy} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" className="h-12 w-full rounded-xl border border-slate-600/80 bg-[#0b1921] px-4 text-sm text-white outline-none focus:border-teal-400 disabled:opacity-60" />
             {error && <p className="text-sm text-rose-300">{error}</p>}
@@ -172,7 +206,7 @@ export default function ForgotPasswordPage() {
           </form>
         )}
 
-        {step === "code" && (
+        {!sessionPreparing && step === "code" && (
           <form onSubmit={verifyCode} className="mt-8 space-y-5">
             <input inputMode="numeric" autoComplete="one-time-code" required disabled={busy} value={code} onChange={(e) => setCode(e.target.value)} placeholder="Reset code" className="h-12 w-full rounded-xl border border-slate-600/80 bg-[#0b1921] px-4 text-sm tracking-[0.25em] text-white outline-none focus:border-teal-400 disabled:opacity-60" />
             {error && <p className="text-sm text-rose-300">{error}</p>}
@@ -184,7 +218,7 @@ export default function ForgotPasswordPage() {
           </form>
         )}
 
-        {step === "password" && (
+        {!sessionPreparing && step === "password" && (
           <form onSubmit={submitPassword} className="mt-8 space-y-5">
             <input type="password" autoComplete="new-password" required disabled={busy} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="New password" className="h-12 w-full rounded-xl border border-slate-600/80 bg-[#0b1921] px-4 text-sm text-white outline-none focus:border-teal-400 disabled:opacity-60" />
             <input type="password" autoComplete="new-password" required disabled={busy} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirm new password" className="h-12 w-full rounded-xl border border-slate-600/80 bg-[#0b1921] px-4 text-sm text-white outline-none focus:border-teal-400 disabled:opacity-60" />
