@@ -30,7 +30,7 @@ export async function getPaymentReceipt(workspaceId: string, id: string) {
     : payment.invoice ? payment.amount : new Prisma.Decimal(0);
   return {
     id: payment.id,
-    documentNumber: payment.documentNumber ?? `Payment ${payment.id.slice(0, 8)}`,
+    documentNumber: payment.documentNumber ?? payment.reference ?? "Payment Receipt",
     amount: Number(payment.amount),
     allocatedAmount: Number(allocatedAmount),
     unallocatedAmount: Number(payment.amount.minus(allocatedAmount)),
@@ -141,6 +141,7 @@ export async function reverseCustomerPayment(context: ServiceContext, paymentId:
 
     const now = new Date();
     const reversalNumber = await nextDocumentNumber(tx, context.workspaceId, "PAYMENT_RECEIPT");
+    const sourceReference = payment.documentNumber ?? payment.reference ?? "Payment Receipt";
     const reversal = await tx.payment.create({
       data: {
         workspaceId: context.workspaceId,
@@ -151,7 +152,7 @@ export async function reverseCustomerPayment(context: ServiceContext, paymentId:
         amount: payment.amount,
         netAmount: payment.amount,
         method: payment.method,
-        reference: `REV-${payment.documentNumber ?? payment.reference ?? payment.id.slice(0, 8)}`,
+        reference: `REV-${sourceReference}`,
         notes: `Payment reversal: ${cleanReason}`,
         paymentDate: now,
         reversalOfId: payment.id,
@@ -170,7 +171,7 @@ export async function reverseCustomerPayment(context: ServiceContext, paymentId:
         customerId: payment.customerId,
         type: "REVERSAL",
         debit: payment.amount,
-        description: `Reversed payment ${payment.documentNumber ?? payment.id}: ${cleanReason}`,
+        description: `Reversed payment ${sourceReference}: ${cleanReason}`,
         referenceId: reversal.id,
         date: now,
       },
