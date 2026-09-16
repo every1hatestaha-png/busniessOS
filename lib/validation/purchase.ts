@@ -69,6 +69,7 @@ export const voidGoodsReceiptSchema = z.object({
 export type VoidGoodsReceiptInput = z.infer<typeof voidGoodsReceiptSchema>;
 
 export const updateGoodsReceiptSchema = z.object({
+  receiptDate: z.coerce.date().optional(),
   notes: z.string().trim().max(1000).optional(),
   receivedBy: z.string().trim().max(200).optional(),
   checkedBy: z.string().trim().max(200).optional(),
