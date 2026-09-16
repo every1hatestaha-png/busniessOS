@@ -1,41 +1,20 @@
 const { spawnSync } = require("node:child_process");
 
-function run(command, args, { allowAlreadyApplied = false } = {}) {
+function run(command, args) {
   const executable = process.platform === "win32" && command === "npx" ? "npx.cmd" : command;
-  const result = spawnSync(executable, args, { encoding: "utf8", env: process.env });
-
-  if (result.stdout) process.stdout.write(result.stdout);
-  if (result.stderr) process.stderr.write(result.stderr);
+  const result = spawnSync(executable, args, { stdio: "inherit", env: process.env });
   if (result.error) throw result.error;
-
-  if (result.status !== 0) {
-    const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-    const alreadyApplied = output.includes("P3008") || /already recorded as applied/i.test(output);
-    if (allowAlreadyApplied && alreadyApplied) {
-      console.log(`[build] Migration already recorded; continuing.`);
-      return;
-    }
-    process.exit(result.status ?? 1);
-  }
+  if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
 const isVercelProduction = process.env.VERCEL === "1" && process.env.VERCEL_ENV === "production";
 
 if (isVercelProduction) {
-  // These two migrations were historically applied to the production schema before
-  // Prisma's migration table was synchronized. Resolve them as applied first so a
-  // deploy cannot fail on duplicate columns/tables. The command is idempotent: once
-  // recorded, Prisma returns P3008 and we safely continue.
-  const legacyAppliedMigrations = [
-    "20260912070000_weighted_sales_defaults",
-    "20260912194500_saas_control_plane",
-  ];
-
-  for (const migration of legacyAppliedMigrations) {
-    console.log(`[build] Reconciling Prisma history for ${migration}...`);
-    run("npx", ["prisma", "migrate", "resolve", "--applied", migration], { allowAlreadyApplied: true });
-  }
-
+  // Historical production migration history was reconciled once on 2026-09-16.
+  // Do not call `migrate resolve --applied` on every build: resolve is a recovery
+  // command, not an idempotent deploy step, and Prisma returns P3008 once a
+  // migration is already recorded. Normal production deploys only need the
+  // idempotent deploy command below.
   console.log("[build] Applying pending Prisma migrations to the production database...");
   run("npx", ["prisma", "migrate", "deploy"]);
 }
