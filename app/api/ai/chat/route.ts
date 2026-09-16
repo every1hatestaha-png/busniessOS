@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { apiData, apiHandler, parseApiBody, requireApiContext } from "@/lib/server/api";
-import { askLiveBusinessAssistant } from "@/lib/server/ai-assistant";
+import { askGroqBusinessAssistant } from "@/lib/server/groq-assistant";
 
 const chatSchema = z.object({
   question: z.string().trim().min(1).max(2_000),
@@ -14,7 +14,7 @@ const chatSchema = z.object({
 export const POST = apiHandler(async (request: Request) => {
   const context = await requireApiContext("business.read");
   const input = await parseApiBody(request, chatSchema);
-  const response = await askLiveBusinessAssistant(
+  const response = await askGroqBusinessAssistant(
     {
       workspaceId: context.workspaceId,
       workspace: {
