@@ -86,9 +86,9 @@ describe("accounting GL integration", () => {
     await db.expense.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
     await db.supplierReturnItem.deleteMany({ where: { supplierReturn: { workspaceId: { in: workspaceIds } } } });
     await db.customerReturnItem.deleteMany({ where: { customerReturn: { workspaceId: { in: workspaceIds } } } });
+    await db.paymentAllocation.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
     await db.goodReceivedNoteItem.deleteMany({ where: { goodReceivedNote: { workspaceId: { in: workspaceIds } } } });
     await db.goodReceivedNote.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
-    await db.paymentAllocation.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
     await db.payment.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
     await db.cashBankAccount.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
     await db.account.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
@@ -215,5 +215,3 @@ describe("accounting GL integration", () => {
     expect(receivableAging.totalOutstanding).toBe(Number(customer.currentBalance));
   });
 });
-
-
