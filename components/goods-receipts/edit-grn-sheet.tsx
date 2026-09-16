@@ -37,6 +37,7 @@ type EditableGrn = {
   checkedBy: string | null;
   notes: string | null;
   hasSupplierReturns: boolean;
+  hasPreviousReceipt: boolean;
   items: GrnItem[];
 };
 
@@ -186,7 +187,7 @@ export function EditGrnSheet({ grn }: { grn: EditableGrn }) {
               <div key={item.purchaseOrderItemId} className="grid grid-cols-[minmax(190px,1fr)_90px_90px_105px_105px_100px_115px] items-start gap-2 border-x border-b px-3 py-2.5 last:rounded-b-md">
                 <div className="text-xs">
                   <p className="font-medium">{item.productName}</p>
-                  <p className="mt-0.5 text-[10px] text-slate-500">Ordered {item.orderedQuantity} · prev. accepted {item.previouslyReceived} · remaining {item.remainingQuantity} {item.unit.toLowerCase()}</p>
+                  <p className="mt-0.5 text-[10px] text-slate-500">Ordered {item.orderedQuantity}{grn.hasPreviousReceipt ? ` · prev. accepted ${item.previouslyReceived}` : ""} · remaining {item.remainingQuantity} {item.unit.toLowerCase()}</p>
                   {isWeighted && <p className="text-[10px] text-slate-500">Actual valuation uses accepted kg x rate/kg.</p>}
                 </div>
                 <Input
