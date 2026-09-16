@@ -41,41 +41,42 @@ async function buildSupplierSettlementSnapshot(tx: Prisma.TransactionClient, wor
   });
   if (!supplier) return null;
 
-  const [openingLedger, openingPayments, grns] = await Promise.all([
-    tx.ledgerEntry.aggregate({
-      where: { workspaceId, supplierId, type: "OPENING_BALANCE" },
-      _sum: { debit: true, credit: true },
-    }),
-    tx.paymentAllocation.aggregate({
-      where: {
-        workspaceId,
-        isSupplierOpeningBalance: true,
-        payment: { supplierId, isReversed: false, reversalOfId: null },
+  // Keep transaction-client queries sequential. The pg adapter uses a single client
+  // for an interactive transaction; overlapping tx queries trigger pg's
+  // "client.query() while already executing" warning and will stop being supported.
+  const openingLedger = await tx.ledgerEntry.aggregate({
+    where: { workspaceId, supplierId, type: "OPENING_BALANCE" },
+    _sum: { debit: true, credit: true },
+  });
+  const openingPayments = await tx.paymentAllocation.aggregate({
+    where: {
+      workspaceId,
+      isSupplierOpeningBalance: true,
+      payment: { supplierId, isReversed: false, reversalOfId: null },
+    },
+    _sum: { amount: true },
+  });
+  const grns = await tx.goodReceivedNote.findMany({
+    where: { workspaceId, supplierId, status: "ACTIVE" },
+    orderBy: [{ receiptDate: "asc" }, { createdAt: "asc" }, { grnNumber: "asc" }],
+    select: {
+      id: true,
+      grnNumber: true,
+      receiptDate: true,
+      createdAt: true,
+      purchaseOrderId: true,
+      totalAmount: true,
+      purchaseOrder: { select: { orderNumber: true, balanceAmount: true } },
+      paymentAllocations: {
+        where: { payment: { supplierId, isReversed: false, reversalOfId: null } },
+        select: { amount: true },
       },
-      _sum: { amount: true },
-    }),
-    tx.goodReceivedNote.findMany({
-      where: { workspaceId, supplierId, status: "ACTIVE" },
-      orderBy: [{ receiptDate: "asc" }, { createdAt: "asc" }, { grnNumber: "asc" }],
-      select: {
-        id: true,
-        grnNumber: true,
-        receiptDate: true,
-        createdAt: true,
-        purchaseOrderId: true,
-        totalAmount: true,
-        purchaseOrder: { select: { orderNumber: true, balanceAmount: true } },
-        paymentAllocations: {
-          where: { payment: { supplierId, isReversed: false, reversalOfId: null } },
-          select: { amount: true },
-        },
-        supplierReturns: {
-          where: { status: "POSTED" },
-          select: { totalAmount: true },
-        },
+      supplierReturns: {
+        where: { status: "POSTED" },
+        select: { totalAmount: true },
       },
-    }),
-  ]);
+    },
+  });
 
   const originalOpening = new Prisma.Decimal(openingLedger._sum.credit ?? 0).minus(openingLedger._sum.debit ?? 0);
   const openingSettled = new Prisma.Decimal(openingPayments._sum.amount ?? 0);
@@ -198,7 +199,7 @@ export async function createSupplier(context: ServiceContext, input: SupplierInp
           supplierId: supplier.id,
           type: "OPENING_BALANCE",
           credit: openingAmount,
-          description: `Opening balance ${documentNo}`,
+          description: "Supplier opening balance",
           referenceId: supplier.id,
         },
       });
@@ -390,7 +391,7 @@ export async function getSupplierPaymentVoucher(workspaceId: string, paymentId: 
   if (!payment) return null;
   return {
     id: payment.id,
-    documentNumber: payment.documentNumber ?? payment.reference ?? payment.id,
+    documentNumber: payment.documentNumber ?? payment.reference ?? "Supplier Payment",
     paymentDate: payment.paymentDate.toISOString(),
     method: payment.method,
     reference: payment.reference,
