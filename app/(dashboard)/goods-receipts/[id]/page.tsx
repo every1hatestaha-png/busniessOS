@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { requireWorkspace } from "@/lib/server/auth";
 import { canPerformAction } from "@/lib/server/authorization";
-import { getGoodsReceipt } from "@/lib/server/purchases";
+import { getGoodsReceiptWithHistory } from "@/lib/server/grn-history";
 import { formatDate, formatPKR } from "@/lib/utils";
 import { EditGrnSheet } from "@/components/goods-receipts/edit-grn-sheet";
 import { VoidGrnButton } from "@/components/goods-receipts/void-grn-button";
@@ -14,7 +14,7 @@ import { VoidGrnButton } from "@/components/goods-receipts/void-grn-button";
 export default async function GoodsReceiptDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { workspaceId, role } = await requireWorkspace();
-  const grn = await getGoodsReceipt(workspaceId, id);
+  const grn = await getGoodsReceiptWithHistory(workspaceId, id);
   if (!grn) notFound();
 
   const canAdjust = canPerformAction(role, "inventory.adjust");
@@ -59,7 +59,7 @@ export default async function GoodsReceiptDetailPage({ params }: { params: Promi
                   <TableRow className="h-9 bg-slate-50/80 hover:bg-slate-50/80">
                     <TableHead className="pl-4">Product</TableHead>
                     <TableHead className="text-right">Ordered</TableHead>
-                    <TableHead className="text-right">Prev. Accepted</TableHead>
+                    {grn.hasPreviousReceipt && <TableHead className="text-right">Prev. Accepted</TableHead>}
                     <TableHead className="text-right">Received Now</TableHead>
                     <TableHead className="text-right">Accepted / Rejected</TableHead>
                     <TableHead className="text-right">Remaining</TableHead>
@@ -77,7 +77,7 @@ export default async function GoodsReceiptDetailPage({ params }: { params: Promi
                         {item.sku && <span className="ml-2 font-mono text-xs text-neutral-400">{item.sku}</span>}
                       </TableCell>
                       <QuantityCell value={item.orderedQuantity} unit={item.unit} />
-                      <QuantityCell value={item.previouslyReceived} unit={item.unit} />
+                      {grn.hasPreviousReceipt && <QuantityCell value={item.previouslyReceived} unit={item.unit} />}
                       <TableCell className="py-1.5 text-right text-xs"><span className="tabular-nums">{item.receivedNow} {unitLabel(item.unit)}</span>{isWeighted && <p className="text-[10px] text-slate-500">{item.receivedWeightKg != null ? `${item.receivedWeightKg} kg actual` : "Missing received weight"}</p>}</TableCell>
                        <TableCell className="py-1.5 text-right text-xs"><span className="font-semibold tabular-nums">{item.acceptedQuantity} {unitLabel(item.unit)}</span>{isWeighted && <p className="text-[10px] text-slate-500">{item.acceptedWeightKg != null ? `${item.acceptedWeightKg} kg valued` : "Missing accepted weight"}</p>}{item.receivedNow > item.acceptedQuantity && <p className="text-[10px] text-amber-700">Rejected {item.receivedNow - item.acceptedQuantity} {unitLabel(item.unit)}</p>}</TableCell>
                       <QuantityCell value={item.remainingQuantity} unit={item.unit} strong />
