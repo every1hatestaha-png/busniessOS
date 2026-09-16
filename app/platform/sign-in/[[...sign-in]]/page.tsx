@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { SignIn } from "@clerk/nextjs";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
@@ -101,6 +102,9 @@ export default async function PlatformSignInPage({ searchParams }: { searchParam
             <div>
               <label htmlFor="platform-password" className="mb-1.5 block text-sm font-medium text-slate-700">Password</label>
               <input id="platform-password" name="password" type="password" autoComplete="current-password" required autoFocus className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/15" />
+              <div className="mt-2 text-right">
+                <Link href="/forgot-password" className="text-xs font-medium text-[#059669] hover:text-[#047857]">Forgot password?</Link>
+              </div>
             </div>
             {errorMessage && <p role="alert" className="text-sm font-medium text-red-600">{errorMessage}</p>}
             <button type="submit" className="h-11 w-full rounded-xl bg-[#059669] text-sm font-semibold text-white transition hover:bg-[#047857]">Verify password and open admin</button>
