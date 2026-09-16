@@ -79,7 +79,6 @@ async function buildSupplierSettlementSnapshot(tx: Prisma.TransactionClient, wor
 
   const originalOpening = new Prisma.Decimal(openingLedger._sum.credit ?? 0).minus(openingLedger._sum.debit ?? 0);
   const openingSettled = new Prisma.Decimal(openingPayments._sum.amount ?? 0);
-  const openingOutstanding = Prisma.Decimal.max(0, originalOpening.minus(openingSettled));
 
   const grouped = new Map<string, typeof grns>();
   for (const grn of grns) {
@@ -134,13 +133,24 @@ async function buildSupplierSettlementSnapshot(tx: Prisma.TransactionClient, wor
     }
   }
 
+  // `currentBalance` is the canonical supplier payable. Older MunshiOS data can
+  // legitimately contain a supplier balance that predates persisted opening-balance
+  // ledger rows / GRN allocation rows. Reconcile any liability not explained by
+  // active GRNs into the opening/previous-balance settlement bucket so legacy
+  // suppliers remain payable without reintroducing PO-level payment targets.
+  const currentPayable = Prisma.Decimal.max(0, supplier.currentBalance);
+  const grnOutstandingTotal = targets.reduce((sum, target) => sum.plus(target.outstandingAmount), new Prisma.Decimal(0));
+  const reconciledOpeningOutstanding = Prisma.Decimal.max(0, currentPayable.minus(grnOutstandingTotal));
+  const reconciledOpeningOriginal = Prisma.Decimal.max(originalOpening, openingSettled.plus(reconciledOpeningOutstanding));
+  const reconciledOpeningSettled = Prisma.Decimal.max(0, reconciledOpeningOriginal.minus(reconciledOpeningOutstanding));
+
   return {
     supplierId: supplier.id,
     currentBalance: Number(supplier.currentBalance),
     openingBalance: {
-      originalAmount: originalOpening.toNumber(),
-      settledAmount: Prisma.Decimal.min(originalOpening, openingSettled).toNumber(),
-      outstandingAmount: openingOutstanding.toNumber(),
+      originalAmount: reconciledOpeningOriginal.toNumber(),
+      settledAmount: reconciledOpeningSettled.toNumber(),
+      outstandingAmount: reconciledOpeningOutstanding.toNumber(),
     },
     grns: targets.sort((a, b) => a.receiptDate.localeCompare(b.receiptDate) || a.grnNumber.localeCompare(b.grnNumber)),
   };
