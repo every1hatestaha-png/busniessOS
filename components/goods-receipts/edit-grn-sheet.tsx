@@ -33,6 +33,7 @@ type EditableGrn = {
   id: string;
   grnNumber: string;
   status: string;
+  receiptDate: string;
   receivedBy: string | null;
   checkedBy: string | null;
   notes: string | null;
@@ -102,6 +103,7 @@ export function EditGrnSheet({ grn }: { grn: EditableGrn }) {
       }
     }
     const payload = {
+      receiptDate: form.get("receiptDate"),
       notes: form.get("notes") || "",
       receivedBy: form.get("receivedBy") || "",
       checkedBy: form.get("checkedBy") || "",
@@ -154,10 +156,14 @@ export function EditGrnSheet({ grn }: { grn: EditableGrn }) {
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-3xl">
         <SheetHeader className="border-b">
           <SheetTitle>Edit {grn.grnNumber}</SheetTitle>
-          <SheetDescription>Adjust receipt metadata and quantities. Inventory, payable, and General Ledger differences are applied atomically.</SheetDescription>
+          <SheetDescription>Edit the actual receipt date, people, quantities, weights and rates. Stock, PO progress, payable, supplier balance, inventory valuation and General Ledger effects are recalculated by the server.</SheetDescription>
         </SheetHeader>
         <form onSubmit={handleSubmit} className="space-y-4 px-4 pb-4">
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-3">
+            <div>
+              <label className="text-xs font-medium text-slate-700">Receipt date</label>
+              <Input name="receiptDate" type="date" required defaultValue={grn.receiptDate.slice(0, 10)} className="mt-1" />
+            </div>
             <div>
               <label className="text-xs font-medium text-slate-700">Received by</label>
               <Input name="receivedBy" defaultValue={grn.receivedBy ?? ""} placeholder="Received by" className="mt-1" />
@@ -169,7 +175,7 @@ export function EditGrnSheet({ grn }: { grn: EditableGrn }) {
           </div>
 
           <div className="space-y-2">
-            <div><h4 className="text-sm font-semibold">Receipt Lines</h4><p className="mt-0.5 text-[11px] text-slate-500">Accepted cannot exceed physically received quantity. The server remains authoritative for PO capacity.</p></div>
+            <div><h4 className="text-sm font-semibold">Receipt Lines</h4><p className="mt-0.5 text-[11px] text-slate-500">Accepted cannot exceed physically received quantity. The server remains authoritative for PO capacity and already-settled supplier payments.</p></div>
             <div className="overflow-x-auto">
             <div className="min-w-[980px]">
             <div className="grid grid-cols-[minmax(190px,1fr)_90px_90px_105px_105px_100px_115px] gap-2 rounded-t-md border bg-slate-50 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">

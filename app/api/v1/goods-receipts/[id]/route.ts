@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { ApiError, apiData, apiHandler, parseApiBody, requireApiContext } from "@/lib/server/api";
-import { getGoodsReceipt, updateGoodsReceipt, voidGoodsReceipt, deleteGoodsReceipt, PurchaseDomainError } from "@/lib/server/purchases";
+import { getGoodsReceipt, PurchaseDomainError } from "@/lib/server/purchases";
+import {
+  deleteGoodsReceiptWithIntegrity,
+  updateGoodsReceiptWithIntegrity,
+  voidGoodsReceiptWithIntegrity,
+} from "@/lib/server/grn-mutations";
 import { updateGoodsReceiptSchema, voidGoodsReceiptSchema } from "@/lib/validation/purchase";
 
 export const GET = apiHandler(async (_request: Request, { params }: { params: Promise<{ id: string }> }) => {
@@ -17,7 +22,7 @@ export const PATCH = apiHandler(async (request: Request, { params }: { params: P
   const body = await parseApiBody(request, updateGoodsReceiptSchema);
 
   try {
-    const updated = await updateGoodsReceipt({ ...context, userId: context.user.id }, id, body);
+    const updated = await updateGoodsReceiptWithIntegrity({ ...context, userId: context.user.id }, id, body);
     return apiData(updated);
   } catch (error) {
     if (error instanceof PurchaseDomainError) {
@@ -34,7 +39,7 @@ export const POST = apiHandler(async (request: Request, { params }: { params: Pr
   const body = await parseApiBody(request, voidGoodsReceiptSchema);
 
   try {
-    const voided = await voidGoodsReceipt({ ...context, userId: context.user.id }, id, body);
+    const voided = await voidGoodsReceiptWithIntegrity({ ...context, userId: context.user.id }, id, body);
     return apiData(voided);
   } catch (error) {
     if (error instanceof PurchaseDomainError) {
@@ -50,8 +55,8 @@ export const DELETE = apiHandler(async (_request: Request, { params }: { params:
   const { id } = z.object({ id: z.uuid() }).parse(await params);
 
   try {
-    await deleteGoodsReceipt({ ...context, userId: context.user.id }, id);
-    return apiData({ success: true });
+    const deleted = await deleteGoodsReceiptWithIntegrity({ ...context, userId: context.user.id }, id);
+    return apiData({ success: true, grn: deleted });
   } catch (error) {
     if (error instanceof PurchaseDomainError) {
       const status = error.code === "GRN_NOT_FOUND" ? 404 : 422;
