@@ -642,11 +642,12 @@ model GoodReceivedNote {
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
-  workspace       Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  supplier        Supplier               @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  purchaseOrder   PurchaseOrder          @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
-  items           GoodReceivedNoteItem[]
-  supplierReturns SupplierReturn[]
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  supplier           Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  purchaseOrder      PurchaseOrder       @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  items              GoodReceivedNoteItem[]
+  supplierReturns    SupplierReturn[]
+  paymentAllocations PaymentAllocation[]
 
   @@unique([workspaceId, grnNumber])
   @@unique([workspaceId, idempotencyKey])
@@ -844,23 +845,28 @@ model WorkspaceInvitation {
 // ----------------------------------------
 
 model PaymentAllocation {
-  id              String   @id @default(uuid())
-  workspaceId     String
-  paymentId       String
-  invoiceId       String?
-  purchaseOrderId String?
-  amount          Decimal  @db.Decimal(15, 2)
-  createdAt       DateTime @default(now())
+  id                       String   @id @default(uuid())
+  workspaceId              String
+  paymentId                String
+  invoiceId                String?
+  purchaseOrderId          String?
+  goodReceivedNoteId       String?
+  isSupplierOpeningBalance Boolean  @default(false)
+  amount                   Decimal  @db.Decimal(15, 2)
+  createdAt                DateTime @default(now())
 
-  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  payment       Payment        @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  invoice       Invoice?       @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
-  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  payment          Payment           @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoice          Invoice?          @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  purchaseOrder    PurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  goodReceivedNote GoodReceivedNote? @relation(fields: [goodReceivedNoteId], references: [id], onDelete: Restrict)
 
   @@index([workspaceId])
   @@index([paymentId])
   @@index([invoiceId])
   @@index([purchaseOrderId])
+  @@index([goodReceivedNoteId])
+  @@index([workspaceId, isSupplierOpeningBalance])
   @@map("payment_allocations")
 }
 
@@ -1015,6 +1021,7 @@ model SupplierReturn {
 
 model SupplierReturnItem {
   id                     String    @id @default(uuid())
+  workspaceId            String?
   supplierReturnId       String
   purchaseOrderItemId    String
   productId              String
