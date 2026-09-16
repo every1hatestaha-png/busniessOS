@@ -95,13 +95,13 @@ describe("cash/bank + payment voucher + WHT integration", () => {
   afterAll(async () => {
     if (!db) return;
     const ids = [workspaceId, otherWorkspaceId].filter(Boolean);
+    await db.paymentAllocation.deleteMany({ where: { workspaceId: { in: ids } } });
     await db.goodReceivedNoteItem.deleteMany({ where: { goodReceivedNote: { workspaceId: { in: ids } } } });
     await db.goodReceivedNote.deleteMany({ where: { workspaceId: { in: ids } } });
     await db.generalLedgerEntry.deleteMany({ where: { workspaceId: { in: ids } } });
     await db.expense.deleteMany({ where: { workspaceId: { in: ids } } });
     await db.supplierReturnItem.deleteMany({ where: { supplierReturn: { workspaceId: { in: ids } } } });
     await db.customerReturnItem.deleteMany({ where: { customerReturn: { workspaceId: { in: ids } } } });
-    await db.paymentAllocation.deleteMany({ where: { workspaceId: { in: ids } } });
     await db.payment.deleteMany({ where: { workspaceId: { in: ids } } });
     await db.ledgerEntry.deleteMany({ where: { workspaceId: { in: ids } } });
     await db.inventoryTransaction.deleteMany({ where: { workspaceId: { in: ids } } });
@@ -308,5 +308,3 @@ describe("cash/bank + payment voucher + WHT integration", () => {
     expect(voucher!.allocations[0].purchaseOrder.orderNumber).toBe(purchase.orderNumber);
   });
 });
-
-
