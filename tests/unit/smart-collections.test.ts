@@ -30,6 +30,18 @@ describe("Smart Collections", () => {
     expect(rows[2]).toMatchObject({ status: "CURRENT", needsContact: false });
   });
 
+  it("does not invent due dates or overdue days for opening balances", () => {
+    const [row] = buildSmartCollectionRows([
+      { customerId: "opening", customerName: "Opening Co", phone: "03001234567", creditDays: 60, currentBalance: 5_378_159, oldestAgeDays: 0, items: [{ documentNumber: "OPENING BALANCE", outstandingAmount: 5_378_159, ageDays: 0, isOpeningBalance: true }] },
+    ]);
+
+    expect(row).toMatchObject({ status: "REVIEW", oldestAgeDays: null, daysPastTerms: null, needsContact: false });
+    const message = buildCollectionMessage(row, "Arshad Sons", "roman-urdu");
+    expect(message).toContain("Rs 5,378,159");
+    expect(message).not.toContain("overdue");
+    expect(message).not.toContain("due hai");
+  });
+
   it("uses the authoritative account balance in the reminder and preserves human invoice references", () => {
     const [row] = buildSmartCollectionRows([
       { customerId: "c1", customerName: "Pak Star", phone: "03001234567", creditDays: 10, currentBalance: 450_387, oldestAgeDays: 18, items: [{ documentNumber: "INV-0042", outstandingAmount: 500_000, ageDays: 18 }] },
