@@ -7,6 +7,7 @@ import { useDeferredValue, useState } from "react";
 import { StatusBadge } from "@/components/business/status-badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { splitContactPhones } from "@/lib/contact-phones";
 import type { CustomerListItem } from "@/lib/server/customers";
 import { formatPKR, getCreditStatus } from "@/lib/utils";
 
@@ -19,7 +20,7 @@ export function CustomerTable({ customers }: { customers: CustomerListItem[] }) 
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
   const cities = [...new Set(customers.map((customer) => customer.city))].sort();
   const filtered = customers.filter((customer) => {
-    const searchable = [customer.name, customer.companyName, customer.phone, customer.email, customer.city].join(" ").toLowerCase();
+    const searchable = [customer.name, customer.companyName, ...splitContactPhones(customer.phone), customer.email, customer.city].join(" ").toLowerCase();
     return searchable.includes(deferredQuery) && (status === "ALL" || customer.status === status) && (city === "ALL" || customer.city === city);
   });
 
@@ -44,16 +45,19 @@ export function CustomerTable({ customers }: { customers: CustomerListItem[] }) 
         <Table className="min-w-[860px]">
           <TableHeader className="bg-neutral-50/80"><TableRow><TableHead>Customer</TableHead><TableHead className="text-right">Receivable</TableHead><TableHead className="text-right">Credit limit</TableHead><TableHead>Status</TableHead><TableHead>Contact</TableHead><TableHead>City</TableHead></TableRow></TableHeader>
           <TableBody>
-            {filtered.map((customer) => (
-              <TableRow key={customer.id}>
-                <TableCell><Link prefetch={false} href={`/customers/${customer.id}`} className="font-medium text-neutral-950 hover:underline">{customer.companyName}</Link><p className="text-xs text-neutral-500">{customer.name}</p></TableCell>
-                <TableCell className="text-right"><p className="font-semibold tabular-nums">{formatPKR(customer.currentBalance)}</p><StatusBadge status={getCreditStatus(customer.currentBalance, customer.creditLimit)} /></TableCell>
-                <TableCell className="text-right tabular-nums">{customer.creditLimit > 0 ? formatPKR(customer.creditLimit) : "Not configured"}</TableCell>
-                <TableCell><StatusBadge status={customer.status} /></TableCell>
-                <TableCell><p>{customer.phone}</p><p className="text-xs text-neutral-500">{customer.email}</p></TableCell>
-                <TableCell>{customer.city}</TableCell>
-              </TableRow>
-            ))}
+            {filtered.map((customer) => {
+              const phones = splitContactPhones(customer.phone);
+              return (
+                <TableRow key={customer.id}>
+                  <TableCell><Link prefetch={false} href={`/customers/${customer.id}`} className="font-medium text-neutral-950 hover:underline">{customer.companyName}</Link><p className="text-xs text-neutral-500">{customer.name}</p></TableCell>
+                  <TableCell className="text-right"><p className="font-semibold tabular-nums">{formatPKR(customer.currentBalance)}</p><StatusBadge status={getCreditStatus(customer.currentBalance, customer.creditLimit)} /></TableCell>
+                  <TableCell className="text-right tabular-nums">{customer.creditLimit > 0 ? formatPKR(customer.creditLimit) : "Not configured"}</TableCell>
+                  <TableCell><StatusBadge status={customer.status} /></TableCell>
+                  <TableCell><p>{phones[0] || "No phone"}{phones.length > 1 ? <span className="ml-1 text-xs text-neutral-400">+{phones.length - 1} more</span> : null}</p><p className="text-xs text-neutral-500">{customer.email}</p></TableCell>
+                  <TableCell>{customer.city}</TableCell>
+                </TableRow>
+              );
+            })}
             {filtered.length === 0 && <TableRow><TableCell colSpan={6} className="h-28 text-center text-neutral-500">No customers match these filters.</TableCell></TableRow>}
           </TableBody>
         </Table>
