@@ -1,14 +1,12 @@
 import { AssistantChat } from "@/components/ai/assistant-chat";
+import { requireWorkspace } from "@/lib/server/auth";
 
-export default function AIPage() {
+export default async function AIPage() {
+  const { workspace } = await requireWorkspace();
+
   return (
-    <div className="flex h-[calc(100vh-7rem)] min-h-[560px] flex-col gap-5">
-      <div>
-        <p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">Ask MunshiOS</p>
-        <h1 className="text-2xl font-bold tracking-tight text-neutral-950 sm:text-3xl">Your live business, in plain language</h1>
-        <p className="mt-1 text-sm text-neutral-500 sm:text-base">Ask in English or Roman Urdu. Answers are scoped to your current workspace and role; Groq adds fast natural-language reasoning when available.</p>
-      </div>
-      <AssistantChat />
+    <div className="-mx-4 -my-4 h-[calc(100dvh-4rem)] min-h-[620px] overflow-hidden sm:-mx-5 lg:-mx-6 lg:-my-6">
+      <AssistantChat workspaceId={workspace.id} workspaceName={workspace.name} />
     </div>
   );
 }
