@@ -9,11 +9,28 @@ import { dateInputValue, parseDate, periodQuerySchema } from "@/lib/validation/r
 
 type Query = Promise<Record<string, string | string[] | undefined>>;
 
+const internalOpeningDocumentPattern = /^OPEN(?:-(?:CUST|SUP|STOCK))?-[0-9a-f]{8}$/i;
+
 function sourceHref(sourceType: string, sourceId: string) {
   if (sourceType === "SALE") return `/sales/${sourceId}`;
   if (sourceType === "PURCHASE") return `/purchases/${sourceId}`;
   if (sourceType === "PURCHASE_RECEIPT") return `/goods-receipts/${sourceId}`;
   return null;
+}
+
+function displayDocument(entry: { sourceType: string; documentNo: string }) {
+  if (entry.sourceType === "ADJUSTMENT" && internalOpeningDocumentPattern.test(entry.documentNo)) return "Opening Balance";
+  return entry.documentNo;
+}
+
+function displayNarration(entry: { sourceType: string; documentNo: string; narration: string }) {
+  if (entry.sourceType === "ADJUSTMENT" && internalOpeningDocumentPattern.test(entry.documentNo)) {
+    if (/supplier opening balance/i.test(entry.narration)) return "Supplier opening balance";
+    if (/customer opening balance/i.test(entry.narration)) return "Customer opening balance";
+    if (/opening stock/i.test(entry.narration)) return "Opening stock";
+    return "Opening balance";
+  }
+  return entry.narration;
 }
 
 export default async function GeneralLedgerPage({ searchParams }: { searchParams: Query }) {
@@ -32,7 +49,7 @@ export default async function GeneralLedgerPage({ searchParams }: { searchParams
   const filters = <ReportFilterBar><ReportFilterField label="Account"><select className={reportSelectClassName} name="accountId" defaultValue={accountId}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.code} - {account.name}</option>)}</select></ReportFilterField><PeriodFilters from={dateInputValue(from)} to={dateInputValue(to)} /><SearchFilter value={query.search} /></ReportFilterBar>;
   return (
     <ReportFrame workspace={workspace} title="General Ledger" from={report?.from ?? from} to={report?.to ?? to} subtitle={report ? `${report.account.code} - ${report.account.name} (${report.account.normalBalance.toLowerCase()} normal balance)` : "No ledger account available"} filters={filters} orientation="landscape">
-      {report ? <><div className="mb-4 grid grid-cols-2 gap-3 text-xs lg:grid-cols-4"><div className="rounded border border-neutral-200 p-3"><p className="text-neutral-500">Opening balance</p><p className="mt-1 text-base font-bold tabular-nums"><Money value={report.openingBalance} /></p></div><div className="rounded border border-neutral-200 p-3"><p className="text-neutral-500">Closing balance</p><p className="mt-1 text-base font-bold tabular-nums"><Money value={report.closingBalance} /></p></div><div className="rounded border border-neutral-200 p-3"><p className="text-neutral-500">Entries</p><p className="mt-1 text-base font-bold tabular-nums">{report.entries.length}</p></div></div><FinancialTable className="min-w-[950px]"><FinancialHead><tr><FinancialHeading>Date</FinancialHeading><FinancialHeading>Document</FinancialHeading><FinancialHeading>Source</FinancialHeading><FinancialHeading className="w-full">Narration</FinancialHeading><FinancialHeading numeric>Debit</FinancialHeading><FinancialHeading numeric>Credit</FinancialHeading><FinancialHeading numeric>Running</FinancialHeading></tr></FinancialHead><tbody><FinancialRow className="bg-neutral-50 font-semibold"><FinancialCell colSpan={6}>Opening balance</FinancialCell><FinancialCell numeric><Money value={report.openingBalance} /></FinancialCell></FinancialRow>{report.entries.map((entry) => <FinancialRow key={entry.id}><FinancialCell>{dateInputValue(entry.date)}</FinancialCell><FinancialCell><SourceDocumentLink href={sourceHref(entry.sourceType, entry.sourceId)}>{entry.documentNo}</SourceDocumentLink></FinancialCell><FinancialCell>{entry.sourceType.replaceAll("_", " ")}</FinancialCell><FinancialCell className="whitespace-normal">{entry.narration}</FinancialCell><FinancialCell numeric><Money value={entry.debit} dashZero /></FinancialCell><FinancialCell numeric><Money value={entry.credit} dashZero /></FinancialCell><FinancialCell numeric className="font-semibold"><Money value={entry.runningBalance} /></FinancialCell></FinancialRow>)}{report.entries.length === 0 && <EmptyReportRow colSpan={7} />}</tbody><tfoot><FinancialRow className="border-t-2 border-neutral-900 font-bold"><FinancialCell colSpan={6}>Closing balance</FinancialCell><FinancialCell numeric><Money value={report.closingBalance} /></FinancialCell></FinancialRow></tfoot></FinancialTable></> : <p className="py-12 text-center text-sm text-neutral-500">No chart of accounts is available.</p>}
+      {report ? <><div className="mb-4 grid grid-cols-2 gap-3 text-xs lg:grid-cols-4"><div className="rounded border border-neutral-200 p-3"><p className="text-neutral-500">Opening balance</p><p className="mt-1 text-base font-bold tabular-nums"><Money value={report.openingBalance} /></p></div><div className="rounded border border-neutral-200 p-3"><p className="text-neutral-500">Closing balance</p><p className="mt-1 text-base font-bold tabular-nums"><Money value={report.closingBalance} /></p></div><div className="rounded border border-neutral-200 p-3"><p className="text-neutral-500">Entries</p><p className="mt-1 text-base font-bold tabular-nums">{report.entries.length}</p></div></div><FinancialTable className="min-w-[950px]"><FinancialHead><tr><FinancialHeading>Date</FinancialHeading><FinancialHeading>Document</FinancialHeading><FinancialHeading>Source</FinancialHeading><FinancialHeading className="w-full">Narration</FinancialHeading><FinancialHeading numeric>Debit</FinancialHeading><FinancialHeading numeric>Credit</FinancialHeading><FinancialHeading numeric>Running</FinancialHeading></tr></FinancialHead><tbody><FinancialRow className="bg-neutral-50 font-semibold"><FinancialCell colSpan={6}>Opening balance</FinancialCell><FinancialCell numeric><Money value={report.openingBalance} /></FinancialCell></FinancialRow>{report.entries.map((entry) => <FinancialRow key={entry.id}><FinancialCell>{dateInputValue(entry.date)}</FinancialCell><FinancialCell><SourceDocumentLink href={sourceHref(entry.sourceType, entry.sourceId)}>{displayDocument(entry)}</SourceDocumentLink></FinancialCell><FinancialCell>{entry.sourceType.replaceAll("_", " ")}</FinancialCell><FinancialCell className="whitespace-normal">{displayNarration(entry)}</FinancialCell><FinancialCell numeric><Money value={entry.debit} dashZero /></FinancialCell><FinancialCell numeric><Money value={entry.credit} dashZero /></FinancialCell><FinancialCell numeric className="font-semibold"><Money value={entry.runningBalance} /></FinancialCell></FinancialRow>)}{report.entries.length === 0 && <EmptyReportRow colSpan={7} />}</tbody><tfoot><FinancialRow className="border-t-2 border-neutral-900 font-bold"><FinancialCell colSpan={6}>Closing balance</FinancialCell><FinancialCell numeric><Money value={report.closingBalance} /></FinancialCell></FinancialRow></tfoot></FinancialTable></> : <p className="py-12 text-center text-sm text-neutral-500">No chart of accounts is available.</p>}
     </ReportFrame>
   );
 }
