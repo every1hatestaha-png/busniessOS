@@ -15,7 +15,7 @@ const suggestions = [
   "Is month ka profit/loss summary batao.",
 ];
 
-type AssistantMode = "gemini" | "live-fallback";
+type AssistantMode = "groq" | "live-fallback";
 
 type AssistantResponse = {
   message: string;
@@ -107,7 +107,7 @@ export function AssistantChat() {
           MunshiOS Assistant
           <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
             <Database className="size-3" />
-            {latestMode === "gemini" ? "Gemini + live data" : latestMode === "live-fallback" ? "Live data" : "Live workspace"}
+            {latestMode === "groq" ? "Groq + live data" : latestMode === "live-fallback" ? "Live data" : "Live workspace"}
           </span>
         </div>
         <p className="pt-2 text-xs text-neutral-500">Read-only by design: answers are tenant-scoped and financial records are never changed from chat.</p>
@@ -141,7 +141,7 @@ export function AssistantChat() {
                   {message.content}
                 </div>
                 {message.role === "assistant" && message.response?.mode === "live-fallback" && (
-                  <p className="pl-1 text-[10px] text-neutral-400">Answered from verified live MunshiOS data. Gemini reasoning is optional.</p>
+                  <p className="pl-1 text-[10px] text-neutral-400">Answered from verified live MunshiOS data. Groq reasoning is optional.</p>
                 )}
               </div>
             </div>
