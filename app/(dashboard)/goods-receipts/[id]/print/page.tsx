@@ -3,13 +3,13 @@ import { DocumentFrame } from "@/components/documents/document-frame";
 import { DocumentSignatures } from "@/components/documents/document-signatures";
 import { PrintOnLoad } from "@/components/documents/print-on-load";
 import { requireWorkspace } from "@/lib/server/auth";
-import { getGoodsReceipt } from "@/lib/server/purchases";
+import { getGoodsReceiptWithHistory } from "@/lib/server/grn-history";
 import { formatDate, formatPKR } from "@/lib/utils";
 
 export default async function GoodsReceiptPrintPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { workspaceId, workspace } = await requireWorkspace();
-  const grn = await getGoodsReceipt(workspaceId, id);
+  const grn = await getGoodsReceiptWithHistory(workspaceId, id);
   if (!grn) notFound();
   const hasWeightedItems = grn.items.some((item) => item.perKgRate != null);
 
@@ -34,7 +34,7 @@ export default async function GoodsReceiptPrintPage({ params }: { params: Promis
           <tr className="border-y bg-neutral-100">
             <th className="border px-2 py-1 text-left">Product</th>
             <th className="border px-2 py-1 text-right">{hasWeightedItems ? "Units ordered" : "Ordered"}</th>
-            <th className="border px-2 py-1 text-right">Prev. accepted</th>
+            {grn.hasPreviousReceipt && <th className="border px-2 py-1 text-right">Prev. accepted</th>}
             <th className="border px-2 py-1 text-right">Units received</th>
             <th className="border px-2 py-1 text-right">Units accepted</th>
             {hasWeightedItems && <><th className="border px-2 py-1 text-right">Received wt.</th><th className="border px-2 py-1 text-right">Accepted wt.</th></>}
@@ -51,7 +51,7 @@ export default async function GoodsReceiptPrintPage({ params }: { params: Promis
                 {item.sku && <span className="ml-1 text-xs text-neutral-500">({item.sku})</span>}
               </td>
               <td className="border px-2 py-1 text-right">{item.orderedQuantity} {item.unit.toLowerCase()}</td>
-              <td className="border px-2 py-1 text-right">{item.previouslyReceived} {item.unit.toLowerCase()}</td>
+              {grn.hasPreviousReceipt && <td className="border px-2 py-1 text-right">{item.previouslyReceived} {item.unit.toLowerCase()}</td>}
               <td className="border px-2 py-1 text-right">{item.receivedNow} {item.unit.toLowerCase()}</td>
               <td className="border px-2 py-1 text-right font-semibold">{item.acceptedQuantity} {item.unit.toLowerCase()}</td>
               {hasWeightedItems && <><td className="border px-2 py-1 text-right">{item.receivedWeightKg != null ? `${item.receivedWeightKg} kg` : "-"}</td><td className="border px-2 py-1 text-right">{item.acceptedWeightKg != null ? `${item.acceptedWeightKg} kg` : "-"}</td></>}
