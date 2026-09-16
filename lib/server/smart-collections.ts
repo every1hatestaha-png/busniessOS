@@ -24,6 +24,7 @@ export async function getSmartCollections(workspaceId: string, timeZone = "Asia/
         documentNumber: item.documentNumber,
         outstandingAmount: item.outstandingAmount,
         ageDays: item.ageDays,
+        isOpeningBalance: item.isOpeningBalance,
       })) ?? [],
     };
   }));
