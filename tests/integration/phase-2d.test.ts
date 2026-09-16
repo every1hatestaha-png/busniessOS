@@ -43,6 +43,7 @@ describe("Phase 2D financial operations", () => {
       await db.customerReturnItem.deleteMany({ where: { customerReturn: { workspaceId } } });
       await db.supplierReturnItem.deleteMany({ where: { supplierReturn: { workspaceId } } });
       await db.salesOrderItem.deleteMany({ where: { salesOrder: { workspaceId } } });
+      await db.paymentAllocation.deleteMany({ where: { workspaceId } });
       await db.goodReceivedNoteItem.deleteMany({ where: { goodReceivedNote: { workspaceId } } });
       await db.goodReceivedNote.deleteMany({ where: { workspaceId } });
       await db.purchaseOrderItem.deleteMany({ where: { purchaseOrder: { workspaceId } } });
@@ -140,7 +141,7 @@ describe("Phase 2D financial operations", () => {
     const otherItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: other.id } });
     await createGoodsReceipt(context(), { purchaseOrderId: other.id, items: [{ purchaseOrderItemId: otherItem.id, receivedQuantity: 1, acceptedQuantity: 1, actualUnitCost: 100 }] });
 
-    await expect(recordSupplierPayment(context(), supplierId, { amount: 600, cashBankAccountId, allocations: [{ purchaseOrderId: purchase.id, amount: 600 }], method: "CASH", reference: "", notes: "", paymentDate: new Date(), idempotencyKey: randomUUID() })).rejects.toThrow("Payment exceeds purchase balance");
+    await expect(recordSupplierPayment(context(), supplierId, { amount: 600, cashBankAccountId, allocations: [{ purchaseOrderId: purchase.id, amount: 600 }], method: "CASH", reference: "", notes: "", paymentDate: new Date(), idempotencyKey: randomUUID() })).rejects.toThrow("unpaid GRN liability");
 
     const payment = await recordSupplierPayment(context(), supplierId, { amount: 540, cashBankAccountId, allocations: [{ purchaseOrderId: purchase.id, amount: 540 }], method: "CASH", reference: "", notes: "", paymentDate: new Date(), idempotencyKey: randomUUID() });
     expect(payment.id).toBeTruthy();
@@ -170,5 +171,3 @@ describe("Phase 2D financial operations", () => {
     await expect(cancelPurchase(context(), purchase.id, true)).rejects.toThrow("supplier returns");
   });
 });
-
-

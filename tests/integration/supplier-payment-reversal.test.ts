@@ -11,6 +11,7 @@ let userId = "";
 let workspaceId = "";
 let supplierId = "";
 let purchaseOrderId = "";
+let goodReceivedNoteId = "";
 let cashBankAccountId = "";
 
 describe("supplier payment reversal", () => {
@@ -30,8 +31,10 @@ describe("supplier payment reversal", () => {
 
     const supplier = await db.supplier.create({ data: { workspaceId, name: "Reversal Supplier", currentBalance: 100 } });
     supplierId = supplier.id;
-    const purchase = await db.purchaseOrder.create({ data: { workspaceId, supplierId, orderNumber: `PO-REV-${runId}`, status: "ORDERED", totalAmount: 100, paidAmount: 0, balanceAmount: 100 } });
+    const purchase = await db.purchaseOrder.create({ data: { workspaceId, supplierId, orderNumber: `PO-REV-${runId}`, status: "RECEIVED", totalAmount: 100, paidAmount: 0, balanceAmount: 100 } });
     purchaseOrderId = purchase.id;
+    const grn = await db.goodReceivedNote.create({ data: { workspaceId, supplierId, purchaseOrderId, grnNumber: `GRN-REV-${runId}`, totalAmount: 100, status: "ACTIVE" } });
+    goodReceivedNoteId = grn.id;
     const cash = await db.cashBankAccount.findFirstOrThrow({ where: { workspaceId, isBank: false } });
     cashBankAccountId = cash.id;
     await db.cashBankAccount.update({ where: { id: cashBankAccountId }, data: { currentBalance: 1000 } });
@@ -44,7 +47,7 @@ describe("supplier payment reversal", () => {
     await db.$disconnect();
   }, 60_000);
 
-  it("reverses gross payable settlement, WHT, net cash and purchase allocation", async () => {
+  it("reverses gross payable settlement, WHT, net cash and GRN-backed purchase allocation", async () => {
     const payment = await recordSupplierPayment(
       { workspaceId, role: "OWNER", userId },
       supplierId,
@@ -56,10 +59,14 @@ describe("supplier payment reversal", () => {
         reference: "QA-SUP-REV",
         notes: "Supplier payment reversal test",
         paymentDate: new Date(),
-        allocations: [{ purchaseOrderId, amount: 100 }],
+        allocations: [{ goodReceivedNoteId, amount: 100 }],
         idempotencyKey: randomUUID(),
       },
     );
+
+    const persistedAllocation = await db.paymentAllocation.findFirstOrThrow({ where: { paymentId: payment.id } });
+    expect(persistedAllocation.goodReceivedNoteId).toBe(goodReceivedNoteId);
+    expect(persistedAllocation.purchaseOrderId).toBe(purchaseOrderId);
 
     const reversal = await reverseSupplierPayment({ workspaceId, role: "OWNER", userId }, payment.id, "Duplicate supplier voucher");
     expect(reversal.alreadyReversed).toBe(false);

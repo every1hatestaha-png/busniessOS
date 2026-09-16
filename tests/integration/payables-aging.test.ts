@@ -64,6 +64,7 @@ describe("payable aging service", () => {
   afterAll(async () => {
     if (!db) return;
     await db.supplierReturnItem.deleteMany({ where: { supplierReturn: { workspaceId: { in: [workspaceId, otherWorkspaceId] } } } });
+    await db.paymentAllocation.deleteMany({ where: { workspaceId: { in: [workspaceId, otherWorkspaceId] } } });
     await db.goodReceivedNoteItem.deleteMany({ where: { goodReceivedNote: { workspaceId: { in: [workspaceId, otherWorkspaceId] } } } });
     await db.goodReceivedNote.deleteMany({ where: { workspaceId: { in: [workspaceId, otherWorkspaceId] } } });
     await db.purchaseOrderItem.deleteMany({ where: { purchaseOrder: { workspaceId: { in: [workspaceId, otherWorkspaceId] } } } });
@@ -189,5 +190,3 @@ describe("payable aging service", () => {
     expect(item!.outstandingAmount).toBe(540);
   });
 });
-
-
