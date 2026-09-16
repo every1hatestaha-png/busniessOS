@@ -82,7 +82,7 @@ export { handleProxy as proxy };
 
 export const config = {
   matcher: [
-    "/((?!_next|sign-in|sign-up|forgot-password|account-recovery|recovery|platform/sign-in|desktop-auth|api/webhooks|api/health|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/((?!_next|sign-in|sign-up|forgot-password|account-recovery|recovery|desktop-auth|api/webhooks|api/health|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
     "/(api|trpc)(.*)",
     "/__clerk/(.*)",
   ],
