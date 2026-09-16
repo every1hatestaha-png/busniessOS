@@ -50,6 +50,7 @@ export async function reverseSupplierPayment(context: ServiceContext, paymentId:
     if (net.isNegative()) throw new SupplierPaymentReversalError("Stored supplier payment has an invalid negative net amount.");
 
     const reversalNumber = await nextDocumentNumber(tx, context.workspaceId, "BANK_PAYMENT_VOUCHER");
+    const sourceReference = payment.documentNumber ?? payment.reference ?? "Supplier Payment";
     const reversal = await tx.payment.create({
       data: {
         workspaceId: context.workspaceId,
@@ -60,7 +61,7 @@ export async function reverseSupplierPayment(context: ServiceContext, paymentId:
         netAmount: net,
         withholdingTaxAmount: withholding,
         method: payment.method,
-        reference: `REV-${payment.documentNumber ?? payment.reference ?? payment.id.slice(0, 8)}`,
+        reference: `REV-${sourceReference}`,
         notes: `Supplier payment reversal: ${cleanReason}`,
         paymentDate: now,
         reversalOfId: payment.id,
@@ -79,7 +80,7 @@ export async function reverseSupplierPayment(context: ServiceContext, paymentId:
         supplierId: payment.supplierId,
         type: "REVERSAL",
         credit: gross,
-        description: `Reversed supplier payment ${payment.documentNumber ?? payment.id}: ${cleanReason}`,
+        description: `Reversed supplier payment ${sourceReference}: ${cleanReason}`,
         referenceId: reversal.id,
         date: now,
       },
