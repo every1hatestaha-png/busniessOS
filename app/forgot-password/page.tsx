@@ -16,32 +16,26 @@ export default function ForgotPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
-  const [sessionPreparing, setSessionPreparing] = useState(true);
+  const [sessionPreparationFailed, setSessionPreparationFailed] = useState(false);
   const [resendSeconds, setResendSeconds] = useState(0);
+  const sessionPreparing = !sessionPreparationFailed && (!isLoaded || Boolean(isSignedIn));
   const busy = fetchStatus === "fetching" || actionBusy || sessionPreparing;
 
   useEffect(() => {
-    if (!isLoaded) return;
-
-    if (!isSignedIn) {
-      setSessionPreparing(false);
-      return;
-    }
+    if (!isLoaded || !isSignedIn || sessionPreparationFailed) return;
 
     let cancelled = false;
-    setSessionPreparing(true);
-    setError("");
 
     void signOut({ redirectUrl: "/forgot-password?recovery=1" }).catch(() => {
       if (cancelled) return;
-      setSessionPreparing(false);
+      setSessionPreparationFailed(true);
       setError("We could not prepare password recovery. Please refresh this page and try again.");
     });
 
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, isSignedIn, signOut]);
+  }, [isLoaded, isSignedIn, sessionPreparationFailed, signOut]);
 
   useEffect(() => {
     if (resendSeconds <= 0) return;
