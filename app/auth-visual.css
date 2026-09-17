@@ -1,0 +1,17 @@
+/* Stable auth artwork fallback.
+   Login and signup currently embed the Faisal Mosque image as a large data URI.
+   Render the same artwork from the cached server endpoint so a malformed or
+   oversized data URI can never leave the left panel blank. */
+@supports selector(section:has(> img)) {
+  section:has(> img[src^="data:image/webp;base64,"]) {
+    background-image: url("/auth/faisal-mosque.webp");
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+  }
+
+  section:has(> img[src^="data:image/webp;base64,"]) > img[src^="data:image/webp;base64,"] {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
