@@ -7,7 +7,7 @@ import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
-export function CancelSaleButton({ saleId, orderNumber }: { saleId: string; orderNumber: string }) {
+export function CancelSaleButton({ saleId, orderNumber, label = "Cancel & Reverse" }: { saleId: string; orderNumber: string; label?: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
@@ -30,7 +30,7 @@ export function CancelSaleButton({ saleId, orderNumber }: { saleId: string; orde
   }
 
   return <Sheet open={open} onOpenChange={setOpen}>
-    <SheetTrigger render={<Button type="button" variant="outline" size="sm" />}>Cancel & Reverse</SheetTrigger>
+    <SheetTrigger render={<Button type="button" variant="outline" size="sm" />}>{label}</SheetTrigger>
     <SheetContent side="right" className="w-full sm:max-w-md">
       <SheetHeader className="border-b"><SheetTitle>Cancel and reverse {orderNumber}?</SheetTitle><SheetDescription>This is a controlled accounting reversal, not a simple delete.</SheetDescription></SheetHeader>
       <div className="space-y-4 px-4"><div className="flex gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-900"><AlertTriangle className="mt-0.5 size-4 shrink-0" /><p className="text-xs leading-relaxed">Stock will be restored and the customer ledger, invoice, General Ledger, and initial sale payment will be reversed together. Cancellation is blocked when a later payment, customer credit, or return exists.</p></div>{error && <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700">{error}</p>}</div>
