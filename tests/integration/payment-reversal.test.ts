@@ -46,7 +46,7 @@ describe("customer payment reversal", () => {
     await db.$disconnect();
   }, 60_000);
 
-  it("reverses a standalone allocated receipt across customer, invoice, sale, cash, ledger and GL", async () => {
+  it("reverses an allocated receipt with customer WHT across customer, invoice, sale, cash, ledger and GL", async () => {
     const recorded = await recordPayment(
       { workspaceId, role: "OWNER", userId },
       {
@@ -54,18 +54,32 @@ describe("customer payment reversal", () => {
         invoiceId,
         cashBankAccountId,
         amount: 30,
+        withholdingTaxAmount: 5,
         allocations: [{ invoiceId, amount: 30 }],
         paymentDate: new Date(),
         method: "CASH",
         reference: "QA-REVERSAL",
-        notes: "Standalone receipt",
+        notes: "Standalone receipt with WHT",
         idempotencyKey: randomUUID(),
       },
     );
     paymentId = recorded.id;
 
-    const cashAfterReceipt = await db.cashBankAccount.findUniqueOrThrow({ where: { id: cashBankAccountId } });
-    expect(Number(cashAfterReceipt.currentBalance)).toBe(30);
+    const [paymentAfterReceipt, cashAfterReceipt, customerAfterReceipt, invoiceAfterReceipt, whtAccount, receiptGl] = await Promise.all([
+      db.payment.findUniqueOrThrow({ where: { id: paymentId } }),
+      db.cashBankAccount.findUniqueOrThrow({ where: { id: cashBankAccountId } }),
+      db.customer.findUniqueOrThrow({ where: { id: customerId } }),
+      db.invoice.findUniqueOrThrow({ where: { id: invoiceId } }),
+      db.account.findFirstOrThrow({ where: { workspaceId, name: "Withholding Tax Receivable" } }),
+      db.generalLedgerEntry.findMany({ where: { workspaceId, sourceType: "RECEIPT", sourceId: paymentId, reversalOfId: null } }),
+    ]);
+    expect(Number(paymentAfterReceipt.amount)).toBe(30);
+    expect(Number(paymentAfterReceipt.withholdingTaxAmount)).toBe(5);
+    expect(Number(paymentAfterReceipt.netAmount)).toBe(25);
+    expect(Number(cashAfterReceipt.currentBalance)).toBe(25);
+    expect(Number(customerAfterReceipt.currentBalance)).toBe(70);
+    expect(Number(invoiceAfterReceipt.paidAmount)).toBe(30);
+    expect(receiptGl.some((row) => row.accountId === whtAccount.id && Number(row.debit) === 5)).toBe(true);
 
     const reversal = await reverseCustomerPayment({ workspaceId, role: "OWNER", userId }, paymentId, "Duplicate receipt");
     expect(reversal.alreadyReversed).toBe(false);
@@ -84,6 +98,8 @@ describe("customer payment reversal", () => {
     expect(original.isReversed).toBe(true);
     expect(original.reversedAt).not.toBeNull();
     expect(reversalPayment.reversalOfId).toBe(paymentId);
+    expect(Number(reversalPayment.withholdingTaxAmount)).toBe(5);
+    expect(Number(reversalPayment.netAmount)).toBe(25);
     expect(Number(customer.currentBalance)).toBe(100);
     expect(Number(invoice.paidAmount)).toBe(0);
     expect(invoice.status).toBe("UNPAID");
