@@ -11,9 +11,6 @@ import {
   Store,
   UtensilsCrossed,
 } from "lucide-react";
-import { redirect } from "next/navigation";
-
-import { getCurrentWorkspace } from "@/lib/server/auth";
 
 const businesses = [
   {
@@ -47,10 +44,7 @@ const coreFeatures = [
   "Business reports",
 ];
 
-export default async function Home() {
-  const context = await getCurrentWorkspace();
-  if (context) redirect("/dashboard");
-
+export default function Home() {
   return (
     <main className="min-h-screen bg-[#fafaf8] text-slate-950">
       <header className="sticky top-0 z-50 border-b border-slate-200/70 bg-[#fafaf8]/90 backdrop-blur-xl">
