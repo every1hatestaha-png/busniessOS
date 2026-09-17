@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useState } from "react";
 
 import { recordPaymentAction, type RecordPaymentState } from "@/app/(dashboard)/invoices/actions";
 import { Button } from "@/components/ui/button";
@@ -11,17 +11,29 @@ type CustomerOption = { id: string; name: string; balance: number };
 type FixedInvoice = { id: string; number: string; customerId: string; customerName: string; balance: number };
 type CashBankOption = { cashBankAccountId: string; name: string; currentBalance: number; isBank: boolean; bankName?: string | null };
 
+type PaymentFieldsProps = {
+  customers: CustomerOption[];
+  invoice?: FixedInvoice;
+  cashBankAccounts: CashBankOption[];
+  state: RecordPaymentState;
+  action: (formData: FormData) => void;
+  pending: boolean;
+};
+
 const initialState: RecordPaymentState = {};
 const labelClass = "mb-1.5 block text-sm font-medium text-neutral-700";
 const fieldClass = "h-8 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-neutral-200";
 
 export function RecordPaymentForm({ customers = [], invoice, cashBankAccounts = [] }: { customers?: CustomerOption[]; invoice?: FixedInvoice; cashBankAccounts?: CashBankOption[] }) {
   const [state, action, pending] = useActionState(recordPaymentAction, initialState);
-  const formRef = useRef<HTMLFormElement>(null);
+  return <PaymentFields key={state.successToken ?? "initial"} customers={customers} invoice={invoice} cashBankAccounts={cashBankAccounts} state={state} action={action} pending={pending} />;
+}
+
+function PaymentFields({ customers, invoice, cashBankAccounts, state, action, pending }: PaymentFieldsProps) {
   const [customerId, setCustomerId] = useState(invoice?.customerId ?? "");
   const [amount, setAmount] = useState("");
   const [withholdingTax, setWithholdingTax] = useState("0");
-  const idempotencyKeyRef = useRef(crypto.randomUUID());
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
   const selectedCustomer = customers.find((customer) => customer.id === customerId);
   const maximum = invoice?.balance ?? selectedCustomer?.balance;
   const grossAmount = Number(amount || 0);
@@ -29,24 +41,13 @@ export function RecordPaymentForm({ customers = [], invoice, cashBankAccounts = 
   const netReceived = Math.max(0, grossAmount - withholdingAmount);
   const invalidWithholding = withholdingAmount > grossAmount;
 
-  useEffect(() => {
-    if (state.successToken) {
-      formRef.current?.reset();
-      setAmount("");
-      setWithholdingTax("0");
-      idempotencyKeyRef.current = crypto.randomUUID();
-      const hidden = formRef.current?.elements.namedItem("idempotencyKey") as HTMLInputElement | null;
-      if (hidden) hidden.value = idempotencyKeyRef.current;
-    }
-  }, [state.successToken]);
-
   const today = new Date();
   const localDate = new Date(today.getTime() - today.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
   const disabled = pending || invalidWithholding || (!invoice && customers.length === 0) || cashBankAccounts.length === 0;
 
   return (
-    <form ref={formRef} action={action} className="space-y-4">
-      <input type="hidden" name="idempotencyKey" ref={(el) => { if (el) el.value = idempotencyKeyRef.current; }} />
+    <form action={action} className="space-y-4">
+      <input type="hidden" name="idempotencyKey" value={idempotencyKey} readOnly />
       {invoice ? (
         <div className="rounded-lg bg-neutral-50 p-3"><p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Applying to</p><p className="mt-1 font-semibold">{invoice.number}</p><p className="text-sm text-neutral-500">{invoice.customerName} · {formatPKR(invoice.balance)} due</p><input type="hidden" name="customerId" value={invoice.customerId} /><input type="hidden" name="invoiceId" value={invoice.id} /></div>
       ) : (
