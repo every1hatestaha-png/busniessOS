@@ -44,8 +44,6 @@ export function RecordPaymentForm({ customers = [], invoice, cashBankAccounts = 
   useEffect(() => {
     if (invoice || !customerId || mode !== "ALLOCATED") return;
     const controller = new AbortController();
-    setLoadingReceivables(true);
-    setReceivablesError("");
     fetch(`/api/v1/customers/${customerId}/receivables`, { signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error("Could not load customer invoices.");
@@ -75,6 +73,7 @@ export function RecordPaymentForm({ customers = [], invoice, cashBankAccounts = 
       setAllocations({});
       setReceivables(null);
       setReceivablesError("");
+      setLoadingReceivables(false);
       if (!invoice) setMode("UNALLOCATED");
     });
   }, [invoice, state.successToken]);
@@ -96,13 +95,13 @@ export function RecordPaymentForm({ customers = [], invoice, cashBankAccounts = 
       {invoice ? (
         <div className="rounded-lg bg-neutral-50 p-3"><p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Applying to</p><p className="mt-1 font-semibold">{invoice.number}</p><p className="text-sm text-neutral-500">{invoice.customerName} · {formatPKR(invoice.balance)} due</p><input type="hidden" name="customerId" value={invoice.customerId} /><input type="hidden" name="invoiceId" value={invoice.id} /></div>
       ) : (
-        <div><label className={labelClass} htmlFor="payment-customer">Customer</label><select id="payment-customer" name="customerId" required value={customerId} onChange={(event) => { setCustomerId(event.target.value); setAllocations({}); setManualAmount(""); setWithholdingTax("0"); setReceivables(null); setReceivablesError(""); }} className={fieldClass}><option value="">Select an account</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {formatPKR(customer.balance)}</option>)}</select>{customers.length === 0 && <p className="mt-1.5 text-xs text-neutral-500">There are no customer balances available to collect.</p>}</div>
+        <div><label className={labelClass} htmlFor="payment-customer">Customer</label><select id="payment-customer" name="customerId" required value={customerId} onChange={(event) => { const nextCustomerId = event.target.value; setCustomerId(nextCustomerId); setAllocations({}); setManualAmount(""); setWithholdingTax("0"); setReceivables(null); setReceivablesError(""); setLoadingReceivables(mode === "ALLOCATED" && Boolean(nextCustomerId)); }} className={fieldClass}><option value="">Select an account</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {formatPKR(customer.balance)}</option>)}</select>{customers.length === 0 && <p className="mt-1.5 text-xs text-neutral-500">There are no customer balances available to collect.</p>}</div>
       )}
 
       {!invoice && customerId && (
         <div className="grid grid-cols-2 gap-2 rounded-lg bg-neutral-50 p-1">
-          <Button type="button" size="sm" variant={mode === "UNALLOCATED" ? "default" : "ghost"} onClick={() => { setMode("UNALLOCATED"); setAllocations({}); setReceivables(null); setReceivablesError(""); }}>On-account payment</Button>
-          <Button type="button" size="sm" variant={mode === "ALLOCATED" ? "default" : "ghost"} onClick={() => { setMode("ALLOCATED"); setManualAmount(""); setReceivables(null); setReceivablesError(""); }}>Allocate to invoices</Button>
+          <Button type="button" size="sm" variant={mode === "UNALLOCATED" ? "default" : "ghost"} onClick={() => { setMode("UNALLOCATED"); setAllocations({}); setReceivables(null); setReceivablesError(""); setLoadingReceivables(false); }}>On-account payment</Button>
+          <Button type="button" size="sm" variant={mode === "ALLOCATED" ? "default" : "ghost"} onClick={() => { setMode("ALLOCATED"); setManualAmount(""); setReceivables(null); setReceivablesError(""); setLoadingReceivables(true); }}>Allocate to invoices</Button>
         </div>
       )}
 
