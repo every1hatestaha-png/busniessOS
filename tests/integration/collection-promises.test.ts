@@ -49,8 +49,8 @@ describe("collection promises", () => {
   }, 60_000);
 
   it("rejects a promise above the authoritative customer balance", async () => {
-    const { CollectionPromiseError, upsertCollectionPromise } = await import("@/lib/server/collection-promises");
-    await expect(upsertCollectionPromise(context(), { customerId, amount: 450_001, promiseDate: "2026-09-22", note: "" })).rejects.toMatchObject({ code: "AMOUNT_EXCEEDS_BALANCE" } satisfies Partial<InstanceType<typeof CollectionPromiseError>>);
+    const { upsertCollectionPromise } = await import("@/lib/server/collection-promises");
+    await expect(upsertCollectionPromise(context(), { customerId, amount: 450_001, promiseDate: "2026-09-22", note: "" })).rejects.toMatchObject({ code: "AMOUNT_EXCEEDS_BALANCE" });
   }, 60_000);
 
   it("does not let another workspace resolve the promise", async () => {
