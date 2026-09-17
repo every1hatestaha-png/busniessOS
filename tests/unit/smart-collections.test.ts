@@ -118,7 +118,9 @@ describe("Smart Collections", () => {
       missingPhoneCount: 1,
     });
 
+    // Rows are priority-sorted, so rows[0] is the critical Rs 200 customer.
+    // Snoozing that customer leaves only the Rs 100 due account in today's queue.
     const snoozed = applyActivePromise(rows[0], { id: "p2", amount: 100, promiseDate: "2026-09-30", timing: "UPCOMING", daysLate: 0, note: "" });
-    expect(summarizeSmartCollections([snoozed, rows[1], rows[2]])).toMatchObject({ dueNow: 200, contactCount: 1, criticalCount: 1 });
+    expect(summarizeSmartCollections([snoozed, rows[1], rows[2]])).toMatchObject({ dueNow: 100, contactCount: 1, criticalCount: 0 });
   });
 });
