@@ -12,6 +12,16 @@ export type RecordPaymentState = {
   successToken?: number;
 };
 
+function parseAllocations(value: FormDataEntryValue | null) {
+  if (!value || typeof value !== "string" || !value.trim()) return undefined;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function recordPaymentAction(
   _previousState: RecordPaymentState,
   formData: FormData,
@@ -21,7 +31,9 @@ export async function recordPaymentAction(
     customerId: formData.get("customerId"),
     invoiceId: formData.get("invoiceId") ?? "",
     cashBankAccountId: formData.get("cashBankAccountId") ?? "",
+    allocations: parseAllocations(formData.get("allocationsJson")),
     amount: formData.get("amount"),
+    withholdingTaxAmount: formData.get("withholdingTaxAmount") ?? 0,
     paymentDate: formData.get("paymentDate"),
     method: formData.get("method"),
     reference: formData.get("reference") ?? "",
@@ -29,12 +41,12 @@ export async function recordPaymentAction(
     idempotencyKey: formData.get("idempotencyKey"),
   });
 
-  if (!parsed.success) return { error: "Check the payment details and try again." };
+  if (!parsed.success) return { error: "Check the payment, allocation, and withholding tax details and try again." };
 
   try {
     await recordPayment(context, parsed.data);
-  } catch {
-    return { error: "The payment could not be recorded. Check the amount and try again." };
+  } catch (error) {
+    return { error: error instanceof Error && error.message ? error.message : "The payment could not be recorded. Check the amount and try again." };
   }
 
   revalidatePath("/invoices");
