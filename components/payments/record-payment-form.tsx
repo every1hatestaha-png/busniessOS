@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useState } from "react";
 
 import { recordPaymentAction, type RecordPaymentState } from "@/app/(dashboard)/invoices/actions";
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,7 @@ function PaymentFields({ customers, invoice, cashBankAccounts, state, action, pe
   const [customerId, setCustomerId] = useState(invoice?.customerId ?? "");
   const [amount, setAmount] = useState("");
   const [withholdingTax, setWithholdingTax] = useState("0");
-  const idempotencyKeyRef = useRef(crypto.randomUUID());
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
   const selectedCustomer = customers.find((customer) => customer.id === customerId);
   const maximum = invoice?.balance ?? selectedCustomer?.balance;
   const grossAmount = Number(amount || 0);
@@ -47,7 +47,7 @@ function PaymentFields({ customers, invoice, cashBankAccounts, state, action, pe
 
   return (
     <form action={action} className="space-y-4">
-      <input type="hidden" name="idempotencyKey" value={idempotencyKeyRef.current} readOnly />
+      <input type="hidden" name="idempotencyKey" value={idempotencyKey} readOnly />
       {invoice ? (
         <div className="rounded-lg bg-neutral-50 p-3"><p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Applying to</p><p className="mt-1 font-semibold">{invoice.number}</p><p className="text-sm text-neutral-500">{invoice.customerName} · {formatPKR(invoice.balance)} due</p><input type="hidden" name="customerId" value={invoice.customerId} /><input type="hidden" name="invoiceId" value={invoice.id} /></div>
       ) : (
