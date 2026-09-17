@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  applyActivePromise,
   buildCollectionMessage,
   buildSmartCollectionRows,
   buildWhatsAppUrl,
@@ -45,6 +46,25 @@ describe("Smart Collections", () => {
     expect(secondNumberUrl).toMatch(/^https:\/\/wa\.me\/923217654321\?text=/);
   });
 
+  it("snoozes future promises and escalates due or missed promises", () => {
+    const [base] = buildSmartCollectionRows([
+      { customerId: "c1", customerName: "Pak Star", phone: "03001234567", creditDays: 10, currentBalance: 450_387, oldestAgeDays: 18, items: [{ documentNumber: "INV-0042", outstandingAmount: 450_387, ageDays: 18 }] },
+    ]);
+
+    const upcoming = applyActivePromise(base, { id: "p1", amount: 200_000, promiseDate: "2026-09-20", timing: "UPCOMING", daysLate: 0, note: "Bank transfer" });
+    expect(upcoming).toMatchObject({ needsContact: false, activePromise: { timing: "UPCOMING" } });
+
+    const dueToday = applyActivePromise(base, { id: "p1", amount: 200_000, promiseDate: "2026-09-17", timing: "TODAY", daysLate: 0, note: "" });
+    expect(dueToday).toMatchObject({ needsContact: true, priority: "HIGH" });
+    expect(buildCollectionMessage(dueToday, "Arshad Sons", "roman-urdu")).toContain("PAYMENT PROMISE DUE TODAY");
+
+    const missed = applyActivePromise(base, { id: "p1", amount: 200_000, promiseDate: "2026-09-15", timing: "MISSED", daysLate: 2, note: "" });
+    expect(missed).toMatchObject({ needsContact: true, priority: "URGENT" });
+    const message = buildCollectionMessage(missed, "Arshad Sons", "english");
+    expect(message).toContain("Promised payment of Rs 200,000");
+    expect(message).toContain("2 days late");
+  });
+
   it("does not invent due dates or overdue days for opening balances", () => {
     const [row] = buildSmartCollectionRows([
       { customerId: "opening", customerName: "Opening Co", phone: "03001234567", creditDays: 60, currentBalance: 5_378_159, oldestAgeDays: 0, items: [{ documentNumber: "OPENING BALANCE", outstandingAmount: 5_378_159, ageDays: 0, isOpeningBalance: true }] },
@@ -81,7 +101,7 @@ describe("Smart Collections", () => {
     expect(decodeURIComponent(editedUrl!.split("text=")[1])).toBe("Custom approved reminder");
   });
 
-  it("summarizes only due customers as collection work", () => {
+  it("summarizes only customers that currently need contact", () => {
     const rows = buildSmartCollectionRows([
       { customerId: "due", customerName: "Due Co", phone: "", creditDays: 0, currentBalance: 100, oldestAgeDays: 0, items: [] },
       { customerId: "critical", customerName: "Critical Co", phone: "03001234567", creditDays: 10, currentBalance: 200, oldestAgeDays: 45, items: [] },
@@ -97,5 +117,8 @@ describe("Smart Collections", () => {
       criticalCount: 1,
       missingPhoneCount: 1,
     });
+
+    const snoozed = applyActivePromise(rows[0], { id: "p2", amount: 100, promiseDate: "2026-09-30", timing: "UPCOMING", daysLate: 0, note: "" });
+    expect(summarizeSmartCollections([snoozed, rows[1], rows[2]])).toMatchObject({ dueNow: 200, contactCount: 1, criticalCount: 1 });
   });
 });
