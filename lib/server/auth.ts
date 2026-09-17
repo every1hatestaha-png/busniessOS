@@ -22,9 +22,6 @@ export const getCurrentUser = cache(async () => {
     return existing;
   }
 
-  // Resolve the authenticated Clerk identity from the backend. This also lets
-  // us safely reconnect an existing MunshiOS user if Clerk ever issues a new
-  // user ID for the same verified email address.
   const clerkUser = await (await clerkClient()).users.getUser(userId);
 
   const primaryEmailAddress =
@@ -40,9 +37,6 @@ export const getCurrentUser = cache(async () => {
     throw new Error("Verify your email address before using MunshiOS.");
   }
 
-  // Email is unique in MunshiOS. If a verified Clerk identity with the same
-  // email appears under a new Clerk ID, reconnect it to the existing local
-  // user instead of creating an empty account and orphaning workspace data.
   const existingByEmail = await db.user.findUnique({ where: { email: primaryEmail } });
   if (existingByEmail) {
     return db.user.update({
@@ -78,6 +72,13 @@ const getCurrentUserWorkspaceMemberships = cache(async () => {
 });
 
 export const getCurrentWorkspace = cache(async () => {
+  const session = await auth({ acceptsToken: ["session_token", "oauth_token"] });
+  const userId = "userId" in session ? session.userId : null;
+
+  if (!userId) {
+    return null;
+  }
+
   const { user, activeWorkspaceId, memberships } = await getCurrentUserWorkspaceMemberships();
   const membership = memberships.find((entry) => entry.workspaceId === activeWorkspaceId) ?? memberships[0];
 
