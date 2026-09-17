@@ -7,16 +7,18 @@ function run(command, args) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
-const isVercelProduction = process.env.VERCEL === "1" && process.env.VERCEL_ENV === "production";
+// Database migrations should be an explicit release operation, not a side effect
+// of every Vercel build. Running `prisma migrate deploy` during concurrent builds
+// can contend on Postgres' advisory lock and fail an otherwise healthy frontend
+// deployment with Prisma P1002. Set RUN_PRISMA_MIGRATIONS_ON_BUILD=1 only for a
+// controlled release that intentionally includes schema changes.
+const shouldRunMigrations = process.env.RUN_PRISMA_MIGRATIONS_ON_BUILD === "1";
 
-if (isVercelProduction) {
-  // Historical production migration history was reconciled once on 2026-09-16.
-  // Do not call `migrate resolve --applied` on every build: resolve is a recovery
-  // command, not an idempotent deploy step, and Prisma returns P3008 once a
-  // migration is already recorded. Normal production deploys only need the
-  // idempotent deploy command below.
-  console.log("[build] Applying pending Prisma migrations to the production database...");
+if (shouldRunMigrations) {
+  console.log("[build] Applying pending Prisma migrations...");
   run("npx", ["prisma", "migrate", "deploy"]);
+} else {
+  console.log("[build] Skipping Prisma migrations; run them explicitly for schema releases.");
 }
 
 run("npx", ["next", "build"]);
