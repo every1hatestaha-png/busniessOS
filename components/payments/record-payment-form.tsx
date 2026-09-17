@@ -42,10 +42,7 @@ export function RecordPaymentForm({ customers = [], invoice, cashBankAccounts = 
     : [];
 
   useEffect(() => {
-    if (invoice || !customerId || mode !== "ALLOCATED") {
-      if (!invoice) setReceivables(null);
-      return;
-    }
+    if (invoice || !customerId || mode !== "ALLOCATED") return;
     const controller = new AbortController();
     setLoadingReceivables(true);
     setReceivablesError("");
@@ -67,16 +64,19 @@ export function RecordPaymentForm({ customers = [], invoice, cashBankAccounts = 
   }, [customerId, invoice, mode]);
 
   useEffect(() => {
-    if (state.successToken) {
-      formRef.current?.reset();
-      idempotencyKeyRef.current = crypto.randomUUID();
+    if (!state.successToken) return;
+    formRef.current?.reset();
+    idempotencyKeyRef.current = crypto.randomUUID();
+    const hidden = formRef.current?.elements.namedItem("idempotencyKey") as HTMLInputElement | null;
+    if (hidden) hidden.value = idempotencyKeyRef.current;
+    queueMicrotask(() => {
       setManualAmount("");
       setWithholdingTax("0");
       setAllocations({});
+      setReceivables(null);
+      setReceivablesError("");
       if (!invoice) setMode("UNALLOCATED");
-      const hidden = formRef.current?.elements.namedItem("idempotencyKey") as HTMLInputElement | null;
-      if (hidden) hidden.value = idempotencyKeyRef.current;
-    }
+    });
   }, [invoice, state.successToken]);
 
   function setAllocation(targetId: string, value: string, max: number) {
@@ -96,13 +96,13 @@ export function RecordPaymentForm({ customers = [], invoice, cashBankAccounts = 
       {invoice ? (
         <div className="rounded-lg bg-neutral-50 p-3"><p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Applying to</p><p className="mt-1 font-semibold">{invoice.number}</p><p className="text-sm text-neutral-500">{invoice.customerName} · {formatPKR(invoice.balance)} due</p><input type="hidden" name="customerId" value={invoice.customerId} /><input type="hidden" name="invoiceId" value={invoice.id} /></div>
       ) : (
-        <div><label className={labelClass} htmlFor="payment-customer">Customer</label><select id="payment-customer" name="customerId" required value={customerId} onChange={(event) => { setCustomerId(event.target.value); setAllocations({}); setManualAmount(""); setWithholdingTax("0"); }} className={fieldClass}><option value="">Select an account</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {formatPKR(customer.balance)}</option>)}</select>{customers.length === 0 && <p className="mt-1.5 text-xs text-neutral-500">There are no customer balances available to collect.</p>}</div>
+        <div><label className={labelClass} htmlFor="payment-customer">Customer</label><select id="payment-customer" name="customerId" required value={customerId} onChange={(event) => { setCustomerId(event.target.value); setAllocations({}); setManualAmount(""); setWithholdingTax("0"); setReceivables(null); setReceivablesError(""); }} className={fieldClass}><option value="">Select an account</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {formatPKR(customer.balance)}</option>)}</select>{customers.length === 0 && <p className="mt-1.5 text-xs text-neutral-500">There are no customer balances available to collect.</p>}</div>
       )}
 
       {!invoice && customerId && (
         <div className="grid grid-cols-2 gap-2 rounded-lg bg-neutral-50 p-1">
-          <Button type="button" size="sm" variant={mode === "UNALLOCATED" ? "default" : "ghost"} onClick={() => { setMode("UNALLOCATED"); setAllocations({}); }}>On-account payment</Button>
-          <Button type="button" size="sm" variant={mode === "ALLOCATED" ? "default" : "ghost"} onClick={() => { setMode("ALLOCATED"); setManualAmount(""); }}>Allocate to invoices</Button>
+          <Button type="button" size="sm" variant={mode === "UNALLOCATED" ? "default" : "ghost"} onClick={() => { setMode("UNALLOCATED"); setAllocations({}); setReceivables(null); setReceivablesError(""); }}>On-account payment</Button>
+          <Button type="button" size="sm" variant={mode === "ALLOCATED" ? "default" : "ghost"} onClick={() => { setMode("ALLOCATED"); setManualAmount(""); setReceivables(null); setReceivablesError(""); }}>Allocate to invoices</Button>
         </div>
       )}
 
