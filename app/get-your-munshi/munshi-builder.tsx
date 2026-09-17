@@ -15,6 +15,8 @@ import {
   Wrench,
 } from "lucide-react";
 
+import { buildProvisioningQuery } from "@/lib/saas/provisioning-selection";
+
 type BusinessType = "retail" | "restaurant" | "wholesale" | "manufacturing" | "services";
 
 type ModuleKey =
@@ -84,6 +86,9 @@ export function MunshiBuilder() {
   }
 
   const selectedBusiness = businessTypes.find((type) => type.key === businessType);
+  const checkoutHref = businessType
+    ? `/sign-up?${buildProvisioningQuery({ businessType, modules: selectedModules, billing })}`
+    : "/sign-up";
 
   return (
     <section className="mx-auto max-w-6xl px-5 py-10 lg:px-8 lg:py-14">
@@ -138,7 +143,7 @@ export function MunshiBuilder() {
 
             <div className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
               <div className="flex items-center gap-3">
-                <div className="grid h-10 w-10 place-items-center rounded-xl bg-white text-emerald-700 shadow-sm"><Building2 className="h-5 w-5" /></div>
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-emerald-700 shadow-sm"><Building2 className="h-5 w-5" /></div>
                 <div>
                   <p className="font-semibold">Munshi Core</p>
                   <p className="text-sm text-slate-600">Always included — Rs {BASE_PRICE.toLocaleString()}/month</p>
@@ -251,7 +256,7 @@ export function MunshiBuilder() {
                 <p className="mt-1 text-3xl font-semibold">Rs {payableNow.toLocaleString()}</p>
                 {billing === "annual" && <p className="mt-1 text-xs text-emerald-400">You save Rs {(monthlyTotal * 2).toLocaleString()} yearly</p>}
               </div>
-              <Link href="/sign-up" className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400">
+              <Link href={checkoutHref} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400">
                 Create account & continue <ArrowRight className="h-4 w-4" />
               </Link>
               <p className="mt-3 text-center text-[11px] leading-5 text-slate-500">The live payment gateway will be connected to this checkout before paid subscriptions are activated.</p>
