@@ -1,9 +1,11 @@
 -- MunshiOS industry modules (additive, tenant-scoped)
--- This migration intentionally does not alter existing finance-grade tables.
+-- Existing Prisma IDs are UUID strings stored as TEXT. New module records use native UUID
+-- primary keys, while references to existing MunshiOS entities are UUID-typed identifiers
+-- validated by the domain layer. Relations between new industry tables use DB foreign keys.
 
 CREATE TABLE IF NOT EXISTS "workspace_modules" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  "workspaceId" uuid NOT NULL REFERENCES "workspaces"("id") ON DELETE CASCADE,
+  "workspaceId" uuid NOT NULL,
   "moduleKey" text NOT NULL,
   "enabled" boolean NOT NULL DEFAULT true,
   "config" jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -15,7 +17,7 @@ CREATE INDEX IF NOT EXISTS "workspace_modules_workspace_enabled_idx" ON "workspa
 
 CREATE TABLE IF NOT EXISTS "restaurant_tables" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  "workspaceId" uuid NOT NULL REFERENCES "workspaces"("id") ON DELETE CASCADE,
+  "workspaceId" uuid NOT NULL,
   "name" text NOT NULL,
   "capacity" integer NOT NULL DEFAULT 2 CHECK ("capacity" > 0),
   "area" text,
@@ -28,8 +30,8 @@ CREATE INDEX IF NOT EXISTS "restaurant_tables_workspace_status_idx" ON "restaura
 
 CREATE TABLE IF NOT EXISTS "recipes" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  "workspaceId" uuid NOT NULL REFERENCES "workspaces"("id") ON DELETE CASCADE,
-  "finishedProductId" uuid NOT NULL REFERENCES "products"("id") ON DELETE RESTRICT,
+  "workspaceId" uuid NOT NULL,
+  "finishedProductId" uuid NOT NULL,
   "yieldQuantity" numeric(15,4) NOT NULL DEFAULT 1 CHECK ("yieldQuantity" > 0),
   "notes" text,
   "isActive" boolean NOT NULL DEFAULT true,
@@ -41,7 +43,7 @@ CREATE TABLE IF NOT EXISTS "recipes" (
 CREATE TABLE IF NOT EXISTS "recipe_items" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "recipeId" uuid NOT NULL REFERENCES "recipes"("id") ON DELETE CASCADE,
-  "ingredientProductId" uuid NOT NULL REFERENCES "products"("id") ON DELETE RESTRICT,
+  "ingredientProductId" uuid NOT NULL,
   "quantity" numeric(15,4) NOT NULL CHECK ("quantity" > 0),
   "wastagePercent" numeric(7,4) NOT NULL DEFAULT 0 CHECK ("wastagePercent" >= 0 AND "wastagePercent" <= 100),
   "createdAt" timestamptz NOT NULL DEFAULT now(),
@@ -50,8 +52,8 @@ CREATE TABLE IF NOT EXISTS "recipe_items" (
 
 CREATE TABLE IF NOT EXISTS "kitchen_tickets" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  "workspaceId" uuid NOT NULL REFERENCES "workspaces"("id") ON DELETE CASCADE,
-  "salesOrderId" uuid REFERENCES "sales_orders"("id") ON DELETE SET NULL,
+  "workspaceId" uuid NOT NULL,
+  "salesOrderId" uuid,
   "restaurantTableId" uuid REFERENCES "restaurant_tables"("id") ON DELETE SET NULL,
   "ticketNumber" text NOT NULL,
   "status" text NOT NULL DEFAULT 'QUEUED' CHECK ("status" IN ('QUEUED','PREPARING','READY','SERVED','CANCELLED')),
@@ -67,9 +69,9 @@ CREATE INDEX IF NOT EXISTS "kitchen_tickets_workspace_status_idx" ON "kitchen_ti
 
 CREATE TABLE IF NOT EXISTS "cash_shifts" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  "workspaceId" uuid NOT NULL REFERENCES "workspaces"("id") ON DELETE CASCADE,
-  "openedById" uuid REFERENCES "users"("id") ON DELETE SET NULL,
-  "closedById" uuid REFERENCES "users"("id") ON DELETE SET NULL,
+  "workspaceId" uuid NOT NULL,
+  "openedById" uuid,
+  "closedById" uuid,
   "openedAt" timestamptz NOT NULL DEFAULT now(),
   "closedAt" timestamptz,
   "openingCash" numeric(15,2) NOT NULL DEFAULT 0,
@@ -84,7 +86,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "cash_shifts_one_open_per_workspace" ON "cash_
 
 CREATE TABLE IF NOT EXISTS "warehouses" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  "workspaceId" uuid NOT NULL REFERENCES "workspaces"("id") ON DELETE CASCADE,
+  "workspaceId" uuid NOT NULL,
   "name" text NOT NULL,
   "code" text NOT NULL,
   "address" text,
@@ -98,9 +100,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS "warehouses_one_default_per_workspace" ON "war
 
 CREATE TABLE IF NOT EXISTS "warehouse_stocks" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  "workspaceId" uuid NOT NULL REFERENCES "workspaces"("id") ON DELETE CASCADE,
+  "workspaceId" uuid NOT NULL,
   "warehouseId" uuid NOT NULL REFERENCES "warehouses"("id") ON DELETE CASCADE,
-  "productId" uuid NOT NULL REFERENCES "products"("id") ON DELETE RESTRICT,
+  "productId" uuid NOT NULL,
   "quantity" numeric(15,4) NOT NULL DEFAULT 0,
   "updatedAt" timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT "warehouse_stocks_warehouse_product_unique" UNIQUE ("warehouseId", "productId")
@@ -109,8 +111,8 @@ CREATE INDEX IF NOT EXISTS "warehouse_stocks_workspace_product_idx" ON "warehous
 
 CREATE TABLE IF NOT EXISTS "boms" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  "workspaceId" uuid NOT NULL REFERENCES "workspaces"("id") ON DELETE CASCADE,
-  "finishedProductId" uuid NOT NULL REFERENCES "products"("id") ON DELETE RESTRICT,
+  "workspaceId" uuid NOT NULL,
+  "finishedProductId" uuid NOT NULL,
   "name" text NOT NULL,
   "version" integer NOT NULL DEFAULT 1 CHECK ("version" > 0),
   "outputQuantity" numeric(15,4) NOT NULL DEFAULT 1 CHECK ("outputQuantity" > 0),
@@ -124,7 +126,7 @@ CREATE TABLE IF NOT EXISTS "boms" (
 CREATE TABLE IF NOT EXISTS "bom_items" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "bomId" uuid NOT NULL REFERENCES "boms"("id") ON DELETE CASCADE,
-  "materialProductId" uuid NOT NULL REFERENCES "products"("id") ON DELETE RESTRICT,
+  "materialProductId" uuid NOT NULL,
   "quantity" numeric(15,4) NOT NULL CHECK ("quantity" > 0),
   "wastagePercent" numeric(7,4) NOT NULL DEFAULT 0 CHECK ("wastagePercent" >= 0 AND "wastagePercent" <= 100),
   "createdAt" timestamptz NOT NULL DEFAULT now(),
@@ -133,16 +135,16 @@ CREATE TABLE IF NOT EXISTS "bom_items" (
 
 CREATE TABLE IF NOT EXISTS "production_runs" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  "workspaceId" uuid NOT NULL REFERENCES "workspaces"("id") ON DELETE CASCADE,
+  "workspaceId" uuid NOT NULL,
   "bomId" uuid NOT NULL REFERENCES "boms"("id") ON DELETE RESTRICT,
   "runNumber" text NOT NULL,
   "plannedOutput" numeric(15,4) NOT NULL CHECK ("plannedOutput" > 0),
   "actualOutput" numeric(15,4),
   "wastageQuantity" numeric(15,4) NOT NULL DEFAULT 0,
   "status" text NOT NULL DEFAULT 'DRAFT' CHECK ("status" IN ('DRAFT','APPROVED','POSTED','CANCELLED')),
-  "approvedById" uuid REFERENCES "users"("id") ON DELETE SET NULL,
+  "approvedById" uuid,
   "approvedAt" timestamptz,
-  "postedById" uuid REFERENCES "users"("id") ON DELETE SET NULL,
+  "postedById" uuid,
   "postedAt" timestamptz,
   "notes" text,
   "createdAt" timestamptz NOT NULL DEFAULT now(),
@@ -154,7 +156,7 @@ CREATE INDEX IF NOT EXISTS "production_runs_workspace_status_idx" ON "production
 CREATE TABLE IF NOT EXISTS "production_consumptions" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "productionRunId" uuid NOT NULL REFERENCES "production_runs"("id") ON DELETE CASCADE,
-  "productId" uuid NOT NULL REFERENCES "products"("id") ON DELETE RESTRICT,
+  "productId" uuid NOT NULL,
   "plannedQuantity" numeric(15,4) NOT NULL,
   "actualQuantity" numeric(15,4) NOT NULL,
   "unitCost" numeric(15,2) NOT NULL,
@@ -164,8 +166,8 @@ CREATE TABLE IF NOT EXISTS "production_consumptions" (
 
 CREATE TABLE IF NOT EXISTS "service_quotes" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  "workspaceId" uuid NOT NULL REFERENCES "workspaces"("id") ON DELETE CASCADE,
-  "customerId" uuid NOT NULL REFERENCES "customers"("id") ON DELETE RESTRICT,
+  "workspaceId" uuid NOT NULL,
+  "customerId" uuid NOT NULL,
   "quoteNumber" text NOT NULL,
   "status" text NOT NULL DEFAULT 'DRAFT' CHECK ("status" IN ('DRAFT','SENT','ACCEPTED','REJECTED','EXPIRED','CONVERTED')),
   "subtotal" numeric(15,2) NOT NULL DEFAULT 0,
@@ -191,14 +193,14 @@ CREATE TABLE IF NOT EXISTS "service_quote_items" (
 
 CREATE TABLE IF NOT EXISTS "service_jobs" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  "workspaceId" uuid NOT NULL REFERENCES "workspaces"("id") ON DELETE CASCADE,
-  "customerId" uuid NOT NULL REFERENCES "customers"("id") ON DELETE RESTRICT,
+  "workspaceId" uuid NOT NULL,
+  "customerId" uuid NOT NULL,
   "serviceQuoteId" uuid REFERENCES "service_quotes"("id") ON DELETE SET NULL,
   "jobNumber" text NOT NULL,
   "title" text NOT NULL,
   "description" text,
   "status" text NOT NULL DEFAULT 'OPEN' CHECK ("status" IN ('OPEN','IN_PROGRESS','WAITING_CUSTOMER','COMPLETED','CANCELLED')),
-  "assignedToId" uuid REFERENCES "users"("id") ON DELETE SET NULL,
+  "assignedToId" uuid,
   "scheduledAt" timestamptz,
   "completedAt" timestamptz,
   "createdAt" timestamptz NOT NULL DEFAULT now(),
