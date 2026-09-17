@@ -19,13 +19,21 @@ export function RecordPaymentForm({ customers = [], invoice, cashBankAccounts = 
   const [state, action, pending] = useActionState(recordPaymentAction, initialState);
   const formRef = useRef<HTMLFormElement>(null);
   const [customerId, setCustomerId] = useState(invoice?.customerId ?? "");
+  const [amount, setAmount] = useState("");
+  const [withholdingTax, setWithholdingTax] = useState("0");
   const idempotencyKeyRef = useRef(crypto.randomUUID());
   const selectedCustomer = customers.find((customer) => customer.id === customerId);
   const maximum = invoice?.balance ?? selectedCustomer?.balance;
+  const grossAmount = Number(amount || 0);
+  const withholdingAmount = Number(withholdingTax || 0);
+  const netReceived = Math.max(0, grossAmount - withholdingAmount);
+  const invalidWithholding = withholdingAmount > grossAmount;
 
   useEffect(() => {
     if (state.successToken) {
       formRef.current?.reset();
+      setAmount("");
+      setWithholdingTax("0");
       idempotencyKeyRef.current = crypto.randomUUID();
       const hidden = formRef.current?.elements.namedItem("idempotencyKey") as HTMLInputElement | null;
       if (hidden) hidden.value = idempotencyKeyRef.current;
@@ -34,7 +42,7 @@ export function RecordPaymentForm({ customers = [], invoice, cashBankAccounts = 
 
   const today = new Date();
   const localDate = new Date(today.getTime() - today.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
-  const disabled = pending || (!invoice && customers.length === 0) || cashBankAccounts.length === 0;
+  const disabled = pending || invalidWithholding || (!invoice && customers.length === 0) || cashBankAccounts.length === 0;
 
   return (
     <form ref={formRef} action={action} className="space-y-4">
@@ -45,9 +53,12 @@ export function RecordPaymentForm({ customers = [], invoice, cashBankAccounts = 
         <div><label className={labelClass} htmlFor="payment-customer">Customer</label><select id="payment-customer" name="customerId" required value={customerId} onChange={(event) => setCustomerId(event.target.value)} className={fieldClass}><option value="">Select an account</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {formatPKR(customer.balance)}</option>)}</select>{customers.length === 0 && <p className="mt-1.5 text-xs text-neutral-500">There are no customer balances available to collect.</p>}</div>
       )}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-        <div><label className={labelClass} htmlFor={`payment-amount-${invoice?.id ?? "khata"}`}>Amount (PKR)</label><Input id={`payment-amount-${invoice?.id ?? "khata"}`} name="amount" type="number" min="0.01" max={maximum} step="0.01" required placeholder="0.00" /></div>
+        <div><label className={labelClass} htmlFor={`payment-amount-${invoice?.id ?? "khata"}`}>Gross amount settled (PKR)</label><Input id={`payment-amount-${invoice?.id ?? "khata"}`} name="amount" type="number" min="0.01" max={maximum} step="0.01" required placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} /></div>
+        <div><label className={labelClass} htmlFor={`payment-wht-${invoice?.id ?? "khata"}`}>Withholding tax deducted (PKR)</label><Input id={`payment-wht-${invoice?.id ?? "khata"}`} name="withholdingTaxAmount" type="number" min="0" max={grossAmount || undefined} step="0.01" value={withholdingTax} onChange={(event) => setWithholdingTax(event.target.value)} aria-invalid={invalidWithholding} /></div>
         <div><label className={labelClass} htmlFor={`payment-date-${invoice?.id ?? "khata"}`}>Payment date</label><Input id={`payment-date-${invoice?.id ?? "khata"}`} name="paymentDate" type="date" defaultValue={localDate} required /></div>
       </div>
+      <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-sm"><div className="flex justify-between"><span className="text-neutral-500">Gross balance cleared</span><span className="font-medium tabular-nums">{formatPKR(grossAmount)}</span></div><div className="mt-1 flex justify-between"><span className="text-neutral-500">Less withholding tax</span><span className="tabular-nums">{formatPKR(withholdingAmount)}</span></div><div className="mt-2 flex justify-between border-t border-neutral-200 pt-2"><span className="font-medium">Net cash/bank received</span><span className="font-semibold tabular-nums">{formatPKR(netReceived)}</span></div></div>
+      {invalidWithholding && <p role="alert" className="text-sm text-red-600">Withholding tax cannot exceed the gross amount being settled.</p>}
       <div><label className={labelClass} htmlFor={`payment-cash-bank-${invoice?.id ?? "khata"}`}>Receive into</label><select id={`payment-cash-bank-${invoice?.id ?? "khata"}`} name="cashBankAccountId" required className={fieldClass}><option value="">Select cash/bank</option>{cashBankAccounts.map((account) => <option key={account.cashBankAccountId} value={account.cashBankAccountId}>{account.name}{account.isBank && account.bankName ? ` · ${account.bankName}` : ""} · {formatPKR(account.currentBalance)}</option>)}</select>{cashBankAccounts.length === 0 && <p className="mt-1.5 text-xs text-red-600">Create a cash/bank account before recording receipts.</p>}</div>
       <div><label className={labelClass} htmlFor={`payment-method-${invoice?.id ?? "khata"}`}>Method</label><select id={`payment-method-${invoice?.id ?? "khata"}`} name="method" defaultValue="CASH" className={fieldClass}><option value="CASH">Cash</option><option value="BANK_TRANSFER">Bank transfer</option><option value="JAZZCASH">JazzCash</option><option value="EASYPAISA">Easypaisa</option><option value="CHEQUE">Cheque</option><option value="OTHER">Other</option></select></div>
       <div><label className={labelClass} htmlFor={`payment-reference-${invoice?.id ?? "khata"}`}>Reference <span className="font-normal text-neutral-400">(optional)</span></label><Input id={`payment-reference-${invoice?.id ?? "khata"}`} name="reference" maxLength={120} placeholder="Cheque or transaction number" /></div>
