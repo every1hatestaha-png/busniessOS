@@ -1,14 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Pencil, Truck } from "lucide-react";
 
 import { StatusBadge } from "@/components/business/status-badge";
 import { PrintButton } from "@/components/invoices/print-button";
 import { RecordPaymentForm } from "@/components/payments/record-payment-form";
+import { CancelSaleButton } from "@/components/sales/cancel-sale-button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { requireWorkspace } from "@/lib/server/auth";
 import { getCashBankAccounts } from "@/lib/server/accounting";
 import { getInvoice } from "@/lib/server/invoices";
+import { getInvoiceDocumentMetadata } from "@/lib/server/invoice-document";
 import { canPerformAction } from "@/lib/server/authorization";
 import { formatDate, formatPKR } from "@/lib/utils";
 import { Prisma } from "@prisma/client";
@@ -25,21 +27,30 @@ function formatUnit(unit: string) {
   return unit.toLowerCase();
 }
 
+const actionLinkClass = "inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 text-xs font-medium text-neutral-700 transition hover:bg-neutral-50";
+
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { workspaceId, workspace, role } = await requireWorkspace();
   const canRecordPayments = canPerformAction(role, "payments.record");
+  const canManageFinancials = canPerformAction(role, "financial.manage");
   const [invoice, cashBankAccounts] = await Promise.all([
     getInvoice(workspaceId, id),
     canRecordPayments ? getCashBankAccounts(workspaceId) : Promise.resolve([]),
   ]);
   if (!invoice) notFound();
+  const documentMetadata = await getInvoiceDocumentMetadata(workspaceId, invoice.id, invoice.invoiceNumber);
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-6 print:max-w-none print:space-y-0">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between print:hidden">
-        <div><Link href="/invoices" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-neutral-500 hover:text-neutral-950"><ArrowLeft className="h-4 w-4" />Invoices</Link><div className="flex flex-wrap items-center gap-3"><h1 className="text-2xl font-bold tracking-tight md:text-3xl">{invoice.invoiceNumber}</h1><StatusBadge status={invoice.status} /></div><p className="mt-1 text-sm text-neutral-500">Issued to {invoice.customer.companyName}</p></div>
-        <PrintButton label="Print invoice" />
+        <div><Link href="/invoices" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-neutral-500 hover:text-neutral-950"><ArrowLeft className="h-4 w-4" />Invoices</Link><div className="flex flex-wrap items-center gap-3"><h1 className="text-2xl font-bold tracking-tight md:text-3xl">{invoice.invoiceNumber}</h1><StatusBadge status={invoice.status} /></div><p className="mt-1 text-sm text-neutral-500">Issued to {invoice.customer.companyName} · DC {documentMetadata.dcNumber}</p></div>
+        <div className="flex flex-wrap items-center gap-2">
+          {canManageFinancials && invoice.status !== "CANCELLED" && <Link href={`/invoices/${invoice.id}/edit`} className={actionLinkClass}><Pencil className="size-3.5" />Edit invoice</Link>}
+          <Link href={`/gate-pass/${invoice.id}`} className={actionLinkClass}><Truck className="size-3.5" />Gate Pass</Link>
+          <PrintButton label="Print invoice" />
+          {canManageFinancials && invoice.status !== "CANCELLED" && invoice.order && <CancelSaleButton saleId={invoice.order.id} orderNumber={invoice.invoiceNumber} label="Delete / Void" />}
+        </div>
       </div>
 
       <div className="grid items-start gap-6 2xl:grid-cols-[minmax(0,1fr)_360px] print:block">
@@ -47,11 +58,11 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           <header className="border-b border-neutral-200 p-6 sm:p-8">
             <div className="flex flex-col justify-between gap-6 sm:flex-row">
               <div><p className="text-xs font-bold uppercase tracking-[0.2em] text-neutral-400">Invoice</p><h2 className="mt-2 text-2xl font-bold">{workspace.name}</h2><div className="mt-2 space-y-0.5 text-sm text-neutral-500">{workspace.address && <p>{workspace.address}</p>}<p>{[workspace.city, workspace.country].filter(Boolean).join(", ")}</p>{workspace.phone && <p>{workspace.phone}</p>}{workspace.email && <p>{workspace.email}</p>}</div></div>
-              <div className="sm:text-right"><p className="font-mono text-lg font-bold">{invoice.invoiceNumber}</p><div className="mt-3 space-y-1 text-sm"><p><span className="text-neutral-500">Issued:</span> {formatDate(invoice.date)}</p><p><span className="text-neutral-500">Due:</span> {invoice.dueDate ? formatDate(invoice.dueDate) : "On receipt"}</p><div className="pt-1"><StatusBadge status={invoice.status} /></div></div></div>
+              <div className="sm:text-right"><p className="font-mono text-lg font-bold">{invoice.invoiceNumber}</p><div className="mt-3 space-y-1 text-sm"><p><span className="text-neutral-500">DC / Gate Pass:</span> <span className="font-mono font-medium">{documentMetadata.dcNumber}</span></p><p><span className="text-neutral-500">Issued:</span> {formatDate(invoice.date)}</p><p><span className="text-neutral-500">Due:</span> {invoice.dueDate ? formatDate(invoice.dueDate) : "On receipt"}</p><div className="pt-1"><StatusBadge status={invoice.status} /></div></div></div>
             </div>
           </header>
 
-          <section className="border-b border-neutral-200 p-6 sm:p-8"><p className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Bill to</p><p className="mt-2 text-lg font-semibold">{invoice.customer.companyName}</p>{invoice.customer.companyName !== invoice.customer.name && <p className="text-sm text-neutral-600">{invoice.customer.name}</p>}<div className="mt-2 space-y-0.5 text-sm text-neutral-500">{invoice.customer.address && <p>{invoice.customer.address}</p>}{invoice.customer.phone && <p>{invoice.customer.phone}</p>}</div></section>
+          <section className="border-b border-neutral-200 p-6 sm:p-8"><p className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Bill to</p><p className="mt-2 text-lg font-semibold">{invoice.customer.companyName}</p>{invoice.customer.companyName !== invoice.customer.name && <p className="text-sm text-neutral-600">{invoice.customer.name}</p>}<div className="mt-2 space-y-0.5 text-sm text-neutral-500">{invoice.customer.address && <p>{invoice.customer.address}</p>}{invoice.customer.phone && <p>{invoice.customer.phone}</p>}</div>{documentMetadata.notes && <div className="mt-4 rounded-lg bg-neutral-50 p-3 text-sm text-neutral-600"><span className="font-medium text-neutral-700">Document note: </span>{documentMetadata.notes}</div>}</section>
 
           <section className="overflow-x-auto">
             {invoice.order?.items.length ? <Table className="min-w-[700px] table-fixed print:min-w-0"><TableHeader><TableRow><TableHead className="w-[30%] pl-6 sm:pl-8">Description</TableHead><TableHead className="w-[14%]">SKU</TableHead><TableHead className="w-[8%] text-right">Qty</TableHead><TableHead className="w-[8%]">Unit</TableHead><TableHead className="w-[12%] text-right">Rate</TableHead><TableHead className="w-[13%] text-right">Disc/unit</TableHead><TableHead className="w-[15%] pr-6 text-right sm:pr-8">Amount</TableHead></TableRow></TableHeader><TableBody>{invoice.order.items.map((item) => { const { total } = calculateSaleLine(item); return <TableRow key={item.id}><TableCell className="whitespace-normal break-words pl-6 font-medium sm:pl-8"><span>{item.name}</span>{item.pricingMode === "WEIGHT" && <span className="mt-0.5 block text-[10px] font-medium text-emerald-700">{item.unitWeight?.toFixed(3)} kg/unit · total {item.totalWeight?.toFixed(3)} kg</span>}</TableCell><TableCell className="whitespace-normal break-all text-neutral-500">{item.sku || "-"}</TableCell><TableCell className="text-right">{item.quantity}</TableCell><TableCell className="text-neutral-500">{formatUnit(item.unit)}</TableCell><TableCell className="text-right tabular-nums">{item.pricingMode === "WEIGHT" ? <><span>{formatPKR(item.perKgRate ?? 0)}/kg</span><span className="block text-[10px] text-neutral-500">{formatPKR(item.unitPrice)}/unit</span></> : formatPKR(item.unitPrice)}</TableCell><TableCell className="text-right tabular-nums">{formatPKR(item.discountPerUnit)}</TableCell><TableCell className="pr-6 text-right font-semibold tabular-nums sm:pr-8">{formatPKR(total)}</TableCell></TableRow>; })}</TableBody></Table> : <p className="p-8 text-sm text-neutral-500">No sales order line items are linked to this invoice.</p>}
