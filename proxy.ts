@@ -63,7 +63,12 @@ const handleProxy = clerkMiddleware(
     }
 
     if (!isApiV1Request(path)) {
-      await auth.protect();
+      const authState = await auth();
+      if (!authState.userId) {
+        const signInUrl = new URL("/sign-in", request.url);
+        signInUrl.searchParams.set("redirect_url", `${request.nextUrl.pathname}${request.nextUrl.search}`);
+        return NextResponse.redirect(signInUrl);
+      }
     }
 
     if (isApiV1Request(path)) {
