@@ -7,6 +7,7 @@ import { createWorkspace, type OnboardingState } from "@/app/onboarding/actions"
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import type { BuilderBusinessType, ProvisioningBilling, ProvisioningModuleKey } from "@/lib/saas/provisioning-selection";
 
 const initialState: OnboardingState = { error: null };
 const labelClass = "mb-1.5 block text-sm font-medium text-neutral-700";
@@ -14,8 +15,15 @@ const selectClass = "h-10 w-full rounded-lg border border-input bg-white px-2.5 
 
 export function OnboardingForm({
   initialValues,
+  provisioning,
 }: {
   initialValues: { email: string; ownerName: string };
+  provisioning: {
+    builderBusiness: BuilderBusinessType | null;
+    modules: ProvisioningModuleKey[];
+    billing: ProvisioningBilling;
+    businessType: "WHOLESALER" | "MANUFACTURER" | "RETAILER" | "OTHER";
+  };
 }) {
   const [state, formAction, pending] = useActionState(createWorkspace, initialState);
 
@@ -30,6 +38,12 @@ export function OnboardingForm({
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-blue-100">Two-minute setup</p>
               <h1 className="mt-3 text-4xl font-bold leading-tight">Make the workspace yours.</h1>
               <p className="mt-4 leading-7 text-blue-100">Add the details used across your dashboard, invoices, and business assistant.</p>
+              {provisioning.modules.length > 0 && (
+                <div className="mt-6 rounded-2xl border border-white/20 bg-white/10 p-4 text-sm text-blue-50">
+                  <p className="font-semibold">Your selected Munshi setup is saved.</p>
+                  <p className="mt-1 text-blue-100">{provisioning.modules.length} module{provisioning.modules.length === 1 ? "" : "s"} · {provisioning.billing === "annual" ? "Annual" : "Monthly"} billing</p>
+                </div>
+              )}
             </div>
             <p className="text-xs text-blue-100">Your workspace is private to authenticated members.</p>
           </div>
@@ -51,12 +65,12 @@ export function OnboardingForm({
             <FormField label="City"><Input name="city" className="h-10" minLength={2} maxLength={80} required /></FormField>
             <FormField label="Country"><Input name="country" className="h-10" defaultValue="Pakistan" minLength={2} maxLength={80} required /></FormField>
             <FormField label="Business type">
-              <select name="businessType" className={selectClass} defaultValue="WHOLESALER" required>
+              <select name="businessType" className={selectClass} defaultValue={provisioning.businessType} required>
                 <option value="WHOLESALER">Wholesaler</option>
                 <option value="DISTRIBUTOR">Distributor</option>
                 <option value="MANUFACTURER">Manufacturer</option>
                 <option value="RETAILER">Retailer</option>
-                <option value="OTHER">Other</option>
+                <option value="OTHER">Other / Restaurant / Services</option>
               </select>
             </FormField>
             <FormField label="Currency">
@@ -65,6 +79,9 @@ export function OnboardingForm({
               </select>
             </FormField>
             <input type="hidden" name="timezone" value="Asia/Karachi" />
+            <input type="hidden" name="selectedModules" value={provisioning.modules.join(",")} />
+            <input type="hidden" name="billing" value={provisioning.billing} />
+            <input type="hidden" name="builderBusiness" value={provisioning.builderBusiness ?? ""} />
             <Card className="justify-center bg-neutral-50 py-3 sm:col-span-2" size="sm">
               <CardContent className="flex items-center gap-2 text-xs leading-5 text-neutral-500"><Building2 className="size-4 text-neutral-700" />You will be added as this workspace&apos;s owner.</CardContent>
             </Card>
