@@ -21,7 +21,7 @@ function walkFiles(dir: string, files: string[] = []) {
 function routePatternFromPage(pageFile: string) {
   const rel = relative(appRoot, pageFile).split(sep).join("/");
   const segments = rel
-    .replace(/\/page\.tsx$/, "")
+    .replace(/(?:^|\/)page\.tsx$/, "")
     .split("/")
     .filter(Boolean)
     .filter((segment) => !(segment.startsWith("(") && segment.endsWith(")")));
