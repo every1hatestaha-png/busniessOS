@@ -5,12 +5,20 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSignUp } from "@clerk/nextjs";
 import { ArrowRight, CheckCircle2, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
-import visual0 from "../../sign-in/[[...sign-in]]/login-visual-v2-0";
-import visual1 from "../../sign-in/[[...sign-in]]/login-visual-v2-1";
-import visual2 from "../../sign-in/[[...sign-in]]/login-visual-v2-2";
-import visual3 from "../../sign-in/[[...sign-in]]/login-visual-v2-3";
 
-const LOGIN_VISUAL = `data:image/webp;base64,${visual0}${visual1}${visual2}${visual3}`;
+const LOGIN_VISUAL = "/auth/faisal-mosque.webp";
+
+function onboardingDestination() {
+  if (typeof window === "undefined") return "/onboarding";
+  const current = new URLSearchParams(window.location.search);
+  const next = new URLSearchParams();
+  for (const key of ["business", "modules", "billing"] as const) {
+    const value = current.get(key);
+    if (value) next.set(key, value);
+  }
+  const query = next.toString();
+  return query ? `/onboarding?${query}` : "/onboarding";
+}
 
 export default function SignUpPage() {
   const { signUp, errors, fetchStatus } = useSignUp();
@@ -30,7 +38,7 @@ export default function SignUpPage() {
     const { error } = await signUp.finalize({
       navigate: ({ session, decorateUrl }) => {
         if (session?.currentTask) return;
-        const url = decorateUrl("/onboarding");
+        const url = decorateUrl(onboardingDestination());
         if (url.startsWith("http")) window.location.href = url;
         else router.push(url);
       },
