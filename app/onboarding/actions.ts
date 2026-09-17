@@ -2,7 +2,12 @@
 
 import { redirect } from "next/navigation";
 
-import { sanitizeBilling, sanitizeProvisioningModules } from "@/lib/saas/provisioning-selection";
+import {
+  isBuilderBusinessType,
+  resolveProvisioningModules,
+  sanitizeBilling,
+  sanitizeProvisioningModules,
+} from "@/lib/saas/provisioning-selection";
 import { getCurrentUser } from "@/lib/server/auth";
 import { createInitialWorkspace } from "@/lib/server/onboarding";
 import { onboardingSchema } from "@/lib/validation/onboarding";
@@ -30,16 +35,20 @@ export async function createWorkspace(
     return { error: "Please check the business details and try again." };
   }
 
-  const modules = sanitizeProvisioningModules(String(formData.get("selectedModules") ?? ""));
+  const rawBuilderBusiness = String(formData.get("builderBusiness") ?? "").trim();
+  const builderBusiness = isBuilderBusinessType(rawBuilderBusiness) ? rawBuilderBusiness : null;
+  const modules = resolveProvisioningModules(
+    sanitizeProvisioningModules(String(formData.get("selectedModules") ?? "")),
+    builderBusiness,
+  );
   const billing = sanitizeBilling(String(formData.get("billing") ?? "monthly"));
-  const builderBusiness = String(formData.get("builderBusiness") ?? "").trim();
 
   const user = await getCurrentUser();
   try {
     await createInitialWorkspace(user.id, parsed.data, {
       modules,
       billing,
-      builderBusiness: builderBusiness || null,
+      builderBusiness,
     });
   } catch {
     return { error: "We could not create your workspace. Please try again." };
