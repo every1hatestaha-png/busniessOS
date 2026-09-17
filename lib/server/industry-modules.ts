@@ -1,0 +1,485 @@
+import "server-only";
+
+import { Prisma, type Role } from "@prisma/client";
+import { db } from "@/lib/server/db";
+
+export type IndustryModuleKey = "inventory" | "restaurant" | "wholesale" | "manufacturing" | "accounting" | "multiBranch" | "payroll" | "integrations" | "services";
+export type IndustryContext = { workspaceId: string; role: Role; userId?: string };
+
+type JsonConfig = Record<string, unknown>;
+
+export class IndustryDomainError extends Error {
+  constructor(
+    public readonly code:
+      | "PERMISSION_DENIED"
+      | "MODULE_DISABLED"
+      | "NOT_FOUND"
+      | "INVALID_STATE"
+      | "INSUFFICIENT_STOCK"
+      | "CONFLICT",
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+function assertManager(context: IndustryContext) {
+  if (!(["OWNER", "ADMIN", "MANAGER"] as Role[]).includes(context.role)) {
+    throw new IndustryDomainError("PERMISSION_DENIED", "Manager access is required for this action.");
+  }
+}
+
+export async function listWorkspaceModules(workspaceId: string) {
+  return db.$queryRaw<Array<{ moduleKey: IndustryModuleKey; enabled: boolean; config: JsonConfig }>>`
+    SELECT "moduleKey", "enabled", "config"
+    FROM "workspace_modules"
+    WHERE "workspaceId" = ${workspaceId}::uuid
+    ORDER BY "moduleKey" ASC
+  `;
+}
+
+export async function setWorkspaceModule(context: IndustryContext, moduleKey: IndustryModuleKey, enabled: boolean, config: JsonConfig = {}) {
+  assertManager(context);
+  const rows = await db.$queryRaw<Array<{ moduleKey: IndustryModuleKey; enabled: boolean; config: JsonConfig }>>`
+    INSERT INTO "workspace_modules" ("workspaceId", "moduleKey", "enabled", "config", "updatedAt")
+    VALUES (${context.workspaceId}::uuid, ${moduleKey}, ${enabled}, ${JSON.stringify(config)}::jsonb, now())
+    ON CONFLICT ("workspaceId", "moduleKey")
+    DO UPDATE SET "enabled" = EXCLUDED."enabled", "config" = EXCLUDED."config", "updatedAt" = now()
+    RETURNING "moduleKey", "enabled", "config"
+  `;
+  return rows[0]!;
+}
+
+export async function requireWorkspaceModule(workspaceId: string, moduleKey: IndustryModuleKey) {
+  const rows = await db.$queryRaw<Array<{ enabled: boolean }>>`
+    SELECT "enabled" FROM "workspace_modules"
+    WHERE "workspaceId" = ${workspaceId}::uuid AND "moduleKey" = ${moduleKey}
+    LIMIT 1
+  `;
+  if (!rows[0]?.enabled) throw new IndustryDomainError("MODULE_DISABLED", `${moduleKey} is not enabled for this workspace.`);
+}
+
+export const INDUSTRY_TEMPLATES: Record<string, IndustryModuleKey[]> = {
+  RETAIL: ["inventory"],
+  RESTAURANT: ["inventory", "restaurant"],
+  WHOLESALE: ["inventory", "wholesale", "accounting"],
+  MANUFACTURING: ["inventory", "wholesale", "manufacturing", "accounting"],
+  SERVICES: ["services", "accounting"],
+};
+
+export async function applyIndustryTemplate(context: IndustryContext, template: keyof typeof INDUSTRY_TEMPLATES) {
+  assertManager(context);
+  const enabled = new Set(INDUSTRY_TEMPLATES[template]);
+  const known = ["inventory", "restaurant", "wholesale", "manufacturing", "accounting", "multiBranch", "payroll", "integrations", "services"] as IndustryModuleKey[];
+  await db.$transaction(
+    known.map((moduleKey) =>
+      db.$executeRaw`
+        INSERT INTO "workspace_modules" ("workspaceId", "moduleKey", "enabled", "config", "updatedAt")
+        VALUES (${context.workspaceId}::uuid, ${moduleKey}, ${enabled.has(moduleKey)}, '{}'::jsonb, now())
+        ON CONFLICT ("workspaceId", "moduleKey")
+        DO UPDATE SET "enabled" = EXCLUDED."enabled", "updatedAt" = now()
+      `,
+    ),
+  );
+  return listWorkspaceModules(context.workspaceId);
+}
+
+// ---------------- Restaurant ----------------
+
+export async function listRestaurantTables(workspaceId: string) {
+  await requireWorkspaceModule(workspaceId, "restaurant");
+  return db.$queryRaw<Array<{ id: string; name: string; capacity: number; area: string | null; status: string }>>`
+    SELECT "id", "name", "capacity", "area", "status"
+    FROM "restaurant_tables"
+    WHERE "workspaceId" = ${workspaceId}::uuid
+    ORDER BY "area" NULLS LAST, "name"
+  `;
+}
+
+export async function createRestaurantTable(context: IndustryContext, input: { name: string; capacity?: number; area?: string }) {
+  assertManager(context);
+  await requireWorkspaceModule(context.workspaceId, "restaurant");
+  const name = input.name.trim();
+  const capacity = input.capacity ?? 2;
+  if (!name || capacity <= 0) throw new IndustryDomainError("INVALID_STATE", "A table name and positive capacity are required.");
+  const rows = await db.$queryRaw<Array<{ id: string; name: string; capacity: number; area: string | null; status: string }>>`
+    INSERT INTO "restaurant_tables" ("workspaceId", "name", "capacity", "area")
+    VALUES (${context.workspaceId}::uuid, ${name}, ${capacity}, ${input.area?.trim() || null})
+    RETURNING "id", "name", "capacity", "area", "status"
+  `;
+  return rows[0]!;
+}
+
+export async function createRecipe(context: IndustryContext, input: { finishedProductId: string; yieldQuantity?: number; notes?: string; items: Array<{ ingredientProductId: string; quantity: number; wastagePercent?: number }> }) {
+  assertManager(context);
+  await requireWorkspaceModule(context.workspaceId, "restaurant");
+  if (!input.items.length) throw new IndustryDomainError("INVALID_STATE", "A recipe needs at least one ingredient.");
+  const yieldQuantity = input.yieldQuantity ?? 1;
+  if (yieldQuantity <= 0) throw new IndustryDomainError("INVALID_STATE", "Recipe yield must be positive.");
+
+  return db.$transaction(async (tx) => {
+    const products = await tx.product.findMany({
+      where: { workspaceId: context.workspaceId, id: { in: [input.finishedProductId, ...input.items.map((item) => item.ingredientProductId)] } },
+      select: { id: true },
+    });
+    if (products.length !== new Set([input.finishedProductId, ...input.items.map((item) => item.ingredientProductId)]).size) {
+      throw new IndustryDomainError("NOT_FOUND", "One or more recipe products do not belong to this workspace.");
+    }
+    const [recipe] = await tx.$queryRaw<Array<{ id: string }>>`
+      INSERT INTO "recipes" ("workspaceId", "finishedProductId", "yieldQuantity", "notes", "updatedAt")
+      VALUES (${context.workspaceId}::uuid, ${input.finishedProductId}::uuid, ${yieldQuantity}, ${input.notes?.trim() || null}, now())
+      ON CONFLICT ("workspaceId", "finishedProductId")
+      DO UPDATE SET "yieldQuantity" = EXCLUDED."yieldQuantity", "notes" = EXCLUDED."notes", "isActive" = true, "updatedAt" = now()
+      RETURNING "id"
+    `;
+    await tx.$executeRaw`DELETE FROM "recipe_items" WHERE "recipeId" = ${recipe!.id}::uuid`;
+    for (const item of input.items) {
+      if (item.quantity <= 0) throw new IndustryDomainError("INVALID_STATE", "Ingredient quantity must be positive.");
+      const wastage = item.wastagePercent ?? 0;
+      if (wastage < 0 || wastage > 100) throw new IndustryDomainError("INVALID_STATE", "Ingredient wastage must be between 0 and 100 percent.");
+      await tx.$executeRaw`
+        INSERT INTO "recipe_items" ("recipeId", "ingredientProductId", "quantity", "wastagePercent")
+        VALUES (${recipe!.id}::uuid, ${item.ingredientProductId}::uuid, ${item.quantity}, ${wastage})
+      `;
+    }
+    return recipe!;
+  });
+}
+
+export async function createKitchenTicket(context: IndustryContext, input: { ticketNumber: string; salesOrderId?: string; restaurantTableId?: string; notes?: string }) {
+  await requireWorkspaceModule(context.workspaceId, "restaurant");
+  if (input.salesOrderId) {
+    const order = await db.salesOrder.findFirst({ where: { id: input.salesOrderId, workspaceId: context.workspaceId }, select: { id: true } });
+    if (!order) throw new IndustryDomainError("NOT_FOUND", "Sales order was not found in this workspace.");
+  }
+  const rows = await db.$queryRaw<Array<{ id: string; ticketNumber: string; status: string }>>`
+    INSERT INTO "kitchen_tickets" ("workspaceId", "salesOrderId", "restaurantTableId", "ticketNumber", "notes")
+    VALUES (${context.workspaceId}::uuid, ${input.salesOrderId ?? null}::uuid, ${input.restaurantTableId ?? null}::uuid, ${input.ticketNumber.trim()}, ${input.notes?.trim() || null})
+    RETURNING "id", "ticketNumber", "status"
+  `;
+  if (input.restaurantTableId) {
+    await db.$executeRaw`
+      UPDATE "restaurant_tables" SET "status"='OCCUPIED', "updatedAt"=now()
+      WHERE "id"=${input.restaurantTableId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
+    `;
+  }
+  return rows[0]!;
+}
+
+async function consumeTicketRecipes(tx: Prisma.TransactionClient, workspaceId: string, ticketId: string, salesOrderId: string) {
+  const existing = await tx.inventoryTransaction.findFirst({ where: { workspaceId, reference: `KITCHEN:${ticketId}` }, select: { id: true } });
+  if (existing) return;
+
+  const lines = await tx.salesOrderItem.findMany({ where: { salesOrderId }, select: { productId: true, quantity: true } });
+  for (const line of lines) {
+    const recipes = await tx.$queryRaw<Array<{ id: string; yieldQuantity: Prisma.Decimal }>>`
+      SELECT "id", "yieldQuantity" FROM "recipes"
+      WHERE "workspaceId"=${workspaceId}::uuid AND "finishedProductId"=${line.productId}::uuid AND "isActive"=true
+      LIMIT 1
+    `;
+    const recipe = recipes[0];
+    if (!recipe) continue;
+    const items = await tx.$queryRaw<Array<{ ingredientProductId: string; quantity: Prisma.Decimal; wastagePercent: Prisma.Decimal }>>`
+      SELECT "ingredientProductId", "quantity", "wastagePercent" FROM "recipe_items" WHERE "recipeId"=${recipe.id}::uuid
+    `;
+    const factor = Number(line.quantity) / Number(recipe.yieldQuantity);
+    for (const item of items) {
+      const required = Number(item.quantity) * factor * (1 + Number(item.wastagePercent) / 100);
+      const ingredient = await tx.product.findFirst({ where: { id: item.ingredientProductId, workspaceId }, select: { id: true, stockQuantity: true, costPrice: true } });
+      if (!ingredient) throw new IndustryDomainError("NOT_FOUND", "Recipe ingredient no longer exists.");
+      if (Number(ingredient.stockQuantity) < required) throw new IndustryDomainError("INSUFFICIENT_STOCK", "Not enough ingredient stock to serve this order.");
+      await tx.product.update({ where: { id: ingredient.id }, data: { stockQuantity: { decrement: required } } });
+      await tx.inventoryTransaction.create({ data: { workspaceId, productId: ingredient.id, type: "ADJUSTMENT", quantityChanged: -required, unitCost: ingredient.costPrice, reference: `KITCHEN:${ticketId}` } });
+    }
+  }
+}
+
+export async function updateKitchenTicketStatus(context: IndustryContext, ticketId: string, status: "QUEUED" | "PREPARING" | "READY" | "SERVED" | "CANCELLED") {
+  await requireWorkspaceModule(context.workspaceId, "restaurant");
+  return db.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<Array<{ id: string; status: string; salesOrderId: string | null; restaurantTableId: string | null }>>`
+      SELECT "id", "status", "salesOrderId", "restaurantTableId" FROM "kitchen_tickets"
+      WHERE "id"=${ticketId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
+      FOR UPDATE
+    `;
+    const current = rows[0];
+    if (!current) throw new IndustryDomainError("NOT_FOUND", "Kitchen ticket was not found.");
+    if (["SERVED", "CANCELLED"].includes(current.status) && current.status !== status) throw new IndustryDomainError("INVALID_STATE", "Completed kitchen tickets cannot be moved back into workflow.");
+    if (status === "SERVED" && current.status !== "SERVED" && current.salesOrderId) await consumeTicketRecipes(tx, context.workspaceId, ticketId, current.salesOrderId);
+    await tx.$executeRaw`
+      UPDATE "kitchen_tickets"
+      SET "status"=${status},
+          "startedAt"=CASE WHEN ${status}='PREPARING' AND "startedAt" IS NULL THEN now() ELSE "startedAt" END,
+          "readyAt"=CASE WHEN ${status}='READY' AND "readyAt" IS NULL THEN now() ELSE "readyAt" END,
+          "servedAt"=CASE WHEN ${status}='SERVED' AND "servedAt" IS NULL THEN now() ELSE "servedAt" END,
+          "updatedAt"=now()
+      WHERE "id"=${ticketId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
+    `;
+    if (status === "SERVED" && current.restaurantTableId) {
+      await tx.$executeRaw`UPDATE "restaurant_tables" SET "status"='AVAILABLE', "updatedAt"=now() WHERE "id"=${current.restaurantTableId}::uuid AND "workspaceId"=${context.workspaceId}::uuid`;
+    }
+    return { id: ticketId, status };
+  });
+}
+
+export async function openCashShift(context: IndustryContext, openingCash = 0, notes?: string) {
+  await requireWorkspaceModule(context.workspaceId, "restaurant");
+  if (openingCash < 0) throw new IndustryDomainError("INVALID_STATE", "Opening cash cannot be negative.");
+  const rows = await db.$queryRaw<Array<{ id: string; openedAt: Date; openingCash: Prisma.Decimal }>>`
+    INSERT INTO "cash_shifts" ("workspaceId", "openedById", "openingCash", "notes")
+    VALUES (${context.workspaceId}::uuid, ${context.userId ?? null}::uuid, ${openingCash}, ${notes?.trim() || null})
+    RETURNING "id", "openedAt", "openingCash"
+  `;
+  return rows[0]!;
+}
+
+export async function closeCashShift(context: IndustryContext, shiftId: string, closingCash: number, notes?: string) {
+  await requireWorkspaceModule(context.workspaceId, "restaurant");
+  if (closingCash < 0) throw new IndustryDomainError("INVALID_STATE", "Closing cash cannot be negative.");
+  return db.$transaction(async (tx) => {
+    const shifts = await tx.$queryRaw<Array<{ id: string; openedAt: Date; openingCash: Prisma.Decimal; status: string }>>`
+      SELECT "id", "openedAt", "openingCash", "status" FROM "cash_shifts"
+      WHERE "id"=${shiftId}::uuid AND "workspaceId"=${context.workspaceId}::uuid FOR UPDATE
+    `;
+    const shift = shifts[0];
+    if (!shift) throw new IndustryDomainError("NOT_FOUND", "Cash shift was not found.");
+    if (shift.status !== "OPEN") throw new IndustryDomainError("INVALID_STATE", "Cash shift is already closed.");
+    const receipts = await tx.payment.aggregate({
+      where: { workspaceId: context.workspaceId, paymentDate: { gte: shift.openedAt }, customerId: { not: null }, isReversed: false, method: "CASH" },
+      _sum: { netAmount: true, amount: true },
+    });
+    const supplierCash = await tx.payment.aggregate({
+      where: { workspaceId: context.workspaceId, paymentDate: { gte: shift.openedAt }, supplierId: { not: null }, isReversed: false, method: "CASH" },
+      _sum: { netAmount: true, amount: true },
+    });
+    const expectedCash = Number(shift.openingCash) + Number(receipts._sum.netAmount ?? receipts._sum.amount ?? 0) - Number(supplierCash._sum.netAmount ?? supplierCash._sum.amount ?? 0);
+    const variance = closingCash - expectedCash;
+    await tx.$executeRaw`
+      UPDATE "cash_shifts" SET "status"='CLOSED', "closedAt"=now(), "closedById"=${context.userId ?? null}::uuid,
+        "expectedCash"=${expectedCash}, "closingCash"=${closingCash}, "variance"=${variance}, "notes"=COALESCE(${notes?.trim() || null}, "notes")
+      WHERE "id"=${shiftId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
+    `;
+    return { id: shiftId, expectedCash, closingCash, variance };
+  });
+}
+
+// ---------------- Warehouses / Manufacturing ----------------
+
+export async function createWarehouse(context: IndustryContext, input: { name: string; code: string; address?: string; isDefault?: boolean }) {
+  assertManager(context);
+  await requireWorkspaceModule(context.workspaceId, "inventory");
+  return db.$transaction(async (tx) => {
+    if (input.isDefault) await tx.$executeRaw`UPDATE "warehouses" SET "isDefault"=false, "updatedAt"=now() WHERE "workspaceId"=${context.workspaceId}::uuid`;
+    const rows = await tx.$queryRaw<Array<{ id: string; name: string; code: string; isDefault: boolean }>>`
+      INSERT INTO "warehouses" ("workspaceId", "name", "code", "address", "isDefault")
+      VALUES (${context.workspaceId}::uuid, ${input.name.trim()}, ${input.code.trim().toUpperCase()}, ${input.address?.trim() || null}, ${Boolean(input.isDefault)})
+      RETURNING "id", "name", "code", "isDefault"
+    `;
+    return rows[0]!;
+  });
+}
+
+export async function transferWarehouseStock(context: IndustryContext, input: { productId: string; fromWarehouseId: string; toWarehouseId: string; quantity: number }) {
+  await requireWorkspaceModule(context.workspaceId, "inventory");
+  if (input.quantity <= 0 || input.fromWarehouseId === input.toWarehouseId) throw new IndustryDomainError("INVALID_STATE", "A positive quantity and two different warehouses are required.");
+  return db.$transaction(async (tx) => {
+    const warehouses = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "warehouses" WHERE "workspaceId"=${context.workspaceId}::uuid AND "id" IN (${input.fromWarehouseId}::uuid, ${input.toWarehouseId}::uuid) AND "isActive"=true
+    `;
+    if (warehouses.length !== 2) throw new IndustryDomainError("NOT_FOUND", "Warehouse was not found in this workspace.");
+    const source = await tx.$queryRaw<Array<{ quantity: Prisma.Decimal }>>`
+      SELECT "quantity" FROM "warehouse_stocks" WHERE "workspaceId"=${context.workspaceId}::uuid AND "warehouseId"=${input.fromWarehouseId}::uuid AND "productId"=${input.productId}::uuid FOR UPDATE
+    `;
+    if (Number(source[0]?.quantity ?? 0) < input.quantity) throw new IndustryDomainError("INSUFFICIENT_STOCK", "Not enough stock in the source warehouse.");
+    await tx.$executeRaw`UPDATE "warehouse_stocks" SET "quantity"="quantity"-${input.quantity}, "updatedAt"=now() WHERE "workspaceId"=${context.workspaceId}::uuid AND "warehouseId"=${input.fromWarehouseId}::uuid AND "productId"=${input.productId}::uuid`;
+    await tx.$executeRaw`
+      INSERT INTO "warehouse_stocks" ("workspaceId", "warehouseId", "productId", "quantity") VALUES (${context.workspaceId}::uuid, ${input.toWarehouseId}::uuid, ${input.productId}::uuid, ${input.quantity})
+      ON CONFLICT ("warehouseId", "productId") DO UPDATE SET "quantity"="warehouse_stocks"."quantity"+EXCLUDED."quantity", "updatedAt"=now()
+    `;
+    return { ...input };
+  });
+}
+
+export async function createBom(context: IndustryContext, input: { name: string; finishedProductId: string; outputQuantity?: number; version?: number; notes?: string; items: Array<{ materialProductId: string; quantity: number; wastagePercent?: number }> }) {
+  assertManager(context);
+  await requireWorkspaceModule(context.workspaceId, "manufacturing");
+  if (!input.items.length) throw new IndustryDomainError("INVALID_STATE", "A BOM needs at least one material.");
+  const outputQuantity = input.outputQuantity ?? 1;
+  const version = input.version ?? 1;
+  return db.$transaction(async (tx) => {
+    const ids = [input.finishedProductId, ...input.items.map((item) => item.materialProductId)];
+    const products = await tx.product.count({ where: { workspaceId: context.workspaceId, id: { in: ids } } });
+    if (products !== new Set(ids).size) throw new IndustryDomainError("NOT_FOUND", "One or more BOM products do not belong to this workspace.");
+    const rows = await tx.$queryRaw<Array<{ id: string }>>`
+      INSERT INTO "boms" ("workspaceId", "finishedProductId", "name", "version", "outputQuantity", "notes")
+      VALUES (${context.workspaceId}::uuid, ${input.finishedProductId}::uuid, ${input.name.trim()}, ${version}, ${outputQuantity}, ${input.notes?.trim() || null})
+      RETURNING "id"
+    `;
+    const bom = rows[0]!;
+    for (const item of input.items) {
+      if (item.quantity <= 0) throw new IndustryDomainError("INVALID_STATE", "BOM material quantity must be positive.");
+      const wastage = item.wastagePercent ?? 0;
+      await tx.$executeRaw`INSERT INTO "bom_items" ("bomId", "materialProductId", "quantity", "wastagePercent") VALUES (${bom.id}::uuid, ${item.materialProductId}::uuid, ${item.quantity}, ${wastage})`;
+    }
+    return bom;
+  });
+}
+
+export async function createProductionRun(context: IndustryContext, input: { bomId: string; runNumber: string; plannedOutput: number; notes?: string }) {
+  await requireWorkspaceModule(context.workspaceId, "manufacturing");
+  if (input.plannedOutput <= 0) throw new IndustryDomainError("INVALID_STATE", "Planned output must be positive.");
+  const bom = await db.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "boms" WHERE "id"=${input.bomId}::uuid AND "workspaceId"=${context.workspaceId}::uuid AND "isActive"=true`;
+  if (!bom[0]) throw new IndustryDomainError("NOT_FOUND", "BOM was not found.");
+  const rows = await db.$queryRaw<Array<{ id: string; status: string }>>`
+    INSERT INTO "production_runs" ("workspaceId", "bomId", "runNumber", "plannedOutput", "notes")
+    VALUES (${context.workspaceId}::uuid, ${input.bomId}::uuid, ${input.runNumber.trim()}, ${input.plannedOutput}, ${input.notes?.trim() || null})
+    RETURNING "id", "status"
+  `;
+  return rows[0]!;
+}
+
+export async function approveProductionRun(context: IndustryContext, productionRunId: string) {
+  assertManager(context);
+  await requireWorkspaceModule(context.workspaceId, "manufacturing");
+  const changed = await db.$executeRaw`
+    UPDATE "production_runs" SET "status"='APPROVED', "approvedById"=${context.userId ?? null}::uuid, "approvedAt"=now(), "updatedAt"=now()
+    WHERE "id"=${productionRunId}::uuid AND "workspaceId"=${context.workspaceId}::uuid AND "status"='DRAFT'
+  `;
+  if (!changed) throw new IndustryDomainError("INVALID_STATE", "Only draft production runs can be approved.");
+  return { id: productionRunId, status: "APPROVED" as const };
+}
+
+export async function postProductionRun(context: IndustryContext, productionRunId: string, actualOutput?: number, wastageQuantity = 0) {
+  assertManager(context);
+  await requireWorkspaceModule(context.workspaceId, "manufacturing");
+  return db.$transaction(async (tx) => {
+    const runs = await tx.$queryRaw<Array<{ id: string; status: string; plannedOutput: Prisma.Decimal; bomId: string }>>`
+      SELECT "id", "status", "plannedOutput", "bomId" FROM "production_runs"
+      WHERE "id"=${productionRunId}::uuid AND "workspaceId"=${context.workspaceId}::uuid FOR UPDATE
+    `;
+    const run = runs[0];
+    if (!run) throw new IndustryDomainError("NOT_FOUND", "Production run was not found.");
+    if (run.status !== "APPROVED") throw new IndustryDomainError("INVALID_STATE", "Production run must be approved before posting.");
+    const output = actualOutput ?? Number(run.plannedOutput);
+    if (output <= 0 || wastageQuantity < 0) throw new IndustryDomainError("INVALID_STATE", "Actual output must be positive and wastage cannot be negative.");
+
+    const boms = await tx.$queryRaw<Array<{ finishedProductId: string; outputQuantity: Prisma.Decimal }>>`
+      SELECT "finishedProductId", "outputQuantity" FROM "boms" WHERE "id"=${run.bomId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
+    `;
+    const bom = boms[0];
+    if (!bom) throw new IndustryDomainError("NOT_FOUND", "BOM was not found.");
+    const items = await tx.$queryRaw<Array<{ materialProductId: string; quantity: Prisma.Decimal; wastagePercent: Prisma.Decimal }>>`
+      SELECT "materialProductId", "quantity", "wastagePercent" FROM "bom_items" WHERE "bomId"=${run.bomId}::uuid
+    `;
+    const factor = output / Number(bom.outputQuantity);
+    let materialCost = 0;
+    for (const item of items) {
+      const planned = Number(item.quantity) * factor;
+      const required = planned * (1 + Number(item.wastagePercent) / 100);
+      const product = await tx.product.findFirst({ where: { id: item.materialProductId, workspaceId: context.workspaceId }, select: { id: true, stockQuantity: true, costPrice: true } });
+      if (!product) throw new IndustryDomainError("NOT_FOUND", "A BOM material no longer exists.");
+      if (Number(product.stockQuantity) < required) throw new IndustryDomainError("INSUFFICIENT_STOCK", `Insufficient stock for production material ${product.id}.`);
+      await tx.product.update({ where: { id: product.id }, data: { stockQuantity: { decrement: required } } });
+      await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: product.id, type: "ADJUSTMENT", quantityChanged: -required, unitCost: product.costPrice, reference: `PRODUCTION:${productionRunId}` } });
+      await tx.$executeRaw`
+        INSERT INTO "production_consumptions" ("productionRunId", "productId", "plannedQuantity", "actualQuantity", "unitCost")
+        VALUES (${productionRunId}::uuid, ${product.id}::uuid, ${planned}, ${required}, ${Number(product.costPrice)})
+      `;
+      materialCost += required * Number(product.costPrice);
+    }
+
+    const finished = await tx.product.findFirst({ where: { id: bom.finishedProductId, workspaceId: context.workspaceId }, select: { id: true, stockQuantity: true, costPrice: true } });
+    if (!finished) throw new IndustryDomainError("NOT_FOUND", "Finished product no longer exists.");
+    const unitCost = materialCost / output;
+    const oldQty = Number(finished.stockQuantity);
+    const newQty = oldQty + output;
+    const weightedCost = newQty > 0 ? ((oldQty * Number(finished.costPrice)) + materialCost) / newQty : unitCost;
+    await tx.product.update({ where: { id: finished.id }, data: { stockQuantity: { increment: output }, costPrice: weightedCost } });
+    await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: finished.id, type: "ADJUSTMENT", quantityChanged: output, unitCost, reference: `PRODUCTION:${productionRunId}` } });
+    await tx.$executeRaw`
+      UPDATE "production_runs" SET "status"='POSTED', "actualOutput"=${output}, "wastageQuantity"=${wastageQuantity}, "postedById"=${context.userId ?? null}::uuid, "postedAt"=now(), "updatedAt"=now()
+      WHERE "id"=${productionRunId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
+    `;
+    return { id: productionRunId, status: "POSTED" as const, actualOutput: output, materialCost, unitCost };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+// ---------------- Services ----------------
+
+export async function createServiceQuote(context: IndustryContext, input: { customerId: string; quoteNumber: string; validUntil?: Date; discount?: number; tax?: number; notes?: string; items: Array<{ description: string; quantity?: number; unitPrice: number }> }) {
+  await requireWorkspaceModule(context.workspaceId, "services");
+  if (!input.items.length) throw new IndustryDomainError("INVALID_STATE", "A quotation needs at least one line.");
+  const customer = await db.customer.findFirst({ where: { id: input.customerId, workspaceId: context.workspaceId }, select: { id: true } });
+  if (!customer) throw new IndustryDomainError("NOT_FOUND", "Client was not found in this workspace.");
+  const subtotal = input.items.reduce((sum, item) => sum + (item.quantity ?? 1) * item.unitPrice, 0);
+  const discount = input.discount ?? 0;
+  const tax = input.tax ?? 0;
+  const total = subtotal - discount + tax;
+  if (total < 0) throw new IndustryDomainError("INVALID_STATE", "Quotation total cannot be negative.");
+  return db.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<Array<{ id: string; quoteNumber: string; total: Prisma.Decimal; status: string }>>`
+      INSERT INTO "service_quotes" ("workspaceId", "customerId", "quoteNumber", "subtotal", "discount", "tax", "total", "validUntil", "notes")
+      VALUES (${context.workspaceId}::uuid, ${input.customerId}::uuid, ${input.quoteNumber.trim()}, ${subtotal}, ${discount}, ${tax}, ${total}, ${input.validUntil ?? null}, ${input.notes?.trim() || null})
+      RETURNING "id", "quoteNumber", "total", "status"
+    `;
+    for (const item of input.items) {
+      const quantity = item.quantity ?? 1;
+      if (quantity <= 0 || item.unitPrice < 0) throw new IndustryDomainError("INVALID_STATE", "Quotation quantity must be positive and price cannot be negative.");
+      await tx.$executeRaw`
+        INSERT INTO "service_quote_items" ("serviceQuoteId", "description", "quantity", "unitPrice", "lineTotal")
+        VALUES (${rows[0]!.id}::uuid, ${item.description.trim()}, ${quantity}, ${item.unitPrice}, ${quantity * item.unitPrice})
+      `;
+    }
+    return { ...rows[0]!, total: Number(rows[0]!.total) };
+  });
+}
+
+export async function setServiceQuoteStatus(context: IndustryContext, quoteId: string, status: "DRAFT" | "SENT" | "ACCEPTED" | "REJECTED" | "EXPIRED" | "CONVERTED") {
+  await requireWorkspaceModule(context.workspaceId, "services");
+  const changed = await db.$executeRaw`UPDATE "service_quotes" SET "status"=${status}, "updatedAt"=now() WHERE "id"=${quoteId}::uuid AND "workspaceId"=${context.workspaceId}::uuid`;
+  if (!changed) throw new IndustryDomainError("NOT_FOUND", "Quotation was not found.");
+  return { id: quoteId, status };
+}
+
+export async function createServiceJob(context: IndustryContext, input: { customerId: string; serviceQuoteId?: string; jobNumber: string; title: string; description?: string; assignedToId?: string; scheduledAt?: Date }) {
+  await requireWorkspaceModule(context.workspaceId, "services");
+  const customer = await db.customer.findFirst({ where: { id: input.customerId, workspaceId: context.workspaceId }, select: { id: true } });
+  if (!customer) throw new IndustryDomainError("NOT_FOUND", "Client was not found in this workspace.");
+  const rows = await db.$queryRaw<Array<{ id: string; jobNumber: string; status: string }>>`
+    INSERT INTO "service_jobs" ("workspaceId", "customerId", "serviceQuoteId", "jobNumber", "title", "description", "assignedToId", "scheduledAt")
+    VALUES (${context.workspaceId}::uuid, ${input.customerId}::uuid, ${input.serviceQuoteId ?? null}::uuid, ${input.jobNumber.trim()}, ${input.title.trim()}, ${input.description?.trim() || null}, ${input.assignedToId ?? null}::uuid, ${input.scheduledAt ?? null})
+    RETURNING "id", "jobNumber", "status"
+  `;
+  if (input.serviceQuoteId) await setServiceQuoteStatus(context, input.serviceQuoteId, "CONVERTED");
+  return rows[0]!;
+}
+
+export async function updateServiceJobStatus(context: IndustryContext, jobId: string, status: "OPEN" | "IN_PROGRESS" | "WAITING_CUSTOMER" | "COMPLETED" | "CANCELLED") {
+  await requireWorkspaceModule(context.workspaceId, "services");
+  const changed = await db.$executeRaw`
+    UPDATE "service_jobs" SET "status"=${status}, "completedAt"=CASE WHEN ${status}='COMPLETED' THEN COALESCE("completedAt", now()) ELSE "completedAt" END, "updatedAt"=now()
+    WHERE "id"=${jobId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
+  `;
+  if (!changed) throw new IndustryDomainError("NOT_FOUND", "Service job was not found.");
+  return { id: jobId, status };
+}
+
+export async function getIndustryHealth(workspaceId: string) {
+  const [modules, restaurantTables, recipes, kitchenOpen, boms, productionOpen, warehouses, quotes, jobs] = await Promise.all([
+    listWorkspaceModules(workspaceId),
+    db.$queryRaw<Array<{ count: bigint }>>`SELECT count(*)::bigint AS "count" FROM "restaurant_tables" WHERE "workspaceId"=${workspaceId}::uuid`,
+    db.$queryRaw<Array<{ count: bigint }>>`SELECT count(*)::bigint AS "count" FROM "recipes" WHERE "workspaceId"=${workspaceId}::uuid AND "isActive"=true`,
+    db.$queryRaw<Array<{ count: bigint }>>`SELECT count(*)::bigint AS "count" FROM "kitchen_tickets" WHERE "workspaceId"=${workspaceId}::uuid AND "status" IN ('QUEUED','PREPARING','READY')`,
+    db.$queryRaw<Array<{ count: bigint }>>`SELECT count(*)::bigint AS "count" FROM "boms" WHERE "workspaceId"=${workspaceId}::uuid AND "isActive"=true`,
+    db.$queryRaw<Array<{ count: bigint }>>`SELECT count(*)::bigint AS "count" FROM "production_runs" WHERE "workspaceId"=${workspaceId}::uuid AND "status" IN ('DRAFT','APPROVED')`,
+    db.$queryRaw<Array<{ count: bigint }>>`SELECT count(*)::bigint AS "count" FROM "warehouses" WHERE "workspaceId"=${workspaceId}::uuid AND "isActive"=true`,
+    db.$queryRaw<Array<{ count: bigint }>>`SELECT count(*)::bigint AS "count" FROM "service_quotes" WHERE "workspaceId"=${workspaceId}::uuid`,
+    db.$queryRaw<Array<{ count: bigint }>>`SELECT count(*)::bigint AS "count" FROM "service_jobs" WHERE "workspaceId"=${workspaceId}::uuid AND "status" NOT IN ('COMPLETED','CANCELLED')`,
+  ]);
+  return {
+    modules,
+    restaurant: { tables: Number(restaurantTables[0]?.count ?? 0), recipes: Number(recipes[0]?.count ?? 0), openKitchenTickets: Number(kitchenOpen[0]?.count ?? 0) },
+    manufacturing: { boms: Number(boms[0]?.count ?? 0), openProductionRuns: Number(productionOpen[0]?.count ?? 0), warehouses: Number(warehouses[0]?.count ?? 0) },
+    services: { quotations: Number(quotes[0]?.count ?? 0), openJobs: Number(jobs[0]?.count ?? 0) },
+  };
+}
