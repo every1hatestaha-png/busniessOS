@@ -32,6 +32,8 @@ export async function getPaymentReceipt(workspaceId: string, id: string) {
     id: payment.id,
     documentNumber: payment.documentNumber ?? payment.reference ?? "Payment Receipt",
     amount: Number(payment.amount),
+    netAmount: Number(payment.netAmount ?? payment.amount),
+    withholdingTaxAmount: Number(payment.withholdingTaxAmount),
     allocatedAmount: Number(allocatedAmount),
     unallocatedAmount: Number(payment.amount.minus(allocatedAmount)),
     method: payment.method,
@@ -50,13 +52,15 @@ export async function getPaymentReceipt(workspaceId: string, id: string) {
 export async function recordPayment(context: ServiceContext, input: PaymentInput) {
   const data = paymentSchema.parse(input);
   const amount = new Prisma.Decimal(data.amount);
+  const withholdingTaxAmount = new Prisma.Decimal(data.withholdingTaxAmount ?? 0);
+  const netAmount = amount.minus(withholdingTaxAmount);
   return withSerializableRetry(async (tx) => {
     if (data.idempotencyKey) {
-      const existing = await tx.payment.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true, customerId: true, supplierId: true, amount: true, cashBankAccountId: true, method: true, invoiceId: true, allocations: { select: { invoiceId: true, amount: true } } } });
+      const existing = await tx.payment.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true, customerId: true, supplierId: true, amount: true, withholdingTaxAmount: true, cashBankAccountId: true, method: true, invoiceId: true, allocations: { select: { invoiceId: true, amount: true } } } });
       if (existing) {
         const requested = data.allocations?.length ? data.allocations : data.invoiceId ? [{ invoiceId: data.invoiceId, amount: data.amount }] : [];
         const sameAllocations = requested.length === existing.allocations.length && requested.every((entry) => existing.allocations.some((allocation) => allocation.invoiceId === entry.invoiceId && allocation.amount.equals(entry.amount)));
-        if (existing.supplierId || existing.customerId !== data.customerId || !existing.amount.equals(data.amount) || existing.cashBankAccountId !== data.cashBankAccountId || existing.method !== data.method || !sameAllocations) throw new PaymentDomainError("This idempotency key was already used for a different payment request.");
+        if (existing.supplierId || existing.customerId !== data.customerId || !existing.amount.equals(data.amount) || !existing.withholdingTaxAmount.equals(withholdingTaxAmount) || existing.cashBankAccountId !== data.cashBankAccountId || existing.method !== data.method || !sameAllocations) throw new PaymentDomainError("This idempotency key was already used for a different payment request.");
         return { id: existing.id };
       }
     }
@@ -65,13 +69,11 @@ export async function recordPayment(context: ServiceContext, input: PaymentInput
     if (!data.cashBankAccountId) throw new PaymentDomainError("Select a cash/bank account for this receipt.");
     const cashBankAccount = await tx.cashBankAccount.findFirst({ where: { id: data.cashBankAccountId, workspaceId: context.workspaceId, isActive: true }, select: { id: true } });
     if (!cashBankAccount) throw new PaymentDomainError("Cash/bank account is unavailable.");
-    // Advance / unallocated payments are allowed: a negative currentBalance means the customer
-    // holds credit on account that will be applied against future invoices.
     const requestedAllocations = data.allocations?.length ? data.allocations : data.invoiceId ? [{ invoiceId: data.invoiceId, amount: data.amount }] : [];
     let invoices: { id: string; amount: Prisma.Decimal; paidAmount: Prisma.Decimal; creditApplied: Prisma.Decimal; salesOrderId: string | null }[] = [];
     if (requestedAllocations.length) {
       const allocationTotal = requestedAllocations.reduce((sum, entry) => sum.plus(entry.amount), new Prisma.Decimal(0));
-      if (!allocationTotal.equals(amount)) throw new PaymentDomainError("Payment allocations must equal the payment amount.");
+      if (!allocationTotal.equals(amount)) throw new PaymentDomainError("Payment allocations must equal the gross payment amount.");
       const invoiceIds = requestedAllocations.map((entry) => entry.invoiceId);
       if (new Set(invoiceIds).size !== invoiceIds.length) throw new PaymentDomainError("Duplicate invoice allocations are not allowed.");
       invoices = await tx.invoice.findMany({ where: { id: { in: invoiceIds }, workspaceId: context.workspaceId, customerId: customer.id, status: { notIn: ["CANCELLED", "DRAFT"] } }, select: { id: true, amount: true, paidAmount: true, creditApplied: true, salesOrderId: true } });
@@ -82,10 +84,31 @@ export async function recordPayment(context: ServiceContext, input: PaymentInput
       }
     }
     const paymentNumber = await nextDocumentNumber(tx, context.workspaceId, "PAYMENT_RECEIPT");
-    const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, invoiceId: requestedAllocations.length === 1 ? requestedAllocations[0].invoiceId : null, cashBankAccountId: cashBankAccount.id, documentNumber: paymentNumber, idempotencyKey: data.idempotencyKey, amount, netAmount: amount, method: data.method, reference: data.reference || null, notes: data.notes || null, paymentDate: data.paymentDate }, select: { id: true } });
-    await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, type: "PAYMENT_RECEIVED", credit: amount, description: `Payment ${paymentNumber}`, referenceId: payment.id, date: data.paymentDate } });
+    const payment = await tx.payment.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, invoiceId: requestedAllocations.length === 1 ? requestedAllocations[0].invoiceId : null, cashBankAccountId: cashBankAccount.id, documentNumber: paymentNumber, idempotencyKey: data.idempotencyKey, amount, netAmount, withholdingTaxAmount, method: data.method, reference: data.reference || null, notes: data.notes || null, paymentDate: data.paymentDate }, select: { id: true } });
+    await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, type: "PAYMENT_RECEIVED", credit: amount, description: withholdingTaxAmount.greaterThan(0) ? `Payment ${paymentNumber} including WHT ${withholdingTaxAmount.toFixed(2)}` : `Payment ${paymentNumber}`, referenceId: payment.id, date: data.paymentDate } });
     await tx.customer.update({ where: { id: customer.id, workspaceId: context.workspaceId }, data: { currentBalance: { decrement: amount } } });
-    await postCustomerPaymentToGeneralLedger(tx, { workspaceId: context.workspaceId, paymentId: payment.id, documentNo: paymentNumber, date: data.paymentDate, amount, cashBankAccountId: cashBankAccount.id });
+
+    if (netAmount.greaterThan(0)) {
+      await postCustomerPaymentToGeneralLedger(tx, { workspaceId: context.workspaceId, paymentId: payment.id, documentNo: paymentNumber, date: data.paymentDate, amount: netAmount, cashBankAccountId: cashBankAccount.id });
+    }
+    if (withholdingTaxAmount.greaterThan(0)) {
+      const [accountsReceivable, withholdingTaxReceivable] = await Promise.all([
+        tx.account.findUnique({ where: { workspaceId_systemCode: { workspaceId: context.workspaceId, systemCode: "ACCOUNTS_RECEIVABLE" } }, select: { id: true } }),
+        tx.account.upsert({
+          where: { workspaceId_code: { workspaceId: context.workspaceId, code: "1150" } },
+          create: { workspaceId: context.workspaceId, code: "1150", name: "Withholding Tax Receivable", category: "ASSET", normalBalance: "DEBIT", isActive: true },
+          update: {},
+          select: { id: true, category: true },
+        }),
+      ]);
+      if (!accountsReceivable) throw new PaymentDomainError("Accounts Receivable account is unavailable.");
+      if (withholdingTaxReceivable.category !== "ASSET") throw new PaymentDomainError("Account code 1150 must be an asset account for Withholding Tax Receivable.");
+      await tx.generalLedgerEntry.createMany({ data: [
+        { workspaceId: context.workspaceId, accountId: withholdingTaxReceivable.id, sourceType: "RECEIPT", sourceId: payment.id, documentNo: paymentNumber, date: data.paymentDate, narration: `Customer WHT deducted on ${paymentNumber}`, debit: withholdingTaxAmount, credit: 0 },
+        { workspaceId: context.workspaceId, accountId: accountsReceivable.id, sourceType: "RECEIPT", sourceId: payment.id, documentNo: paymentNumber, date: data.paymentDate, narration: `Customer WHT deducted on ${paymentNumber}`, debit: 0, credit: withholdingTaxAmount },
+      ] });
+    }
+
     for (const allocation of requestedAllocations) {
       const invoice = invoices.find((entry) => entry.id === allocation.invoiceId)!;
       const allocationAmount = new Prisma.Decimal(allocation.amount);
@@ -95,7 +118,7 @@ export async function recordPayment(context: ServiceContext, input: PaymentInput
       await tx.invoice.update({ where: { id: invoice.id, workspaceId: context.workspaceId }, data: { paidAmount, status: settledAmount.equals(invoice.amount) ? "PAID" : "PARTIALLY_PAID" } });
       if (invoice.salesOrderId) await tx.salesOrder.update({ where: { id: invoice.salesOrderId, workspaceId: context.workspaceId }, data: { paidAmount: { increment: allocationAmount }, balanceAmount: { decrement: allocationAmount } } });
     }
-    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "customer.payment_recorded", entityType: "Payment", entityId: payment.id, metadata: { amount: data.amount } });
+    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "customer.payment_recorded", entityType: "Payment", entityId: payment.id, metadata: { amount: data.amount, netAmount: netAmount.toString(), withholdingTaxAmount: withholdingTaxAmount.toString() } });
     return { id: payment.id };
   });
 }
@@ -132,8 +155,6 @@ export async function reverseCustomerPayment(context: ServiceContext, paymentId:
     }
     if (!payment.cashBankAccountId) throw new PaymentDomainError("Payment has no cash/bank account and cannot be safely reversed.");
 
-    // Standalone receipts post GL entries with sourceId = payment.id. Payments
-    // captured during createSale are posted under the sale id and must use sale cancellation.
     const standalonePostingCount = await tx.generalLedgerEntry.count({
       where: { workspaceId: context.workspaceId, sourceType: "RECEIPT", sourceId: payment.id, reversalOfId: null },
     });
@@ -142,6 +163,7 @@ export async function reverseCustomerPayment(context: ServiceContext, paymentId:
     const now = new Date();
     const reversalNumber = await nextDocumentNumber(tx, context.workspaceId, "PAYMENT_RECEIPT");
     const sourceReference = payment.documentNumber ?? payment.reference ?? "Payment Receipt";
+    const paymentNetAmount = payment.netAmount ?? payment.amount.minus(payment.withholdingTaxAmount);
     const reversal = await tx.payment.create({
       data: {
         workspaceId: context.workspaceId,
@@ -150,7 +172,8 @@ export async function reverseCustomerPayment(context: ServiceContext, paymentId:
         cashBankAccountId: payment.cashBankAccountId,
         documentNumber: reversalNumber,
         amount: payment.amount,
-        netAmount: payment.amount,
+        netAmount: paymentNetAmount,
+        withholdingTaxAmount: payment.withholdingTaxAmount,
         method: payment.method,
         reference: `REV-${sourceReference}`,
         notes: `Payment reversal: ${cleanReason}`,
@@ -180,10 +203,12 @@ export async function reverseCustomerPayment(context: ServiceContext, paymentId:
       where: { id: payment.customerId, workspaceId: context.workspaceId },
       data: { currentBalance: { increment: payment.amount } },
     });
-    await tx.cashBankAccount.update({
-      where: { id: payment.cashBankAccountId, workspaceId: context.workspaceId },
-      data: { currentBalance: { decrement: payment.amount } },
-    });
+    if (paymentNetAmount.greaterThan(0)) {
+      await tx.cashBankAccount.update({
+        where: { id: payment.cashBankAccountId, workspaceId: context.workspaceId },
+        data: { currentBalance: { decrement: paymentNetAmount } },
+      });
+    }
 
     for (const allocation of payment.allocations) {
       if (!allocation.invoiceId || !allocation.invoice) continue;
@@ -225,7 +250,7 @@ export async function reverseCustomerPayment(context: ServiceContext, paymentId:
       action: "customer.payment_reversed",
       entityType: "Payment",
       entityId: payment.id,
-      metadata: { reversalId: reversal.id, reversalNumber, reason: cleanReason, amount: payment.amount.toString() },
+      metadata: { reversalId: reversal.id, reversalNumber, reason: cleanReason, amount: payment.amount.toString(), netAmount: paymentNetAmount.toString(), withholdingTaxAmount: payment.withholdingTaxAmount.toString() },
     });
 
     return { id: reversal.id, alreadyReversed: false as const };
