@@ -22,6 +22,51 @@ export function normalizeDcNumber(value: string) {
   return normalized;
 }
 
+function collisionCandidate(base: string, attempt: number) {
+  if (attempt === 0) return base;
+  const numeric = /^DC-(\d+)$/.exec(base);
+  if (numeric) {
+    const width = numeric[1].length;
+    return `DC-${String(Number(numeric[1]) + attempt).padStart(width, "0")}`;
+  }
+  return `${base.slice(0, 27)}-${String(attempt).padStart(4, "0")}`;
+}
+
+async function reserveInvoiceDocumentMetadata(
+  tx: Prisma.TransactionClient,
+  workspaceId: string,
+  invoiceId: string,
+  invoiceNumber: string,
+) {
+  const existing = await tx.$queryRaw<Array<{ dcNumber: string; notes: string | null }>>`
+    SELECT "dcNumber", "notes"
+    FROM "invoice_document_metadata"
+    WHERE "workspaceId" = ${workspaceId} AND "invoiceId" = ${invoiceId}
+    LIMIT 1
+  `;
+  if (existing[0]) return existing[0];
+
+  const base = deriveDcNumber(invoiceNumber);
+  for (let attempt = 0; attempt <= 9999; attempt += 1) {
+    const dcNumber = collisionCandidate(base, attempt);
+    const inserted = await tx.$executeRaw`
+      INSERT INTO "invoice_document_metadata" ("invoiceId", "workspaceId", "dcNumber", "createdAt", "updatedAt")
+      VALUES (${invoiceId}, ${workspaceId}, ${dcNumber}, NOW(), NOW())
+      ON CONFLICT DO NOTHING
+    `;
+    if (inserted === 1) return { dcNumber, notes: null };
+
+    const byInvoice = await tx.$queryRaw<Array<{ dcNumber: string; notes: string | null }>>`
+      SELECT "dcNumber", "notes"
+      FROM "invoice_document_metadata"
+      WHERE "workspaceId" = ${workspaceId} AND "invoiceId" = ${invoiceId}
+      LIMIT 1
+    `;
+    if (byInvoice[0]) return byInvoice[0];
+  }
+  throw new InvoiceDocumentError("A unique DC number could not be allocated.");
+}
+
 export async function getInvoiceDocumentMetadata(workspaceId: string, invoiceId: string, invoiceNumber: string) {
   const rows = await db.$queryRaw<Array<{ dcNumber: string; notes: string | null }>>`
     SELECT "dcNumber", "notes"
@@ -29,7 +74,8 @@ export async function getInvoiceDocumentMetadata(workspaceId: string, invoiceId:
     WHERE "workspaceId" = ${workspaceId} AND "invoiceId" = ${invoiceId}
     LIMIT 1
   `;
-  return rows[0] ?? { dcNumber: deriveDcNumber(invoiceNumber), notes: null };
+  if (rows[0]) return rows[0];
+  return withSerializableRetry((tx) => reserveInvoiceDocumentMetadata(tx, workspaceId, invoiceId, invoiceNumber));
 }
 
 export async function updateInvoiceDocumentDetails(
