@@ -41,6 +41,22 @@ export function sanitizeProvisioningModules(value: string | string[] | null | un
   return [...new Set(raw.map((item) => item.trim()).filter((item): item is ProvisioningModuleKey => moduleSet.has(item)))];
 }
 
+export function resolveProvisioningModules(
+  modules: ProvisioningModuleKey[],
+  businessType?: BuilderBusinessType | null,
+): ProvisioningModuleKey[] {
+  const resolved = new Set<ProvisioningModuleKey>(modules);
+
+  if (resolved.has("restaurant") || resolved.has("wholesale") || resolved.has("manufacturing")) {
+    resolved.add("inventory");
+  }
+  if (resolved.has("manufacturing")) resolved.add("wholesale");
+  if (businessType === "services") resolved.add("services");
+  if (businessType === "restaurant" && resolved.has("restaurant")) resolved.add("inventory");
+
+  return PROVISIONING_MODULE_KEYS.filter((moduleKey) => resolved.has(moduleKey));
+}
+
 export function sanitizeBilling(value: string | null | undefined): ProvisioningBilling {
   return value === "annual" ? "annual" : "monthly";
 }
@@ -56,7 +72,7 @@ export function buildProvisioningQuery(input: {
 }) {
   const params = new URLSearchParams();
   params.set("business", input.businessType);
-  params.set("modules", sanitizeProvisioningModules(input.modules).join(","));
+  params.set("modules", resolveProvisioningModules(sanitizeProvisioningModules(input.modules), input.businessType).join(","));
   params.set("billing", sanitizeBilling(input.billing));
   return params.toString();
 }
