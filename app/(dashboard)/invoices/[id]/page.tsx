@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Pencil, Truck } from "lucide-react";
 
 import { StatusBadge } from "@/components/business/status-badge";
 import { PrintButton } from "@/components/invoices/print-button";
 import { RecordPaymentForm } from "@/components/payments/record-payment-form";
+import { CancelSaleButton } from "@/components/sales/cancel-sale-button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { deliveryChallanNumber } from "@/lib/document-references";
 import { requireWorkspace } from "@/lib/server/auth";
 import { getCashBankAccounts } from "@/lib/server/accounting";
 import { getInvoice } from "@/lib/server/invoices";
@@ -25,21 +27,30 @@ function formatUnit(unit: string) {
   return unit.toLowerCase();
 }
 
+const actionLink = "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-medium hover:bg-neutral-50";
+
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { workspaceId, workspace, role } = await requireWorkspace();
   const canRecordPayments = canPerformAction(role, "payments.record");
+  const canManageFinancials = canPerformAction(role, "financial.manage");
   const [invoice, cashBankAccounts] = await Promise.all([
     getInvoice(workspaceId, id),
     canRecordPayments ? getCashBankAccounts(workspaceId) : Promise.resolve([]),
   ]);
   if (!invoice) notFound();
+  const dcNumber = deliveryChallanNumber(invoice.invoiceNumber);
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-6 print:max-w-none print:space-y-0">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between print:hidden">
-        <div><Link href="/invoices" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-neutral-500 hover:text-neutral-950"><ArrowLeft className="h-4 w-4" />Invoices</Link><div className="flex flex-wrap items-center gap-3"><h1 className="text-2xl font-bold tracking-tight md:text-3xl">{invoice.invoiceNumber}</h1><StatusBadge status={invoice.status} /></div><p className="mt-1 text-sm text-neutral-500">Issued to {invoice.customer.companyName}</p></div>
-        <PrintButton label="Print invoice" />
+        <div><Link href="/invoices" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-neutral-500 hover:text-neutral-950"><ArrowLeft className="h-4 w-4" />Invoices</Link><div className="flex flex-wrap items-center gap-3"><h1 className="text-2xl font-bold tracking-tight md:text-3xl">{invoice.invoiceNumber}</h1><StatusBadge status={invoice.status} /></div><p className="mt-1 text-sm text-neutral-500">Issued to {invoice.customer.companyName} · DC {dcNumber}</p></div>
+        <div className="flex flex-wrap items-center gap-2">
+          {invoice.order && invoice.status !== "CANCELLED" && canManageFinancials && <Link href={`/sales/${invoice.order.id}/edit`} className={actionLink}><Pencil className="h-4 w-4" />Edit invoice</Link>}
+          {invoice.order && <Link href={`/invoices/${invoice.id}/gate-pass`} className={actionLink}><Truck className="h-4 w-4" />Gate Pass {dcNumber}</Link>}
+          <PrintButton label="Print invoice" />
+          {invoice.order && invoice.status !== "CANCELLED" && canManageFinancials && <CancelSaleButton saleId={invoice.order.id} orderNumber={invoice.order.number} />}
+        </div>
       </div>
 
       <div className="grid items-start gap-6 2xl:grid-cols-[minmax(0,1fr)_360px] print:block">
@@ -47,7 +58,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           <header className="border-b border-neutral-200 p-6 sm:p-8">
             <div className="flex flex-col justify-between gap-6 sm:flex-row">
               <div><p className="text-xs font-bold uppercase tracking-[0.2em] text-neutral-400">Invoice</p><h2 className="mt-2 text-2xl font-bold">{workspace.name}</h2><div className="mt-2 space-y-0.5 text-sm text-neutral-500">{workspace.address && <p>{workspace.address}</p>}<p>{[workspace.city, workspace.country].filter(Boolean).join(", ")}</p>{workspace.phone && <p>{workspace.phone}</p>}{workspace.email && <p>{workspace.email}</p>}</div></div>
-              <div className="sm:text-right"><p className="font-mono text-lg font-bold">{invoice.invoiceNumber}</p><div className="mt-3 space-y-1 text-sm"><p><span className="text-neutral-500">Issued:</span> {formatDate(invoice.date)}</p><p><span className="text-neutral-500">Due:</span> {invoice.dueDate ? formatDate(invoice.dueDate) : "On receipt"}</p><div className="pt-1"><StatusBadge status={invoice.status} /></div></div></div>
+              <div className="sm:text-right"><p className="font-mono text-lg font-bold">{invoice.invoiceNumber}</p><div className="mt-3 space-y-1 text-sm"><p><span className="text-neutral-500">DC / Gate Pass:</span> <span className="font-mono font-semibold">{dcNumber}</span></p><p><span className="text-neutral-500">Issued:</span> {formatDate(invoice.date)}</p><p><span className="text-neutral-500">Due:</span> {invoice.dueDate ? formatDate(invoice.dueDate) : "On receipt"}</p><div className="pt-1"><StatusBadge status={invoice.status} /></div></div></div>
             </div>
           </header>
 
@@ -58,7 +69,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           </section>
 
           {invoice.status === "CANCELLED" && <div className="border-y-4 border-black p-3 text-center text-xl font-black tracking-[0.25em]">CANCELLED</div>}
-          <section data-document-totals className="flex justify-end border-t border-neutral-200 p-6 print:p-3 sm:p-8"><div className="w-full max-w-sm space-y-3 print:space-y-1 text-sm"><p className="hidden text-[9px] uppercase tracking-wide text-neutral-500 print:block">Invoice {invoice.invoiceNumber}</p>{invoice.order && <><div className="flex justify-between"><span className="text-neutral-500">Subtotal</span><span>{formatPKR(invoice.order.subtotal)}</span></div><div className="flex justify-between"><span className="text-neutral-500">Discount</span><span>- {formatPKR(invoice.order.discount)}</span></div><div className="flex justify-between"><span className="text-neutral-500">Taxable amount</span><span>{formatPKR(invoice.order.taxableAmount)}</span></div><div className="flex justify-between"><span className="text-neutral-500">GST ({invoice.order.gstRate}%)</span><span>{formatPKR(invoice.order.gstAmount)}</span></div></>}<div className="flex justify-between border-t pt-3 print:pt-1 text-base font-bold"><span>Invoice total</span><span>{formatPKR(invoice.total)}</span></div><div className="flex justify-between"><span className="text-neutral-500">Payments received</span><span className="text-emerald-700">{formatPKR(invoice.paid)}</span></div>{invoice.creditApplied > 0 && <div className="flex justify-between"><span className="text-neutral-500">Customer credit applied</span><span>{formatPKR(invoice.creditApplied)}</span></div>}<div className="flex justify-between rounded-lg bg-neutral-950 p-4 print:p-2 text-base font-bold text-white print:border print:border-neutral-300 print:bg-white print:text-black"><span>Balance due</span><span>{formatPKR(invoice.balance)}</span></div></div></section>
+          <section data-document-totals className="flex justify-end border-t border-neutral-200 p-6 print:p-3 sm:p-8"><div className="w-full max-w-sm space-y-3 print:space-y-1 text-sm"><p className="hidden text-[9px] uppercase tracking-wide text-neutral-500 print:block">Invoice {invoice.invoiceNumber} · DC {dcNumber}</p>{invoice.order && <><div className="flex justify-between"><span className="text-neutral-500">Subtotal</span><span>{formatPKR(invoice.order.subtotal)}</span></div><div className="flex justify-between"><span className="text-neutral-500">Discount</span><span>- {formatPKR(invoice.order.discount)}</span></div><div className="flex justify-between"><span className="text-neutral-500">Taxable amount</span><span>{formatPKR(invoice.order.taxableAmount)}</span></div><div className="flex justify-between"><span className="text-neutral-500">GST ({invoice.order.gstRate}%)</span><span>{formatPKR(invoice.order.gstAmount)}</span></div></>}<div className="flex justify-between border-t pt-3 print:pt-1 text-base font-bold"><span>Invoice total</span><span>{formatPKR(invoice.total)}</span></div><div className="flex justify-between"><span className="text-neutral-500">Payments received</span><span className="text-emerald-700">{formatPKR(invoice.paid)}</span></div>{invoice.creditApplied > 0 && <div className="flex justify-between"><span className="text-neutral-500">Customer credit applied</span><span>{formatPKR(invoice.creditApplied)}</span></div>}<div className="flex justify-between rounded-lg bg-neutral-950 p-4 print:p-2 text-base font-bold text-white print:border print:border-neutral-300 print:bg-white print:text-black"><span>Balance due</span><span>{formatPKR(invoice.balance)}</span></div></div></section>
 
           {invoice.payments.length > 0 && <section className="border-t border-neutral-200 p-6 sm:p-8"><h3 className="font-semibold">Payment history</h3><div className="mt-3 overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Method / status</TableHead><TableHead>Receipt / reference</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader><TableBody>{invoice.payments.map((payment) => <TableRow key={payment.id}><TableCell>{formatDate(payment.date)}</TableCell><TableCell>{payment.method.replaceAll("_", " ")}{payment.isReversal ? " · Reversal" : payment.isReversed ? " · Reversed" : ""}</TableCell><TableCell><Link href={`/payments/${payment.id}`} className="font-medium hover:underline">{payment.reference}</Link></TableCell><TableCell className="text-right font-medium">{formatPKR(payment.amount)}</TableCell></TableRow>)}</TableBody></Table></div></section>}
         </article>
