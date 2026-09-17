@@ -60,6 +60,7 @@ describe("invoice edit and gate pass metadata", () => {
       idempotencyKey: randomUUID(),
     });
     const before = await db.invoice.findUniqueOrThrow({ where: { salesOrderId: sale.id } });
+    const sourceOrder = await db.salesOrder.findUniqueOrThrow({ where: { id: sale.id }, select: { orderNumber: true } });
     const metadata = await getInvoiceDocumentMetadata(workspaceId, before.id, before.invoiceNumber);
     expect(metadata.dcNumber).toBe(before.invoiceNumber.replace(/^INV-/, "DC-"));
     expect(metadata.dcNumber).toMatch(/^DC-/);
@@ -77,7 +78,7 @@ describe("invoice edit and gate pass metadata", () => {
       db.salesOrder.findUniqueOrThrow({ where: { id: sale.id }, include: { items: true } }),
       db.product.findUniqueOrThrow({ where: { id: productId } }),
       db.customer.findUniqueOrThrow({ where: { id: customerId } }),
-      db.inventoryTransaction.findMany({ where: { workspaceId, productId, OR: [{ reference: orderNumberOf(sale.id) }, { reference: { startsWith: "EDIT-SO-" } }] } }),
+      db.inventoryTransaction.findMany({ where: { workspaceId, productId, OR: [{ reference: sourceOrder.orderNumber }, { reference: `EDIT-${sourceOrder.orderNumber}` }] } }),
       db.ledgerEntry.findMany({ where: { workspaceId, referenceId: sale.id }, orderBy: { createdAt: "asc" } }),
       db.generalLedgerEntry.findMany({ where: { workspaceId, sourceId: sale.id } }),
     ]);
@@ -114,11 +115,3 @@ describe("invoice edit and gate pass metadata", () => {
     await expect(getInvoiceFinancialLockReason(workspaceId, invoice.id)).resolves.toContain("payment");
   });
 });
-
-// The inventory assertion needs the stable order number, not the internal UUID.
-// Resolve it lazily so the test never relies on UUIDs as business references.
-function orderNumberOf(saleId: string) {
-  // This placeholder is replaced in the test by the actual SO reference query below.
-  // It intentionally cannot match a UUID, keeping the filter safe if the helper is misused.
-  return `SO-${saleId}`;
-}
