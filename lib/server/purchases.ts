@@ -10,6 +10,7 @@ import { withSerializableRetry } from "@/lib/server/tx-retry";
 import { purchaseSchema, goodsReceiptSchema, updatePurchaseSchema, voidGoodsReceiptSchema, updateGoodsReceiptSchema, type PurchaseInput, type GoodsReceiptInput, type UpdatePurchaseInput, type VoidGoodsReceiptInput, type UpdateGoodsReceiptInput } from "@/lib/validation/purchase";
 import { supplierReturnSchema, type SupplierReturnInput } from "@/lib/validation/returns";
 import { canPerformAction } from "@/lib/server/authorization";
+import { applyManagedWarehouseStockDelta, getWarehouseStockModeInTransaction, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
 
 export class PurchaseDomainError extends Error {
   constructor(
@@ -33,7 +34,10 @@ export class PurchaseDomainError extends Error {
       | "INSUFFICIENT_INVENTORY"
       | "PURCHASE_HAS_PAYMENTS"
       | "PERMISSION_DENIED"
-      | "INVALID_GRN_STATUS",
+      | "INVALID_GRN_STATUS"
+      | "WAREHOUSE_REQUIRED"
+      | "WAREHOUSE_NOT_FOUND"
+      | "WAREHOUSE_STOCK_ERROR",
     message: string,
   ) {
     super(message);
@@ -181,6 +185,14 @@ export async function createGoodsReceipt(context: ServiceContext, input: GoodsRe
     if (!order) throw new PurchaseDomainError("PURCHASE_NOT_FOUND", "Purchase order not found.");
     if (order.status === "CANCELLED") throw new PurchaseDomainError("CANCELLED_PO", "Cannot receive goods for a cancelled purchase order.");
 
+    const warehouseMode = await getWarehouseStockModeInTransaction(tx, context.workspaceId);
+    if (warehouseMode === "MANAGED" && !data.warehouseId) {
+      throw new PurchaseDomainError("WAREHOUSE_REQUIRED", "Choose a receiving warehouse before posting this GRN.");
+    }
+    if (warehouseMode === "LEGACY" && data.warehouseId) {
+      throw new PurchaseDomainError("WAREHOUSE_STOCK_ERROR", "Warehouse receiving is not enabled for this workspace yet.");
+    }
+
     const grnNumber = await nextDocumentNumber(tx, context.workspaceId, "PURCHASE_RECEIPT");
 
     let totalAcceptedAmount = new Prisma.Decimal(0);
@@ -266,6 +278,7 @@ export async function createGoodsReceipt(context: ServiceContext, input: GoodsRe
         notes: data.notes || null,
         receivedBy: data.receivedBy || null,
         checkedBy: data.checkedBy || null,
+        warehouseId: warehouseMode === "MANAGED" ? data.warehouseId! : null,
         totalAmount: totalAcceptedAmount,
       },
       select: { id: true, receiptDate: true },
@@ -309,6 +322,22 @@ const inventoryUnitCost = item.acceptedQuantity > 0 ? item.totalCost.div(item.ac
         where: { id: item.purchaseOrderItem.productId, workspaceId: context.workspaceId },
         data: { stockQuantity: { increment: item.acceptedQuantity }, costPrice: weightedCost },
       });
+
+      try {
+        await applyManagedWarehouseStockDelta(tx, {
+          workspaceId: context.workspaceId,
+          warehouseId: data.warehouseId,
+          productId: item.purchaseOrderItem.productId,
+          delta: item.acceptedQuantity,
+        });
+      } catch (error) {
+        if (error instanceof ManagedWarehouseStockError) {
+          if (error.code === "WAREHOUSE_REQUIRED") throw new PurchaseDomainError("WAREHOUSE_REQUIRED", error.message);
+          if (error.code === "WAREHOUSE_NOT_FOUND") throw new PurchaseDomainError("WAREHOUSE_NOT_FOUND", error.message);
+          throw new PurchaseDomainError("WAREHOUSE_STOCK_ERROR", error.message);
+        }
+        throw error;
+      }
 
       await tx.inventoryTransaction.create({
         data: {
@@ -1124,6 +1153,22 @@ if (!poItem) throw new PurchaseDomainError("INVALID_RECEIPT", "Purchase order it
 
       const quantityDelta = newAccepted - oldAccepted;
 
+      try {
+        await applyManagedWarehouseStockDelta(tx, {
+          workspaceId: context.workspaceId,
+          warehouseId: grn.warehouseId,
+          productId: existing.productId,
+          delta: quantityDelta,
+        });
+      } catch (error) {
+        if (error instanceof ManagedWarehouseStockError) {
+          if (error.code === "WAREHOUSE_REQUIRED") throw new PurchaseDomainError("WAREHOUSE_REQUIRED", error.message);
+          if (error.code === "WAREHOUSE_NOT_FOUND") throw new PurchaseDomainError("WAREHOUSE_NOT_FOUND", error.message);
+          throw new PurchaseDomainError("WAREHOUSE_STOCK_ERROR", error.message);
+        }
+        throw error;
+      }
+
       // If quantity is decreasing, verify PO item receivedQuantity can absorb the decrease
       if (quantityDelta < 0) {
         const currentPoReceived = poItem.receivedQuantity.toNumber();
@@ -1446,6 +1491,22 @@ export async function voidGoodsReceipt(context: ServiceContext, id: string, inpu
 
     // Reverse inventory and recalculate weighted-average cost
     for (const item of grn.items) {
+      try {
+        await applyManagedWarehouseStockDelta(tx, {
+          workspaceId: context.workspaceId,
+          warehouseId: grn.warehouseId,
+          productId: item.productId,
+          delta: item.acceptedQuantity.negated(),
+        });
+      } catch (error) {
+        if (error instanceof ManagedWarehouseStockError) {
+          if (error.code === "WAREHOUSE_REQUIRED") throw new PurchaseDomainError("WAREHOUSE_REQUIRED", error.message);
+          if (error.code === "WAREHOUSE_NOT_FOUND") throw new PurchaseDomainError("WAREHOUSE_NOT_FOUND", error.message);
+          throw new PurchaseDomainError("WAREHOUSE_STOCK_ERROR", error.message);
+        }
+        throw error;
+      }
+
       const product = await tx.product.findFirst({
         where: { id: item.productId, workspaceId: context.workspaceId },
         select: { stockQuantity: true, costPrice: true },
