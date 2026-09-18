@@ -521,23 +521,44 @@ export async function createServiceJob(context: IndustryContext, input: { custom
   const title = input.title.trim();
   if (!jobNumber || !title) throw new IndustryDomainError("INVALID_STATE", "Job number and title are required.");
 
-  if (input.serviceQuoteId) {
-    const quotes = await db.$queryRaw<Array<{ id: string }>>`
-      SELECT "id" FROM "service_quotes"
-      WHERE "id"=${input.serviceQuoteId}::uuid
-        AND "workspaceId"=${context.workspaceId}::uuid
-        AND "customerId"=${input.customerId}::uuid
-    `;
-    if (!quotes[0]) throw new IndustryDomainError("NOT_FOUND", "Quotation was not found for this client in this workspace.");
-  }
+  return db.$transaction(async (tx) => {
+    if (input.serviceQuoteId) {
+      const quotes = await tx.$queryRaw<Array<{ id: string; status: ServiceQuoteStatus }>>`
+        SELECT "id", "status" FROM "service_quotes"
+        WHERE "id"=${input.serviceQuoteId}::uuid
+          AND "workspaceId"=${context.workspaceId}::uuid
+          AND "customerId"=${input.customerId}::uuid
+        FOR UPDATE
+      `;
+      const quote = quotes[0];
+      if (!quote) throw new IndustryDomainError("NOT_FOUND", "Quotation was not found for this client in this workspace.");
+      if (!canTransitionServiceQuote(quote.status, "CONVERTED")) {
+        throw new IndustryDomainError("INVALID_STATE", "Only an accepted quotation can be converted into a service job.");
+      }
+    }
 
-  const rows = await db.$queryRaw<Array<{ id: string; jobNumber: string; status: string }>>`
-    INSERT INTO "service_jobs" ("workspaceId", "customerId", "serviceQuoteId", "jobNumber", "title", "description", "assignedToId", "scheduledAt")
-    VALUES (${context.workspaceId}::uuid, ${input.customerId}::uuid, ${input.serviceQuoteId ?? null}::uuid, ${jobNumber}, ${title}, ${input.description?.trim() || null}, ${input.assignedToId ?? null}::uuid, ${input.scheduledAt ?? null})
-    RETURNING "id", "jobNumber", "status"
-  `;
-  if (input.serviceQuoteId) await setServiceQuoteStatus(context, input.serviceQuoteId, "CONVERTED");
-  return rows[0]!;
+    const rows = await tx.$queryRaw<Array<{ id: string; jobNumber: string; status: string }>>`
+      INSERT INTO "service_jobs" ("workspaceId", "customerId", "serviceQuoteId", "jobNumber", "title", "description", "assignedToId", "scheduledAt")
+      VALUES (${context.workspaceId}::uuid, ${input.customerId}::uuid, ${input.serviceQuoteId ?? null}::uuid, ${jobNumber}, ${title}, ${input.description?.trim() || null}, ${input.assignedToId ?? null}::uuid, ${input.scheduledAt ?? null})
+      RETURNING "id", "jobNumber", "status"
+    `;
+
+    if (input.serviceQuoteId) {
+      const changed = await tx.$executeRaw`
+        UPDATE "service_quotes"
+        SET "status"='CONVERTED', "updatedAt"=now()
+        WHERE "id"=${input.serviceQuoteId}::uuid
+          AND "workspaceId"=${context.workspaceId}::uuid
+          AND "customerId"=${input.customerId}::uuid
+          AND "status"='ACCEPTED'
+      `;
+      if (changed !== 1) {
+        throw new IndustryDomainError("INVALID_STATE", "Quotation changed before conversion. Refresh and try again.");
+      }
+    }
+
+    return rows[0]!;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 export async function updateServiceJobStatus(context: IndustryContext, jobId: string, status: ServiceJobStatus) {
