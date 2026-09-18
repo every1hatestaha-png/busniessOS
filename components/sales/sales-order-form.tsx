@@ -29,14 +29,15 @@ type OrderFormValues = z.output<typeof orderSchema>;
 type CustomerOption = { id: string; name: string; companyName: string; phone: string; creditLimit: number; currentBalance: number; status: "ACTIVE" | "INACTIVE" | "BLACKLISTED" };
 type ProductOption = { id: string; name: string; sku: string; sellingPrice: number; stockQuantity: number; status: "ACTIVE" | "INACTIVE" | "ARCHIVED"; unit: string; defaultWeightKg: number | null };
 type CashBankOption = { cashBankAccountId: string; name: string; currentBalance: number; isBank: boolean; bankName?: string | null };
+type WarehouseOption = { id: string; name: string; code: string; isDefault: boolean };
 
 const fieldClass = "h-9 w-full rounded-md border border-input bg-white px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15";
 
-export function SalesOrderForm({ customers, products, cashBankAccounts = [], canRecordPayments = true }: { customers: CustomerOption[]; products: ProductOption[]; cashBankAccounts?: CashBankOption[]; canRecordPayments?: boolean }) {
+export function SalesOrderForm({ customers, products, cashBankAccounts = [], canRecordPayments = true, warehouseMode = "LEGACY", warehouses = [] }: { customers: CustomerOption[]; products: ProductOption[]; cashBankAccounts?: CashBankOption[]; canRecordPayments?: boolean; warehouseMode?: "LEGACY" | "MANAGED"; warehouses?: WarehouseOption[] }) {
   const [actionState, submitAction, isPending] = useActionState(createSaleAction, {} as CreateSaleState);
   const { control, register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<OrderFormInput, unknown, OrderFormValues>({
     resolver: zodResolver(orderSchema),
-    defaultValues: { customerId: "", items: [{ productId: "", quantity: 1, pricingMode: "UNIT", unitWeight: undefined, perKgRate: undefined, unitPrice: 0, discountPerUnit: 0 }], orderDiscount: 0, gstRate: 18, paidAmount: 0, cashBankAccountId: "", notes: "", idempotencyKey: "00000000-0000-0000-0000-000000000000" },
+    defaultValues: { customerId: "", warehouseId: warehouseMode === "MANAGED" ? (warehouses.find((warehouse) => warehouse.isDefault)?.id ?? "") : undefined, items: [{ productId: "", quantity: 1, pricingMode: "UNIT", unitWeight: undefined, perKgRate: undefined, unitPrice: 0, discountPerUnit: 0 }], orderDiscount: 0, gstRate: 18, paidAmount: 0, cashBankAccountId: "", notes: "", idempotencyKey: "00000000-0000-0000-0000-000000000000" },
   });
   const { fields, append, remove } = useFieldArray({ control, name: "items" });
   const items = useWatch({ control, name: "items" }) ?? [];
@@ -105,6 +106,7 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
           <CardHeader className="border-b bg-slate-50/60 px-5 py-4"><CardTitle className="text-sm font-semibold">Customer & Order</CardTitle></CardHeader>
           <CardContent className="p-5">
             <Field label="Customer" error={errors.customerId?.message}><select {...register("customerId")} className={fieldClass} aria-invalid={Boolean(errors.customerId)}><option value="">Choose a customer</option>{customers.filter((customer) => customer.status === "ACTIVE").map((customer) => <option key={customer.id} value={customer.id}>{customer.companyName} · {customer.name}</option>)}</select></Field>
+            {warehouseMode === "MANAGED" && <div className="mt-4"><Field label="Issuing warehouse" hint="Stock will be deducted here" error={errors.warehouseId?.message}><select {...register("warehouseId")} className={fieldClass} required><option value="">Choose warehouse</option>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name} · {warehouse.code}{warehouse.isDefault ? " · Default" : ""}</option>)}</select>{warehouses.length === 0 && <span className="mt-1 block text-[10px] font-medium text-red-600">No active warehouse is available. Configure inventory locations first.</span>}</Field></div>}
             {selectedCustomer && <div className="mt-4 grid overflow-hidden rounded-lg border bg-slate-50 sm:grid-cols-3 sm:divide-x"><AccountFact label="Contact" value={selectedCustomer.phone || "No phone provided"} /><AccountFact label="Current balance" value={formatPKR(selectedCustomer.currentBalance)} /><AccountFact label="Available credit" value={selectedCustomer.creditLimit > 0 ? formatPKR(Math.max(0, selectedCustomer.creditLimit - selectedCustomer.currentBalance)) : "Not configured"} /></div>}
           </CardContent>
         </Card>
