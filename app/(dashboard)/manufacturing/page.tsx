@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Boxes, Factory, PackageCheck, Warehouse } from "lucide-react";
 
 import { ManufacturingControls } from "@/app/(dashboard)/manufacturing/manufacturing-controls";
+import { ProductionLifecycleControls } from "@/app/(dashboard)/manufacturing/production-lifecycle-controls";
 import { MetricCard } from "@/components/business/metric-card";
 import { PageHeader } from "@/components/business/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -41,6 +42,11 @@ export default async function ManufacturingPage() {
       <ManufacturingControls
         products={products.filter((product) => product.status === "ACTIVE").map((product) => ({ id: product.id, name: product.name, sku: product.sku }))}
         boms={boms.filter((bom) => bom.isActive).map((bom) => ({ id: bom.id, name: bom.name, version: bom.version }))}
+        canManage={canManage}
+      />
+
+      <ProductionLifecycleControls
+        runs={runs.map((run) => ({ id: run.id, runNumber: run.runNumber, status: run.status, plannedOutput: run.plannedOutput, actualOutput: run.actualOutput, wastageQuantity: run.wastageQuantity }))}
         canManage={canManage}
       />
 
