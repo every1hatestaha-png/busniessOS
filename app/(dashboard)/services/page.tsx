@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { BriefcaseBusiness, FileCheck2, ReceiptText } from "lucide-react";
 
+import { ServicesControls } from "@/app/(dashboard)/services/services-controls";
 import { MetricCard } from "@/components/business/metric-card";
 import { PageHeader } from "@/components/business/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
+import { listCustomers } from "@/lib/server/customers";
 import {
   getIndustryHealth,
   listServiceJobs,
@@ -18,10 +20,11 @@ export default async function ServicesPage() {
   const modules = await listWorkspaceModules(workspaceId);
   if (!modules.some((module) => module.moduleKey === "services" && module.enabled)) return <ModuleDisabled />;
 
-  const [health, quotes, jobs] = await Promise.all([
+  const [health, quotes, jobs, customers] = await Promise.all([
     getIndustryHealth(workspaceId),
     listServiceQuotes(workspaceId),
     listServiceJobs(workspaceId),
+    listCustomers(workspaceId),
   ]);
 
   return (
@@ -32,6 +35,11 @@ export default async function ServicesPage() {
         <MetricCard label="Open jobs" value={String(health.services.openJobs)} detail="Jobs not completed or cancelled" icon={BriefcaseBusiness} />
         <MetricCard label="Billing engine" value="Connected" detail="Invoices, receipts, and expenses use MunshiOS core" icon={ReceiptText} />
       </section>
+
+      <ServicesControls
+        clients={customers.filter((customer) => customer.status === "ACTIVE").map((customer) => ({ id: customer.id, name: customer.companyName || customer.name }))}
+        quotes={quotes.map((quote) => ({ id: quote.id, customerId: quote.customerId, quoteNumber: quote.quoteNumber, status: quote.status }))}
+      />
 
       <div className="grid gap-5 xl:grid-cols-2">
         <DataCard title="Quotations" description="Latest 50 service quotations.">
