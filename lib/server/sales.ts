@@ -295,6 +295,15 @@ export async function getSale(workspaceId: string, id: string) {
     },
   });
   if (!row) return null;
+  const warehouse = row.warehouseId
+    ? (await db.$queryRaw<Array<{ id: string; name: string; code: string }>>`
+        SELECT "id"::text AS "id", "name", "code"
+        FROM "warehouses"
+        WHERE "id"=${row.warehouseId}::uuid
+          AND "workspaceId"=${workspaceId}::uuid
+        LIMIT 1
+      `)[0] ?? null
+    : null;
   const taxableAmount = Math.max(0, Number(row.subtotal) - Number(row.discount));
   const gstAmount = Math.max(0, Number(row.total) - taxableAmount);
   const gstRate = taxableAmount > 0 ? Number(((gstAmount / taxableAmount) * 100).toFixed(4)) : 0;
@@ -312,6 +321,7 @@ export async function getSale(workspaceId: string, id: string) {
     paidAmount: Number(row.paidAmount),
     balanceAmount: Number(row.balanceAmount),
     notes: row.notes ?? "",
+    warehouse,
     customer: { id: row.customer.id, name: row.customer.name, companyName: row.customer.companyName ?? row.customer.name, phone: row.customer.phone ?? "", address: row.customer.address ?? "", currentBalance: Number(row.customer.currentBalance), creditDays: row.customer.creditDays, creditLimit: Number(row.customer.creditLimit) },
     items: row.items.map((item) => ({ id: item.id, productName: item.productName ?? item.product.name, sku: item.productSku ?? item.product.sku ?? "", quantity: item.quantity, unitPrice: Number(item.unitPrice), discountPerUnit: Number(item.discountPerUnit), total: Number(item.totalPrice), pricingMode: item.pricingMode, unitWeight: item.unitWeight ? Number(item.unitWeight) : null, totalWeight: item.totalWeight ? Number(item.totalWeight) : null, perKgRate: item.perKgRate ? Number(item.perKgRate) : null })),
     invoice: row.invoices[0] ? { id: row.invoices[0].id, number: row.invoices[0].invoiceNumber } : null,
