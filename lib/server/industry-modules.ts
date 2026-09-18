@@ -839,6 +839,164 @@ export async function getProductionRunDetail(workspaceId: string, productionRunI
   };
 }
 
+
+export async function getServiceQuoteDetail(workspaceId: string, quoteId: string) {
+  await requireWorkspaceModule(workspaceId, "services");
+
+  const quotes = await db.$queryRaw<Array<{
+    id: string;
+    customerId: string;
+    quoteNumber: string;
+    status: ServiceQuoteStatus;
+    subtotal: Prisma.Decimal;
+    discount: Prisma.Decimal;
+    tax: Prisma.Decimal;
+    total: Prisma.Decimal;
+    validUntil: Date | null;
+    notes: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+    customerName: string | null;
+    customerPhone: string | null;
+    customerEmail: string | null;
+    customerAddress: string | null;
+    customerCity: string | null;
+  }>>\`
+    SELECT
+      sq."id",
+      sq."customerId"::text AS "customerId",
+      sq."quoteNumber",
+      sq."status",
+      sq."subtotal",
+      sq."discount",
+      sq."tax",
+      sq."total",
+      sq."validUntil",
+      sq."notes",
+      sq."createdAt",
+      sq."updatedAt",
+      coalesce(c."companyName", c."name") AS "customerName",
+      c."phone" AS "customerPhone",
+      c."email" AS "customerEmail",
+      c."address" AS "customerAddress",
+      c."city" AS "customerCity"
+    FROM "service_quotes" sq
+    LEFT JOIN "customers" c
+      ON c."id" = sq."customerId"::text
+      AND c."workspaceId" = sq."workspaceId"::text
+    WHERE sq."id" = \${quoteId}::uuid
+      AND sq."workspaceId" = \${workspaceId}::uuid
+    LIMIT 1
+  \`;
+
+  const quote = quotes[0];
+  if (!quote) return null;
+
+  const items = await db.$queryRaw<Array<{
+    id: string;
+    description: string;
+    quantity: Prisma.Decimal;
+    unitPrice: Prisma.Decimal;
+    lineTotal: Prisma.Decimal;
+  }>>\`
+    SELECT "id", "description", "quantity", "unitPrice", "lineTotal"
+    FROM "service_quote_items"
+    WHERE "serviceQuoteId" = \${quoteId}::uuid
+    ORDER BY "createdAt" ASC, "id" ASC
+  \`;
+
+  const jobs = await db.$queryRaw<Array<{
+    id: string;
+    jobNumber: string;
+    title: string;
+    status: ServiceJobStatus;
+    createdAt: Date;
+  }>>\`
+    SELECT "id", "jobNumber", "title", "status", "createdAt"
+    FROM "service_jobs"
+    WHERE "workspaceId" = \${workspaceId}::uuid
+      AND "serviceQuoteId" = \${quoteId}::uuid
+    ORDER BY "createdAt" DESC
+  \`;
+
+  return {
+    ...quote,
+    subtotal: Number(quote.subtotal),
+    discount: Number(quote.discount),
+    tax: Number(quote.tax),
+    total: Number(quote.total),
+    items: items.map((item) => ({
+      id: item.id,
+      description: item.description,
+      quantity: Number(item.quantity),
+      unitPrice: Number(item.unitPrice),
+      lineTotal: Number(item.lineTotal),
+    })),
+    jobs,
+  };
+}
+
+export async function getServiceJobDetail(workspaceId: string, jobId: string) {
+  await requireWorkspaceModule(workspaceId, "services");
+
+  const rows = await db.$queryRaw<Array<{
+    id: string;
+    customerId: string;
+    serviceQuoteId: string | null;
+    jobNumber: string;
+    title: string;
+    description: string | null;
+    status: ServiceJobStatus;
+    assignedToId: string | null;
+    scheduledAt: Date | null;
+    completedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+    customerName: string | null;
+    customerPhone: string | null;
+    customerEmail: string | null;
+    customerAddress: string | null;
+    customerCity: string | null;
+    quoteNumber: string | null;
+    assignedToName: string | null;
+  }>>\`
+    SELECT
+      sj."id",
+      sj."customerId"::text AS "customerId",
+      sj."serviceQuoteId"::text AS "serviceQuoteId",
+      sj."jobNumber",
+      sj."title",
+      sj."description",
+      sj."status",
+      sj."assignedToId"::text AS "assignedToId",
+      sj."scheduledAt",
+      sj."completedAt",
+      sj."createdAt",
+      sj."updatedAt",
+      coalesce(c."companyName", c."name") AS "customerName",
+      c."phone" AS "customerPhone",
+      c."email" AS "customerEmail",
+      c."address" AS "customerAddress",
+      c."city" AS "customerCity",
+      sq."quoteNumber",
+      nullif(trim(concat_ws(' ', u."firstName", u."lastName")), '') AS "assignedToName"
+    FROM "service_jobs" sj
+    LEFT JOIN "customers" c
+      ON c."id" = sj."customerId"::text
+      AND c."workspaceId" = sj."workspaceId"::text
+    LEFT JOIN "service_quotes" sq
+      ON sq."id" = sj."serviceQuoteId"
+      AND sq."workspaceId" = sj."workspaceId"
+    LEFT JOIN "users" u
+      ON u."id" = sj."assignedToId"::text
+    WHERE sj."id" = \${jobId}::uuid
+      AND sj."workspaceId" = \${workspaceId}::uuid
+    LIMIT 1
+  \`;
+
+  return rows[0] ?? null;
+}
+
 export async function listServiceQuotes(workspaceId: string) {
   await requireWorkspaceModule(workspaceId, "services");
   const rows = await db.$queryRaw<Array<{
