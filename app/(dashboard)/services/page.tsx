@@ -49,10 +49,24 @@ export default async function ServicesPage() {
 
       <div className="grid gap-5 xl:grid-cols-2">
         <DataCard title="Quotations" description="Latest 50 service quotations.">
-          {quotes.length ? <Table headers={["Quote", "Client", "Status", "Total", "Valid until"]} rows={quotes.map((row) => [row.quoteNumber, row.customerName || "Unknown client", row.status, formatPKR(row.total), row.validUntil ? formatDate(row.validUntil) : "—"])} /> : <Empty text="No service quotations yet." />}
+          {quotes.length ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-left text-xs text-muted-foreground"><tr><th className="px-4 py-2.5">Quote</th><th className="px-4 py-2.5">Client</th><th className="px-4 py-2.5">Status</th><th className="px-4 py-2.5 text-right">Total</th><th className="px-4 py-2.5">Valid until</th></tr></thead>
+                <tbody className="divide-y">{quotes.map((row) => <tr key={row.id}><td className="px-4 py-3 font-medium"><Link href={"/services/quotes/" + row.id} className="text-emerald-700 hover:underline">{row.quoteNumber}</Link></td><td className="px-4 py-3 text-muted-foreground">{row.customerName || "Unknown client"}</td><td className="px-4 py-3"><span className="rounded-full border px-2 py-0.5 text-[11px]">{row.status}</span></td><td className="px-4 py-3 text-right font-medium">{formatPKR(row.total)}</td><td className="px-4 py-3 text-muted-foreground">{row.validUntil ? formatDate(row.validUntil) : "—"}</td></tr>)}</tbody>
+              </table>
+            </div>
+          ) : <Empty text="No service quotations yet." />}
         </DataCard>
         <DataCard title="Service jobs" description="Latest 50 jobs and current workflow state.">
-          {jobs.length ? <Table headers={["Job", "Client", "Title", "Status", "Scheduled"]} rows={jobs.map((row) => [row.jobNumber, row.customerName || "Unknown client", row.title, row.status, row.scheduledAt ? formatDate(row.scheduledAt) : "—"])} /> : <Empty text="No service jobs yet." />}
+          {jobs.length ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-left text-xs text-muted-foreground"><tr><th className="px-4 py-2.5">Job</th><th className="px-4 py-2.5">Client</th><th className="px-4 py-2.5">Title</th><th className="px-4 py-2.5">Status</th><th className="px-4 py-2.5">Scheduled</th></tr></thead>
+                <tbody className="divide-y">{jobs.map((row) => <tr key={row.id}><td className="px-4 py-3 font-medium"><Link href={"/services/jobs/" + row.id} className="text-emerald-700 hover:underline">{row.jobNumber}</Link></td><td className="px-4 py-3 text-muted-foreground">{row.customerName || "Unknown client"}</td><td className="px-4 py-3">{row.title}</td><td className="px-4 py-3"><span className="rounded-full border px-2 py-0.5 text-[11px]">{row.status}</span></td><td className="px-4 py-3 text-muted-foreground">{row.scheduledAt ? formatDate(row.scheduledAt) : "—"}</td></tr>)}</tbody>
+              </table>
+            </div>
+          ) : <Empty text="No service jobs yet." />}
         </DataCard>
       </div>
 

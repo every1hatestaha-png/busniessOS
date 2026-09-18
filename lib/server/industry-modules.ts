@@ -480,14 +480,14 @@ export async function createServiceQuote(context: IndustryContext, input: { cust
       VALUES (${context.workspaceId}::uuid, ${input.customerId}::uuid, ${input.quoteNumber.trim()}, ${subtotal}, ${discount}, ${tax}, ${total}, ${input.validUntil ?? null}, ${input.notes?.trim() || null})
       RETURNING "id", "quoteNumber", "total", "status"
     `;
-    for (const item of input.items) {
+    for (const [index, item] of input.items.entries()) {
       const description = item.description.trim();
       const quantity = item.quantity ?? 1;
       if (!description) throw new IndustryDomainError("INVALID_STATE", "Every quotation line needs a description.");
       if (quantity <= 0 || item.unitPrice < 0) throw new IndustryDomainError("INVALID_STATE", "Quotation quantity must be positive and price cannot be negative.");
       await tx.$executeRaw`
-        INSERT INTO "service_quote_items" ("serviceQuoteId", "description", "quantity", "unitPrice", "lineTotal")
-        VALUES (${rows[0]!.id}::uuid, ${description}, ${quantity}, ${item.unitPrice}, ${quantity * item.unitPrice})
+        INSERT INTO "service_quote_items" ("serviceQuoteId", "description", "quantity", "unitPrice", "lineTotal", "position")
+        VALUES (${rows[0]!.id}::uuid, ${description}, ${quantity}, ${item.unitPrice}, ${quantity * item.unitPrice}, ${index + 1})
       `;
     }
     return { ...rows[0]!, total: Number(rows[0]!.total) };
@@ -521,23 +521,44 @@ export async function createServiceJob(context: IndustryContext, input: { custom
   const title = input.title.trim();
   if (!jobNumber || !title) throw new IndustryDomainError("INVALID_STATE", "Job number and title are required.");
 
-  if (input.serviceQuoteId) {
-    const quotes = await db.$queryRaw<Array<{ id: string }>>`
-      SELECT "id" FROM "service_quotes"
-      WHERE "id"=${input.serviceQuoteId}::uuid
-        AND "workspaceId"=${context.workspaceId}::uuid
-        AND "customerId"=${input.customerId}::uuid
-    `;
-    if (!quotes[0]) throw new IndustryDomainError("NOT_FOUND", "Quotation was not found for this client in this workspace.");
-  }
+  return db.$transaction(async (tx) => {
+    if (input.serviceQuoteId) {
+      const quotes = await tx.$queryRaw<Array<{ id: string; status: ServiceQuoteStatus }>>`
+        SELECT "id", "status" FROM "service_quotes"
+        WHERE "id"=${input.serviceQuoteId}::uuid
+          AND "workspaceId"=${context.workspaceId}::uuid
+          AND "customerId"=${input.customerId}::uuid
+        FOR UPDATE
+      `;
+      const quote = quotes[0];
+      if (!quote) throw new IndustryDomainError("NOT_FOUND", "Quotation was not found for this client in this workspace.");
+      if (!canTransitionServiceQuote(quote.status, "CONVERTED")) {
+        throw new IndustryDomainError("INVALID_STATE", "Only an accepted quotation can be converted into a service job.");
+      }
+    }
 
-  const rows = await db.$queryRaw<Array<{ id: string; jobNumber: string; status: string }>>`
-    INSERT INTO "service_jobs" ("workspaceId", "customerId", "serviceQuoteId", "jobNumber", "title", "description", "assignedToId", "scheduledAt")
-    VALUES (${context.workspaceId}::uuid, ${input.customerId}::uuid, ${input.serviceQuoteId ?? null}::uuid, ${jobNumber}, ${title}, ${input.description?.trim() || null}, ${input.assignedToId ?? null}::uuid, ${input.scheduledAt ?? null})
-    RETURNING "id", "jobNumber", "status"
-  `;
-  if (input.serviceQuoteId) await setServiceQuoteStatus(context, input.serviceQuoteId, "CONVERTED");
-  return rows[0]!;
+    const rows = await tx.$queryRaw<Array<{ id: string; jobNumber: string; status: string }>>`
+      INSERT INTO "service_jobs" ("workspaceId", "customerId", "serviceQuoteId", "jobNumber", "title", "description", "assignedToId", "scheduledAt")
+      VALUES (${context.workspaceId}::uuid, ${input.customerId}::uuid, ${input.serviceQuoteId ?? null}::uuid, ${jobNumber}, ${title}, ${input.description?.trim() || null}, ${input.assignedToId ?? null}::uuid, ${input.scheduledAt ?? null})
+      RETURNING "id", "jobNumber", "status"
+    `;
+
+    if (input.serviceQuoteId) {
+      const changed = await tx.$executeRaw`
+        UPDATE "service_quotes"
+        SET "status"='CONVERTED', "updatedAt"=now()
+        WHERE "id"=${input.serviceQuoteId}::uuid
+          AND "workspaceId"=${context.workspaceId}::uuid
+          AND "customerId"=${input.customerId}::uuid
+          AND "status"='ACCEPTED'
+      `;
+      if (changed !== 1) {
+        throw new IndustryDomainError("INVALID_STATE", "Quotation changed before conversion. Refresh and try again.");
+      }
+    }
+
+    return rows[0]!;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 export async function updateServiceJobStatus(context: IndustryContext, jobId: string, status: ServiceJobStatus) {
@@ -816,6 +837,166 @@ export async function getProductionRunDetail(workspaceId: string, productionRunI
     consumptions: lines,
     materialCost: lines.reduce((total, line) => total + line.totalCost, 0),
   };
+}
+
+
+export async function getServiceQuoteDetail(workspaceId: string, quoteId: string) {
+  await requireWorkspaceModule(workspaceId, "services");
+
+  const quotes = await db.$queryRaw<Array<{
+    id: string;
+    customerId: string;
+    quoteNumber: string;
+    status: ServiceQuoteStatus;
+    subtotal: Prisma.Decimal;
+    discount: Prisma.Decimal;
+    tax: Prisma.Decimal;
+    total: Prisma.Decimal;
+    validUntil: Date | null;
+    notes: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+    customerName: string | null;
+    customerPhone: string | null;
+    customerEmail: string | null;
+    customerAddress: string | null;
+    customerCity: string | null;
+  }>>`
+    SELECT
+      sq."id",
+      sq."customerId"::text AS "customerId",
+      sq."quoteNumber",
+      sq."status",
+      sq."subtotal",
+      sq."discount",
+      sq."tax",
+      sq."total",
+      sq."validUntil",
+      sq."notes",
+      sq."createdAt",
+      sq."updatedAt",
+      coalesce(c."companyName", c."name") AS "customerName",
+      c."phone" AS "customerPhone",
+      c."email" AS "customerEmail",
+      c."address" AS "customerAddress",
+      c."city" AS "customerCity"
+    FROM "service_quotes" sq
+    LEFT JOIN "customers" c
+      ON c."id" = sq."customerId"::text
+      AND c."workspaceId" = sq."workspaceId"::text
+    WHERE sq."id" = ${quoteId}::uuid
+      AND sq."workspaceId" = ${workspaceId}::uuid
+    LIMIT 1
+  `;
+
+  const quote = quotes[0];
+  if (!quote) return null;
+
+  const items = await db.$queryRaw<Array<{
+    id: string;
+    description: string;
+    quantity: Prisma.Decimal;
+    unitPrice: Prisma.Decimal;
+    lineTotal: Prisma.Decimal;
+    position: number;
+  }>>`
+    SELECT "id", "description", "quantity", "unitPrice", "lineTotal", "position"
+    FROM "service_quote_items"
+    WHERE "serviceQuoteId" = ${quoteId}::uuid
+    ORDER BY "position" ASC
+  `;
+
+  const jobs = await db.$queryRaw<Array<{
+    id: string;
+    jobNumber: string;
+    title: string;
+    status: ServiceJobStatus;
+    createdAt: Date;
+  }>>`
+    SELECT "id", "jobNumber", "title", "status", "createdAt"
+    FROM "service_jobs"
+    WHERE "workspaceId" = ${workspaceId}::uuid
+      AND "serviceQuoteId" = ${quoteId}::uuid
+    ORDER BY "createdAt" DESC
+  `;
+
+  return {
+    ...quote,
+    subtotal: Number(quote.subtotal),
+    discount: Number(quote.discount),
+    tax: Number(quote.tax),
+    total: Number(quote.total),
+    items: items.map((item) => ({
+      id: item.id,
+      description: item.description,
+      quantity: Number(item.quantity),
+      unitPrice: Number(item.unitPrice),
+      lineTotal: Number(item.lineTotal),
+      position: item.position,
+    })),
+    jobs,
+  };
+}
+
+export async function getServiceJobDetail(workspaceId: string, jobId: string) {
+  await requireWorkspaceModule(workspaceId, "services");
+
+  const rows = await db.$queryRaw<Array<{
+    id: string;
+    customerId: string;
+    serviceQuoteId: string | null;
+    jobNumber: string;
+    title: string;
+    description: string | null;
+    status: ServiceJobStatus;
+    assignedToId: string | null;
+    scheduledAt: Date | null;
+    completedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+    customerName: string | null;
+    customerPhone: string | null;
+    customerEmail: string | null;
+    customerAddress: string | null;
+    customerCity: string | null;
+    quoteNumber: string | null;
+    assignedToName: string | null;
+  }>>`
+    SELECT
+      sj."id",
+      sj."customerId"::text AS "customerId",
+      sj."serviceQuoteId"::text AS "serviceQuoteId",
+      sj."jobNumber",
+      sj."title",
+      sj."description",
+      sj."status",
+      sj."assignedToId"::text AS "assignedToId",
+      sj."scheduledAt",
+      sj."completedAt",
+      sj."createdAt",
+      sj."updatedAt",
+      coalesce(c."companyName", c."name") AS "customerName",
+      c."phone" AS "customerPhone",
+      c."email" AS "customerEmail",
+      c."address" AS "customerAddress",
+      c."city" AS "customerCity",
+      sq."quoteNumber",
+      nullif(trim(concat_ws(' ', u."firstName", u."lastName")), '') AS "assignedToName"
+    FROM "service_jobs" sj
+    LEFT JOIN "customers" c
+      ON c."id" = sj."customerId"::text
+      AND c."workspaceId" = sj."workspaceId"::text
+    LEFT JOIN "service_quotes" sq
+      ON sq."id" = sj."serviceQuoteId"
+      AND sq."workspaceId" = sj."workspaceId"
+    LEFT JOIN "users" u
+      ON u."id" = sj."assignedToId"::text
+    WHERE sj."id" = ${jobId}::uuid
+      AND sj."workspaceId" = ${workspaceId}::uuid
+    LIMIT 1
+  `;
+
+  return rows[0] ?? null;
 }
 
 export async function listServiceQuotes(workspaceId: string) {
