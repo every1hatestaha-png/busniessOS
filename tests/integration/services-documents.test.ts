@@ -115,8 +115,8 @@ describe("services quotations and jobs", () => {
     expect(quote?.tax).toBe(250);
     expect(quote?.total).toBe(8750);
     expect(quote?.items).toEqual([
-      expect.objectContaining({ description: "Implementation", quantity: 2, unitPrice: 3000, lineTotal: 6000 }),
-      expect.objectContaining({ description: "Training", quantity: 1.5, unitPrice: 2000, lineTotal: 3000 }),
+      expect.objectContaining({ description: "Implementation", quantity: 2, unitPrice: 3000, lineTotal: 6000, position: 1 }),
+      expect.objectContaining({ description: "Training", quantity: 1.5, unitPrice: 2000, lineTotal: 3000, position: 2 }),
     ]);
   });
 
