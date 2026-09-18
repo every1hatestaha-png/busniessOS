@@ -2,6 +2,7 @@ import "server-only";
 
 import { Prisma, type Role } from "@prisma/client";
 import { db } from "@/lib/server/db";
+import { applyManagedWarehouseStockDelta, getWarehouseStockModeInTransaction, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
 import {
   canTransitionKitchenTicket,
   canTransitionProductionRun,
@@ -36,6 +37,42 @@ export class IndustryDomainError extends Error {
 function assertManager(context: IndustryContext) {
   if (!(["OWNER", "ADMIN", "MANAGER"] as Role[]).includes(context.role)) {
     throw new IndustryDomainError("PERMISSION_DENIED", "Manager access is required for this action.");
+  }
+}
+
+async function resolveIndustryWarehouseId(tx: Prisma.TransactionClient, workspaceId: string) {
+  const mode = await getWarehouseStockModeInTransaction(tx, workspaceId);
+  if (mode === "LEGACY") return undefined;
+
+  const rows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT "id"::text AS "id"
+    FROM "warehouses"
+    WHERE "workspaceId"=${workspaceId}::uuid
+      AND "isActive"=true
+      AND "isDefault"=true
+    FOR SHARE
+  `;
+  if (rows.length !== 1) {
+    throw new IndustryDomainError(
+      "INVALID_STATE",
+      "Managed warehouse stock requires exactly one active default warehouse for restaurant and production inventory.",
+    );
+  }
+  return rows[0]!.id;
+}
+
+async function applyIndustryWarehouseDelta(
+  tx: Prisma.TransactionClient,
+  input: { workspaceId: string; warehouseId?: string; productId: string; delta: number },
+) {
+  try {
+    return await applyManagedWarehouseStockDelta(tx, input);
+  } catch (error) {
+    if (error instanceof ManagedWarehouseStockError) {
+      const code = error.code === "NEGATIVE_WAREHOUSE_STOCK" ? "INSUFFICIENT_STOCK" : "INVALID_STATE";
+      throw new IndustryDomainError(code, error.message);
+    }
+    throw error;
   }
 }
 
@@ -194,6 +231,7 @@ async function consumeTicketRecipes(tx: Prisma.TransactionClient, workspaceId: s
   const existing = await tx.inventoryTransaction.findFirst({ where: { workspaceId, reference: `KITCHEN:${ticketId}` }, select: { id: true } });
   if (existing) return;
 
+  const warehouseId = await resolveIndustryWarehouseId(tx, workspaceId);
   const lines = await tx.salesOrderItem.findMany({ where: { salesOrderId }, select: { productId: true, quantity: true } });
   for (const line of lines) {
     const recipes = await tx.$queryRaw<Array<{ id: string; yieldQuantity: Prisma.Decimal }>>`
@@ -213,6 +251,7 @@ async function consumeTicketRecipes(tx: Prisma.TransactionClient, workspaceId: s
       if (!ingredient) throw new IndustryDomainError("NOT_FOUND", "Recipe ingredient no longer exists.");
       if (Number(ingredient.stockQuantity) < required) throw new IndustryDomainError("INSUFFICIENT_STOCK", "Not enough ingredient stock to serve this order.");
       await tx.product.update({ where: { id: ingredient.id }, data: { stockQuantity: { decrement: required } } });
+      await applyIndustryWarehouseDelta(tx, { workspaceId, warehouseId, productId: ingredient.id, delta: -required });
       await tx.inventoryTransaction.create({ data: { workspaceId, productId: ingredient.id, type: "ADJUSTMENT", quantityChanged: -required, unitCost: ingredient.costPrice, reference: `KITCHEN:${ticketId}` } });
     }
   }
@@ -310,23 +349,71 @@ export async function createWarehouse(context: IndustryContext, input: { name: s
 
 export async function transferWarehouseStock(context: IndustryContext, input: { productId: string; fromWarehouseId: string; toWarehouseId: string; quantity: number }) {
   await requireWorkspaceModule(context.workspaceId, "inventory");
-  if (input.quantity <= 0 || input.fromWarehouseId === input.toWarehouseId) throw new IndustryDomainError("INVALID_STATE", "A positive quantity and two different warehouses are required.");
+  if (!Number.isFinite(input.quantity) || input.quantity <= 0 || input.fromWarehouseId === input.toWarehouseId) {
+    throw new IndustryDomainError("INVALID_STATE", "A positive quantity and two different warehouses are required.");
+  }
   return db.$transaction(async (tx) => {
+    const mode = await getWarehouseStockModeInTransaction(tx, context.workspaceId);
+    if (mode !== "MANAGED") {
+      throw new IndustryDomainError("INVALID_STATE", "Warehouse transfers require managed warehouse stock.");
+    }
+
+    const product = await tx.$queryRaw<Array<{ id: string; stockQuantity: Prisma.Decimal }>>`
+      SELECT "id"::text AS "id", "stockQuantity"
+      FROM "products"
+      WHERE "id"=${input.productId}::uuid AND "workspaceId"=${context.workspaceId}
+      FOR UPDATE
+    `;
+    if (!product[0]) throw new IndustryDomainError("NOT_FOUND", "Product was not found in this workspace.");
+
     const warehouses = await tx.$queryRaw<Array<{ id: string }>>`
-      SELECT "id" FROM "warehouses" WHERE "workspaceId"=${context.workspaceId}::uuid AND "id" IN (${input.fromWarehouseId}::uuid, ${input.toWarehouseId}::uuid) AND "isActive"=true
+      SELECT "id"::text AS "id"
+      FROM "warehouses"
+      WHERE "workspaceId"=${context.workspaceId}::uuid
+        AND "id" IN (${input.fromWarehouseId}::uuid, ${input.toWarehouseId}::uuid)
+        AND "isActive"=true
+      FOR SHARE
     `;
     if (warehouses.length !== 2) throw new IndustryDomainError("NOT_FOUND", "Warehouse was not found in this workspace.");
+
+    const totals = await tx.$queryRaw<Array<{ quantity: Prisma.Decimal }>>`
+      SELECT coalesce(sum("quantity"), 0)::numeric AS "quantity"
+      FROM "warehouse_stocks"
+      WHERE "workspaceId"=${context.workspaceId}::uuid AND "productId"=${input.productId}::uuid
+    `;
+    const warehouseTotal = new Prisma.Decimal(totals[0]?.quantity ?? 0);
+    if (!warehouseTotal.equals(product[0]!.stockQuantity)) {
+      throw new IndustryDomainError("CONFLICT", "Warehouse stock is out of sync with core inventory. Reconcile stock before transferring.");
+    }
+
     const source = await tx.$queryRaw<Array<{ quantity: Prisma.Decimal }>>`
-      SELECT "quantity" FROM "warehouse_stocks" WHERE "workspaceId"=${context.workspaceId}::uuid AND "warehouseId"=${input.fromWarehouseId}::uuid AND "productId"=${input.productId}::uuid FOR UPDATE
+      SELECT "quantity"
+      FROM "warehouse_stocks"
+      WHERE "workspaceId"=${context.workspaceId}::uuid
+        AND "warehouseId"=${input.fromWarehouseId}::uuid
+        AND "productId"=${input.productId}::uuid
+      FOR UPDATE
     `;
-    if (Number(source[0]?.quantity ?? 0) < input.quantity) throw new IndustryDomainError("INSUFFICIENT_STOCK", "Not enough stock in the source warehouse.");
-    await tx.$executeRaw`UPDATE "warehouse_stocks" SET "quantity"="quantity"-${input.quantity}, "updatedAt"=now() WHERE "workspaceId"=${context.workspaceId}::uuid AND "warehouseId"=${input.fromWarehouseId}::uuid AND "productId"=${input.productId}::uuid`;
+    if (new Prisma.Decimal(source[0]?.quantity ?? 0).lt(input.quantity)) {
+      throw new IndustryDomainError("INSUFFICIENT_STOCK", "Not enough stock in the source warehouse.");
+    }
+
     await tx.$executeRaw`
-      INSERT INTO "warehouse_stocks" ("workspaceId", "warehouseId", "productId", "quantity") VALUES (${context.workspaceId}::uuid, ${input.toWarehouseId}::uuid, ${input.productId}::uuid, ${input.quantity})
-      ON CONFLICT ("warehouseId", "productId") DO UPDATE SET "quantity"="warehouse_stocks"."quantity"+EXCLUDED."quantity", "updatedAt"=now()
+      UPDATE "warehouse_stocks"
+      SET "quantity"="quantity"-${input.quantity}, "updatedAt"=now()
+      WHERE "workspaceId"=${context.workspaceId}::uuid
+        AND "warehouseId"=${input.fromWarehouseId}::uuid
+        AND "productId"=${input.productId}::uuid
     `;
+    await tx.$executeRaw`
+      INSERT INTO "warehouse_stocks" ("workspaceId", "warehouseId", "productId", "quantity")
+      VALUES (${context.workspaceId}::uuid, ${input.toWarehouseId}::uuid, ${input.productId}::uuid, ${input.quantity})
+      ON CONFLICT ("warehouseId", "productId")
+      DO UPDATE SET "quantity"="warehouse_stocks"."quantity"+EXCLUDED."quantity", "updatedAt"=now()
+    `;
+
     return { ...input };
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 export async function createBom(context: IndustryContext, input: { name: string; finishedProductId: string; outputQuantity?: number; version?: number; notes?: string; items: Array<{ materialProductId: string; quantity: number; wastagePercent?: number }> }) {
@@ -411,6 +498,7 @@ export async function postProductionRun(context: IndustryContext, productionRunI
   assertManager(context);
   await requireWorkspaceModule(context.workspaceId, "manufacturing");
   return db.$transaction(async (tx) => {
+    const warehouseId = await resolveIndustryWarehouseId(tx, context.workspaceId);
     const runs = await tx.$queryRaw<Array<{ id: string; status: string; plannedOutput: Prisma.Decimal; bomId: string }>>`
       SELECT "id", "status", "plannedOutput", "bomId" FROM "production_runs"
       WHERE "id"=${productionRunId}::uuid AND "workspaceId"=${context.workspaceId}::uuid FOR UPDATE
@@ -438,6 +526,7 @@ export async function postProductionRun(context: IndustryContext, productionRunI
       if (!product) throw new IndustryDomainError("NOT_FOUND", "A BOM material no longer exists.");
       if (Number(product.stockQuantity) < required) throw new IndustryDomainError("INSUFFICIENT_STOCK", `Insufficient stock for production material ${product.id}.`);
       await tx.product.update({ where: { id: product.id }, data: { stockQuantity: { decrement: required } } });
+      await applyIndustryWarehouseDelta(tx, { workspaceId: context.workspaceId, warehouseId, productId: product.id, delta: -required });
       await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: product.id, type: "ADJUSTMENT", quantityChanged: -required, unitCost: product.costPrice, reference: `PRODUCTION:${productionRunId}` } });
       await tx.$executeRaw`
         INSERT INTO "production_consumptions" ("productionRunId", "productId", "plannedQuantity", "actualQuantity", "unitCost")
@@ -453,6 +542,7 @@ export async function postProductionRun(context: IndustryContext, productionRunI
     const newQty = oldQty + output;
     const weightedCost = newQty > 0 ? ((oldQty * Number(finished.costPrice)) + materialCost) / newQty : unitCost;
     await tx.product.update({ where: { id: finished.id }, data: { stockQuantity: { increment: output }, costPrice: weightedCost } });
+    await applyIndustryWarehouseDelta(tx, { workspaceId: context.workspaceId, warehouseId, productId: finished.id, delta: output });
     await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: finished.id, type: "ADJUSTMENT", quantityChanged: output, unitCost, reference: `PRODUCTION:${productionRunId}` } });
     await tx.$executeRaw`
       UPDATE "production_runs" SET "status"='POSTED', "actualOutput"=${output}, "wastageQuantity"=${wastageQuantity}, "postedById"=${context.userId ?? null}::uuid, "postedAt"=now(), "updatedAt"=now()
