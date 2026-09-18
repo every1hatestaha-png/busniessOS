@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireWorkspace } from "@/lib/server/auth";
 import {
   approveProductionRun,
+  cancelProductionRun,
   createBom,
   createProductionRun,
   createWarehouse,
@@ -174,5 +175,23 @@ export async function postProductionRunAction(
     return { status: "success", message: `Production posted. Unit cost: Rs ${result.unitCost.toFixed(2)}.` };
   } catch (error) {
     return fail(messageFor(error, "We could not post this production run. Check raw-material stock and try again."));
+  }
+}
+
+
+export async function cancelProductionRunAction(
+  _previous: ManufacturingActionState,
+  formData: FormData,
+): Promise<ManufacturingActionState> {
+  const productionRunId = String(formData.get("productionRunId") ?? "").trim();
+  if (!/^[0-9a-f-]{36}$/i.test(productionRunId)) return fail("Production run is invalid.");
+
+  const { workspaceId, role, user } = await requireWorkspace();
+  try {
+    await cancelProductionRun({ workspaceId, role, userId: user.id }, productionRunId);
+    revalidatePath("/manufacturing");
+    return { status: "success", message: "Production run cancelled. No inventory was changed." };
+  } catch (error) {
+    return fail(messageFor(error, "We could not cancel this production run."));
   }
 }
