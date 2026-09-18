@@ -7,6 +7,7 @@ let getWarehouseStockMode: typeof import("@/lib/server/managed-warehouse-stock")
 let getManagedWarehouseReadiness: typeof import("@/lib/server/managed-warehouse-stock")["getManagedWarehouseReadiness"];
 let setWorkspaceModule: typeof import("@/lib/server/industry-modules")["setWorkspaceModule"];
 let transferWarehouseStock: typeof import("@/lib/server/industry-modules")["transferWarehouseStock"];
+let createProduct: typeof import("@/lib/server/products")["createProduct"];
 
 const runId = randomUUID();
 let userId = "";
@@ -28,6 +29,7 @@ describe("managed warehouse stock primitive", () => {
     ({ db } = await import("@/lib/server/db"));
     ({ applyManagedWarehouseStockDelta, getWarehouseStockMode, getManagedWarehouseReadiness } = await import("@/lib/server/managed-warehouse-stock"));
     ({ setWorkspaceModule, transferWarehouseStock } = await import("@/lib/server/industry-modules"));
+    ({ createProduct } = await import("@/lib/server/products"));
 
     const user = await db.user.create({
       data: { clerkId: "managed-warehouse-" + runId, email: "managed-warehouse-" + runId + "@example.invalid" },
@@ -101,6 +103,7 @@ describe("managed warehouse stock primitive", () => {
       await db.$executeRawUnsafe('DELETE FROM "warehouse_stocks" WHERE "workspaceId"=$1::uuid', id);
       await db.$executeRawUnsafe('DELETE FROM "warehouses" WHERE "workspaceId"=$1::uuid', id);
       await db.$executeRawUnsafe('DELETE FROM "workspace_modules" WHERE "workspaceId"=$1::uuid', id);
+      await db.inventoryTransaction.deleteMany({ where: { workspaceId: id } });
       await db.product.deleteMany({ where: { workspaceId: id } });
       await db.workspace.delete({ where: { id } });
     }
@@ -155,6 +158,35 @@ describe("managed warehouse stock primitive", () => {
         applyManagedWarehouseStockDelta(tx, { workspaceId, warehouseId, productId: otherProductId, delta: 1 }),
       ),
     ).rejects.toMatchObject({ code: "PRODUCT_NOT_FOUND" });
+  });
+
+  it("seeds positive opening stock into the default warehouse in managed mode", async () => {
+    const createdId = await createProduct(workspaceId, {
+      name: "Managed Opening Product",
+      sku: "managed-opening-" + runId,
+      category: "Test",
+      costPrice: 0,
+      sellingPrice: 10,
+      stockQuantity: 7,
+      reorderLevel: 1,
+      unit: "PIECE",
+      status: "ACTIVE",
+      description: "Managed opening stock regression",
+    });
+
+    const [product, balances] = await Promise.all([
+      db.product.findUniqueOrThrow({ where: { id: createdId }, select: { stockQuantity: true } }),
+      db.$queryRawUnsafe<Array<{ warehouseId: string; quantity: string }>>(
+        'SELECT "warehouseId"::text AS "warehouseId","quantity"::text AS "quantity" FROM "warehouse_stocks" WHERE "workspaceId"=$1::uuid AND "productId"=$2::uuid',
+        workspaceId,
+        createdId,
+      ),
+    ]);
+
+    expect(Number(product.stockQuantity)).toBe(7);
+    expect(balances).toHaveLength(1);
+    expect(balances[0]?.warehouseId).toBe(warehouseId);
+    expect(Number(balances[0]?.quantity)).toBe(7);
   });
 
   it("transfers managed stock without changing core inventory", async () => {
