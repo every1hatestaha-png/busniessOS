@@ -7,6 +7,7 @@ import { canPerformAction } from "@/lib/server/authorization";
 import { writeAudit } from "@/lib/server/audit";
 import type { ServiceContext } from "@/lib/server/sales";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
+import { applyManagedWarehouseStockDelta, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
 
 export class SupplierReturnReversalError extends Error {}
 
@@ -21,6 +22,7 @@ export async function cancelSupplierReturn(context: ServiceContext, supplierRetu
       include: {
         items: { select: { id: true, productId: true, quantity: true, totalCost: true } },
         purchaseOrder: { select: { id: true, status: true } },
+        goodReceivedNote: { select: { warehouseId: true } },
       },
     });
     if (!supplierReturn) throw new SupplierReturnReversalError("Supplier return not found.");
@@ -46,6 +48,20 @@ export async function cancelSupplierReturn(context: ServiceContext, supplierRetu
         data: { stockQuantity: { increment: item.quantity }, costPrice: restoredCost },
       });
       if (changed.count !== 1) throw new SupplierReturnReversalError("Inventory changed while cancelling this supplier return. Retry the cancellation.");
+
+      try {
+        await applyManagedWarehouseStockDelta(tx, {
+          workspaceId: context.workspaceId,
+          warehouseId: supplierReturn.goodReceivedNote?.warehouseId,
+          productId: item.productId,
+          delta: item.quantity,
+        });
+      } catch (error) {
+        if (error instanceof ManagedWarehouseStockError) {
+          throw new SupplierReturnReversalError(`Warehouse inventory could not be restored safely: ${error.message}`);
+        }
+        throw error;
+      }
 
       // InventoryTransactionType has no generic REVERSAL member. Use ADJUSTMENT
       // with an explicit reversal reference rather than introducing a migration
