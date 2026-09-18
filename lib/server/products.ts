@@ -19,7 +19,7 @@ type ProductMutationContext = { workspaceId: string; role: Role; userId?: string
 
 export class ProductDomainError extends Error {
   constructor(
-    public readonly code: "PRODUCT_NOT_FOUND" | "PERMISSION_DENIED" | "INVALID_COST_PRICE",
+    public readonly code: "PRODUCT_NOT_FOUND" | "PERMISSION_DENIED" | "INVALID_COST_PRICE" | "WAREHOUSE_NOT_READY",
     message: string,
   ) {
     super(message);
@@ -129,6 +129,26 @@ export async function getProduct(id: string, authorizedWorkspaceId?: string): Pr
 
 export async function createProduct(workspaceId: string, input: ProductData): Promise<string> {
   return db.$transaction(async (transaction) => {
+    const warehouseMode = await getWarehouseStockModeInTransaction(transaction, workspaceId);
+    let openingWarehouseId: string | undefined;
+    if (warehouseMode === "MANAGED" && input.stockQuantity > 0) {
+      const warehouses = await transaction.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"::text AS "id"
+        FROM "warehouses"
+        WHERE "workspaceId"=${workspaceId}::uuid
+          AND "isActive"=true
+          AND "isDefault"=true
+        FOR SHARE
+      `;
+      if (warehouses.length !== 1) {
+        throw new ProductDomainError(
+          "WAREHOUSE_NOT_READY",
+          "Choose exactly one active default warehouse before creating a product with opening stock.",
+        );
+      }
+      openingWarehouseId = warehouses[0]!.id;
+    }
+
     const product = await transaction.product.create({
       data: {
         workspaceId,
@@ -145,6 +165,22 @@ export async function createProduct(workspaceId: string, input: ProductData): Pr
         description: input.description,
       },
     });
+
+    if (input.stockQuantity > 0) {
+      try {
+        await applyManagedWarehouseStockDelta(transaction, {
+          workspaceId,
+          warehouseId: openingWarehouseId,
+          productId: product.id,
+          delta: input.stockQuantity,
+        });
+      } catch (error) {
+        if (error instanceof ManagedWarehouseStockError) {
+          throw new ProductDomainError("WAREHOUSE_NOT_READY", error.message);
+        }
+        throw error;
+      }
+    }
 
     await transaction.inventoryTransaction.create({
       data: {
