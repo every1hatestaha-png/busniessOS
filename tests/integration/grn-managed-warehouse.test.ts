@@ -132,6 +132,7 @@ describe("managed warehouse GRN lifecycle", () => {
       await db.$executeRawUnsafe('DELETE FROM "workspace_modules" WHERE "workspaceId"=$1::uuid', workspaceId);
       await db.product.deleteMany({ where: { workspaceId } });
       await db.supplier.deleteMany({ where: { workspaceId } });
+      await db.cashBankAccount.deleteMany({ where: { workspaceId } });
       await db.account.deleteMany({ where: { workspaceId } });
       await db.workspace.delete({ where: { id: workspaceId } });
     }
