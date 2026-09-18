@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const saleSchema = z.object({
   customerId: z.string().uuid(),
+  warehouseId: z.string().uuid().optional(),
   items: z.array(z.object({
     productId: z.string().uuid(),
     quantity: z.number().positive(),

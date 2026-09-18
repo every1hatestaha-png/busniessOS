@@ -522,6 +522,7 @@ model SalesOrder {
   updatedAt      DateTime         @updatedAt
   cancelledAt    DateTime?
   cancelledById  String?
+  warehouseId    String?          @db.Uuid
 
   workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   customer    Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)

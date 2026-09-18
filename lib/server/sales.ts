@@ -10,10 +10,11 @@ import { writeAudit } from "@/lib/server/audit";
 import { customerReturnSchema, type CustomerReturnInput } from "@/lib/validation/returns";
 import { canPerformAction } from "@/lib/server/authorization";
 import { formatPKR } from "@/lib/utils";
+import { applyManagedWarehouseStockDelta, assertManagedWarehouseSelection, getWarehouseStockModeInTransaction, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
 
 export type ServiceContext = { workspaceId: string; role: Role; userId?: string };
 export class SaleDomainError extends Error {
-  constructor(public code: "CUSTOMER_NOT_FOUND" | "PRODUCT_NOT_FOUND" | "INSUFFICIENT_STOCK" | "INVALID_TOTAL" | "CREDIT_LIMIT_EXCEEDED" | "PAYMENT_PERMISSION_DENIED" | "PAYMENT_ACCOUNT_UNAVAILABLE" | "SALE_NOT_FOUND" | "INVALID_RETURN" | "PERMISSION_DENIED", message: string) {
+  constructor(public code: "CUSTOMER_NOT_FOUND" | "PRODUCT_NOT_FOUND" | "INSUFFICIENT_STOCK" | "INVALID_TOTAL" | "CREDIT_LIMIT_EXCEEDED" | "PAYMENT_PERMISSION_DENIED" | "PAYMENT_ACCOUNT_UNAVAILABLE" | "SALE_NOT_FOUND" | "INVALID_RETURN" | "PERMISSION_DENIED" | "WAREHOUSE_REQUIRED" | "WAREHOUSE_NOT_FOUND" | "WAREHOUSE_STOCK_ERROR", message: string) {
     super(message);
   }
 }
@@ -25,6 +26,29 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
     if (existing) return existing;
     const customer = await tx.customer.findFirst({ where: { id: data.customerId, workspaceId: context.workspaceId, status: "ACTIVE" }, select: { id: true, currentBalance: true, creditLimit: true, creditDays: true } });
     if (!customer) throw new SaleDomainError("CUSTOMER_NOT_FOUND", "Customer is unavailable.");
+
+    const warehouseMode = await getWarehouseStockModeInTransaction(tx, context.workspaceId);
+    if (warehouseMode === "MANAGED" && !data.warehouseId) {
+      throw new SaleDomainError("WAREHOUSE_REQUIRED", "Choose the warehouse issuing this sale.");
+    }
+    if (warehouseMode === "LEGACY" && data.warehouseId) {
+      throw new SaleDomainError("WAREHOUSE_STOCK_ERROR", "Warehouse issuing is not enabled for this workspace yet.");
+    }
+    if (warehouseMode === "MANAGED") {
+      try {
+        await assertManagedWarehouseSelection(tx, {
+          workspaceId: context.workspaceId,
+          warehouseId: data.warehouseId,
+        });
+      } catch (error) {
+        if (error instanceof ManagedWarehouseStockError) {
+          if (error.code === "WAREHOUSE_REQUIRED") throw new SaleDomainError("WAREHOUSE_REQUIRED", error.message);
+          if (error.code === "WAREHOUSE_NOT_FOUND") throw new SaleDomainError("WAREHOUSE_NOT_FOUND", error.message);
+          throw new SaleDomainError("WAREHOUSE_STOCK_ERROR", error.message);
+        }
+        throw error;
+      }
+    }
     const products = await tx.product.findMany({ where: { workspaceId: context.workspaceId, id: { in: data.items.map((item) => item.productId) }, status: "ACTIVE" }, select: { id: true, name: true, sku: true, stockQuantity: true, costPrice: true } });
     if (products.length !== data.items.length) throw new SaleDomainError("PRODUCT_NOT_FOUND", "One or more products are unavailable.");
 
@@ -71,7 +95,7 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
 
     const orderNumber = await nextDocumentNumber(tx, context.workspaceId, "SALES_ORDER");
     const invoiceNumber = await nextDocumentNumber(tx, context.workspaceId, "INVOICE");
-    const order = await tx.salesOrder.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, orderNumber, status: "CONFIRMED", subtotal, discount, total, paidAmount: paid, balanceAmount: total.minus(paid), notes: data.notes || null, idempotencyKey: data.idempotencyKey }, select: { id: true, orderDate: true } });
+    const order = await tx.salesOrder.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, orderNumber, status: "CONFIRMED", subtotal, discount, total, paidAmount: paid, balanceAmount: total.minus(paid), notes: data.notes || null, idempotencyKey: data.idempotencyKey, warehouseId: warehouseMode === "MANAGED" ? data.warehouseId! : null }, select: { id: true, orderDate: true } });
     let costOfGoodsSold = new Prisma.Decimal(0);
     const productById = new Map(products.map((product) => [product.id, product]));
 
@@ -80,6 +104,24 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
       costOfGoodsSold = costOfGoodsSold.plus(product.costPrice.mul(line.quantity));
       const changed = await tx.product.updateMany({ where: { id: line.productId, workspaceId: context.workspaceId, stockQuantity: { gte: line.quantity } }, data: { stockQuantity: { decrement: line.quantity } } });
       if (changed.count !== 1) throw new SaleDomainError("INSUFFICIENT_STOCK", `Unable to create sale because ${product.name} does not have sufficient inventory. Available quantity: ${product.stockQuantity.toString()}.`);
+      try {
+        await applyManagedWarehouseStockDelta(tx, {
+          workspaceId: context.workspaceId,
+          warehouseId: data.warehouseId,
+          productId: line.productId,
+          delta: new Prisma.Decimal(line.quantity).negated(),
+        });
+      } catch (error) {
+        if (error instanceof ManagedWarehouseStockError) {
+          if (error.code === "NEGATIVE_WAREHOUSE_STOCK") {
+            throw new SaleDomainError("INSUFFICIENT_STOCK", `${product.name} does not have sufficient stock in the selected warehouse.`);
+          }
+          if (error.code === "WAREHOUSE_REQUIRED") throw new SaleDomainError("WAREHOUSE_REQUIRED", error.message);
+          if (error.code === "WAREHOUSE_NOT_FOUND") throw new SaleDomainError("WAREHOUSE_NOT_FOUND", error.message);
+          throw new SaleDomainError("WAREHOUSE_STOCK_ERROR", error.message);
+        }
+        throw error;
+      }
     }
 
     await tx.salesOrderItem.createMany({ data: lines.map((line) => {
@@ -148,6 +190,19 @@ export async function createCustomerReturn(context: ServiceContext, input: Custo
         const resultingQuantity = currentStock + line.quantity;
         const resultingCost = product.costPrice.mul(currentStock).plus(historicalCost.mul(line.quantity)).div(resultingQuantity);
         await tx.product.updateMany({ where: { id: line.source.productId, workspaceId: context.workspaceId, stockQuantity: product.stockQuantity }, data: { stockQuantity: { increment: line.quantity }, costPrice: resultingCost } });
+        try {
+          await applyManagedWarehouseStockDelta(tx, {
+            workspaceId: context.workspaceId,
+            warehouseId: order.warehouseId,
+            productId: line.source.productId,
+            delta: line.quantity,
+          });
+        } catch (error) {
+          if (error instanceof ManagedWarehouseStockError) {
+            throw new SaleDomainError("WAREHOUSE_STOCK_ERROR", `Returned stock could not be restored to the sale warehouse: ${error.message}`);
+          }
+          throw error;
+        }
         await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: line.source.productId, type: "RETURN_IN", quantityChanged: line.quantity, unitCost: historicalCost, reference: number } });
       }
     }
@@ -186,6 +241,19 @@ export async function cancelSale(context: ServiceContext, id: string, reverseIni
       const resultingCost = product.costPrice.mul(currentStock).plus(historicalCost.mul(itemQty)).div(resultingQuantity);
       const changed = await tx.product.updateMany({ where: { id: item.productId, workspaceId: context.workspaceId, stockQuantity: product.stockQuantity }, data: { stockQuantity: { increment: itemQty }, costPrice: resultingCost } });
       if (changed.count !== 1) throw new SaleDomainError("INVALID_TOTAL", "Inventory changed while cancelling this sale. Retry the cancellation.");
+      try {
+        await applyManagedWarehouseStockDelta(tx, {
+          workspaceId: context.workspaceId,
+          warehouseId: order.warehouseId,
+          productId: item.productId,
+          delta: item.quantity,
+        });
+      } catch (error) {
+        if (error instanceof ManagedWarehouseStockError) {
+          throw new SaleDomainError("WAREHOUSE_STOCK_ERROR", `Cancelled sale stock could not be restored to its warehouse: ${error.message}`);
+        }
+        throw error;
+      }
       await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: item.productId, type: "SALE_CANCELLATION", quantityChanged: itemQty, unitCost: historicalCost, reference: order.orderNumber } });
     }
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, type: "REVERSAL", credit: order.total, description: `Cancelled sale ${order.orderNumber}`, referenceId: order.id } });
@@ -227,6 +295,15 @@ export async function getSale(workspaceId: string, id: string) {
     },
   });
   if (!row) return null;
+  const warehouse = row.warehouseId
+    ? (await db.$queryRaw<Array<{ id: string; name: string; code: string }>>`
+        SELECT "id"::text AS "id", "name", "code"
+        FROM "warehouses"
+        WHERE "id"=${row.warehouseId}::uuid
+          AND "workspaceId"=${workspaceId}::uuid
+        LIMIT 1
+      `)[0] ?? null
+    : null;
   const taxableAmount = Math.max(0, Number(row.subtotal) - Number(row.discount));
   const gstAmount = Math.max(0, Number(row.total) - taxableAmount);
   const gstRate = taxableAmount > 0 ? Number(((gstAmount / taxableAmount) * 100).toFixed(4)) : 0;
@@ -244,6 +321,7 @@ export async function getSale(workspaceId: string, id: string) {
     paidAmount: Number(row.paidAmount),
     balanceAmount: Number(row.balanceAmount),
     notes: row.notes ?? "",
+    warehouse,
     customer: { id: row.customer.id, name: row.customer.name, companyName: row.customer.companyName ?? row.customer.name, phone: row.customer.phone ?? "", address: row.customer.address ?? "", currentBalance: Number(row.customer.currentBalance), creditDays: row.customer.creditDays, creditLimit: Number(row.customer.creditLimit) },
     items: row.items.map((item) => ({ id: item.id, productName: item.productName ?? item.product.name, sku: item.productSku ?? item.product.sku ?? "", quantity: item.quantity, unitPrice: Number(item.unitPrice), discountPerUnit: Number(item.discountPerUnit), total: Number(item.totalPrice), pricingMode: item.pricingMode, unitWeight: item.unitWeight ? Number(item.unitWeight) : null, totalWeight: item.totalWeight ? Number(item.totalWeight) : null, perKgRate: item.perKgRate ? Number(item.perKgRate) : null })),
     invoice: row.invoices[0] ? { id: row.invoices[0].id, number: row.invoices[0].invoiceNumber } : null,

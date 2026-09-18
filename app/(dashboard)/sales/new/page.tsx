@@ -2,6 +2,7 @@ import { SalesOrderForm } from "@/components/sales/sales-order-form";
 import { canPerformAction, requirePermission } from "@/lib/server/authorization";
 import { getCashBankAccounts } from "@/lib/server/accounting";
 import { db } from "@/lib/server/db";
+import { getWarehouseStockMode, listActiveStockWarehouses } from "@/lib/server/managed-warehouse-stock";
 
 export default async function NewSalePage() {
   const { workspaceId, role } = await requirePermission("sales.create");
@@ -9,7 +10,8 @@ export default async function NewSalePage() {
 
   // Keep this high-frequency screen lean: fetch only active records and only the
   // columns the form renders instead of serializing full customer/product DTOs.
-  const [customerRows, productRows, cashBankAccounts] = await Promise.all([
+  const warehouseMode = await getWarehouseStockMode(workspaceId);
+  const [customerRows, productRows, cashBankAccounts, warehouses, warehouseStocks] = await Promise.all([
     db.customer.findMany({
       where: { workspaceId, status: "ACTIVE" },
       orderBy: [{ companyName: "asc" }, { name: "asc" }],
@@ -21,6 +23,14 @@ export default async function NewSalePage() {
       select: { id: true, name: true, sku: true, sellingPrice: true, stockQuantity: true, status: true, unit: true, defaultWeightKg: true },
     }),
     canRecordPayments ? getCashBankAccounts(workspaceId) : Promise.resolve([]),
+    warehouseMode === "MANAGED" ? listActiveStockWarehouses(workspaceId) : Promise.resolve([]),
+    warehouseMode === "MANAGED"
+      ? db.$queryRaw<Array<{ warehouseId: string; productId: string; quantity: string }>>`
+          SELECT "warehouseId"::text AS "warehouseId", "productId"::text AS "productId", "quantity"::text AS "quantity"
+          FROM "warehouse_stocks"
+          WHERE "workspaceId"=${workspaceId}::uuid
+        `
+      : Promise.resolve([]),
   ]);
 
   const customers = customerRows.map((customer) => ({
@@ -43,5 +53,13 @@ export default async function NewSalePage() {
     defaultWeightKg: product.defaultWeightKg ? Number(product.defaultWeightKg) : null,
   }));
 
-  return <SalesOrderForm customers={customers} products={products} cashBankAccounts={cashBankAccounts} canRecordPayments={canRecordPayments} />;
+  return <SalesOrderForm
+    customers={customers}
+    products={products}
+    cashBankAccounts={cashBankAccounts}
+    canRecordPayments={canRecordPayments}
+    warehouseMode={warehouseMode}
+    warehouses={warehouses}
+    warehouseStocks={warehouseStocks.map((stock) => ({ ...stock, quantity: Number(stock.quantity) }))}
+  />;
 }

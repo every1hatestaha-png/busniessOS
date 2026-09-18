@@ -27,13 +27,18 @@ export async function getInvoice(workspaceId: string, id: string) {
     orderNumber: string | null;
     subtotal: Prisma.Decimal | null;
     discount: Prisma.Decimal | null;
+    warehouseId: string | null;
+    warehouseName: string | null;
+    warehouseCode: string | null;
   }>>`
     SELECT i."id", i."invoiceNumber", i."issuedAt", i."dueDate", i."amount", i."paidAmount", i."creditApplied", i."status",
       c."id" AS "customerId", c."name" AS "customerName", c."companyName" AS "customerCompanyName", c."phone" AS "customerPhone", c."address" AS "customerAddress",
-      so."id" AS "salesOrderId", so."orderNumber", so."subtotal", so."discount"
+      so."id" AS "salesOrderId", so."orderNumber", so."subtotal", so."discount",
+      so."warehouseId"::text AS "warehouseId", w."name" AS "warehouseName", w."code" AS "warehouseCode"
     FROM "invoices" i
     INNER JOIN "customers" c ON c."id" = i."customerId"
     LEFT JOIN "sales_orders" so ON so."id" = i."salesOrderId"
+    LEFT JOIN "warehouses" w ON w."id" = so."warehouseId" AND w."workspaceId" = i."workspaceId"::uuid
     WHERE i."id" = ${id} AND i."workspaceId" = ${workspaceId}
     LIMIT 1
   `;
@@ -67,5 +72,5 @@ export async function getInvoice(workspaceId: string, id: string) {
   const taxableAmount = Math.max(0, subtotal - discount);
   const gstAmount = Math.max(0, Number(invoice.amount) - taxableAmount);
   const gstRate = taxableAmount > 0 ? Number(((gstAmount / taxableAmount) * 100).toFixed(4)) : 0;
-  return { id: invoice.id, invoiceNumber: invoice.invoiceNumber, date: invoice.issuedAt.toISOString(), dueDate: invoice.dueDate?.toISOString() ?? null, total: Number(invoice.amount), paid: Number(invoice.paidAmount), creditApplied: Number(invoice.creditApplied), balance: status === "CANCELLED" ? 0 : Number(invoice.amount.minus(invoice.paidAmount).minus(invoice.creditApplied)), status, customer: { id: invoice.customerId, name: invoice.customerName, companyName: invoice.customerCompanyName ?? invoice.customerName, phone: invoice.customerPhone ?? "", address: invoice.customerAddress ?? "" }, order: invoice.salesOrderId ? { id: invoice.salesOrderId, number: invoice.orderNumber ?? "-", subtotal, discount, taxableAmount, gstRate, gstAmount, items: items.map((item) => ({ id: item.id, name: item.productName ?? item.fallbackProductName, sku: item.productSku ?? item.fallbackSku ?? "", unit: item.unit, quantity: Number(item.quantity), unitPrice: Number(item.unitPrice), discountPerUnit: Number(item.discountPerUnit), total: Number(item.totalPrice), pricingMode: item.pricingMode, unitWeight: item.unitWeight ? Number(item.unitWeight) : null, totalWeight: item.totalWeight ? Number(item.totalWeight) : null, perKgRate: item.perKgRate ? Number(item.perKgRate) : null })) } : null, payments };
+  return { id: invoice.id, invoiceNumber: invoice.invoiceNumber, date: invoice.issuedAt.toISOString(), dueDate: invoice.dueDate?.toISOString() ?? null, total: Number(invoice.amount), paid: Number(invoice.paidAmount), creditApplied: Number(invoice.creditApplied), balance: status === "CANCELLED" ? 0 : Number(invoice.amount.minus(invoice.paidAmount).minus(invoice.creditApplied)), status, customer: { id: invoice.customerId, name: invoice.customerName, companyName: invoice.customerCompanyName ?? invoice.customerName, phone: invoice.customerPhone ?? "", address: invoice.customerAddress ?? "" }, order: invoice.salesOrderId ? { id: invoice.salesOrderId, number: invoice.orderNumber ?? "-", subtotal, discount, taxableAmount, gstRate, gstAmount, warehouse: invoice.warehouseId ? { id: invoice.warehouseId, name: invoice.warehouseName ?? "Warehouse", code: invoice.warehouseCode ?? "" } : null, items: items.map((item) => ({ id: item.id, name: item.productName ?? item.fallbackProductName, sku: item.productSku ?? item.fallbackSku ?? "", unit: item.unit, quantity: Number(item.quantity), unitPrice: Number(item.unitPrice), discountPerUnit: Number(item.discountPerUnit), total: Number(item.totalPrice), pricingMode: item.pricingMode, unitWeight: item.unitWeight ? Number(item.unitWeight) : null, totalWeight: item.totalWeight ? Number(item.totalWeight) : null, perKgRate: item.perKgRate ? Number(item.perKgRate) : null })) } : null, payments };
 }
