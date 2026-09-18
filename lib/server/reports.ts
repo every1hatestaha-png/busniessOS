@@ -102,7 +102,6 @@ export async function getCurrentStockReport(workspaceId: string, search?: string
         FROM "warehouse_stocks" ws
         JOIN "warehouses" w ON w."id" = ws."warehouseId"
         WHERE ws."workspaceId" = ${workspaceId}::uuid
-          AND ws."productId" IN (${Prisma.join(products.map((product) => Prisma.sql`${product.id}::uuid`))})
         ORDER BY w."isDefault" DESC, w."name" ASC, w."id" ASC
       `
     : [];
