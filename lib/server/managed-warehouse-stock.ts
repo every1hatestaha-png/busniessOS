@@ -32,7 +32,7 @@ export async function getWarehouseStockMode(workspaceId: string): Promise<Wareho
   return rows[0]?.mode === "MANAGED" ? "MANAGED" : "LEGACY";
 }
 
-async function getWarehouseStockModeInTransaction(
+export async function getWarehouseStockModeInTransaction(
   tx: Prisma.TransactionClient,
   workspaceId: string,
 ): Promise<WarehouseStockMode> {
@@ -45,6 +45,16 @@ async function getWarehouseStockModeInTransaction(
     LIMIT 1
   `;
   return rows[0]?.mode === "MANAGED" ? "MANAGED" : "LEGACY";
+}
+
+export async function listActiveStockWarehouses(workspaceId: string) {
+  return db.$queryRaw<Array<{ id: string; name: string; code: string; isDefault: boolean }>>`
+    SELECT "id"::text AS "id", "name", "code", "isDefault"
+    FROM "warehouses"
+    WHERE "workspaceId"=${workspaceId}::uuid
+      AND "isActive"=true
+    ORDER BY "isDefault" DESC, "name" ASC
+  `;
 }
 
 export async function getManagedWarehouseReadiness(workspaceId: string) {
@@ -60,6 +70,38 @@ export async function getManagedWarehouseReadiness(workspaceId: string) {
     reasons,
     reconciliation,
   };
+}
+
+export async function assertManagedWarehouseSelection(
+  tx: Prisma.TransactionClient,
+  input: { workspaceId: string; warehouseId?: string | null },
+) {
+  const mode = await getWarehouseStockModeInTransaction(tx, input.workspaceId);
+  if (mode === "LEGACY") return { mode } as const;
+
+  if (!input.warehouseId) {
+    throw new ManagedWarehouseStockError(
+      "WAREHOUSE_REQUIRED",
+      "A warehouse is required while managed warehouse stock is enabled.",
+    );
+  }
+
+  const warehouses = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT "id"::text AS "id"
+    FROM "warehouses"
+    WHERE "id"=${input.warehouseId}::uuid
+      AND "workspaceId"=${input.workspaceId}::uuid
+      AND "isActive"=true
+    FOR SHARE
+  `;
+  if (!warehouses[0]) {
+    throw new ManagedWarehouseStockError(
+      "WAREHOUSE_NOT_FOUND",
+      "The selected warehouse is not active in this workspace.",
+    );
+  }
+
+  return { mode, warehouseId: input.warehouseId } as const;
 }
 
 export async function applyManagedWarehouseStockDelta(
@@ -89,20 +131,10 @@ export async function applyManagedWarehouseStockDelta(
     throw new ManagedWarehouseStockError("WAREHOUSE_NOT_READY", "Warehouse stock change must be a finite number.");
   }
 
-  const warehouses = await tx.$queryRaw<Array<{ id: string }>>`
-    SELECT "id"::text AS "id"
-    FROM "warehouses"
-    WHERE "id"=${input.warehouseId}::uuid
-      AND "workspaceId"=${input.workspaceId}::uuid
-      AND "isActive"=true
-    FOR SHARE
-  `;
-  if (!warehouses[0]) {
-    throw new ManagedWarehouseStockError(
-      "WAREHOUSE_NOT_FOUND",
-      "The selected warehouse is not active in this workspace.",
-    );
-  }
+  await assertManagedWarehouseSelection(tx, {
+    workspaceId: input.workspaceId,
+    warehouseId: input.warehouseId,
+  });
 
   const products = await tx.$queryRaw<Array<{ id: string }>>`
     SELECT "id"

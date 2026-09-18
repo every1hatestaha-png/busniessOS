@@ -4,12 +4,20 @@ import { ArrowLeft } from "lucide-react";
 import { GoodsReceiptForm } from "@/components/goods-receipts/goods-receipt-form";
 import { requirePermission } from "@/lib/server/authorization";
 import { getOpenPOItemsForGRN } from "@/lib/server/purchases";
+import { getWarehouseStockMode, listActiveStockWarehouses } from "@/lib/server/managed-warehouse-stock";
 
 export default async function ReceiveGoodsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { workspaceId } = await requirePermission("financial.manage");
-  const data = await getOpenPOItemsForGRN(workspaceId, id);
+  const [data, warehouseMode] = await Promise.all([
+    getOpenPOItemsForGRN(workspaceId, id),
+    getWarehouseStockMode(workspaceId),
+  ]);
   if (!data) notFound();
+
+  const warehouses = warehouseMode === "MANAGED"
+    ? await listActiveStockWarehouses(workspaceId)
+    : [];
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">
@@ -22,7 +30,14 @@ export default async function ReceiveGoodsPage({ params }: { params: Promise<{ i
           {data.supplier.name} · {data.items.length} open line{data.items.length !== 1 ? "s" : ""}
         </p>
       </div>
-      <GoodsReceiptForm purchaseOrderId={data.id} poNumber={data.orderNumber} supplierName={data.supplier.name} items={data.items} />
+      <GoodsReceiptForm
+        purchaseOrderId={data.id}
+        poNumber={data.orderNumber}
+        supplierName={data.supplier.name}
+        items={data.items}
+        warehouseMode={warehouseMode}
+        warehouses={warehouses}
+      />
     </div>
   );
 }

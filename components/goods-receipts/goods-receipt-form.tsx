@@ -13,7 +13,8 @@ import { formatPKR } from "@/lib/utils";
 
 type POItem = { id: string; productId: string; productName: string; sku: string; orderedQuantity: number; receivedQuantity: number; remainingQuantity: number; unitCost: number; unitWeight: number | null; totalWeight: number | null; perKgRate: number | null; unit: string };
 type ReceiptItem = { purchaseOrderItemId: string; receivedQuantity: string; acceptedQuantity: string; actualUnitCost: string; receivedWeightKg: string; acceptedWeightKg: string; ratePerKg: string };
-type GrnDraft = { version: 1; savedAt: string; receiptDate: string; receivedBy: string; checkedBy: string; notes: string; receipts: ReceiptItem[] };
+type WarehouseOption = { id: string; name: string; code: string; isDefault: boolean };
+type GrnDraft = { version: 2; savedAt: string; receiptDate: string; receivedBy: string; checkedBy: string; notes: string; warehouseId: string; receipts: ReceiptItem[] };
 const fieldClass = "h-8 w-full rounded-md border bg-white px-2.5 text-xs outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15";
 const receivingGrid = "grid-cols-[minmax(190px,1fr)_65px_70px_70px_82px_82px_96px_96px_92px_110px]";
 
@@ -29,7 +30,21 @@ function initialReceiptItems(items: POItem[]): ReceiptItem[] {
   }));
 }
 
-export function GoodsReceiptForm({ purchaseOrderId, poNumber, supplierName, items }: { purchaseOrderId: string; poNumber: string; supplierName: string; items: POItem[] }) {
+export function GoodsReceiptForm({
+  purchaseOrderId,
+  poNumber,
+  supplierName,
+  items,
+  warehouseMode = "LEGACY",
+  warehouses = [],
+}: {
+  purchaseOrderId: string;
+  poNumber: string;
+  supplierName: string;
+  items: POItem[];
+  warehouseMode?: "LEGACY" | "MANAGED";
+  warehouses?: WarehouseOption[];
+}) {
   const router = useRouter();
   const initialReceipts = useMemo(() => initialReceiptItems(items), [items]);
   const draftKey = `munshios:grn-draft:${purchaseOrderId}`;
@@ -40,6 +55,10 @@ export function GoodsReceiptForm({ purchaseOrderId, poNumber, supplierName, item
   const [receivedBy, setReceivedBy] = useState("");
   const [checkedBy, setCheckedBy] = useState("");
   const [notes, setNotes] = useState("");
+  const initialWarehouseId = warehouseMode === "MANAGED"
+    ? (warehouses.find((warehouse) => warehouse.isDefault)?.id ?? "")
+    : "";
+  const [warehouseId, setWarehouseId] = useState(initialWarehouseId);
   const [receipts, setReceipts] = useState<ReceiptItem[]>(initialReceipts);
 
   useEffect(() => {
@@ -48,13 +67,16 @@ export function GoodsReceiptForm({ purchaseOrderId, poNumber, supplierName, item
         const raw = window.localStorage.getItem(draftKey);
         if (raw) {
           const draft = JSON.parse(raw) as Partial<GrnDraft>;
-          if (draft.version === 1 && Array.isArray(draft.receipts)) {
+          if (draft.version === 2 && Array.isArray(draft.receipts)) {
             const savedById = new Map(draft.receipts.map((entry) => [entry.purchaseOrderItemId, entry]));
             setReceipts(initialReceipts.map((entry) => savedById.get(entry.purchaseOrderItemId) ?? entry));
             setReceiptDate(typeof draft.receiptDate === "string" ? draft.receiptDate : "");
             setReceivedBy(typeof draft.receivedBy === "string" ? draft.receivedBy : "");
             setCheckedBy(typeof draft.checkedBy === "string" ? draft.checkedBy : "");
             setNotes(typeof draft.notes === "string" ? draft.notes : "");
+            if (warehouseMode === "MANAGED" && typeof draft.warehouseId === "string" && warehouses.some((warehouse) => warehouse.id === draft.warehouseId)) {
+              setWarehouseId(draft.warehouseId);
+            }
           }
         }
       } catch {
@@ -64,9 +86,9 @@ export function GoodsReceiptForm({ purchaseOrderId, poNumber, supplierName, item
       }
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [draftKey, initialReceipts]);
+  }, [draftKey, initialReceipts, warehouseMode, warehouses]);
 
-  const isDirty = receiptDate !== "" || receivedBy !== "" || checkedBy !== "" || notes !== "" || JSON.stringify(receipts) !== JSON.stringify(initialReceipts);
+  const isDirty = receiptDate !== "" || receivedBy !== "" || checkedBy !== "" || notes !== "" || warehouseId !== initialWarehouseId || JSON.stringify(receipts) !== JSON.stringify(initialReceipts);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -74,9 +96,9 @@ export function GoodsReceiptForm({ purchaseOrderId, poNumber, supplierName, item
       window.localStorage.removeItem(draftKey);
       return;
     }
-    const draft: GrnDraft = { version: 1, savedAt: new Date().toISOString(), receiptDate, receivedBy, checkedBy, notes, receipts };
+    const draft: GrnDraft = { version: 2, savedAt: new Date().toISOString(), receiptDate, receivedBy, checkedBy, notes, warehouseId, receipts };
     window.localStorage.setItem(draftKey, JSON.stringify(draft));
-  }, [checkedBy, draftKey, hydrated, isDirty, notes, receiptDate, receivedBy, receipts]);
+  }, [checkedBy, draftKey, hydrated, isDirty, notes, receiptDate, receivedBy, receipts, warehouseId]);
 
   useUnsavedChangesGuard(hydrated && isDirty && !busy, "This GRN is still in progress. Leave this page? Your draft is saved on this device, but it has not been posted.");
 
@@ -86,6 +108,7 @@ export function GoodsReceiptForm({ purchaseOrderId, poNumber, supplierName, item
     setReceivedBy("");
     setCheckedBy("");
     setNotes("");
+    setWarehouseId(initialWarehouseId);
     setReceipts(initialReceipts);
     window.localStorage.removeItem(draftKey);
   }
@@ -124,6 +147,7 @@ export function GoodsReceiptForm({ purchaseOrderId, poNumber, supplierName, item
     setMessage("");
     const selected = receipts.filter((receipt) => Number(receipt.receivedQuantity) > 0);
     if (!selected.length) { setMessage("Receive at least one item."); setBusy(false); return; }
+    if (warehouseMode === "MANAGED" && !warehouseId) { setMessage("Choose a receiving warehouse."); setBusy(false); return; }
 
     for (const receipt of selected) {
       const item = items.find((entry) => entry.id === receipt.purchaseOrderItemId)!;
@@ -147,7 +171,15 @@ export function GoodsReceiptForm({ purchaseOrderId, poNumber, supplierName, item
       const response = await fetch("/api/v1/goods-receipts", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
-        body: JSON.stringify({ purchaseOrderId, receiptDate: receiptDate || undefined, notes, receivedBy, checkedBy, items: itemsPayload }),
+        body: JSON.stringify({
+          purchaseOrderId,
+          receiptDate: receiptDate || undefined,
+          notes,
+          receivedBy,
+          checkedBy,
+          warehouseId: warehouseMode === "MANAGED" ? warehouseId : undefined,
+          items: itemsPayload,
+        }),
       });
       const body = await response.json();
       if (response.ok && body.data?.id) {
@@ -169,7 +201,7 @@ export function GoodsReceiptForm({ purchaseOrderId, poNumber, supplierName, item
   return <form onSubmit={submit} className="space-y-4">
     {isDirty && hydrated && <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900"><span><strong>Draft autosaved.</strong> If you open Sales or another page by mistake, your GRN can be restored when you come back on this device.</span><Button type="button" variant="ghost" size="sm" onClick={discardDraft}><RotateCcw className="size-3.5" />Discard draft</Button></div>}
 
-    <Card className="gap-0 rounded-md border py-0 shadow-none ring-0"><CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm font-semibold">Receipt Document</CardTitle></CardHeader><CardContent className="grid gap-4 p-4 md:grid-cols-5"><DocumentFact label="PO Reference" value={poNumber} mono /><DocumentFact label="Supplier" value={supplierName} /><Field label="Receipt date"><Input name="receiptDate" type="date" value={receiptDate} onChange={(event) => setReceiptDate(event.target.value)} /></Field><Field label="Received by"><Input name="receivedBy" placeholder="Name" value={receivedBy} onChange={(event) => setReceivedBy(event.target.value)} /></Field><Field label="Checked by"><Input name="checkedBy" placeholder="Name" value={checkedBy} onChange={(event) => setCheckedBy(event.target.value)} /></Field></CardContent></Card>
+    <Card className="gap-0 rounded-md border py-0 shadow-none ring-0"><CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm font-semibold">Receipt Document</CardTitle></CardHeader><CardContent className="grid gap-4 p-4 md:grid-cols-5"><DocumentFact label="PO Reference" value={poNumber} mono /><DocumentFact label="Supplier" value={supplierName} /><Field label="Receipt date"><Input name="receiptDate" type="date" value={receiptDate} onChange={(event) => setReceiptDate(event.target.value)} /></Field><Field label="Received by"><Input name="receivedBy" placeholder="Name" value={receivedBy} onChange={(event) => setReceivedBy(event.target.value)} /></Field><Field label="Checked by"><Input name="checkedBy" placeholder="Name" value={checkedBy} onChange={(event) => setCheckedBy(event.target.value)} /></Field>{warehouseMode === "MANAGED" ? <Field label="Receiving warehouse"><select name="warehouseId" required value={warehouseId} onChange={(event) => setWarehouseId(event.target.value)} className={fieldClass}><option value="">Choose warehouse</option>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name} · {warehouse.code}{warehouse.isDefault ? " · Default" : ""}</option>)}</select></Field> : null}</CardContent></Card>
 
     <Card className="gap-0 rounded-md border py-0 shadow-none ring-0"><CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm font-semibold">Receiving Lines</CardTitle><p className="text-[11px] text-slate-500">Accepted quantity updates inventory. For weight-priced items, supplier liability = accepted weight (kg) × rate/kg.</p></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><div className="min-w-[1060px]">
       <div className={`grid ${receivingGrid} gap-2 border-b bg-slate-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500`}><span>Product</span><span className="text-right">Ordered</span><span className="text-right">Prev. accepted</span><span className="text-right">Remaining</span><span className="text-right">Received qty</span><span className="text-right">Accepted qty</span><span className="text-right">Received kg</span><span className="text-right">Accepted kg</span><span className="text-right">Rate</span><span className="text-right">Accepted value</span></div>

@@ -33,6 +33,7 @@ export const goodsReceiptSchema = z.object({
   notes: z.string().trim().max(1000).optional(),
   receivedBy: z.string().trim().max(200).optional(),
   checkedBy: z.string().trim().max(200).optional(),
+  warehouseId: z.uuid().optional(),
   items: z.array(z.object({
     purchaseOrderItemId: z.uuid(),
     receivedQuantity: z.coerce.number().positive("Weight or quantity must be greater than zero."),

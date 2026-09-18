@@ -47,7 +47,7 @@ export default async function GoodsReceiptDetailPage({ params }: { params: Promi
       {grn.status === "VOIDED" && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-800"><p className="font-semibold">This GRN was voided{grn.voidedAt ? ` on ${formatDate(grn.voidedAt)}` : ""}.</p>{grn.voidedReason && <p className="mt-1">Reason: {grn.voidedReason}</p>}</div>}
       {grn.hasSupplierReturns && isActive && <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">This GRN cannot be edited or voided because supplier returns reference it.</div>}
 
-      <div className="grid overflow-hidden rounded-md border bg-white sm:grid-cols-4 sm:divide-x"><Fact label="PO reference" value={grn.purchaseOrder.orderNumber} mono /><Fact label="Supplier" value={grn.supplier.name} /><Fact label="Receipt date" value={formatDate(grn.receiptDate)} /><Fact label="Accepted value" value={formatPKR(grn.totalAmount)} /></div>
+      <div className="grid overflow-hidden rounded-md border bg-white sm:grid-cols-4 sm:divide-x"><Fact label="PO reference" value={grn.purchaseOrder.orderNumber} mono /><Fact label="Supplier" value={grn.supplier.name} /><Fact label="Receipt date" value={formatDate(grn.receiptDate)} /><Fact label={grn.warehouse ? "Receiving warehouse" : "Accepted value"} value={grn.warehouse ? grn.warehouse.name + " · " + grn.warehouse.code : formatPKR(grn.totalAmount)} /></div>
 
       <div className="grid items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-4">
@@ -105,6 +105,7 @@ export default async function GoodsReceiptDetailPage({ params }: { params: Promi
             <SummaryRow label="Receipt date" value={formatDate(grn.receiptDate)} />
             {grn.receivedBy && <SummaryRow label="Received by" value={grn.receivedBy} />}
             {grn.checkedBy && <SummaryRow label="Checked by" value={grn.checkedBy} />}
+            {grn.warehouse && <SummaryRow label="Receiving warehouse" value={grn.warehouse.name + " · " + grn.warehouse.code} />}
             <div className="flex items-center justify-between border-t pt-4">
               <span className="font-semibold">Total accepted value</span>
               <span className="text-lg font-semibold tabular-nums">{formatPKR(grn.totalAmount)}</span>
