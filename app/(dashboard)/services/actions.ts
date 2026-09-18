@@ -7,6 +7,8 @@ import {
   createServiceJob,
   createServiceQuote,
   IndustryDomainError,
+  setServiceQuoteStatus,
+  updateServiceJobStatus,
 } from "@/lib/server/industry-modules";
 
 export type ServicesActionState = {
@@ -123,5 +125,52 @@ export async function createServiceJobAction(
     return { status: "success", message: `Service job ${jobNumber} created.` };
   } catch (error) {
     return fail(messageFor(error, "We could not create this service job. Check the client, quote, and job number."));
+  }
+}
+
+
+export async function updateServiceQuoteStatusAction(
+  _previous: ServicesActionState,
+  formData: FormData,
+): Promise<ServicesActionState> {
+  const quoteId = String(formData.get("quoteId") ?? "").trim();
+  const status = String(formData.get("status") ?? "").trim();
+  if (!/^[0-9a-f-]{36}$/i.test(quoteId)) return fail("Quotation is invalid.");
+  if (!["SENT", "ACCEPTED", "REJECTED", "EXPIRED"].includes(status)) return fail("Quotation status is invalid.");
+
+  const { workspaceId, role, user } = await requireWorkspace();
+  try {
+    await setServiceQuoteStatus(
+      { workspaceId, role, userId: user.id },
+      quoteId,
+      status as "SENT" | "ACCEPTED" | "REJECTED" | "EXPIRED",
+    );
+    revalidatePath("/services");
+    return { status: "success", message: `Quotation moved to ${status.toLowerCase()}.` };
+  } catch (error) {
+    return fail(messageFor(error, "We could not update this quotation."));
+  }
+}
+
+export async function updateServiceJobStatusAction(
+  _previous: ServicesActionState,
+  formData: FormData,
+): Promise<ServicesActionState> {
+  const jobId = String(formData.get("jobId") ?? "").trim();
+  const status = String(formData.get("status") ?? "").trim();
+  if (!/^[0-9a-f-]{36}$/i.test(jobId)) return fail("Service job is invalid.");
+  if (!["IN_PROGRESS", "WAITING_CUSTOMER", "COMPLETED", "CANCELLED"].includes(status)) return fail("Service job status is invalid.");
+
+  const { workspaceId, role, user } = await requireWorkspace();
+  try {
+    await updateServiceJobStatus(
+      { workspaceId, role, userId: user.id },
+      jobId,
+      status as "IN_PROGRESS" | "WAITING_CUSTOMER" | "COMPLETED" | "CANCELLED",
+    );
+    revalidatePath("/services");
+    return { status: "success", message: `Service job moved to ${status.toLowerCase().replaceAll("_", " ")}.` };
+  } catch (error) {
+    return fail(messageFor(error, "We could not update this service job."));
   }
 }
