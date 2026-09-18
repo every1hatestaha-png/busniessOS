@@ -589,10 +589,15 @@ export async function createSupplierReturn(context: ServiceContext, input: Suppl
     const grnWhere = data.goodReceivedNoteId
       ? { purchaseOrderItemId: { in: itemIds }, goodReceivedNote: { workspaceId: context.workspaceId, purchaseOrderId: order.id, id: data.goodReceivedNoteId, status: "ACTIVE" as const } }
       : { purchaseOrderItemId: { in: itemIds }, goodReceivedNote: { workspaceId: context.workspaceId, purchaseOrderId: order.id, status: "ACTIVE" as const } };
+    const supplierReturnScope = {
+      workspaceId: context.workspaceId,
+      status: "POSTED" as const,
+      ...(data.goodReceivedNoteId ? { goodReceivedNoteId: data.goodReceivedNoteId } : {}),
+    };
     const [previous, received, previousWeight] = await Promise.all([
-      tx.supplierReturnItem.groupBy({ by: ["purchaseOrderItemId"], where: { purchaseOrderItemId: { in: itemIds }, supplierReturn: { workspaceId: context.workspaceId, status: "POSTED" } }, _sum: { quantity: true } }),
+      tx.supplierReturnItem.groupBy({ by: ["purchaseOrderItemId"], where: { purchaseOrderItemId: { in: itemIds }, supplierReturn: supplierReturnScope }, _sum: { quantity: true } }),
       tx.goodReceivedNoteItem.groupBy({ by: ["purchaseOrderItemId"], where: grnWhere, _sum: { acceptedQuantity: true, totalCost: true } }),
-      tx.supplierReturnItem.groupBy({ by: ["purchaseOrderItemId"], where: { purchaseOrderItemId: { in: itemIds }, supplierReturn: { workspaceId: context.workspaceId, status: "POSTED" }, returnedWeightKg: { not: null } }, _sum: { returnedWeightKg: true } }),
+      tx.supplierReturnItem.groupBy({ by: ["purchaseOrderItemId"], where: { purchaseOrderItemId: { in: itemIds }, supplierReturn: supplierReturnScope, returnedWeightKg: { not: null } }, _sum: { returnedWeightKg: true } }),
     ]);
 
     const grnItemWeightDetails = await tx.goodReceivedNoteItem.findMany({
