@@ -349,6 +349,7 @@ export async function createWarehouse(context: IndustryContext, input: { name: s
 }
 
 export async function transferWarehouseStock(context: IndustryContext, input: { productId: string; fromWarehouseId: string; toWarehouseId: string; quantity: number }) {
+  assertManager(context);
   await requireWorkspaceModule(context.workspaceId, "inventory");
   if (!Number.isFinite(input.quantity) || input.quantity <= 0 || input.fromWarehouseId === input.toWarehouseId) {
     throw new IndustryDomainError("INVALID_STATE", "A positive quantity and two different warehouses are required.");
