@@ -464,6 +464,194 @@ export async function updateServiceJobStatus(context: IndustryContext, jobId: st
   return { id: jobId, status };
 }
 
+export async function listRestaurantRecipes(workspaceId: string) {
+  await requireWorkspaceModule(workspaceId, "restaurant");
+  const rows = await db.$queryRaw<Array<{
+    id: string;
+    productName: string | null;
+    yieldQuantity: Prisma.Decimal;
+    ingredientCount: bigint;
+    isActive: boolean;
+  }>>`
+    SELECT r."id", p."name" AS "productName", r."yieldQuantity", r."isActive",
+           count(ri."id")::bigint AS "ingredientCount"
+    FROM "recipes" r
+    LEFT JOIN "products" p ON p."id" = r."finishedProductId"::text AND p."workspaceId" = r."workspaceId"::text
+    LEFT JOIN "recipe_items" ri ON ri."recipeId" = r."id"
+    WHERE r."workspaceId" = ${workspaceId}::uuid
+    GROUP BY r."id", p."name"
+    ORDER BY r."updatedAt" DESC
+  `;
+  return rows.map((row) => ({
+    ...row,
+    yieldQuantity: Number(row.yieldQuantity),
+    ingredientCount: Number(row.ingredientCount),
+  }));
+}
+
+export async function listKitchenTickets(workspaceId: string) {
+  await requireWorkspaceModule(workspaceId, "restaurant");
+  return db.$queryRaw<Array<{
+    id: string;
+    ticketNumber: string;
+    status: string;
+    tableName: string | null;
+    salesOrderId: string | null;
+    createdAt: Date;
+  }>>`
+    SELECT kt."id", kt."ticketNumber", kt."status", rt."name" AS "tableName",
+           kt."salesOrderId", kt."createdAt"
+    FROM "kitchen_tickets" kt
+    LEFT JOIN "restaurant_tables" rt ON rt."id" = kt."restaurantTableId"
+    WHERE kt."workspaceId" = ${workspaceId}::uuid
+    ORDER BY kt."createdAt" DESC
+    LIMIT 50
+  `;
+}
+
+export async function listCashShifts(workspaceId: string) {
+  await requireWorkspaceModule(workspaceId, "restaurant");
+  const rows = await db.$queryRaw<Array<{
+    id: string;
+    status: string;
+    openingCash: Prisma.Decimal;
+    expectedCash: Prisma.Decimal | null;
+    closingCash: Prisma.Decimal | null;
+    variance: Prisma.Decimal | null;
+    openedAt: Date;
+    closedAt: Date | null;
+  }>>`
+    SELECT "id", "status", "openingCash", "expectedCash", "closingCash", "variance", "openedAt", "closedAt"
+    FROM "cash_shifts"
+    WHERE "workspaceId" = ${workspaceId}::uuid
+    ORDER BY "openedAt" DESC
+    LIMIT 30
+  `;
+  return rows.map((row) => ({
+    ...row,
+    openingCash: Number(row.openingCash),
+    expectedCash: row.expectedCash === null ? null : Number(row.expectedCash),
+    closingCash: row.closingCash === null ? null : Number(row.closingCash),
+    variance: row.variance === null ? null : Number(row.variance),
+  }));
+}
+
+export async function listWarehouses(workspaceId: string) {
+  await requireWorkspaceModule(workspaceId, "inventory");
+  return db.$queryRaw<Array<{
+    id: string;
+    name: string;
+    code: string;
+    address: string | null;
+    isDefault: boolean;
+    isActive: boolean;
+  }>>`
+    SELECT "id", "name", "code", "address", "isDefault", "isActive"
+    FROM "warehouses"
+    WHERE "workspaceId" = ${workspaceId}::uuid
+    ORDER BY "isDefault" DESC, "name" ASC
+  `;
+}
+
+export async function listBoms(workspaceId: string) {
+  await requireWorkspaceModule(workspaceId, "manufacturing");
+  const rows = await db.$queryRaw<Array<{
+    id: string;
+    name: string;
+    version: number;
+    outputQuantity: Prisma.Decimal;
+    finishedProductName: string | null;
+    itemCount: bigint;
+    isActive: boolean;
+  }>>`
+    SELECT b."id", b."name", b."version", b."outputQuantity", b."isActive",
+           p."name" AS "finishedProductName", count(bi."id")::bigint AS "itemCount"
+    FROM "boms" b
+    LEFT JOIN "products" p ON p."id" = b."finishedProductId"::text AND p."workspaceId" = b."workspaceId"::text
+    LEFT JOIN "bom_items" bi ON bi."bomId" = b."id"
+    WHERE b."workspaceId" = ${workspaceId}::uuid
+    GROUP BY b."id", p."name"
+    ORDER BY b."updatedAt" DESC
+  `;
+  return rows.map((row) => ({
+    ...row,
+    outputQuantity: Number(row.outputQuantity),
+    itemCount: Number(row.itemCount),
+  }));
+}
+
+export async function listProductionRuns(workspaceId: string) {
+  await requireWorkspaceModule(workspaceId, "manufacturing");
+  const rows = await db.$queryRaw<Array<{
+    id: string;
+    runNumber: string;
+    status: string;
+    plannedOutput: Prisma.Decimal;
+    actualOutput: Prisma.Decimal | null;
+    wastageQuantity: Prisma.Decimal;
+    bomName: string;
+    createdAt: Date;
+  }>>`
+    SELECT pr."id", pr."runNumber", pr."status", pr."plannedOutput", pr."actualOutput",
+           pr."wastageQuantity", b."name" AS "bomName", pr."createdAt"
+    FROM "production_runs" pr
+    JOIN "boms" b ON b."id" = pr."bomId"
+    WHERE pr."workspaceId" = ${workspaceId}::uuid
+    ORDER BY pr."createdAt" DESC
+    LIMIT 50
+  `;
+  return rows.map((row) => ({
+    ...row,
+    plannedOutput: Number(row.plannedOutput),
+    actualOutput: row.actualOutput === null ? null : Number(row.actualOutput),
+    wastageQuantity: Number(row.wastageQuantity),
+  }));
+}
+
+export async function listServiceQuotes(workspaceId: string) {
+  await requireWorkspaceModule(workspaceId, "services");
+  const rows = await db.$queryRaw<Array<{
+    id: string;
+    quoteNumber: string;
+    status: string;
+    total: Prisma.Decimal;
+    customerName: string | null;
+    validUntil: Date | null;
+    createdAt: Date;
+  }>>`
+    SELECT sq."id", sq."quoteNumber", sq."status", sq."total", sq."validUntil", sq."createdAt",
+           coalesce(c."companyName", c."name") AS "customerName"
+    FROM "service_quotes" sq
+    LEFT JOIN "customers" c ON c."id" = sq."customerId"::text AND c."workspaceId" = sq."workspaceId"::text
+    WHERE sq."workspaceId" = ${workspaceId}::uuid
+    ORDER BY sq."createdAt" DESC
+    LIMIT 50
+  `;
+  return rows.map((row) => ({ ...row, total: Number(row.total) }));
+}
+
+export async function listServiceJobs(workspaceId: string) {
+  await requireWorkspaceModule(workspaceId, "services");
+  return db.$queryRaw<Array<{
+    id: string;
+    jobNumber: string;
+    title: string;
+    status: string;
+    customerName: string | null;
+    scheduledAt: Date | null;
+    completedAt: Date | null;
+    createdAt: Date;
+  }>>`
+    SELECT sj."id", sj."jobNumber", sj."title", sj."status", sj."scheduledAt", sj."completedAt", sj."createdAt",
+           coalesce(c."companyName", c."name") AS "customerName"
+    FROM "service_jobs" sj
+    LEFT JOIN "customers" c ON c."id" = sj."customerId"::text AND c."workspaceId" = sj."workspaceId"::text
+    WHERE sj."workspaceId" = ${workspaceId}::uuid
+    ORDER BY sj."createdAt" DESC
+    LIMIT 50
+  `;
+}
+
 export async function getIndustryHealth(workspaceId: string) {
   const [modules, restaurantTables, recipes, kitchenOpen, boms, productionOpen, warehouses, quotes, jobs] = await Promise.all([
     listWorkspaceModules(workspaceId),
