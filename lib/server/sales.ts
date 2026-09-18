@@ -190,6 +190,19 @@ export async function createCustomerReturn(context: ServiceContext, input: Custo
         const resultingQuantity = currentStock + line.quantity;
         const resultingCost = product.costPrice.mul(currentStock).plus(historicalCost.mul(line.quantity)).div(resultingQuantity);
         await tx.product.updateMany({ where: { id: line.source.productId, workspaceId: context.workspaceId, stockQuantity: product.stockQuantity }, data: { stockQuantity: { increment: line.quantity }, costPrice: resultingCost } });
+        try {
+          await applyManagedWarehouseStockDelta(tx, {
+            workspaceId: context.workspaceId,
+            warehouseId: order.warehouseId,
+            productId: line.source.productId,
+            delta: line.quantity,
+          });
+        } catch (error) {
+          if (error instanceof ManagedWarehouseStockError) {
+            throw new SaleDomainError("WAREHOUSE_STOCK_ERROR", `Returned stock could not be restored to the sale warehouse: ${error.message}`);
+          }
+          throw error;
+        }
         await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: line.source.productId, type: "RETURN_IN", quantityChanged: line.quantity, unitCost: historicalCost, reference: number } });
       }
     }
@@ -228,6 +241,19 @@ export async function cancelSale(context: ServiceContext, id: string, reverseIni
       const resultingCost = product.costPrice.mul(currentStock).plus(historicalCost.mul(itemQty)).div(resultingQuantity);
       const changed = await tx.product.updateMany({ where: { id: item.productId, workspaceId: context.workspaceId, stockQuantity: product.stockQuantity }, data: { stockQuantity: { increment: itemQty }, costPrice: resultingCost } });
       if (changed.count !== 1) throw new SaleDomainError("INVALID_TOTAL", "Inventory changed while cancelling this sale. Retry the cancellation.");
+      try {
+        await applyManagedWarehouseStockDelta(tx, {
+          workspaceId: context.workspaceId,
+          warehouseId: order.warehouseId,
+          productId: item.productId,
+          delta: item.quantity,
+        });
+      } catch (error) {
+        if (error instanceof ManagedWarehouseStockError) {
+          throw new SaleDomainError("WAREHOUSE_STOCK_ERROR", `Cancelled sale stock could not be restored to its warehouse: ${error.message}`);
+        }
+        throw error;
+      }
       await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: item.productId, type: "SALE_CANCELLATION", quantityChanged: itemQty, unitCost: historicalCost, reference: order.orderNumber } });
     }
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, type: "REVERSAL", credit: order.total, description: `Cancelled sale ${order.orderNumber}`, referenceId: order.id } });
