@@ -148,13 +148,27 @@ export async function createRecipe(context: IndustryContext, input: { finishedPr
 
 export async function createKitchenTicket(context: IndustryContext, input: { ticketNumber: string; salesOrderId?: string; restaurantTableId?: string; notes?: string }) {
   await requireWorkspaceModule(context.workspaceId, "restaurant");
+  const ticketNumber = input.ticketNumber.trim();
+  if (!ticketNumber) throw new IndustryDomainError("INVALID_STATE", "Ticket number is required.");
+
   if (input.salesOrderId) {
     const order = await db.salesOrder.findFirst({ where: { id: input.salesOrderId, workspaceId: context.workspaceId }, select: { id: true } });
     if (!order) throw new IndustryDomainError("NOT_FOUND", "Sales order was not found in this workspace.");
   }
+
+  if (input.restaurantTableId) {
+    const tables = await db.$queryRaw<Array<{ id: string; status: string }>>`
+      SELECT "id", "status" FROM "restaurant_tables"
+      WHERE "id"=${input.restaurantTableId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
+    `;
+    const table = tables[0];
+    if (!table) throw new IndustryDomainError("NOT_FOUND", "Restaurant table was not found in this workspace.");
+    if (table.status === "INACTIVE") throw new IndustryDomainError("INVALID_STATE", "Inactive restaurant tables cannot receive kitchen tickets.");
+  }
+
   const rows = await db.$queryRaw<Array<{ id: string; ticketNumber: string; status: string }>>`
     INSERT INTO "kitchen_tickets" ("workspaceId", "salesOrderId", "restaurantTableId", "ticketNumber", "notes")
-    VALUES (${context.workspaceId}::uuid, ${input.salesOrderId ?? null}::uuid, ${input.restaurantTableId ?? null}::uuid, ${input.ticketNumber.trim()}, ${input.notes?.trim() || null})
+    VALUES (${context.workspaceId}::uuid, ${input.salesOrderId ?? null}::uuid, ${input.restaurantTableId ?? null}::uuid, ${ticketNumber}, ${input.notes?.trim() || null})
     RETURNING "id", "ticketNumber", "status"
   `;
   if (input.restaurantTableId) {
@@ -204,8 +218,20 @@ export async function updateKitchenTicketStatus(context: IndustryContext, ticket
     `;
     const current = rows[0];
     if (!current) throw new IndustryDomainError("NOT_FOUND", "Kitchen ticket was not found.");
-    if (["SERVED", "CANCELLED"].includes(current.status) && current.status !== status) throw new IndustryDomainError("INVALID_STATE", "Completed kitchen tickets cannot be moved back into workflow.");
-    if (status === "SERVED" && current.status !== "SERVED" && current.salesOrderId) await consumeTicketRecipes(tx, context.workspaceId, ticketId, current.salesOrderId);
+    if (current.status === status) return { id: ticketId, status };
+
+    const allowed: Record<string, string[]> = {
+      QUEUED: ["PREPARING", "CANCELLED"],
+      PREPARING: ["READY", "CANCELLED"],
+      READY: ["SERVED", "CANCELLED"],
+      SERVED: [],
+      CANCELLED: [],
+    };
+    if (!allowed[current.status]?.includes(status)) {
+      throw new IndustryDomainError("INVALID_STATE", `Kitchen ticket cannot move from ${current.status} to ${status}.`);
+    }
+
+    if (status === "SERVED" && current.salesOrderId) await consumeTicketRecipes(tx, context.workspaceId, ticketId, current.salesOrderId);
     await tx.$executeRaw`
       UPDATE "kitchen_tickets"
       SET "status"=${status},
@@ -215,7 +241,7 @@ export async function updateKitchenTicketStatus(context: IndustryContext, ticket
           "updatedAt"=now()
       WHERE "id"=${ticketId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
     `;
-    if (status === "SERVED" && current.restaurantTableId) {
+    if ((status === "SERVED" || status === "CANCELLED") && current.restaurantTableId) {
       await tx.$executeRaw`UPDATE "restaurant_tables" SET "status"='AVAILABLE', "updatedAt"=now() WHERE "id"=${current.restaurantTableId}::uuid AND "workspaceId"=${context.workspaceId}::uuid`;
     }
     return { id: ticketId, status };
@@ -438,8 +464,27 @@ export async function createServiceQuote(context: IndustryContext, input: { cust
 
 export async function setServiceQuoteStatus(context: IndustryContext, quoteId: string, status: "DRAFT" | "SENT" | "ACCEPTED" | "REJECTED" | "EXPIRED" | "CONVERTED") {
   await requireWorkspaceModule(context.workspaceId, "services");
-  const changed = await db.$executeRaw`UPDATE "service_quotes" SET "status"=${status}, "updatedAt"=now() WHERE "id"=${quoteId}::uuid AND "workspaceId"=${context.workspaceId}::uuid`;
-  if (!changed) throw new IndustryDomainError("NOT_FOUND", "Quotation was not found.");
+  const rows = await db.$queryRaw<Array<{ status: string }>>`
+    SELECT "status" FROM "service_quotes"
+    WHERE "id"=${quoteId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
+  `;
+  const current = rows[0];
+  if (!current) throw new IndustryDomainError("NOT_FOUND", "Quotation was not found.");
+  if (current.status === status) return { id: quoteId, status };
+
+  const allowed: Record<string, string[]> = {
+    DRAFT: ["SENT", "ACCEPTED", "REJECTED", "EXPIRED"],
+    SENT: ["ACCEPTED", "REJECTED", "EXPIRED"],
+    ACCEPTED: ["CONVERTED"],
+    REJECTED: [],
+    EXPIRED: [],
+    CONVERTED: [],
+  };
+  if (!allowed[current.status]?.includes(status)) {
+    throw new IndustryDomainError("INVALID_STATE", `Quotation cannot move from ${current.status} to ${status}.`);
+  }
+
+  await db.$executeRaw`UPDATE "service_quotes" SET "status"=${status}, "updatedAt"=now() WHERE "id"=${quoteId}::uuid AND "workspaceId"=${context.workspaceId}::uuid`;
   return { id: quoteId, status };
 }
 
@@ -473,11 +518,32 @@ export async function createServiceJob(context: IndustryContext, input: { custom
 
 export async function updateServiceJobStatus(context: IndustryContext, jobId: string, status: "OPEN" | "IN_PROGRESS" | "WAITING_CUSTOMER" | "COMPLETED" | "CANCELLED") {
   await requireWorkspaceModule(context.workspaceId, "services");
-  const changed = await db.$executeRaw`
-    UPDATE "service_jobs" SET "status"=${status}, "completedAt"=CASE WHEN ${status}='COMPLETED' THEN COALESCE("completedAt", now()) ELSE "completedAt" END, "updatedAt"=now()
+  const rows = await db.$queryRaw<Array<{ status: string }>>`
+    SELECT "status" FROM "service_jobs"
     WHERE "id"=${jobId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
   `;
-  if (!changed) throw new IndustryDomainError("NOT_FOUND", "Service job was not found.");
+  const current = rows[0];
+  if (!current) throw new IndustryDomainError("NOT_FOUND", "Service job was not found.");
+  if (current.status === status) return { id: jobId, status };
+
+  const allowed: Record<string, string[]> = {
+    OPEN: ["IN_PROGRESS", "WAITING_CUSTOMER", "COMPLETED", "CANCELLED"],
+    IN_PROGRESS: ["WAITING_CUSTOMER", "COMPLETED", "CANCELLED"],
+    WAITING_CUSTOMER: ["IN_PROGRESS", "COMPLETED", "CANCELLED"],
+    COMPLETED: [],
+    CANCELLED: [],
+  };
+  if (!allowed[current.status]?.includes(status)) {
+    throw new IndustryDomainError("INVALID_STATE", `Service job cannot move from ${current.status} to ${status}.`);
+  }
+
+  await db.$executeRaw`
+    UPDATE "service_jobs"
+    SET "status"=${status},
+        "completedAt"=CASE WHEN ${status}='COMPLETED' THEN COALESCE("completedAt", now()) ELSE "completedAt" END,
+        "updatedAt"=now()
+    WHERE "id"=${jobId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
+  `;
   return { id: jobId, status };
 }
 
