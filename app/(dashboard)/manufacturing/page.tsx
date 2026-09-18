@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { Boxes, Factory, PackageCheck, Warehouse } from "lucide-react";
 
+import { ManufacturingControls } from "@/app/(dashboard)/manufacturing/manufacturing-controls";
 import { MetricCard } from "@/components/business/metric-card";
 import { PageHeader } from "@/components/business/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
+import { listProducts } from "@/lib/server/products";
 import {
   getIndustryHealth,
   listBoms,
@@ -14,16 +16,18 @@ import {
 } from "@/lib/server/industry-modules";
 
 export default async function ManufacturingPage() {
-  const { workspaceId } = await requireWorkspace();
+  const { workspaceId, role } = await requireWorkspace();
   const modules = await listWorkspaceModules(workspaceId);
   if (!modules.some((module) => module.moduleKey === "manufacturing" && module.enabled)) return <ModuleDisabled />;
 
-  const [health, warehouses, boms, runs] = await Promise.all([
+  const [health, warehouses, boms, runs, products] = await Promise.all([
     getIndustryHealth(workspaceId),
     listWarehouses(workspaceId),
     listBoms(workspaceId),
     listProductionRuns(workspaceId),
+    listProducts(workspaceId),
   ]);
+  const canManage = role === "OWNER" || role === "ADMIN" || role === "MANAGER";
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">
@@ -33,6 +37,12 @@ export default async function ManufacturingPage() {
         <MetricCard label="Active BOMs" value={String(health.manufacturing.boms)} detail="Production recipes and material plans" icon={Boxes} />
         <MetricCard label="Open production" value={String(health.manufacturing.openProductionRuns)} detail="Draft or approved runs" icon={Factory} />
       </section>
+
+      <ManufacturingControls
+        products={products.filter((product) => product.status === "ACTIVE").map((product) => ({ id: product.id, name: product.name, sku: product.sku }))}
+        boms={boms.filter((bom) => bom.isActive).map((bom) => ({ id: bom.id, name: bom.name, version: bom.version }))}
+        canManage={canManage}
+      />
 
       <div className="grid gap-5 xl:grid-cols-2">
         <DataCard title="Warehouses" description="Inventory locations used by manufacturing.">
