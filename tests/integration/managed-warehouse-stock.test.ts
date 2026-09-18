@@ -103,6 +103,7 @@ describe("managed warehouse stock primitive", () => {
       await db.$executeRawUnsafe('DELETE FROM "warehouse_stocks" WHERE "workspaceId"=$1::uuid', id);
       await db.$executeRawUnsafe('DELETE FROM "warehouses" WHERE "workspaceId"=$1::uuid', id);
       await db.$executeRawUnsafe('DELETE FROM "workspace_modules" WHERE "workspaceId"=$1::uuid', id);
+      await db.auditLog.deleteMany({ where: { workspaceId: id } });
       await db.inventoryTransaction.deleteMany({ where: { workspaceId: id } });
       await db.product.deleteMany({ where: { workspaceId: id } });
       await db.workspace.delete({ where: { id } });
@@ -218,6 +219,29 @@ describe("managed warehouse stock primitive", () => {
     expect(rows.reduce((sum, row) => sum + Number(row.quantity), 0)).toBe(10);
     expect(Number(rows.find((row) => row.warehouseId === warehouseId)?.quantity)).toBe(6);
     expect(Number(rows.find((row) => row.warehouseId === secondaryWarehouseId)?.quantity)).toBe(4);
+
+    const audit = await db.auditLog.findFirstOrThrow({
+      where: { workspaceId, action: "warehouse.stock.transferred", entityId: productId },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(audit.entityType).toBe("Product");
+    expect(audit.metadata).toMatchObject({
+      productId,
+      fromWarehouseId: warehouseId,
+      toWarehouseId: secondaryWarehouseId,
+      quantity: 4,
+    });
+  });
+
+  it("rejects warehouse transfers for staff users", async () => {
+    await expect(
+      transferWarehouseStock({ ...context(), role: "STAFF" }, {
+        productId,
+        fromWarehouseId: warehouseId,
+        toWarehouseId: secondaryWarehouseId,
+        quantity: 1,
+      }),
+    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
   });
 
   it("rejects transfers when warehouse totals already drift from core stock", async () => {
