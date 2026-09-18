@@ -4,6 +4,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { TopNav } from "@/components/layout/top-nav";
 import { PrintShortcutRouter } from "@/components/documents/print-shortcut-router";
 import { listCurrentUserWorkspaces, requireWorkspace } from "@/lib/server/auth";
+import { listWorkspaceModules } from "@/lib/server/industry-modules";
 import { getWorkspaceAccess } from "@/lib/server/subscriptions";
 
 export default async function DashboardLayout({
@@ -12,16 +13,18 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const { workspace, role } = await requireWorkspace();
-  const [workspaces, subscription] = await Promise.all([
+  const [workspaces, subscription, workspaceModules] = await Promise.all([
     listCurrentUserWorkspaces(),
     getWorkspaceAccess(workspace.id),
+    listWorkspaceModules(workspace.id),
   ]);
+  const enabledModules = workspaceModules.filter((module) => module.enabled).map((module) => module.moduleKey);
 
   return (
     <div className="flex min-h-dvh w-full min-w-0 bg-background text-foreground print:block print:min-h-0 print:bg-white">
       <PrintShortcutRouter />
       <div className="sticky top-0 hidden h-dvh shrink-0 print:hidden lg:block">
-        <Sidebar workspaceName={workspace.name} role={role} />
+        <Sidebar workspaceName={workspace.name} role={role} enabledModules={enabledModules} />
       </div>
       <div className="min-w-0 flex-1 print:block">
         <TopNav workspaceName={workspace.name} workspaceId={workspace.id} workspaces={workspaces} role={role} />
