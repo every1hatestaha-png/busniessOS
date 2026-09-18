@@ -480,14 +480,14 @@ export async function createServiceQuote(context: IndustryContext, input: { cust
       VALUES (${context.workspaceId}::uuid, ${input.customerId}::uuid, ${input.quoteNumber.trim()}, ${subtotal}, ${discount}, ${tax}, ${total}, ${input.validUntil ?? null}, ${input.notes?.trim() || null})
       RETURNING "id", "quoteNumber", "total", "status"
     `;
-    for (const item of input.items) {
+    for (const [index, item] of input.items.entries()) {
       const description = item.description.trim();
       const quantity = item.quantity ?? 1;
       if (!description) throw new IndustryDomainError("INVALID_STATE", "Every quotation line needs a description.");
       if (quantity <= 0 || item.unitPrice < 0) throw new IndustryDomainError("INVALID_STATE", "Quotation quantity must be positive and price cannot be negative.");
       await tx.$executeRaw`
-        INSERT INTO "service_quote_items" ("serviceQuoteId", "description", "quantity", "unitPrice", "lineTotal")
-        VALUES (${rows[0]!.id}::uuid, ${description}, ${quantity}, ${item.unitPrice}, ${quantity * item.unitPrice})
+        INSERT INTO "service_quote_items" ("serviceQuoteId", "description", "quantity", "unitPrice", "lineTotal", "position")
+        VALUES (${rows[0]!.id}::uuid, ${description}, ${quantity}, ${item.unitPrice}, ${quantity * item.unitPrice}, ${index + 1})
       `;
     }
     return { ...rows[0]!, total: Number(rows[0]!.total) };
@@ -898,11 +898,12 @@ export async function getServiceQuoteDetail(workspaceId: string, quoteId: string
     quantity: Prisma.Decimal;
     unitPrice: Prisma.Decimal;
     lineTotal: Prisma.Decimal;
+    position: number;
   }>>`
-    SELECT "id", "description", "quantity", "unitPrice", "lineTotal"
+    SELECT "id", "description", "quantity", "unitPrice", "lineTotal", "position"
     FROM "service_quote_items"
     WHERE "serviceQuoteId" = ${quoteId}::uuid
-    ORDER BY "createdAt" ASC, "id" ASC
+    ORDER BY "position" ASC
   `;
 
   const jobs = await db.$queryRaw<Array<{
@@ -931,6 +932,7 @@ export async function getServiceQuoteDetail(workspaceId: string, quoteId: string
       quantity: Number(item.quantity),
       unitPrice: Number(item.unitPrice),
       lineTotal: Number(item.lineTotal),
+      position: item.position,
     })),
     jobs,
   };
