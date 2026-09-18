@@ -708,6 +708,116 @@ export async function listProductionRuns(workspaceId: string) {
   }));
 }
 
+export async function getProductionRunDetail(workspaceId: string, productionRunId: string) {
+  await requireWorkspaceModule(workspaceId, "manufacturing");
+
+  const runs = await db.$queryRaw<Array<{
+    id: string;
+    runNumber: string;
+    status: string;
+    plannedOutput: Prisma.Decimal;
+    actualOutput: Prisma.Decimal | null;
+    wastageQuantity: Prisma.Decimal;
+    notes: string | null;
+    createdAt: Date;
+    approvedAt: Date | null;
+    postedAt: Date | null;
+    bomId: string;
+    bomName: string;
+    bomVersion: number;
+    bomOutputQuantity: Prisma.Decimal;
+    finishedProductId: string;
+    finishedProductName: string | null;
+  }>>`
+    SELECT
+      pr."id",
+      pr."runNumber",
+      pr."status",
+      pr."plannedOutput",
+      pr."actualOutput",
+      pr."wastageQuantity",
+      pr."notes",
+      pr."createdAt",
+      pr."approvedAt",
+      pr."postedAt",
+      b."id" AS "bomId",
+      b."name" AS "bomName",
+      b."version" AS "bomVersion",
+      b."outputQuantity" AS "bomOutputQuantity",
+      b."finishedProductId"::text AS "finishedProductId",
+      p."name" AS "finishedProductName"
+    FROM "production_runs" pr
+    JOIN "boms" b ON b."id" = pr."bomId" AND b."workspaceId" = pr."workspaceId"
+    LEFT JOIN "products" p
+      ON p."id" = b."finishedProductId"::text
+      AND p."workspaceId" = pr."workspaceId"::text
+    WHERE pr."id" = ${productionRunId}::uuid
+      AND pr."workspaceId" = ${workspaceId}::uuid
+    LIMIT 1
+  `;
+
+  const run = runs[0];
+  if (!run) return null;
+
+  const consumptions = await db.$queryRaw<Array<{
+    productId: string;
+    productName: string | null;
+    plannedQuantity: Prisma.Decimal;
+    actualQuantity: Prisma.Decimal;
+    unitCost: Prisma.Decimal;
+  }>>`
+    SELECT
+      pc."productId"::text AS "productId",
+      p."name" AS "productName",
+      pc."plannedQuantity",
+      pc."actualQuantity",
+      pc."unitCost"
+    FROM "production_consumptions" pc
+    LEFT JOIN "products" p
+      ON p."id" = pc."productId"::text
+      AND p."workspaceId" = ${workspaceId}
+    WHERE pc."productionRunId" = ${productionRunId}::uuid
+    ORDER BY p."name" ASC NULLS LAST, pc."createdAt" ASC
+  `;
+
+  const lines = consumptions.map((item) => {
+    const plannedQuantity = Number(item.plannedQuantity);
+    const actualQuantity = Number(item.actualQuantity);
+    const unitCost = Number(item.unitCost);
+    return {
+      productId: item.productId,
+      productName: item.productName ?? "Unknown product",
+      plannedQuantity,
+      actualQuantity,
+      unitCost,
+      totalCost: actualQuantity * unitCost,
+    };
+  });
+
+  return {
+    id: run.id,
+    runNumber: run.runNumber,
+    status: run.status,
+    plannedOutput: Number(run.plannedOutput),
+    actualOutput: run.actualOutput === null ? null : Number(run.actualOutput),
+    wastageQuantity: Number(run.wastageQuantity),
+    notes: run.notes,
+    createdAt: run.createdAt,
+    approvedAt: run.approvedAt,
+    postedAt: run.postedAt,
+    bom: {
+      id: run.bomId,
+      name: run.bomName,
+      version: run.bomVersion,
+      outputQuantity: Number(run.bomOutputQuantity),
+      finishedProductId: run.finishedProductId,
+      finishedProductName: run.finishedProductName ?? "Unknown product",
+    },
+    consumptions: lines,
+    materialCost: lines.reduce((total, line) => total + line.totalCost, 0),
+  };
+}
+
 export async function listServiceQuotes(workspaceId: string) {
   await requireWorkspaceModule(workspaceId, "services");
   const rows = await db.$queryRaw<Array<{
