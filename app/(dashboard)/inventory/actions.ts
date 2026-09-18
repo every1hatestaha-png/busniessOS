@@ -35,6 +35,7 @@ export async function createProductAction(
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return { error: "That SKU is already used in this workspace." };
     }
+    if (error instanceof ProductDomainError) return { error: error.message };
     return { error: "The product could not be saved. Please try again." };
   }
 
