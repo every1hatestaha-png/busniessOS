@@ -2,6 +2,14 @@ import "server-only";
 
 import { Prisma, type Role } from "@prisma/client";
 import { db } from "@/lib/server/db";
+import {
+  canTransitionKitchenTicket,
+  canTransitionServiceJob,
+  canTransitionServiceQuote,
+  type KitchenTicketStatus,
+  type ServiceJobStatus,
+  type ServiceQuoteStatus,
+} from "@/lib/domain/industry-lifecycles";
 
 export type IndustryModuleKey = "inventory" | "restaurant" | "wholesale" | "manufacturing" | "accounting" | "multiBranch" | "payroll" | "integrations" | "services";
 export type IndustryContext = { workspaceId: string; role: Role; userId?: string };
@@ -208,7 +216,7 @@ async function consumeTicketRecipes(tx: Prisma.TransactionClient, workspaceId: s
   }
 }
 
-export async function updateKitchenTicketStatus(context: IndustryContext, ticketId: string, status: "QUEUED" | "PREPARING" | "READY" | "SERVED" | "CANCELLED") {
+export async function updateKitchenTicketStatus(context: IndustryContext, ticketId: string, status: KitchenTicketStatus) {
   await requireWorkspaceModule(context.workspaceId, "restaurant");
   return db.$transaction(async (tx) => {
     const rows = await tx.$queryRaw<Array<{ id: string; status: string; salesOrderId: string | null; restaurantTableId: string | null }>>`
@@ -220,14 +228,7 @@ export async function updateKitchenTicketStatus(context: IndustryContext, ticket
     if (!current) throw new IndustryDomainError("NOT_FOUND", "Kitchen ticket was not found.");
     if (current.status === status) return { id: ticketId, status };
 
-    const allowed: Record<string, string[]> = {
-      QUEUED: ["PREPARING", "CANCELLED"],
-      PREPARING: ["READY", "CANCELLED"],
-      READY: ["SERVED", "CANCELLED"],
-      SERVED: [],
-      CANCELLED: [],
-    };
-    if (!allowed[current.status]?.includes(status)) {
+    if (!canTransitionKitchenTicket(current.status as KitchenTicketStatus, status)) {
       throw new IndustryDomainError("INVALID_STATE", `Kitchen ticket cannot move from ${current.status} to ${status}.`);
     }
 
@@ -462,7 +463,7 @@ export async function createServiceQuote(context: IndustryContext, input: { cust
   });
 }
 
-export async function setServiceQuoteStatus(context: IndustryContext, quoteId: string, status: "DRAFT" | "SENT" | "ACCEPTED" | "REJECTED" | "EXPIRED" | "CONVERTED") {
+export async function setServiceQuoteStatus(context: IndustryContext, quoteId: string, status: ServiceQuoteStatus) {
   await requireWorkspaceModule(context.workspaceId, "services");
   const rows = await db.$queryRaw<Array<{ status: string }>>`
     SELECT "status" FROM "service_quotes"
@@ -472,15 +473,7 @@ export async function setServiceQuoteStatus(context: IndustryContext, quoteId: s
   if (!current) throw new IndustryDomainError("NOT_FOUND", "Quotation was not found.");
   if (current.status === status) return { id: quoteId, status };
 
-  const allowed: Record<string, string[]> = {
-    DRAFT: ["SENT", "ACCEPTED", "REJECTED", "EXPIRED"],
-    SENT: ["ACCEPTED", "REJECTED", "EXPIRED"],
-    ACCEPTED: ["CONVERTED"],
-    REJECTED: [],
-    EXPIRED: [],
-    CONVERTED: [],
-  };
-  if (!allowed[current.status]?.includes(status)) {
+  if (!canTransitionServiceQuote(current.status as ServiceQuoteStatus, status)) {
     throw new IndustryDomainError("INVALID_STATE", `Quotation cannot move from ${current.status} to ${status}.`);
   }
 
@@ -516,7 +509,7 @@ export async function createServiceJob(context: IndustryContext, input: { custom
   return rows[0]!;
 }
 
-export async function updateServiceJobStatus(context: IndustryContext, jobId: string, status: "OPEN" | "IN_PROGRESS" | "WAITING_CUSTOMER" | "COMPLETED" | "CANCELLED") {
+export async function updateServiceJobStatus(context: IndustryContext, jobId: string, status: ServiceJobStatus) {
   await requireWorkspaceModule(context.workspaceId, "services");
   const rows = await db.$queryRaw<Array<{ status: string }>>`
     SELECT "status" FROM "service_jobs"
@@ -526,14 +519,7 @@ export async function updateServiceJobStatus(context: IndustryContext, jobId: st
   if (!current) throw new IndustryDomainError("NOT_FOUND", "Service job was not found.");
   if (current.status === status) return { id: jobId, status };
 
-  const allowed: Record<string, string[]> = {
-    OPEN: ["IN_PROGRESS", "WAITING_CUSTOMER", "COMPLETED", "CANCELLED"],
-    IN_PROGRESS: ["WAITING_CUSTOMER", "COMPLETED", "CANCELLED"],
-    WAITING_CUSTOMER: ["IN_PROGRESS", "COMPLETED", "CANCELLED"],
-    COMPLETED: [],
-    CANCELLED: [],
-  };
-  if (!allowed[current.status]?.includes(status)) {
+  if (!canTransitionServiceJob(current.status as ServiceJobStatus, status)) {
     throw new IndustryDomainError("INVALID_STATE", `Service job cannot move from ${current.status} to ${status}.`);
   }
 
