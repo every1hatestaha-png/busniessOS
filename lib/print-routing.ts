@@ -1,6 +1,7 @@
 const DEDICATED_PRINT_ROUTES = [
   /^\/purchases\/[^/]+$/,
   /^\/goods-receipts\/[^/]+$/,
+  /^\/services\/quotes\/[^/]+$/,
 ] as const;
 
 /**
