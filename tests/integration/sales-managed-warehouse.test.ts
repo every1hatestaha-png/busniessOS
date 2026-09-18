@@ -119,19 +119,8 @@ describe("managed warehouse sales lifecycle", () => {
   afterAll(async () => {
     if (!db) return;
 
-    if (workspaceId) {
-      await db.$executeRawUnsafe('DELETE FROM "warehouse_stocks" WHERE "workspaceId"=$1::uuid', workspaceId);
-      await db.$executeRawUnsafe('DELETE FROM "warehouses" WHERE "workspaceId"=$1::uuid', workspaceId);
-      await db.$executeRawUnsafe('DELETE FROM "workspace_modules" WHERE "workspaceId"=$1::uuid', workspaceId);
-      await teardownTestWorkspace(workspaceId, userId);
-    }
-
-    if (otherWorkspaceId) {
-      await db.$executeRawUnsafe('DELETE FROM "warehouse_stocks" WHERE "workspaceId"=$1::uuid', otherWorkspaceId);
-      await db.$executeRawUnsafe('DELETE FROM "warehouses" WHERE "workspaceId"=$1::uuid', otherWorkspaceId);
-      await db.$executeRawUnsafe('DELETE FROM "workspace_modules" WHERE "workspaceId"=$1::uuid', otherWorkspaceId);
-      await teardownTestWorkspace(otherWorkspaceId, otherUserId);
-    }
+    if (workspaceId) await teardownTestWorkspace(workspaceId, userId);
+    if (otherWorkspaceId) await teardownTestWorkspace(otherWorkspaceId, otherUserId);
   }, 30_000);
 
   it("keeps sale, edit, return, return cancellation and sale cancellation in one warehouse", async () => {
