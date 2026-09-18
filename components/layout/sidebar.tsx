@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { Role } from "@prisma/client";
+import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -21,10 +22,26 @@ import {
   CircleDollarSign,
   PackageCheck,
   MessageCircleMore,
+  UtensilsCrossed,
+  Factory,
+  BriefcaseBusiness,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const sections = [
+type SidebarRoute = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  financial?: boolean;
+  module?: "restaurant" | "manufacturing" | "services";
+};
+
+type SidebarSection = {
+  label: string;
+  routes: SidebarRoute[];
+};
+
+const sections: SidebarSection[] = [
   { label: "Overview", routes: [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   ] },
@@ -36,6 +53,11 @@ const sections = [
     { href: "/customers", label: "Customers", icon: Users },
     { href: "/suppliers", label: "Suppliers", icon: Truck },
     { href: "/supplier-returns", label: "Supplier Returns", icon: Truck, financial: true },
+  ] },
+  { label: "Industry", routes: [
+    { href: "/restaurant", label: "Restaurant", icon: UtensilsCrossed, module: "restaurant" },
+    { href: "/manufacturing", label: "Manufacturing", icon: Factory, module: "manufacturing" },
+    { href: "/services", label: "Services", icon: BriefcaseBusiness, module: "services" },
   ] },
   { label: "Finance", routes: [
     { href: "/khata", label: "Khata", icon: BookOpen },
@@ -53,8 +75,17 @@ const sections = [
   ] },
 ];
 
-export function Sidebar({ workspaceName, role }: { workspaceName: string; role: Role }) {
+export function Sidebar({
+  workspaceName,
+  role,
+  enabledModules,
+}: {
+  workspaceName: string;
+  role: Role;
+  enabledModules: string[];
+}) {
   const pathname = usePathname();
+  const enabled = new Set(enabledModules);
 
   return (
     <aside className="flex h-full w-[260px] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
@@ -70,7 +101,11 @@ export function Sidebar({ workspaceName, role }: { workspaceName: string; role: 
       <div className="flex-1 overflow-y-auto px-2.5 py-3">
         <nav aria-label="Primary navigation" className="space-y-4">
           {sections.map((section) => {
-            const visibleRoutes = section.routes.filter((route) => role !== "STAFF" || !route.financial);
+            const visibleRoutes = section.routes.filter((route) => {
+              if (role === "STAFF" && route.financial) return false;
+              if (route.module && !enabled.has(route.module)) return false;
+              return true;
+            });
             if (!visibleRoutes.length) return null;
             return <div key={section.label}>
               <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{section.label}</p>

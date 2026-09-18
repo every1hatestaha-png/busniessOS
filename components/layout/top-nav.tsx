@@ -11,7 +11,7 @@ import { GlobalSearch } from "@/components/search/global-search";
 import { DesktopAccountMenu } from "@/components/layout/desktop-logout-button";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 
-export function TopNav({ workspaceName, workspaceId, workspaces, role }: { workspaceName: string; workspaceId: string; workspaces: Array<{ workspaceId: string; workspace: { name: string } }>; role: Role }) {
+export function TopNav({ workspaceName, workspaceId, workspaces, role, enabledModules }: { workspaceName: string; workspaceId: string; workspaces: Array<{ workspaceId: string; workspace: { name: string } }>; role: Role; enabledModules: string[] }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const isDesktop = useSyncExternalStore(
@@ -31,7 +31,7 @@ export function TopNav({ workspaceName, workspaceId, workspaces, role }: { works
             if ((event.target as HTMLElement).closest("a")) setMobileMenuOpen(false);
           }}>
             <SheetTitle className="sr-only">Navigation menu</SheetTitle>
-            <Sidebar workspaceName={workspaceName} role={role} />
+            <Sidebar workspaceName={workspaceName} role={role} enabledModules={enabledModules} />
           </SheetContent>
         </Sheet>
 
