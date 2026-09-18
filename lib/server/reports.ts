@@ -4,6 +4,7 @@ import { db } from "@/lib/server/db";
 import { businessDayEnd, businessDayStart, businessMonthStart } from "@/lib/server/business-time";
 import { sortStatementRowsByBusinessDay } from "@/lib/statement-order";
 import { Prisma } from "@prisma/client";
+import { getWarehouseStockMode } from "@/lib/server/managed-warehouse-stock";
 
 export type StatementFilters = { from?: Date; to?: Date; search?: string };
 
@@ -81,20 +82,83 @@ export async function getSupplierStatement(workspaceId: string, supplierId: stri
 }
 
 export async function getCurrentStockReport(workspaceId: string, search?: string, lowStockOnly = false) {
-  const [products, inventoryAccount] = await Promise.all([
+  const [products, inventoryAccount, warehouseMode] = await Promise.all([
     db.product.findMany({
       where: { workspaceId, AND: [{ OR: [{ status: { not: "ARCHIVED" } }, { stockQuantity: { not: 0 } }] }, ...(search ? [{ OR: [{ name: { contains: search, mode: "insensitive" as const } }, { sku: { contains: search, mode: "insensitive" as const } }, { category: { contains: search, mode: "insensitive" as const } }] }] : [])] },
       orderBy: [{ name: "asc" }, { id: "asc" }],
       select: { id: true, name: true, sku: true, category: true, stockQuantity: true, costPrice: true, reorderLevel: true, unit: true, status: true },
     }),
     db.account.findUnique({ where: { workspaceId_systemCode: { workspaceId, systemCode: "INVENTORY" } }, select: { id: true } }),
+    getWarehouseStockMode(workspaceId),
   ]);
-  const rows = products.filter((product) => !lowStockOnly || product.stockQuantity.toNumber() <= product.reorderLevel.toNumber()).map((product) => ({ ...product, sku: product.sku ?? "", category: product.category ?? "Uncategorized", stockQuantity: product.stockQuantity.toNumber(), reorderLevel: product.reorderLevel.toNumber(), unitCost: Number(product.costPrice), stockValue: new Prisma.Decimal(product.stockQuantity).mul(product.costPrice).toNumber(), stockStatus: product.stockQuantity.toNumber() <= 0 ? "Out of Stock" : product.stockQuantity.toNumber() <= product.reorderLevel.toNumber() ? "Low Stock" : "In Stock" }));
+
+  const warehouseRows = warehouseMode === "MANAGED" && products.length
+    ? await db.$queryRaw<Array<{ productId: string; warehouseId: string; warehouseName: string; warehouseCode: string; quantity: Prisma.Decimal }>>`
+        SELECT ws."productId"::text AS "productId",
+               ws."warehouseId"::text AS "warehouseId",
+               w."name" AS "warehouseName",
+               w."code" AS "warehouseCode",
+               ws."quantity"
+        FROM "warehouse_stocks" ws
+        JOIN "warehouses" w ON w."id" = ws."warehouseId"
+        WHERE ws."workspaceId" = ${workspaceId}::uuid
+          AND ws."productId" IN (${Prisma.join(products.map((product) => Prisma.sql`${product.id}::uuid`))})
+        ORDER BY w."isDefault" DESC, w."name" ASC, w."id" ASC
+      `
+    : [];
+
+  const warehouseByProduct = new Map<string, Array<{ warehouseId: string; warehouseName: string; warehouseCode: string; quantity: number }>>();
+  for (const row of warehouseRows) {
+    const entries = warehouseByProduct.get(row.productId) ?? [];
+    entries.push({
+      warehouseId: row.warehouseId,
+      warehouseName: row.warehouseName,
+      warehouseCode: row.warehouseCode,
+      quantity: Number(row.quantity),
+    });
+    warehouseByProduct.set(row.productId, entries);
+  }
+
+  const rows = products
+    .filter((product) => !lowStockOnly || product.stockQuantity.toNumber() <= product.reorderLevel.toNumber())
+    .map((product) => {
+      const stockQuantity = product.stockQuantity.toNumber();
+      const warehouses = warehouseByProduct.get(product.id) ?? [];
+      const warehouseTotal = warehouses.reduce((sum, warehouse) => sum + warehouse.quantity, 0);
+      const warehouseDifference = warehouseMode === "MANAGED"
+        ? new Prisma.Decimal(stockQuantity).minus(warehouseTotal).toNumber()
+        : null;
+      return {
+        ...product,
+        sku: product.sku ?? "",
+        category: product.category ?? "Uncategorized",
+        stockQuantity,
+        reorderLevel: product.reorderLevel.toNumber(),
+        unitCost: Number(product.costPrice),
+        stockValue: new Prisma.Decimal(product.stockQuantity).mul(product.costPrice).toNumber(),
+        stockStatus: stockQuantity <= 0 ? "Out of Stock" : stockQuantity <= product.reorderLevel.toNumber() ? "Low Stock" : "In Stock",
+        warehouses,
+        warehouseTotal: warehouseMode === "MANAGED" ? warehouseTotal : null,
+        warehouseDifference,
+        warehouseInSync: warehouseDifference === null ? null : new Prisma.Decimal(warehouseDifference).isZero(),
+      };
+    });
+
   const totalValue = rows.reduce((sum, row) => sum.plus(new Prisma.Decimal(row.stockValue)), new Prisma.Decimal(0)).toNumber();
   const fullScope = !search && !lowStockOnly;
   const gl = fullScope && inventoryAccount ? await db.generalLedgerEntry.aggregate({ where: { workspaceId, accountId: inventoryAccount.id }, _sum: { debit: true, credit: true } }) : null;
   const inventoryGlBalance = fullScope ? new Prisma.Decimal(gl?._sum.debit ?? 0).minus(gl?._sum.credit ?? 0).toNumber() : null;
-  return { rows, totalQuantity: rows.reduce((sum, row) => sum + row.stockQuantity, 0), totalValue, inventoryGlBalance, reconciliationDifference: inventoryGlBalance === null ? null : new Prisma.Decimal(totalValue).minus(inventoryGlBalance).toNumber(), valuationBasis: "Current Product.costPrice (existing BusinessOS current-cost basis)" };
+  const warehouseMismatchCount = warehouseMode === "MANAGED" ? rows.filter((row) => row.warehouseInSync === false).length : 0;
+  return {
+    rows,
+    warehouseMode,
+    warehouseMismatchCount,
+    totalQuantity: rows.reduce((sum, row) => sum + row.stockQuantity, 0),
+    totalValue,
+    inventoryGlBalance,
+    reconciliationDifference: inventoryGlBalance === null ? null : new Prisma.Decimal(totalValue).minus(inventoryGlBalance).toNumber(),
+    valuationBasis: "Current Product.costPrice (existing BusinessOS current-cost basis)",
+  };
 }
 
 export async function getStockMovementReport(workspaceId: string, filters: { from?: Date; to?: Date; productId?: string; type?: string; search?: string } = {}) {
@@ -113,5 +177,46 @@ export async function getStockMovementReport(workspaceId: string, filters: { fro
     balances.set(movement.productId, runningQuantity);
     return { id: movement.id, productId: movement.productId, productName: movement.product.name, sku: movement.product.sku ?? "", date: movement.createdAt.toISOString(), type: movement.type, document: movement.reference ?? "-", quantityIn: Math.max(0, Number(movement.quantityChanged)), quantityOut: Math.max(0, -Number(movement.quantityChanged)), runningQuantity, unitCost: movement.unitCost ? Number(movement.unitCost) : null };
   });
-  return { from: from.toISOString(), to: to.toISOString(), rows, truncated };
+  const transferAudits = await db.auditLog.findMany({
+    where: {
+      workspaceId,
+      action: "warehouse.stock.transferred",
+      createdAt: { gte: from, lte: to },
+      ...(filters.productId ? { entityId: filters.productId } : {}),
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    take: 1001,
+    select: { id: true, entityId: true, metadata: true, createdAt: true },
+  });
+  const transfersTruncated = transferAudits.length > 1000;
+  const normalizedSearch = filters.search?.trim().toLowerCase();
+  const transfers = transferAudits.slice(0, 1000).flatMap((audit) => {
+    const metadata = audit.metadata;
+    if (!metadata || Array.isArray(metadata) || typeof metadata !== "object") return [];
+    const value = metadata as Record<string, unknown>;
+    const productId = typeof value.productId === "string" ? value.productId : audit.entityId;
+    const productName = typeof value.productName === "string" ? value.productName : "Product";
+    const sku = typeof value.sku === "string" ? value.sku : "";
+    if (normalizedSearch && !productName.toLowerCase().includes(normalizedSearch) && !sku.toLowerCase().includes(normalizedSearch)) return [];
+    const quantity = typeof value.quantity === "number" ? value.quantity : Number(value.quantity ?? 0);
+    return [{
+      id: audit.id,
+      productId,
+      productName,
+      sku,
+      date: audit.createdAt.toISOString(),
+      quantity,
+      fromWarehouse: {
+        id: typeof value.fromWarehouseId === "string" ? value.fromWarehouseId : "",
+        name: typeof value.fromWarehouseName === "string" ? value.fromWarehouseName : "Unknown warehouse",
+        code: typeof value.fromWarehouseCode === "string" ? value.fromWarehouseCode : "",
+      },
+      toWarehouse: {
+        id: typeof value.toWarehouseId === "string" ? value.toWarehouseId : "",
+        name: typeof value.toWarehouseName === "string" ? value.toWarehouseName : "Unknown warehouse",
+        code: typeof value.toWarehouseCode === "string" ? value.toWarehouseCode : "",
+      },
+    }];
+  });
+  return { from: from.toISOString(), to: to.toISOString(), rows, truncated, transfers, transfersTruncated };
 }
