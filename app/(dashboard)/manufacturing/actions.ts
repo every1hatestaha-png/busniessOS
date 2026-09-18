@@ -4,10 +4,12 @@ import { revalidatePath } from "next/cache";
 
 import { requireWorkspace } from "@/lib/server/auth";
 import {
+  approveProductionRun,
   createBom,
   createProductionRun,
   createWarehouse,
   IndustryDomainError,
+  postProductionRun,
 } from "@/lib/server/industry-modules";
 
 export type ManufacturingActionState = {
@@ -126,5 +128,51 @@ export async function createProductionRunAction(
     return { status: "success", message: `Production run ${runNumber} created as draft.` };
   } catch (error) {
     return fail(messageFor(error, "We could not create this production run. Check the run number and BOM."));
+  }
+}
+
+
+export async function approveProductionRunAction(
+  _previous: ManufacturingActionState,
+  formData: FormData,
+): Promise<ManufacturingActionState> {
+  const productionRunId = String(formData.get("productionRunId") ?? "").trim();
+  if (!/^[0-9a-f-]{36}$/i.test(productionRunId)) return fail("Production run is invalid.");
+
+  const { workspaceId, role, user } = await requireWorkspace();
+  try {
+    await approveProductionRun({ workspaceId, role, userId: user.id }, productionRunId);
+    revalidatePath("/manufacturing");
+    return { status: "success", message: "Production run approved." };
+  } catch (error) {
+    return fail(messageFor(error, "We could not approve this production run."));
+  }
+}
+
+export async function postProductionRunAction(
+  _previous: ManufacturingActionState,
+  formData: FormData,
+): Promise<ManufacturingActionState> {
+  const productionRunId = String(formData.get("productionRunId") ?? "").trim();
+  const actualOutput = Number(formData.get("actualOutput") ?? 0);
+  const wastageQuantity = Number(formData.get("wastageQuantity") ?? 0);
+
+  if (!/^[0-9a-f-]{36}$/i.test(productionRunId)) return fail("Production run is invalid.");
+  if (!Number.isFinite(actualOutput) || actualOutput <= 0 || actualOutput > 1_000_000_000) return fail("Actual output must be positive.");
+  if (!Number.isFinite(wastageQuantity) || wastageQuantity < 0 || wastageQuantity > 1_000_000_000) return fail("Wastage cannot be negative.");
+
+  const { workspaceId, role, user } = await requireWorkspace();
+  try {
+    const result = await postProductionRun(
+      { workspaceId, role, userId: user.id },
+      productionRunId,
+      actualOutput,
+      wastageQuantity,
+    );
+    revalidatePath("/manufacturing");
+    revalidatePath("/inventory");
+    return { status: "success", message: `Production posted. Unit cost: Rs ${result.unitCost.toFixed(2)}.` };
+  } catch (error) {
+    return fail(messageFor(error, "We could not post this production run. Check raw-material stock and try again."));
   }
 }
