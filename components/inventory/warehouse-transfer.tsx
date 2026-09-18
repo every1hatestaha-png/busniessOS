@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
 type ProductOption = { id: string; name: string; sku: string };
+type WarehouseOption = { id: string; name: string; code: string };
 type WarehouseBalance = {
   warehouseId: string;
   warehouseName: string;
@@ -24,9 +25,11 @@ const initialState: WarehouseTransferState = {};
 
 export function WarehouseTransfer({
   products,
+  warehouses,
   balances,
 }: {
   products: ProductOption[];
+  warehouses: WarehouseOption[];
   balances: WarehouseBalance[];
 }) {
   const [state, action, pending] = useActionState(transferWarehouseStockAction, initialState);
@@ -41,14 +44,14 @@ export function WarehouseTransfer({
   useEffect(() => {
     const available = productBalances.filter((row) => row.quantity > 0);
     setFromWarehouseId((current) => available.some((row) => row.warehouseId === current) ? current : (available[0]?.warehouseId ?? ""));
-    setToWarehouseId((current) => productBalances.some((row) => row.warehouseId === current && row.warehouseId !== available[0]?.warehouseId)
+    setToWarehouseId((current) => warehouses.some((warehouse) => warehouse.id === current && warehouse.id !== available[0]?.warehouseId)
       ? current
-      : (productBalances.find((row) => row.warehouseId !== available[0]?.warehouseId)?.warehouseId ?? ""));
-  }, [productBalances]);
+      : (warehouses.find((warehouse) => warehouse.id !== available[0]?.warehouseId)?.id ?? ""));
+  }, [productBalances, warehouses]);
 
   const sourceBalance = productBalances.find((row) => row.warehouseId === fromWarehouseId)?.quantity ?? 0;
 
-  if (products.length === 0 || balances.length === 0) return null;
+  if (products.length === 0 || warehouses.length < 2) return null;
 
   return (
     <Card className="gap-0 py-0 shadow-none">
@@ -80,7 +83,7 @@ export function WarehouseTransfer({
             <span>To warehouse</span>
             <select name="toWarehouseId" value={toWarehouseId} onChange={(event) => setToWarehouseId(event.target.value)} className={selectClass} required>
               <option value="" disabled>Select destination</option>
-              {productBalances.filter((row) => row.warehouseId !== fromWarehouseId).map((row) => <option key={row.warehouseId} value={row.warehouseId}>{row.warehouseCode} · {row.warehouseName}</option>)}
+              {warehouses.filter((warehouse) => warehouse.id !== fromWarehouseId).map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.code} · {warehouse.name}</option>)}
             </select>
           </label>
           <label className="space-y-1.5 text-xs font-medium">
