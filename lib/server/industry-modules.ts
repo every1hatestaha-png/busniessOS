@@ -861,7 +861,7 @@ export async function getServiceQuoteDetail(workspaceId: string, quoteId: string
     customerEmail: string | null;
     customerAddress: string | null;
     customerCity: string | null;
-  }>>\`
+  }>>`
     SELECT
       sq."id",
       sq."customerId"::text AS "customerId",
@@ -884,10 +884,10 @@ export async function getServiceQuoteDetail(workspaceId: string, quoteId: string
     LEFT JOIN "customers" c
       ON c."id" = sq."customerId"::text
       AND c."workspaceId" = sq."workspaceId"::text
-    WHERE sq."id" = \${quoteId}::uuid
-      AND sq."workspaceId" = \${workspaceId}::uuid
+    WHERE sq."id" = ${quoteId}::uuid
+      AND sq."workspaceId" = ${workspaceId}::uuid
     LIMIT 1
-  \`;
+  `;
 
   const quote = quotes[0];
   if (!quote) return null;
@@ -898,12 +898,12 @@ export async function getServiceQuoteDetail(workspaceId: string, quoteId: string
     quantity: Prisma.Decimal;
     unitPrice: Prisma.Decimal;
     lineTotal: Prisma.Decimal;
-  }>>\`
+  }>>`
     SELECT "id", "description", "quantity", "unitPrice", "lineTotal"
     FROM "service_quote_items"
-    WHERE "serviceQuoteId" = \${quoteId}::uuid
+    WHERE "serviceQuoteId" = ${quoteId}::uuid
     ORDER BY "createdAt" ASC, "id" ASC
-  \`;
+  `;
 
   const jobs = await db.$queryRaw<Array<{
     id: string;
@@ -911,13 +911,13 @@ export async function getServiceQuoteDetail(workspaceId: string, quoteId: string
     title: string;
     status: ServiceJobStatus;
     createdAt: Date;
-  }>>\`
+  }>>`
     SELECT "id", "jobNumber", "title", "status", "createdAt"
     FROM "service_jobs"
-    WHERE "workspaceId" = \${workspaceId}::uuid
-      AND "serviceQuoteId" = \${quoteId}::uuid
+    WHERE "workspaceId" = ${workspaceId}::uuid
+      AND "serviceQuoteId" = ${quoteId}::uuid
     ORDER BY "createdAt" DESC
-  \`;
+  `;
 
   return {
     ...quote,
@@ -959,7 +959,7 @@ export async function getServiceJobDetail(workspaceId: string, jobId: string) {
     customerCity: string | null;
     quoteNumber: string | null;
     assignedToName: string | null;
-  }>>\`
+  }>>`
     SELECT
       sj."id",
       sj."customerId"::text AS "customerId",
@@ -989,10 +989,10 @@ export async function getServiceJobDetail(workspaceId: string, jobId: string) {
       AND sq."workspaceId" = sj."workspaceId"
     LEFT JOIN "users" u
       ON u."id" = sj."assignedToId"::text
-    WHERE sj."id" = \${jobId}::uuid
-      AND sj."workspaceId" = \${workspaceId}::uuid
+    WHERE sj."id" = ${jobId}::uuid
+      AND sj."workspaceId" = ${workspaceId}::uuid
     LIMIT 1
-  \`;
+  `;
 
   return rows[0] ?? null;
 }
