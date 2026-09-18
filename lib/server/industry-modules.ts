@@ -423,11 +423,13 @@ export async function createServiceQuote(context: IndustryContext, input: { cust
       RETURNING "id", "quoteNumber", "total", "status"
     `;
     for (const item of input.items) {
+      const description = item.description.trim();
       const quantity = item.quantity ?? 1;
+      if (!description) throw new IndustryDomainError("INVALID_STATE", "Every quotation line needs a description.");
       if (quantity <= 0 || item.unitPrice < 0) throw new IndustryDomainError("INVALID_STATE", "Quotation quantity must be positive and price cannot be negative.");
       await tx.$executeRaw`
         INSERT INTO "service_quote_items" ("serviceQuoteId", "description", "quantity", "unitPrice", "lineTotal")
-        VALUES (${rows[0]!.id}::uuid, ${item.description.trim()}, ${quantity}, ${item.unitPrice}, ${quantity * item.unitPrice})
+        VALUES (${rows[0]!.id}::uuid, ${description}, ${quantity}, ${item.unitPrice}, ${quantity * item.unitPrice})
       `;
     }
     return { ...rows[0]!, total: Number(rows[0]!.total) };
@@ -445,9 +447,24 @@ export async function createServiceJob(context: IndustryContext, input: { custom
   await requireWorkspaceModule(context.workspaceId, "services");
   const customer = await db.customer.findFirst({ where: { id: input.customerId, workspaceId: context.workspaceId }, select: { id: true } });
   if (!customer) throw new IndustryDomainError("NOT_FOUND", "Client was not found in this workspace.");
+
+  const jobNumber = input.jobNumber.trim();
+  const title = input.title.trim();
+  if (!jobNumber || !title) throw new IndustryDomainError("INVALID_STATE", "Job number and title are required.");
+
+  if (input.serviceQuoteId) {
+    const quotes = await db.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "service_quotes"
+      WHERE "id"=${input.serviceQuoteId}::uuid
+        AND "workspaceId"=${context.workspaceId}::uuid
+        AND "customerId"=${input.customerId}::uuid
+    `;
+    if (!quotes[0]) throw new IndustryDomainError("NOT_FOUND", "Quotation was not found for this client in this workspace.");
+  }
+
   const rows = await db.$queryRaw<Array<{ id: string; jobNumber: string; status: string }>>`
     INSERT INTO "service_jobs" ("workspaceId", "customerId", "serviceQuoteId", "jobNumber", "title", "description", "assignedToId", "scheduledAt")
-    VALUES (${context.workspaceId}::uuid, ${input.customerId}::uuid, ${input.serviceQuoteId ?? null}::uuid, ${input.jobNumber.trim()}, ${input.title.trim()}, ${input.description?.trim() || null}, ${input.assignedToId ?? null}::uuid, ${input.scheduledAt ?? null})
+    VALUES (${context.workspaceId}::uuid, ${input.customerId}::uuid, ${input.serviceQuoteId ?? null}::uuid, ${jobNumber}, ${title}, ${input.description?.trim() || null}, ${input.assignedToId ?? null}::uuid, ${input.scheduledAt ?? null})
     RETURNING "id", "jobNumber", "status"
   `;
   if (input.serviceQuoteId) await setServiceQuoteStatus(context, input.serviceQuoteId, "CONVERTED");
