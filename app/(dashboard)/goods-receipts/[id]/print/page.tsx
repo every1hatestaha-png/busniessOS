@@ -24,7 +24,8 @@ export default async function GoodsReceiptPrintPage({ params }: { params: Promis
         </div>
         <div className="text-right">
           <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-neutral-500">Receipt control</p>
-          <p className="mt-1">Received by: {grn.receivedBy || "Not specified"}</p>
+          {grn.warehouse && <p className="mt-1"><strong>Warehouse:</strong> {grn.warehouse.name} · {grn.warehouse.code}</p>}
+          <p className={grn.warehouse ? "" : "mt-1"}>Received by: {grn.receivedBy || "Not specified"}</p>
           <p>Checked by: {grn.checkedBy || "Not specified"}</p>
         </div>
       </section>
