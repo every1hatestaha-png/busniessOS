@@ -10,6 +10,10 @@ describe("getDedicatedPrintRoute", () => {
     expect(getDedicatedPrintRoute("/goods-receipts/grn-123/")).toBe("/goods-receipts/grn-123/print");
   });
 
+  it("routes service quotation detail to its dedicated print page", () => {
+    expect(getDedicatedPrintRoute("/services/quotes/quote-123")).toBe("/services/quotes/quote-123/print");
+  });
+
   it("does not recurse from an existing print page", () => {
     expect(getDedicatedPrintRoute("/goods-receipts/grn-123/print")).toBeNull();
   });
