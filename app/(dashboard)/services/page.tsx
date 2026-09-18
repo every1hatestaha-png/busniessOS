@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BriefcaseBusiness, FileCheck2, ReceiptText } from "lucide-react";
 
 import { ServicesControls } from "@/app/(dashboard)/services/services-controls";
+import { ServicesLifecycleControls } from "@/app/(dashboard)/services/services-lifecycle-controls";
 import { MetricCard } from "@/components/business/metric-card";
 import { PageHeader } from "@/components/business/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -39,6 +40,11 @@ export default async function ServicesPage() {
       <ServicesControls
         clients={customers.filter((customer) => customer.status === "ACTIVE").map((customer) => ({ id: customer.id, name: customer.companyName || customer.name }))}
         quotes={quotes.map((quote) => ({ id: quote.id, customerId: quote.customerId, quoteNumber: quote.quoteNumber, status: quote.status }))}
+      />
+
+      <ServicesLifecycleControls
+        quotes={quotes.map((quote) => ({ id: quote.id, quoteNumber: quote.quoteNumber, status: quote.status, customerName: quote.customerName }))}
+        jobs={jobs.map((job) => ({ id: job.id, jobNumber: job.jobNumber, title: job.title, status: job.status, customerName: job.customerName }))}
       />
 
       <div className="grid gap-5 xl:grid-cols-2">
