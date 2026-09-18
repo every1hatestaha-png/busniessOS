@@ -197,6 +197,40 @@ describe("managed warehouse GRN lifecycle", () => {
     expect(voided?.warehouse?.id).toBe(warehouseId);
   });
 
+  it("rejects missing and cross-tenant receiving warehouses without creating a GRN", async () => {
+    const before = await db.goodReceivedNote.count({ where: { workspaceId } });
+
+    await expect(
+      createGoodsReceipt(context(), {
+        purchaseOrderId,
+        idempotencyKey: "managed-grn-missing-" + runId,
+        items: [{
+          purchaseOrderItemId,
+          receivedQuantity: 1,
+          acceptedQuantity: 1,
+          actualUnitCost: 10,
+        }],
+      }),
+    ).rejects.toMatchObject({ code: "WAREHOUSE_REQUIRED" });
+
+    await expect(
+      createGoodsReceipt(context(), {
+        purchaseOrderId,
+        warehouseId: otherWarehouseId,
+        idempotencyKey: "managed-grn-other-" + runId,
+        items: [{
+          purchaseOrderItemId,
+          receivedQuantity: 1,
+          acceptedQuantity: 1,
+          actualUnitCost: 10,
+        }],
+      }),
+    ).rejects.toMatchObject({ code: "WAREHOUSE_NOT_FOUND" });
+
+    expect(await db.goodReceivedNote.count({ where: { workspaceId } })).toBe(before);
+    expect(await coreQuantity()).toBe(0);
+    expect(await warehouseQuantity()).toBe(0);
+  });
   it("keeps supplier return create and cancellation synced to the source GRN warehouse", async () => {
     const purchase = await createPurchase(context(), {
       supplierId,
@@ -235,44 +269,7 @@ describe("managed warehouse GRN lifecycle", () => {
 
     expect(await coreQuantity()).toBe(10);
     expect(await warehouseQuantity()).toBe(10);
-
-    await voidGoodsReceipt(context(), grn.id, { voidedReason: "Reset managed return regression fixture" });
-    expect(await coreQuantity()).toBe(0);
-    expect(await warehouseQuantity()).toBe(0);
   });
 
-  it("rejects missing and cross-tenant receiving warehouses without creating a GRN", async () => {
-    const before = await db.goodReceivedNote.count({ where: { workspaceId } });
 
-    await expect(
-      createGoodsReceipt(context(), {
-        purchaseOrderId,
-        idempotencyKey: "managed-grn-missing-" + runId,
-        items: [{
-          purchaseOrderItemId,
-          receivedQuantity: 1,
-          acceptedQuantity: 1,
-          actualUnitCost: 10,
-        }],
-      }),
-    ).rejects.toMatchObject({ code: "WAREHOUSE_REQUIRED" });
-
-    await expect(
-      createGoodsReceipt(context(), {
-        purchaseOrderId,
-        warehouseId: otherWarehouseId,
-        idempotencyKey: "managed-grn-other-" + runId,
-        items: [{
-          purchaseOrderItemId,
-          receivedQuantity: 1,
-          acceptedQuantity: 1,
-          actualUnitCost: 10,
-        }],
-      }),
-    ).rejects.toMatchObject({ code: "WAREHOUSE_NOT_FOUND" });
-
-    expect(await db.goodReceivedNote.count({ where: { workspaceId } })).toBe(before);
-    expect(await coreQuantity()).toBe(0);
-    expect(await warehouseQuantity()).toBe(0);
-  });
 });
