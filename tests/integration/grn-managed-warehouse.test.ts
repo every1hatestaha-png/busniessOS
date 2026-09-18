@@ -4,6 +4,8 @@ import { randomUUID } from "crypto";
 let db: typeof import("@/lib/server/db")["db"];
 let createPurchase: typeof import("@/lib/server/purchases")["createPurchase"];
 let createGoodsReceipt: typeof import("@/lib/server/purchases")["createGoodsReceipt"];
+let createSupplierReturn: typeof import("@/lib/server/purchases")["createSupplierReturn"];
+let cancelSupplierReturn: typeof import("@/lib/server/supplier-return-reversals")["cancelSupplierReturn"];
 let updateGoodsReceipt: typeof import("@/lib/server/purchases")["updateGoodsReceipt"];
 let voidGoodsReceipt: typeof import("@/lib/server/purchases")["voidGoodsReceipt"];
 let getGoodsReceipt: typeof import("@/lib/server/purchases")["getGoodsReceipt"];
@@ -48,7 +50,8 @@ describe("managed warehouse GRN lifecycle", () => {
     config({ path: ".env.local", quiet: true });
 
     ({ db } = await import("@/lib/server/db"));
-    ({ createPurchase, createGoodsReceipt, updateGoodsReceipt, voidGoodsReceipt, getGoodsReceipt } = await import("@/lib/server/purchases"));
+    ({ createPurchase, createGoodsReceipt, createSupplierReturn, updateGoodsReceipt, voidGoodsReceipt, getGoodsReceipt } = await import("@/lib/server/purchases"));
+    ({ cancelSupplierReturn } = await import("@/lib/server/supplier-return-reversals"));
     ({ ensureDefaultAccounts } = await import("@/lib/server/accounting"));
     ({ setWorkspaceModule } = await import("@/lib/server/industry-modules"));
 
@@ -123,6 +126,9 @@ describe("managed warehouse GRN lifecycle", () => {
       await db.ledgerEntry.deleteMany({ where: { workspaceId } });
       await db.paymentAllocation.deleteMany({ where: { workspaceId } });
       await db.inventoryTransaction.deleteMany({ where: { workspaceId } });
+      await db.debitNote.deleteMany({ where: { workspaceId } });
+      await db.supplierReturnItem.deleteMany({ where: { supplierReturn: { workspaceId } } });
+      await db.supplierReturn.deleteMany({ where: { workspaceId } });
       await db.goodReceivedNoteItem.deleteMany({ where: { goodReceivedNote: { workspaceId } } });
       await db.goodReceivedNote.deleteMany({ where: { workspaceId } });
       await db.purchaseOrderItem.deleteMany({ where: { purchaseOrder: { workspaceId } } });
@@ -189,6 +195,46 @@ describe("managed warehouse GRN lifecycle", () => {
     const voided = await getGoodsReceipt(workspaceId, grnId);
     expect(voided?.status).toBe("VOIDED");
     expect(voided?.warehouse?.id).toBe(warehouseId);
+  });
+
+  it("keeps supplier return create and cancellation synced to the source GRN warehouse", async () => {
+    const purchase = await createPurchase(context(), {
+      supplierId,
+      pricingMode: "UNIT",
+      items: [{ productId, quantity: 10, unitCost: 10 }],
+      idempotencyKey: "managed-return-po-" + runId,
+    });
+    const item = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: purchase.id } });
+    const grn = await createGoodsReceipt(context(), {
+      purchaseOrderId: purchase.id,
+      warehouseId,
+      idempotencyKey: "managed-return-grn-" + runId,
+      items: [{
+        purchaseOrderItemId: item.id,
+        receivedQuantity: 10,
+        acceptedQuantity: 10,
+        actualUnitCost: 10,
+      }],
+    });
+
+    expect(await coreQuantity()).toBe(10);
+    expect(await warehouseQuantity()).toBe(10);
+
+    const supplierReturn = await createSupplierReturn(context(), {
+      purchaseOrderId: purchase.id,
+      goodReceivedNoteId: grn.id,
+      idempotencyKey: "managed-return-" + runId,
+      reason: "Damaged stock",
+      items: [{ itemId: item.id, quantity: 2 }],
+    });
+
+    expect(await coreQuantity()).toBe(8);
+    expect(await warehouseQuantity()).toBe(8);
+
+    await cancelSupplierReturn(context(), supplierReturn.id, "Return cancelled during warehouse regression test");
+
+    expect(await coreQuantity()).toBe(10);
+    expect(await warehouseQuantity()).toBe(10);
   });
 
   it("rejects missing and cross-tenant receiving warehouses without creating a GRN", async () => {
