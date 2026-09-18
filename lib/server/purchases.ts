@@ -708,7 +708,6 @@ export async function getPurchase(workspaceId: string, id: string) {
     receivedBy: grn.receivedBy,
     checkedBy: grn.checkedBy,
     notes: grn.notes,
-    warehouse,
     items: grn.items.map((gi) => ({
       id: gi.id,
       purchaseOrderItemId: gi.purchaseOrderItemId,
@@ -845,6 +844,7 @@ export async function getGoodsReceipt(workspaceId: string, id: string) {
     receivedBy: grn.receivedBy,
     checkedBy: grn.checkedBy,
     notes: grn.notes,
+    warehouse,
     hasSupplierReturns: grn.supplierReturns.length > 0,
     purchaseOrder: {
       id: grn.purchaseOrderId,
