@@ -708,6 +708,7 @@ export async function getPurchase(workspaceId: string, id: string) {
     receivedBy: grn.receivedBy,
     checkedBy: grn.checkedBy,
     notes: grn.notes,
+    warehouse,
     items: grn.items.map((gi) => ({
       id: gi.id,
       purchaseOrderItemId: gi.purchaseOrderItemId,
@@ -822,6 +823,16 @@ export async function getGoodsReceipt(workspaceId: string, id: string) {
     },
   });
   if (!grn) return null;
+
+  const warehouse = grn.warehouseId
+    ? (await db.$queryRaw<Array<{ id: string; name: string; code: string }>>`
+        SELECT "id"::text AS "id", "name", "code"
+        FROM "warehouses"
+        WHERE "id"=${grn.warehouseId}::uuid
+          AND "workspaceId"=${workspaceId}::uuid
+        LIMIT 1
+      `)[0] ?? null
+    : null;
 
   return {
     id: grn.id,
