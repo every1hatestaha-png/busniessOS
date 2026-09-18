@@ -635,6 +635,7 @@ model GoodReceivedNote {
   notes           String?
   receivedBy      String?
   checkedBy       String?
+  warehouseId     String?     @db.Uuid
   totalAmount     Decimal     @default(0) @db.Decimal(15, 2)
   status          GRNStatus   @default(ACTIVE)
   voidedAt        DateTime?
