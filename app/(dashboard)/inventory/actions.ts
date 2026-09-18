@@ -14,6 +14,7 @@ import {
   updateProduct,
 } from "@/lib/server/products";
 import { requirePermission } from "@/lib/server/authorization";
+import { transferWarehouseStock, IndustryDomainError } from "@/lib/server/industry-modules";
 import { productEditSchema, productSchema } from "@/lib/validation/product";
 
 export type ProductActionState = { error?: string };
@@ -125,5 +126,45 @@ export async function adjustStockAction(
       return { error: "The adjustment could not be applied. Check the available stock and try again." };
     }
     return { error: "Stock could not be adjusted. Please try again." };
+  }
+}
+
+
+const warehouseTransferSchema = z.object({
+  productId: z.string().uuid(),
+  fromWarehouseId: z.string().uuid(),
+  toWarehouseId: z.string().uuid(),
+  quantity: z.coerce.number().positive().finite(),
+});
+
+export type WarehouseTransferState = {
+  status?: "success" | "error";
+  message?: string;
+  successToken?: number;
+};
+
+export async function transferWarehouseStockAction(
+  _previousState: WarehouseTransferState,
+  formData: FormData,
+): Promise<WarehouseTransferState> {
+  const context = await requirePermission("inventory.adjust");
+  const parsed = warehouseTransferSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { status: "error", message: "Choose a product, two different warehouses, and a positive quantity." };
+  if (parsed.data.fromWarehouseId === parsed.data.toWarehouseId) {
+    return { status: "error", message: "Source and destination warehouses must be different." };
+  }
+
+  try {
+    await transferWarehouseStock(
+      { workspaceId: context.workspaceId, role: context.role, userId: context.user.id },
+      parsed.data,
+    );
+    revalidatePath("/inventory");
+    revalidatePath("/reports/current-stock");
+    revalidatePath("/reports/stock-movement");
+    return { status: "success", message: "Warehouse transfer completed.", successToken: Date.now() };
+  } catch (error) {
+    if (error instanceof IndustryDomainError) return { status: "error", message: error.message };
+    return { status: "error", message: "Warehouse transfer could not be completed." };
   }
 }
