@@ -551,6 +551,39 @@ export async function createSupplierReturn(context: ServiceContext, input: Suppl
     }
     const order = await tx.purchaseOrder.findFirst({ where: { id: data.purchaseOrderId, workspaceId: context.workspaceId, status: { not: "CANCELLED" } }, include: { items: true } });
     if (!order) throw new PurchaseDomainError("PURCHASE_NOT_FOUND", "Purchase not found.");
+
+    const warehouseMode = await getWarehouseStockModeInTransaction(tx, context.workspaceId);
+    let returnWarehouseId: string | undefined;
+    if (warehouseMode === "MANAGED") {
+      if (!data.goodReceivedNoteId) {
+        throw new PurchaseDomainError("WAREHOUSE_REQUIRED", "Choose the source GRN so MunshiOS can return stock from the correct warehouse.");
+      }
+      const sourceGrn = await tx.goodReceivedNote.findFirst({
+        where: {
+          id: data.goodReceivedNoteId,
+          workspaceId: context.workspaceId,
+          purchaseOrderId: order.id,
+          status: "ACTIVE",
+        },
+        select: { warehouseId: true },
+      });
+      if (!sourceGrn?.warehouseId) {
+        throw new PurchaseDomainError("WAREHOUSE_REQUIRED", "The selected GRN does not have a managed warehouse.");
+      }
+      returnWarehouseId = sourceGrn.warehouseId;
+      try {
+        await assertManagedWarehouseSelection(tx, {
+          workspaceId: context.workspaceId,
+          warehouseId: returnWarehouseId,
+        });
+      } catch (error) {
+        if (error instanceof ManagedWarehouseStockError) {
+          if (error.code === "WAREHOUSE_NOT_FOUND") throw new PurchaseDomainError("WAREHOUSE_NOT_FOUND", error.message);
+          throw new PurchaseDomainError("WAREHOUSE_STOCK_ERROR", error.message);
+        }
+        throw error;
+      }
+    }
     const itemIds = data.items.map((item) => item.itemId);
     if (new Set(itemIds).size !== itemIds.length) throw new PurchaseDomainError("INVALID_RETURN", "Duplicate return items are not allowed.");
     const grnWhere = data.goodReceivedNoteId
@@ -627,6 +660,24 @@ export async function createSupplierReturn(context: ServiceContext, input: Suppl
       const remainingQuantity = currentStock - line.quantity;
       const changed = await tx.product.updateMany({ where: { id: line.source.productId, workspaceId: context.workspaceId, stockQuantity: product.stockQuantity }, data: { stockQuantity: { decrement: line.quantity }, ...(remainingQuantity > 0 ? { costPrice: remainingValue.div(remainingQuantity) } : {}) } });
       if (changed.count !== 1) throw new PurchaseDomainError("INSUFFICIENT_STOCK", `${line.source.productName ?? "Product"} has insufficient stock to return.`);
+      try {
+        await applyManagedWarehouseStockDelta(tx, {
+          workspaceId: context.workspaceId,
+          warehouseId: returnWarehouseId,
+          productId: line.source.productId,
+          delta: -line.quantity,
+        });
+      } catch (error) {
+        if (error instanceof ManagedWarehouseStockError) {
+          if (error.code === "NEGATIVE_WAREHOUSE_STOCK") {
+            throw new PurchaseDomainError("INSUFFICIENT_STOCK", `${line.source.productName ?? "Product"} has insufficient stock in the source warehouse.`);
+          }
+          if (error.code === "WAREHOUSE_REQUIRED") throw new PurchaseDomainError("WAREHOUSE_REQUIRED", error.message);
+          if (error.code === "WAREHOUSE_NOT_FOUND") throw new PurchaseDomainError("WAREHOUSE_NOT_FOUND", error.message);
+          throw new PurchaseDomainError("WAREHOUSE_STOCK_ERROR", error.message);
+        }
+        throw error;
+      }
       await tx.supplierReturnItem.create({ data: { supplierReturnId: supplierReturn.id, purchaseOrderItemId: line.source.id, productId: line.source.productId, quantity: line.quantity, unitCost: line.unitCost, totalCost: line.total, returnedWeightKg: line.returnedWeightKg, ratePerKg: line.ratePerKg } });
       await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: line.source.productId, type: "RETURN_OUT", quantityChanged: -line.quantity, unitCost: line.total.div(line.quantity), reference: number } });
     }
