@@ -5,6 +5,7 @@ import { Prisma, type Role } from "@prisma/client";
 import { postSaleToGeneralLedger } from "@/lib/server/accounting";
 import { writeAudit } from "@/lib/server/audit";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
+import { applyManagedWarehouseStockDelta, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
 import { saleEditSchema, type SaleEditInput } from "@/lib/validation/sale-edit";
 
 export class SaleEditDomainError extends Error {}
@@ -73,6 +74,19 @@ export async function updateSaleAndInvoice(context: EditContext, input: SaleEdit
         data: { stockQuantity: { increment: item.quantity }, costPrice: resultingCost },
       });
       if (changed.count !== 1) throw new SaleEditDomainError("Inventory changed while editing. Refresh and try again.");
+      try {
+        await applyManagedWarehouseStockDelta(tx, {
+          workspaceId: context.workspaceId,
+          warehouseId: order.warehouseId,
+          productId: item.productId,
+          delta: item.quantity,
+        });
+      } catch (error) {
+        if (error instanceof ManagedWarehouseStockError) {
+          throw new SaleEditDomainError(`Warehouse inventory could not be restored safely: ${error.message}`);
+        }
+        throw error;
+      }
     }
 
     await tx.inventoryTransaction.deleteMany({
@@ -123,6 +137,22 @@ export async function updateSaleAndInvoice(context: EditContext, input: SaleEdit
         data: { stockQuantity: { decrement: line.quantity } },
       });
       if (changed.count !== 1) throw new SaleEditDomainError(`Inventory changed for ${line.product.name}. Refresh and try again.`);
+      try {
+        await applyManagedWarehouseStockDelta(tx, {
+          workspaceId: context.workspaceId,
+          warehouseId: order.warehouseId,
+          productId: line.product.id,
+          delta: line.quantity.negated(),
+        });
+      } catch (error) {
+        if (error instanceof ManagedWarehouseStockError) {
+          if (error.code === "NEGATIVE_WAREHOUSE_STOCK") {
+            throw new SaleEditDomainError(`${line.product.name} does not have sufficient stock in the sale warehouse.`);
+          }
+          throw new SaleEditDomainError(`Warehouse inventory could not be updated safely: ${error.message}`);
+        }
+        throw error;
+      }
       await tx.inventoryTransaction.create({
         data: {
           workspaceId: context.workspaceId,
