@@ -7,6 +7,7 @@ import { canPerformAction } from "@/lib/server/authorization";
 import { writeAudit } from "@/lib/server/audit";
 import type { ServiceContext } from "@/lib/server/sales";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
+import { applyManagedWarehouseStockDelta, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
 
 export class CustomerReturnReversalError extends Error {}
 
@@ -21,6 +22,7 @@ export async function cancelCustomerReturn(context: ServiceContext, customerRetu
       include: {
         items: { select: { id: true, productId: true, quantity: true } },
         creditNote: { include: { allocations: { select: { id: true }, take: 1 } } },
+        salesOrder: { select: { warehouseId: true } },
       },
     });
     if (!customerReturn) throw new CustomerReturnReversalError("Customer return not found.");
@@ -54,6 +56,22 @@ export async function cancelCustomerReturn(context: ServiceContext, customerRetu
           data: { stockQuantity: { decrement: item.quantity }, costPrice: resultingCost },
         });
         if (changed.count !== 1) throw new CustomerReturnReversalError("Inventory changed while cancelling this customer return. Retry the cancellation.");
+        try {
+          await applyManagedWarehouseStockDelta(tx, {
+            workspaceId: context.workspaceId,
+            warehouseId: customerReturn.salesOrder.warehouseId,
+            productId: product.id,
+            delta: item.quantity.negated(),
+          });
+        } catch (error) {
+          if (error instanceof ManagedWarehouseStockError) {
+            if (error.code === "NEGATIVE_WAREHOUSE_STOCK") {
+              throw new CustomerReturnReversalError("Returned warehouse stock has already been consumed. Restore sufficient stock before cancelling this return.");
+            }
+            throw new CustomerReturnReversalError(`Warehouse inventory could not be reversed safely: ${error.message}`);
+          }
+          throw error;
+        }
         await tx.inventoryTransaction.create({
           data: {
             workspaceId: context.workspaceId,
