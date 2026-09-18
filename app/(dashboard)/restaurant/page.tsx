@@ -4,8 +4,11 @@ import { Banknote, ChefHat, Clock3, LayoutGrid } from "lucide-react";
 import { MetricCard } from "@/components/business/metric-card";
 import { PageHeader } from "@/components/business/page-header";
 import { RestaurantControls } from "@/app/(dashboard)/restaurant/restaurant-controls";
+import { RestaurantLifecycleControls } from "@/app/(dashboard)/restaurant/restaurant-lifecycle-controls";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
+import { listProducts } from "@/lib/server/products";
+import { listSales } from "@/lib/server/sales";
 import {
   getIndustryHealth,
   listCashShifts,
@@ -22,12 +25,14 @@ export default async function RestaurantPage() {
     return <ModuleDisabled />;
   }
 
-  const [health, tables, recipes, tickets, shifts] = await Promise.all([
+  const [health, tables, recipes, tickets, shifts, products, sales] = await Promise.all([
     getIndustryHealth(workspaceId),
     listRestaurantTables(workspaceId),
     listRestaurantRecipes(workspaceId),
     listKitchenTickets(workspaceId),
     listCashShifts(workspaceId),
+    listProducts(workspaceId),
+    listSales(workspaceId),
   ]);
   const openShift = shifts.find((shift) => shift.status === "OPEN");
   const canManageTables = role === "OWNER" || role === "ADMIN" || role === "MANAGER";
@@ -43,6 +48,14 @@ export default async function RestaurantPage() {
       </section>
 
       <RestaurantControls openShiftId={openShift?.id ?? null} canManageTables={canManageTables} />
+
+      <RestaurantLifecycleControls
+        products={products.filter((product) => product.status === "ACTIVE").map((product) => ({ id: product.id, name: product.name, sku: product.sku }))}
+        tables={tables.map((table) => ({ id: table.id, name: table.name, status: table.status }))}
+        sales={sales.slice(0, 100).map((sale) => ({ id: sale.id, orderNumber: sale.orderNumber, customerName: sale.customerName, status: sale.status }))}
+        tickets={tickets.map((ticket) => ({ id: ticket.id, ticketNumber: ticket.ticketNumber, status: ticket.status, tableName: ticket.tableName, salesOrderId: ticket.salesOrderId }))}
+        canManageRecipes={canManageTables}
+      />
 
       <div className="grid gap-5 xl:grid-cols-2">
         <DataCard title="Table register" description="Current dining-floor state." action={{ label: "New sale", href: "/sales/new" }}>
