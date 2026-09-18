@@ -235,6 +235,10 @@ describe("managed warehouse GRN lifecycle", () => {
 
     expect(await coreQuantity()).toBe(10);
     expect(await warehouseQuantity()).toBe(10);
+
+    await voidGoodsReceipt(context(), grn.id, { voidedReason: "Reset managed return regression fixture" });
+    expect(await coreQuantity()).toBe(0);
+    expect(await warehouseQuantity()).toBe(0);
   });
 
   it("rejects missing and cross-tenant receiving warehouses without creating a GRN", async () => {
