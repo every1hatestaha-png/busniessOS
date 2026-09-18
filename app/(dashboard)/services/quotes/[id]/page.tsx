@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, BriefcaseBusiness, CalendarDays, Printer, ReceiptText, UserRound } from "lucide-react";
 
 import { MetricCard } from "@/components/business/metric-card";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
 import { getServiceQuoteDetail } from "@/lib/server/industry-modules";
@@ -29,7 +29,7 @@ export default async function ServiceQuoteDetailPage({ params }: { params: Promi
             </div>
             <p className="mt-1 text-sm text-muted-foreground">{quote.customerName || "Unknown client"}</p>
           </div>
-          <Button asChild variant="outline"><Link href={"/services/quotes/" + quote.id + "/print"}><Printer />Print quotation</Link></Button>
+          <Link href={"/services/quotes/" + quote.id + "/print"} className={buttonVariants({ variant: "outline" })}><Printer />Print quotation</Link>
         </div>
       </div>
 
