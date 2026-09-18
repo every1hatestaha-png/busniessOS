@@ -3,6 +3,7 @@ import { Banknote, ChefHat, Clock3, LayoutGrid } from "lucide-react";
 
 import { MetricCard } from "@/components/business/metric-card";
 import { PageHeader } from "@/components/business/page-header";
+import { RestaurantControls } from "@/app/(dashboard)/restaurant/restaurant-controls";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
 import {
@@ -15,7 +16,7 @@ import {
 } from "@/lib/server/industry-modules";
 
 export default async function RestaurantPage() {
-  const { workspaceId } = await requireWorkspace();
+  const { workspaceId, role } = await requireWorkspace();
   const modules = await listWorkspaceModules(workspaceId);
   if (!modules.some((module) => module.moduleKey === "restaurant" && module.enabled)) {
     return <ModuleDisabled />;
@@ -29,6 +30,7 @@ export default async function RestaurantPage() {
     listCashShifts(workspaceId),
   ]);
   const openShift = shifts.find((shift) => shift.status === "OPEN");
+  const canManageTables = role === "OWNER" || role === "ADMIN" || role === "MANAGER";
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">
@@ -39,6 +41,8 @@ export default async function RestaurantPage() {
         <MetricCard label="Kitchen queue" value={String(health.restaurant.openKitchenTickets)} detail="Queued, preparing, or ready" icon={Clock3} />
         <MetricCard label="Cash shift" value={openShift ? "Open" : "Closed"} detail={openShift ? `Opened with Rs ${openShift.openingCash.toLocaleString()}` : "No open cash shift"} icon={Banknote} />
       </section>
+
+      <RestaurantControls openShiftId={openShift?.id ?? null} canManageTables={canManageTables} />
 
       <div className="grid gap-5 xl:grid-cols-2">
         <DataCard title="Table register" description="Current dining-floor state." action={{ label: "New sale", href: "/sales/new" }}>
