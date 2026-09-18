@@ -89,6 +89,7 @@ const adjustmentSchema = z.object({
   productId: z.string().uuid(),
   quantity: z.coerce.number().refine((value) => value !== 0, { message: "Quantity must not be zero" }),
   reason: z.string().trim().min(3).max(160),
+  warehouseId: z.string().uuid().optional().or(z.literal("")),
 });
 
 export type StockAdjustmentState = {
@@ -113,6 +114,7 @@ export async function adjustStockAction(
       parsed.data.productId,
       parsed.data.quantity,
       parsed.data.reason,
+      parsed.data.warehouseId || undefined,
     );
     revalidatePath("/inventory");
     revalidatePath(`/inventory/${parsed.data.productId}`);
