@@ -13,13 +13,24 @@ import { requireWorkspace } from "@/lib/server/auth";
 import { canPerformAction } from "@/lib/server/authorization";
 import { ArchiveProductButton } from "@/components/inventory/archive-product-button";
 import { RemoveProductButton } from "@/components/inventory/remove-product-button";
+import { getWarehouseStockMode, listActiveStockWarehouses } from "@/lib/server/managed-warehouse-stock";
+import { db } from "@/lib/server/db";
 
 export default async function ProductDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { role } = await requireWorkspace();
-  const product = await getProduct(id);
+  const { role, workspaceId } = await requireWorkspace();
+  const [product, warehouseMode] = await Promise.all([getProduct(id, workspaceId), getWarehouseStockMode(workspaceId)]);
   if (!product) notFound();
   const movements = product.movements;
+  const warehouses = warehouseMode === "MANAGED" ? await listActiveStockWarehouses(workspaceId) : [];
+  const warehouseStocks = warehouseMode === "MANAGED"
+    ? await db.$queryRaw<Array<{ warehouseId: string; quantity: string }>>`
+        SELECT "warehouseId"::text AS "warehouseId", "quantity"::text AS "quantity"
+        FROM "warehouse_stocks"
+        WHERE "workspaceId"=${workspaceId}::uuid AND "productId"=${product.id}::uuid
+      `
+    : [];
+  const stockByWarehouse = new Map(warehouseStocks.map((stock) => [stock.warehouseId, Number(stock.quantity)]));
   const stockStatus = getStockStatus(product.stockQuantity, product.reorderLevel);
 
   return (
@@ -28,7 +39,7 @@ export default async function ProductDetailsPage({ params }: { params: Promise<{
          <Link href="/inventory" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2 mb-2")}><ArrowLeft className="h-3.5 w-3.5" />Inventory</Link>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
            <div><div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-semibold tracking-tight">{product.name}</h1><StatusBadge status={stockStatus} /><StatusBadge status={product.status} /></div><p className="mt-0.5 font-mono text-xs text-neutral-500">{product.sku}</p></div>
-           <div className="flex flex-wrap gap-2">{canPerformAction(role, "products.write") && <><Link href={`/inventory/${product.id}/edit`} className={buttonVariants({ variant: "outline", size: "sm" })}><Pencil className="h-3.5 w-3.5" />Edit</Link>{product.status !== "ARCHIVED" && <ArchiveProductButton productId={product.id} productName={product.name} />}<RemoveProductButton productId={product.id} productName={product.name} /></>}{canPerformAction(role, "inventory.adjust") && <StockAdjustment productId={product.id} initialStock={product.stockQuantity} unit={product.unit.toLowerCase()} />}</div>
+           <div className="flex flex-wrap gap-2">{canPerformAction(role, "products.write") && <><Link href={`/inventory/${product.id}/edit`} className={buttonVariants({ variant: "outline", size: "sm" })}><Pencil className="h-3.5 w-3.5" />Edit</Link>{product.status !== "ARCHIVED" && <ArchiveProductButton productId={product.id} productName={product.name} />}<RemoveProductButton productId={product.id} productName={product.name} /></>}{canPerformAction(role, "inventory.adjust") && <StockAdjustment productId={product.id} initialStock={product.stockQuantity} unit={product.unit.toLowerCase()} warehouseMode={warehouseMode} warehouses={warehouses.map((warehouse) => ({ ...warehouse, quantity: stockByWarehouse.get(warehouse.id) ?? 0 }))} />}</div>
         </div>
       </div>
       <section className="grid gap-3 sm:grid-cols-3">
