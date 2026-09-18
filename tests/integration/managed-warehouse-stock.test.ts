@@ -6,12 +6,14 @@ let applyManagedWarehouseStockDelta: typeof import("@/lib/server/managed-warehou
 let getWarehouseStockMode: typeof import("@/lib/server/managed-warehouse-stock")["getWarehouseStockMode"];
 let getManagedWarehouseReadiness: typeof import("@/lib/server/managed-warehouse-stock")["getManagedWarehouseReadiness"];
 let setWorkspaceModule: typeof import("@/lib/server/industry-modules")["setWorkspaceModule"];
+let transferWarehouseStock: typeof import("@/lib/server/industry-modules")["transferWarehouseStock"];
 
 const runId = randomUUID();
 let userId = "";
 let workspaceId = "";
 let otherWorkspaceId = "";
 let warehouseId = "";
+let secondaryWarehouseId = "";
 let otherWarehouseId = "";
 let productId = "";
 let otherProductId = "";
@@ -25,7 +27,7 @@ describe("managed warehouse stock primitive", () => {
 
     ({ db } = await import("@/lib/server/db"));
     ({ applyManagedWarehouseStockDelta, getWarehouseStockMode, getManagedWarehouseReadiness } = await import("@/lib/server/managed-warehouse-stock"));
-    ({ setWorkspaceModule } = await import("@/lib/server/industry-modules"));
+    ({ setWorkspaceModule, transferWarehouseStock } = await import("@/lib/server/industry-modules"));
 
     const user = await db.user.create({
       data: { clerkId: "managed-warehouse-" + runId, email: "managed-warehouse-" + runId + "@example.invalid" },
@@ -75,6 +77,14 @@ describe("managed warehouse stock primitive", () => {
       "MNG-" + runId.slice(0, 8),
     );
     warehouseId = warehouses[0]!.id;
+
+    const secondaryWarehouses = await db.$queryRawUnsafe<Array<{ id: string }>>(
+      'INSERT INTO "warehouses" ("workspaceId","name","code","isDefault","isActive") VALUES ($1::uuid,$2,$3,false,true) RETURNING "id"::text AS "id"',
+      workspaceId,
+      "Secondary Warehouse",
+      "MNG2-" + runId.slice(0, 8),
+    );
+    secondaryWarehouseId = secondaryWarehouses[0]!.id;
 
     const otherWarehouses = await db.$queryRawUnsafe<Array<{ id: string }>>(
       'INSERT INTO "warehouses" ("workspaceId","name","code","isDefault","isActive") VALUES ($1::uuid,$2,$3,true,true) RETURNING "id"::text AS "id"',
@@ -145,6 +155,64 @@ describe("managed warehouse stock primitive", () => {
         applyManagedWarehouseStockDelta(tx, { workspaceId, warehouseId, productId: otherProductId, delta: 1 }),
       ),
     ).rejects.toMatchObject({ code: "PRODUCT_NOT_FOUND" });
+  });
+
+  it("transfers managed stock without changing core inventory", async () => {
+    await db.product.update({ where: { id: productId }, data: { stockQuantity: 10 } });
+    await db.$executeRawUnsafe(
+      'INSERT INTO "warehouse_stocks" ("workspaceId","warehouseId","productId","quantity","updatedAt") VALUES ($1::uuid,$2::uuid,$3::uuid,10,now()) ON CONFLICT ("warehouseId","productId") DO UPDATE SET "quantity"=10,"updatedAt"=now()',
+      workspaceId,
+      warehouseId,
+      productId,
+    );
+
+    const before = await db.product.findUniqueOrThrow({ where: { id: productId }, select: { stockQuantity: true } });
+    await transferWarehouseStock(context(), {
+      productId,
+      fromWarehouseId: warehouseId,
+      toWarehouseId: secondaryWarehouseId,
+      quantity: 4,
+    });
+
+    const [after, rows] = await Promise.all([
+      db.product.findUniqueOrThrow({ where: { id: productId }, select: { stockQuantity: true } }),
+      db.$queryRawUnsafe<Array<{ warehouseId: string; quantity: string }>>(
+        'SELECT "warehouseId"::text AS "warehouseId","quantity"::text AS "quantity" FROM "warehouse_stocks" WHERE "workspaceId"=$1::uuid AND "productId"=$2::uuid ORDER BY "warehouseId"',
+        workspaceId,
+        productId,
+      ),
+    ]);
+    expect(Number(after.stockQuantity)).toBe(Number(before.stockQuantity));
+    expect(rows.reduce((sum, row) => sum + Number(row.quantity), 0)).toBe(10);
+    expect(Number(rows.find((row) => row.warehouseId === warehouseId)?.quantity)).toBe(6);
+    expect(Number(rows.find((row) => row.warehouseId === secondaryWarehouseId)?.quantity)).toBe(4);
+  });
+
+  it("rejects transfers when warehouse totals already drift from core stock", async () => {
+    await db.product.update({ where: { id: productId }, data: { stockQuantity: 20 } });
+    const before = await db.$queryRawUnsafe<Array<{ warehouseId: string; quantity: string }>>(
+      'SELECT "warehouseId"::text AS "warehouseId","quantity"::text AS "quantity" FROM "warehouse_stocks" WHERE "workspaceId"=$1::uuid AND "productId"=$2::uuid ORDER BY "warehouseId"',
+      workspaceId,
+      productId,
+    );
+
+    await expect(
+      transferWarehouseStock(context(), {
+        productId,
+        fromWarehouseId: warehouseId,
+        toWarehouseId: secondaryWarehouseId,
+        quantity: 1,
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+
+    const after = await db.$queryRawUnsafe<Array<{ warehouseId: string; quantity: string }>>(
+      'SELECT "warehouseId"::text AS "warehouseId","quantity"::text AS "quantity" FROM "warehouse_stocks" WHERE "workspaceId"=$1::uuid AND "productId"=$2::uuid ORDER BY "warehouseId"',
+      workspaceId,
+      productId,
+    );
+    expect(after).toEqual(before);
+
+    await db.product.update({ where: { id: productId }, data: { stockQuantity: 10 } });
   });
 
   it("applies increments and decrements atomically without allowing negative location stock", async () => {
