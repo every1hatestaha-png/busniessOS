@@ -19,6 +19,7 @@ let otherWorkspaceId = "";
 let supplierId = "";
 let productId = "";
 let warehouseId = "";
+let secondaryWarehouseId = "";
 let otherWarehouseId = "";
 let purchaseOrderId = "";
 let purchaseOrderItemId = "";
@@ -95,6 +96,14 @@ describe("managed warehouse GRN lifecycle", () => {
       "RCV-" + runId.slice(0, 8),
     );
     warehouseId = warehouses[0]!.id;
+
+    const secondaryWarehouses = await db.$queryRawUnsafe<Array<{ id: string }>>(
+      'INSERT INTO "warehouses" ("workspaceId","name","code","isDefault","isActive") VALUES ($1::uuid,$2,$3,false,true) RETURNING "id"::text AS "id"',
+      workspaceId,
+      "Secondary Receiving Warehouse",
+      "RCV2-" + runId.slice(0, 8),
+    );
+    secondaryWarehouseId = secondaryWarehouses[0]!.id;
 
     const otherWarehouses = await db.$queryRawUnsafe<Array<{ id: string }>>(
       'INSERT INTO "warehouses" ("workspaceId","name","code","isDefault","isActive") VALUES ($1::uuid,$2,$3,true,true) RETURNING "id"::text AS "id"',
@@ -269,6 +278,66 @@ describe("managed warehouse GRN lifecycle", () => {
 
     expect(await coreQuantity()).toBe(10);
     expect(await warehouseQuantity()).toBe(10);
+  });
+
+  it("scopes previous supplier returns to the selected source GRN", async () => {
+    const scopedProduct = await db.product.create({
+      data: {
+        workspaceId,
+        name: "Scoped Return Product",
+        sku: "managed-return-scope-" + runId,
+        stockQuantity: 0,
+        costPrice: 10,
+        sellingPrice: 20,
+      },
+    });
+    const purchase = await createPurchase(context(), {
+      supplierId,
+      pricingMode: "UNIT",
+      items: [{ productId: scopedProduct.id, quantity: 6, unitCost: 10 }],
+      idempotencyKey: "managed-return-scope-po-" + runId,
+    });
+    const item = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: purchase.id } });
+
+    const firstGrn = await createGoodsReceipt(context(), {
+      purchaseOrderId: purchase.id,
+      warehouseId,
+      idempotencyKey: "managed-return-scope-grn-a-" + runId,
+      items: [{ purchaseOrderItemId: item.id, receivedQuantity: 3, acceptedQuantity: 3, actualUnitCost: 10 }],
+    });
+    const secondGrn = await createGoodsReceipt(context(), {
+      purchaseOrderId: purchase.id,
+      warehouseId: secondaryWarehouseId,
+      idempotencyKey: "managed-return-scope-grn-b-" + runId,
+      items: [{ purchaseOrderItemId: item.id, receivedQuantity: 3, acceptedQuantity: 3, actualUnitCost: 10 }],
+    });
+
+    await createSupplierReturn(context(), {
+      purchaseOrderId: purchase.id,
+      goodReceivedNoteId: firstGrn.id,
+      idempotencyKey: "managed-return-scope-a-" + runId,
+      reason: "Return first receipt",
+      items: [{ itemId: item.id, quantity: 3 }],
+    });
+    await createSupplierReturn(context(), {
+      purchaseOrderId: purchase.id,
+      goodReceivedNoteId: secondGrn.id,
+      idempotencyKey: "managed-return-scope-b-" + runId,
+      reason: "Return second receipt",
+      items: [{ itemId: item.id, quantity: 3 }],
+    });
+
+    const [core, balances] = await Promise.all([
+      db.product.findUniqueOrThrow({ where: { id: scopedProduct.id }, select: { stockQuantity: true } }),
+      db.$queryRawUnsafe<Array<{ warehouseId: string; quantity: string }>>(
+        'SELECT "warehouseId"::text AS "warehouseId","quantity"::text AS "quantity" FROM "warehouse_stocks" WHERE "workspaceId"=$1::uuid AND "productId"=$2::uuid',
+        workspaceId,
+        scopedProduct.id,
+      ),
+    ]);
+    expect(Number(core.stockQuantity)).toBe(0);
+    expect(Number(balances.find((row) => row.warehouseId === warehouseId)?.quantity ?? 0)).toBe(0);
+    expect(Number(balances.find((row) => row.warehouseId === secondaryWarehouseId)?.quantity ?? 0)).toBe(0);
   });
 
 
