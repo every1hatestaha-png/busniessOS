@@ -59,8 +59,39 @@ export default async function ManufacturingPage() {
         </DataCard>
       </div>
 
-      <DataCard title="Production runs" description="Latest 50 runs with approval/posting lifecycle.">
-        {runs.length ? <Table headers={["Run", "BOM", "Status", "Planned", "Actual", "Wastage"]} rows={runs.map((row) => [row.runNumber, row.bomName, row.status, String(row.plannedOutput), row.actualOutput === null ? "—" : String(row.actualOutput), String(row.wastageQuantity)])} /> : <Empty text="No production runs yet." />}
+      <DataCard title="Production runs" description="Latest 50 runs with approval/posting lifecycle and full traceability.">
+        {runs.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-2.5">Run</th>
+                  <th className="px-4 py-2.5">BOM</th>
+                  <th className="px-4 py-2.5">Status</th>
+                  <th className="px-4 py-2.5 text-right">Planned</th>
+                  <th className="px-4 py-2.5 text-right">Actual</th>
+                  <th className="px-4 py-2.5 text-right">Wastage</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {runs.map((row) => (
+                  <tr key={row.id}>
+                    <td className="px-4 py-3 font-medium">
+                      <Link href={"/manufacturing/runs/" + row.id} className="text-emerald-700 hover:underline">
+                        {row.runNumber}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{row.bomName}</td>
+                    <td className="px-4 py-3"><span className="rounded-full border px-2 py-1 text-xs">{row.status}</span></td>
+                    <td className="px-4 py-3 text-right text-muted-foreground">{row.plannedOutput}</td>
+                    <td className="px-4 py-3 text-right">{row.actualOutput === null ? "—" : row.actualOutput}</td>
+                    <td className="px-4 py-3 text-right text-muted-foreground">{row.wastageQuantity}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : <Empty text="No production runs yet." />}
       </DataCard>
 
       <Card className="rounded-md border shadow-none ring-0"><CardContent className="grid gap-4 p-5 md:grid-cols-3">
