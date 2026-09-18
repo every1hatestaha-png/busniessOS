@@ -11,6 +11,7 @@ import { productEditSchema, productSchema } from "@/lib/validation/product";
 import { canPerformAction } from "@/lib/server/authorization";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 import { writeAudit } from "@/lib/server/audit";
+import { applyManagedWarehouseStockDelta, getWarehouseStockModeInTransaction, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
 
 type ProductData = z.output<typeof productSchema>;
 type ProductEditData = z.output<typeof productEditSchema>;
@@ -205,11 +206,13 @@ export async function archiveProduct(context: ProductMutationContext, id: string
 
 export class StockAdjustmentRejectedError extends Error {}
 
-export async function adjustProductStock(context: ProductMutationContext, productId: string, quantity: number, reason: string) {
+export async function adjustProductStock(context: ProductMutationContext, productId: string, quantity: number, reason: string, warehouseId?: string | null) {
   if (!canPerformAction(context.role, "inventory.adjust")) throw new ProductDomainError("PERMISSION_DENIED", "Unauthorized");
   return withSerializableRetry(async (transaction) => {
     const productBefore = await transaction.product.findFirst({ where: { id: productId, workspaceId: context.workspaceId }, select: { costPrice: true, stockQuantity: true } });
     if (!productBefore) throw new StockAdjustmentRejectedError();
+    const warehouseMode = await getWarehouseStockModeInTransaction(transaction, context.workspaceId);
+    if (warehouseMode === "MANAGED" && !warehouseId) throw new StockAdjustmentRejectedError();
     if (quantity < 0 && productBefore.stockQuantity.toNumber() < -quantity) throw new StockAdjustmentRejectedError();
     const result = await transaction.product.updateMany({
       where: {
@@ -220,6 +223,18 @@ export async function adjustProductStock(context: ProductMutationContext, produc
     });
 
     if (result.count !== 1) throw new StockAdjustmentRejectedError();
+
+    try {
+      await applyManagedWarehouseStockDelta(transaction, {
+        workspaceId: context.workspaceId,
+        warehouseId,
+        productId,
+        delta: quantity,
+      });
+    } catch (error) {
+      if (error instanceof ManagedWarehouseStockError) throw new StockAdjustmentRejectedError();
+      throw error;
+    }
 
     await transaction.inventoryTransaction.create({
       data: {
@@ -245,7 +260,7 @@ export async function adjustProductStock(context: ProductMutationContext, produc
       action: "stock.adjusted",
       entityType: "Product",
       entityId: productId,
-      metadata: { previousQuantity: productBefore.stockQuantity.toNumber(), adjustmentQuantity: quantity, newQuantity, reason },
+      metadata: { previousQuantity: productBefore.stockQuantity.toNumber(), adjustmentQuantity: quantity, newQuantity, reason, warehouseId: warehouseMode === "MANAGED" ? warehouseId : null },
     });
 
     return newQuantity;
