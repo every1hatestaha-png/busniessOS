@@ -47,6 +47,16 @@ export async function getWarehouseStockModeInTransaction(
   return rows[0]?.mode === "MANAGED" ? "MANAGED" : "LEGACY";
 }
 
+export async function listActiveStockWarehouses(workspaceId: string) {
+  return db.$queryRaw<Array<{ id: string; name: string; code: string; isDefault: boolean }>>`
+    SELECT "id"::text AS "id", "name", "code", "isDefault"
+    FROM "warehouses"
+    WHERE "workspaceId"=${workspaceId}::uuid
+      AND "isActive"=true
+    ORDER BY "isDefault" DESC, "name" ASC
+  `;
+}
+
 export async function getManagedWarehouseReadiness(workspaceId: string) {
   const reconciliation = await getWarehouseReconciliation(workspaceId);
   const reasons: string[] = [];
