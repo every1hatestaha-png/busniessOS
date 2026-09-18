@@ -153,7 +153,7 @@ export default function SignUpPage() {
                 </form>
 
                 <div className="my-7 flex items-center gap-4"><div className="h-px flex-1 bg-slate-700/70" /><span className="text-xs text-slate-500">or</span><div className="h-px flex-1 bg-slate-700/70" /></div>
-                <p className="text-center text-sm text-slate-400">Already have an account? <Link href="/sign-in" className="font-medium text-teal-300 hover:text-teal-200">Sign in</Link></p>
+                <p className="text-center text-sm text-slate-400">Already have an account? <Link href="/sign-in" onClick={(event) => { event.preventDefault(); const current = new URLSearchParams(window.location.search); const next = new URLSearchParams(); for (const key of ["business", "modules", "billing"] as const) { const value = current.get(key); if (value) next.set(key, value); } const query = next.toString(); router.push(query ? `/sign-in?${query}` : "/sign-in"); }} className="font-medium text-teal-300 hover:text-teal-200">Sign in</Link></p>
               </>
             ) : (
               <>
