@@ -60,6 +60,9 @@ export async function teardownTestWorkspace(workspaceId: string, userId: string)
   await db.invoice.deleteMany({ where: { workspaceId } });
   await db.salesOrderItem.deleteMany({ where: { salesOrder: { workspaceId } } });
   await db.salesOrder.deleteMany({ where: { workspaceId } });
+  await db.$executeRawUnsafe('DELETE FROM "warehouse_stocks" WHERE "workspaceId"=$1::uuid', workspaceId);
+  await db.$executeRawUnsafe('DELETE FROM "warehouses" WHERE "workspaceId"=$1::uuid', workspaceId);
+  await db.$executeRawUnsafe('DELETE FROM "workspace_modules" WHERE "workspaceId"=$1::uuid', workspaceId);
   await db.purchaseOrderItem.deleteMany({ where: { purchaseOrder: { workspaceId } } });
   await db.purchaseOrder.deleteMany({ where: { workspaceId } });
   await db.expense.deleteMany({ where: { workspaceId } });
