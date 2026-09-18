@@ -32,7 +32,7 @@ export async function getWarehouseStockMode(workspaceId: string): Promise<Wareho
   return rows[0]?.mode === "MANAGED" ? "MANAGED" : "LEGACY";
 }
 
-async function getWarehouseStockModeInTransaction(
+export async function getWarehouseStockModeInTransaction(
   tx: Prisma.TransactionClient,
   workspaceId: string,
 ): Promise<WarehouseStockMode> {
