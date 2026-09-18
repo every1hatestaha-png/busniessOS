@@ -1,10 +1,11 @@
 "use client";
 
 import { useActionState } from "react";
-import { CheckCircle2, PackageCheck } from "lucide-react";
+import { CheckCircle2, CircleX, PackageCheck } from "lucide-react";
 
 import {
   approveProductionRunAction,
+  cancelProductionRunAction,
   initialManufacturingActionState,
   postProductionRunAction,
 } from "@/app/(dashboard)/manufacturing/actions";
@@ -27,23 +28,32 @@ export function ProductionLifecycleControls({ runs, canManage }: { runs: Run[]; 
 function ProductionRunRow({ run, canManage }: { run: Run; canManage: boolean }) {
   const [approveState, approveAction, approvePending] = useActionState(approveProductionRunAction, initialManufacturingActionState);
   const [postState, postAction, postPending] = useActionState(postProductionRunAction, initialManufacturingActionState);
+  const [cancelState, cancelAction, cancelPending] = useActionState(cancelProductionRunAction, initialManufacturingActionState);
   return (
     <div className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_minmax(360px,520px)] lg:items-center">
       <div>
         <div className="flex items-center gap-2"><span className="font-medium">{run.runNumber}</span><span className="rounded-full border px-2 py-0.5 text-[11px]">{run.status}</span></div>
         <p className="mt-1 text-xs text-muted-foreground">Planned output: {run.plannedOutput.toLocaleString()}</p>
-        <ActionMessage state={run.status === "DRAFT" ? approveState : postState} />
+        <ActionMessage state={cancelState.message ? cancelState : run.status === "DRAFT" ? approveState : postState} />
       </div>
-      {canManage ? run.status === "DRAFT" ? (
-        <form action={approveAction} className="flex justify-end"><input type="hidden" name="productionRunId" value={run.id} /><Button type="submit" size="sm" disabled={approvePending}><CheckCircle2 />{approvePending ? "Approving..." : "Approve run"}</Button></form>
-      ) : (
-        <form action={postAction} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-          <input type="hidden" name="productionRunId" value={run.id} />
-          <Input name="actualOutput" type="number" min="0.0001" step="0.0001" defaultValue={run.plannedOutput} aria-label="Actual output" required />
-          <Input name="wastageQuantity" type="number" min={0} step="0.0001" defaultValue={0} aria-label="Wastage quantity" required />
-          <Button type="submit" size="sm" disabled={postPending}><PackageCheck />{postPending ? "Posting..." : "Post production"}</Button>
-        </form>
-      ) : <p className="text-right text-xs text-muted-foreground">Manager access required for production approval/posting.</p>}
+      {canManage ? (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-end">
+          {run.status === "DRAFT" ? (
+            <form action={approveAction}><input type="hidden" name="productionRunId" value={run.id} /><Button type="submit" size="sm" disabled={approvePending || cancelPending}><CheckCircle2 />{approvePending ? "Approving..." : "Approve run"}</Button></form>
+          ) : (
+            <form action={postAction} className="grid flex-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
+              <input type="hidden" name="productionRunId" value={run.id} />
+              <Input name="actualOutput" type="number" min="0.0001" step="0.0001" defaultValue={run.plannedOutput} aria-label="Actual output" required />
+              <Input name="wastageQuantity" type="number" min={0} step="0.0001" defaultValue={0} aria-label="Wastage quantity" required />
+              <Button type="submit" size="sm" disabled={postPending || cancelPending}><PackageCheck />{postPending ? "Posting..." : "Post production"}</Button>
+            </form>
+          )}
+          <form action={cancelAction}>
+            <input type="hidden" name="productionRunId" value={run.id} />
+            <Button type="submit" size="sm" variant="outline" disabled={cancelPending || approvePending || postPending}><CircleX />{cancelPending ? "Cancelling..." : "Cancel run"}</Button>
+          </form>
+        </div>
+      ) : <p className="text-right text-xs text-muted-foreground">Manager access required for production approval/posting/cancellation.</p>}
     </div>
   );
 }

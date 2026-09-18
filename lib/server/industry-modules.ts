@@ -4,9 +4,11 @@ import { Prisma, type Role } from "@prisma/client";
 import { db } from "@/lib/server/db";
 import {
   canTransitionKitchenTicket,
+  canTransitionProductionRun,
   canTransitionServiceJob,
   canTransitionServiceQuote,
   type KitchenTicketStatus,
+  type ProductionRunStatus,
   type ServiceJobStatus,
   type ServiceQuoteStatus,
 } from "@/lib/domain/industry-lifecycles";
@@ -376,6 +378,35 @@ export async function approveProductionRun(context: IndustryContext, productionR
   return { id: productionRunId, status: "APPROVED" as const };
 }
 
+export async function cancelProductionRun(context: IndustryContext, productionRunId: string) {
+  assertManager(context);
+  await requireWorkspaceModule(context.workspaceId, "manufacturing");
+
+  return db.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<Array<{ id: string; status: ProductionRunStatus }>>`
+      SELECT "id", "status"
+      FROM "production_runs"
+      WHERE "id"=${productionRunId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
+      FOR UPDATE
+    `;
+    const run = rows[0];
+    if (!run) throw new IndustryDomainError("NOT_FOUND", "Production run was not found.");
+    if (run.status === "CANCELLED") return { id: productionRunId, status: "CANCELLED" as const };
+    if (!canTransitionProductionRun(run.status, "CANCELLED")) {
+      throw new IndustryDomainError("INVALID_STATE", "Posted production runs cannot be cancelled. Use a controlled reversal workflow instead.");
+    }
+
+    await tx.$executeRaw`
+      UPDATE "production_runs"
+      SET "status"='CANCELLED', "updatedAt"=now()
+      WHERE "id"=${productionRunId}::uuid
+        AND "workspaceId"=${context.workspaceId}::uuid
+        AND "status"=${run.status}
+    `;
+    return { id: productionRunId, status: "CANCELLED" as const };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
 export async function postProductionRun(context: IndustryContext, productionRunId: string, actualOutput?: number, wastageQuantity = 0) {
   assertManager(context);
   await requireWorkspaceModule(context.workspaceId, "manufacturing");
@@ -386,7 +417,7 @@ export async function postProductionRun(context: IndustryContext, productionRunI
     `;
     const run = runs[0];
     if (!run) throw new IndustryDomainError("NOT_FOUND", "Production run was not found.");
-    if (run.status !== "APPROVED") throw new IndustryDomainError("INVALID_STATE", "Production run must be approved before posting.");
+    if (!canTransitionProductionRun(run.status as ProductionRunStatus, "POSTED")) throw new IndustryDomainError("INVALID_STATE", "Production run must be approved before posting.");
     const output = actualOutput ?? Number(run.plannedOutput);
     if (output <= 0 || wastageQuantity < 0) throw new IndustryDomainError("INVALID_STATE", "Actual output must be positive and wastage cannot be negative.");
 

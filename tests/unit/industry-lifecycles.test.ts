@@ -2,15 +2,19 @@ import { describe, expect, it } from "vitest";
 
 import {
   canTransitionKitchenTicket,
+  canTransitionProductionRun,
   canTransitionServiceJob,
   canTransitionServiceQuote,
   kitchenTicketStatuses,
   nextKitchenTicketStatuses,
+  nextProductionRunStatuses,
   nextServiceJobStatuses,
   nextServiceQuoteStatuses,
+  productionRunStatuses,
   serviceJobStatuses,
   serviceQuoteStatuses,
   type KitchenTicketStatus,
+  type ProductionRunStatus,
   type ServiceJobStatus,
   type ServiceQuoteStatus,
 } from "@/lib/domain/industry-lifecycles";
@@ -20,6 +24,13 @@ const kitchenAllowed: Record<KitchenTicketStatus, KitchenTicketStatus[]> = {
   PREPARING: ["READY", "CANCELLED"],
   READY: ["SERVED", "CANCELLED"],
   SERVED: [],
+  CANCELLED: [],
+};
+
+const productionAllowed: Record<ProductionRunStatus, ProductionRunStatus[]> = {
+  DRAFT: ["APPROVED", "CANCELLED"],
+  APPROVED: ["POSTED", "CANCELLED"],
+  POSTED: [],
   CANCELLED: [],
 };
 
@@ -53,6 +64,22 @@ describe("industry lifecycle transitions", () => {
 
     expect(nextKitchenTicketStatuses("SERVED")).toEqual([]);
     expect(nextKitchenTicketStatuses("CANCELLED")).toEqual([]);
+  });
+
+  it("enforces production-run approval/post/cancellation and keeps posted runs immutable", () => {
+    for (const from of productionRunStatuses) {
+      expect(nextProductionRunStatuses(from)).toEqual(productionAllowed[from]);
+      for (const to of productionRunStatuses) {
+        expect(canTransitionProductionRun(from, to), `${from} -> ${to}`).toBe(
+          from === to || productionAllowed[from].includes(to),
+        );
+      }
+    }
+
+    expect(nextProductionRunStatuses("POSTED")).toEqual([]);
+    expect(nextProductionRunStatuses("CANCELLED")).toEqual([]);
+    expect(canTransitionProductionRun("POSTED", "CANCELLED")).toBe(false);
+    expect(canTransitionProductionRun("CANCELLED", "APPROVED")).toBe(false);
   });
 
   it("enforces every service-quotation transition and prevents reopening final quotes", () => {
@@ -89,6 +116,7 @@ describe("industry lifecycle transitions", () => {
 
   it("allows idempotent writes without treating them as lifecycle regressions", () => {
     for (const status of kitchenTicketStatuses) expect(canTransitionKitchenTicket(status, status)).toBe(true);
+    for (const status of productionRunStatuses) expect(canTransitionProductionRun(status, status)).toBe(true);
     for (const status of serviceQuoteStatuses) expect(canTransitionServiceQuote(status, status)).toBe(true);
     for (const status of serviceJobStatuses) expect(canTransitionServiceJob(status, status)).toBe(true);
   });
