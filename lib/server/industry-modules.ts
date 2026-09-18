@@ -232,7 +232,16 @@ async function consumeTicketRecipes(tx: Prisma.TransactionClient, workspaceId: s
   const existing = await tx.inventoryTransaction.findFirst({ where: { workspaceId, reference: `KITCHEN:${ticketId}` }, select: { id: true } });
   if (existing) return;
 
-  const warehouseId = await resolveIndustryWarehouseId(tx, workspaceId);
+  const warehouseMode = await getWarehouseStockModeInTransaction(tx, workspaceId);
+  const sale = warehouseMode === "MANAGED"
+    ? await tx.salesOrder.findFirst({
+        where: { id: salesOrderId, workspaceId },
+        select: { warehouseId: true },
+      })
+    : null;
+  const warehouseId = warehouseMode === "MANAGED"
+    ? (sale?.warehouseId ?? await resolveIndustryWarehouseId(tx, workspaceId))
+    : undefined;
   const lines = await tx.salesOrderItem.findMany({ where: { salesOrderId }, select: { productId: true, quantity: true } });
   for (const line of lines) {
     const recipes = await tx.$queryRaw<Array<{ id: string; yieldQuantity: Prisma.Decimal }>>`
