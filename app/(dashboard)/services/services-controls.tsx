@@ -103,7 +103,7 @@ export function ServicesControls({
             <Field label="Quotation (optional)">
               <select name="serviceQuoteId" defaultValue="" className={selectClass}>
                 <option value="">No quotation</option>
-                {matchingQuotes.filter((quote) => quote.status !== "CONVERTED").map((quote) => <option key={quote.id} value={quote.id}>{quote.quoteNumber} · {quote.status}</option>)}
+                {matchingQuotes.filter((quote) => quote.status === "ACCEPTED").map((quote) => <option key={quote.id} value={quote.id}>{quote.quoteNumber} · ACCEPTED</option>)}
               </select>
             </Field>
             <Field label="Job number"><Input name="jobNumber" placeholder="JOB-0001" maxLength={80} required /></Field>
