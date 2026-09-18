@@ -2,6 +2,7 @@ import "server-only";
 
 import { Prisma, type Role } from "@prisma/client";
 import { db } from "@/lib/server/db";
+import { writeAudit } from "@/lib/server/audit";
 import { applyManagedWarehouseStockDelta, getWarehouseStockModeInTransaction, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
 import {
   canTransitionKitchenTicket,
@@ -358,16 +359,16 @@ export async function transferWarehouseStock(context: IndustryContext, input: { 
       throw new IndustryDomainError("INVALID_STATE", "Warehouse transfers require managed warehouse stock.");
     }
 
-    const product = await tx.$queryRaw<Array<{ id: string; stockQuantity: Prisma.Decimal }>>`
-      SELECT "id"::text AS "id", "stockQuantity"
+    const product = await tx.$queryRaw<Array<{ id: string; name: string; sku: string | null; stockQuantity: Prisma.Decimal }>>`
+      SELECT "id"::text AS "id", "name", "sku", "stockQuantity"
       FROM "products"
       WHERE "id"=${input.productId}::uuid AND "workspaceId"=${context.workspaceId}
       FOR UPDATE
     `;
     if (!product[0]) throw new IndustryDomainError("NOT_FOUND", "Product was not found in this workspace.");
 
-    const warehouses = await tx.$queryRaw<Array<{ id: string }>>`
-      SELECT "id"::text AS "id"
+    const warehouses = await tx.$queryRaw<Array<{ id: string; name: string; code: string }>>`
+      SELECT "id"::text AS "id", "name", "code"
       FROM "warehouses"
       WHERE "workspaceId"=${context.workspaceId}::uuid
         AND "id" IN (${input.fromWarehouseId}::uuid, ${input.toWarehouseId}::uuid)
@@ -411,6 +412,28 @@ export async function transferWarehouseStock(context: IndustryContext, input: { 
       ON CONFLICT ("warehouseId", "productId")
       DO UPDATE SET "quantity"="warehouse_stocks"."quantity"+EXCLUDED."quantity", "updatedAt"=now()
     `;
+
+    const sourceWarehouse = warehouses.find((warehouse) => warehouse.id === input.fromWarehouseId)!;
+    const destinationWarehouse = warehouses.find((warehouse) => warehouse.id === input.toWarehouseId)!;
+    await writeAudit(tx, {
+      workspaceId: context.workspaceId,
+      actorId: context.userId,
+      action: "warehouse.stock.transferred",
+      entityType: "Product",
+      entityId: input.productId,
+      metadata: {
+        productId: input.productId,
+        productName: product[0]!.name,
+        sku: product[0]!.sku,
+        fromWarehouseId: sourceWarehouse.id,
+        fromWarehouseName: sourceWarehouse.name,
+        fromWarehouseCode: sourceWarehouse.code,
+        toWarehouseId: destinationWarehouse.id,
+        toWarehouseName: destinationWarehouse.name,
+        toWarehouseCode: destinationWarehouse.code,
+        quantity: input.quantity,
+      },
+    });
 
     return { ...input };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
