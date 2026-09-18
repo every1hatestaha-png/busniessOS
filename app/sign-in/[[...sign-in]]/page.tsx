@@ -5,12 +5,36 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useClerk, useSignIn } from "@clerk/nextjs";
 import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
-import visual0 from "./login-visual-v2-0";
-import visual1 from "./login-visual-v2-1";
-import visual2 from "./login-visual-v2-2";
-import visual3 from "./login-visual-v2-3";
+const LOGIN_VISUAL = "/auth/faisal-mosque.webp";
 
-const LOGIN_VISUAL = `data:image/webp;base64,${visual0}${visual1}${visual2}${visual3}`;
+function signInDestination() {
+  if (typeof window === "undefined") return "/dashboard";
+  const current = new URLSearchParams(window.location.search);
+  const redirectUrl = current.get("redirect_url");
+  if (redirectUrl?.startsWith("/") && !redirectUrl.startsWith("//") && !redirectUrl.startsWith("/sign-in")) {
+    return redirectUrl;
+  }
+
+  const onboarding = new URLSearchParams();
+  for (const key of ["business", "modules", "billing"] as const) {
+    const value = current.get(key);
+    if (value) onboarding.set(key, value);
+  }
+  const query = onboarding.toString();
+  return query ? `/onboarding?${query}` : "/dashboard";
+}
+
+function signUpDestination() {
+  if (typeof window === "undefined") return "/sign-up";
+  const current = new URLSearchParams(window.location.search);
+  const next = new URLSearchParams();
+  for (const key of ["business", "modules", "billing"] as const) {
+    const value = current.get(key);
+    if (value) next.set(key, value);
+  }
+  const query = next.toString();
+  return query ? `/sign-up?${query}` : "/sign-up";
+}
 
 type VerificationStrategy = "email_code" | "phone_code" | "totp" | "backup_code";
 
@@ -40,7 +64,7 @@ export default function SignInPage() {
     }
   }
 
-  async function finishSignIn(target = "/dashboard") {
+  async function finishSignIn(target = signInDestination()) {
     const { error } = await signIn.finalize({
       navigate: ({ session, decorateUrl }) => {
         if (session?.currentTask) return;
@@ -246,7 +270,7 @@ export default function SignInPage() {
                 </form>
 
                 <div className="my-7 flex items-center gap-4"><div className="h-px flex-1 bg-slate-700/70" /><span className="text-xs text-slate-500">or</span><div className="h-px flex-1 bg-slate-700/70" /></div>
-                <p className="text-center text-sm text-slate-400">New to MunshiOS? <Link href="/sign-up" className="font-medium text-teal-300 hover:text-teal-200">Create account</Link></p>
+                <p className="text-center text-sm text-slate-400">New to MunshiOS? <Link href="/sign-up" onClick={(event) => { event.preventDefault(); router.push(signUpDestination()); }} className="font-medium text-teal-300 hover:text-teal-200">Create account</Link></p>
                 <button type="button" disabled={busy} onClick={() => void resetSavedSession()} className="mt-4 w-full text-center text-xs text-slate-500 transition hover:text-slate-300 disabled:opacity-50">Login stuck in this browser? Reset saved session</button>
               </>
             ) : (
