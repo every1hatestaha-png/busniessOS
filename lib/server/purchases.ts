@@ -10,7 +10,7 @@ import { withSerializableRetry } from "@/lib/server/tx-retry";
 import { purchaseSchema, goodsReceiptSchema, updatePurchaseSchema, voidGoodsReceiptSchema, updateGoodsReceiptSchema, type PurchaseInput, type GoodsReceiptInput, type UpdatePurchaseInput, type VoidGoodsReceiptInput, type UpdateGoodsReceiptInput } from "@/lib/validation/purchase";
 import { supplierReturnSchema, type SupplierReturnInput } from "@/lib/validation/returns";
 import { canPerformAction } from "@/lib/server/authorization";
-import { applyManagedWarehouseStockDelta, getWarehouseStockModeInTransaction, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
+import { applyManagedWarehouseStockDelta, assertManagedWarehouseSelection, getWarehouseStockModeInTransaction, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
 
 export class PurchaseDomainError extends Error {
   constructor(
@@ -191,6 +191,22 @@ export async function createGoodsReceipt(context: ServiceContext, input: GoodsRe
     }
     if (warehouseMode === "LEGACY" && data.warehouseId) {
       throw new PurchaseDomainError("WAREHOUSE_STOCK_ERROR", "Warehouse receiving is not enabled for this workspace yet.");
+    }
+
+    if (warehouseMode === "MANAGED") {
+      try {
+        await assertManagedWarehouseSelection(tx, {
+          workspaceId: context.workspaceId,
+          warehouseId: data.warehouseId,
+        });
+      } catch (error) {
+        if (error instanceof ManagedWarehouseStockError) {
+          if (error.code === "WAREHOUSE_REQUIRED") throw new PurchaseDomainError("WAREHOUSE_REQUIRED", error.message);
+          if (error.code === "WAREHOUSE_NOT_FOUND") throw new PurchaseDomainError("WAREHOUSE_NOT_FOUND", error.message);
+          throw new PurchaseDomainError("WAREHOUSE_STOCK_ERROR", error.message);
+        }
+        throw error;
+      }
     }
 
     const grnNumber = await nextDocumentNumber(tx, context.workspaceId, "PURCHASE_RECEIPT");
