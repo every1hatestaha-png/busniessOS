@@ -629,6 +629,7 @@ export async function listServiceQuotes(workspaceId: string) {
   await requireWorkspaceModule(workspaceId, "services");
   const rows = await db.$queryRaw<Array<{
     id: string;
+    customerId: string;
     quoteNumber: string;
     status: string;
     total: Prisma.Decimal;
@@ -636,7 +637,7 @@ export async function listServiceQuotes(workspaceId: string) {
     validUntil: Date | null;
     createdAt: Date;
   }>>`
-    SELECT sq."id", sq."quoteNumber", sq."status", sq."total", sq."validUntil", sq."createdAt",
+    SELECT sq."id", sq."customerId"::text AS "customerId", sq."quoteNumber", sq."status", sq."total", sq."validUntil", sq."createdAt",
            coalesce(c."companyName", c."name") AS "customerName"
     FROM "service_quotes" sq
     LEFT JOIN "customers" c ON c."id" = sq."customerId"::text AND c."workspaceId" = sq."workspaceId"::text
