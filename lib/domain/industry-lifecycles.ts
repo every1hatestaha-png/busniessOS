@@ -1,6 +1,9 @@
 export const kitchenTicketStatuses = ["QUEUED", "PREPARING", "READY", "SERVED", "CANCELLED"] as const;
 export type KitchenTicketStatus = (typeof kitchenTicketStatuses)[number];
 
+export const productionRunStatuses = ["DRAFT", "APPROVED", "POSTED", "CANCELLED"] as const;
+export type ProductionRunStatus = (typeof productionRunStatuses)[number];
+
 export const serviceQuoteStatuses = ["DRAFT", "SENT", "ACCEPTED", "REJECTED", "EXPIRED", "CONVERTED"] as const;
 export type ServiceQuoteStatus = (typeof serviceQuoteStatuses)[number];
 
@@ -12,6 +15,13 @@ const kitchenTicketTransitions: Record<KitchenTicketStatus, readonly KitchenTick
   PREPARING: ["READY", "CANCELLED"],
   READY: ["SERVED", "CANCELLED"],
   SERVED: [],
+  CANCELLED: [],
+};
+
+const productionRunTransitions: Record<ProductionRunStatus, readonly ProductionRunStatus[]> = {
+  DRAFT: ["APPROVED", "CANCELLED"],
+  APPROVED: ["POSTED", "CANCELLED"],
+  POSTED: [],
   CANCELLED: [],
 };
 
@@ -36,6 +46,10 @@ export function canTransitionKitchenTicket(from: KitchenTicketStatus, to: Kitche
   return from === to || kitchenTicketTransitions[from].includes(to);
 }
 
+export function canTransitionProductionRun(from: ProductionRunStatus, to: ProductionRunStatus) {
+  return from === to || productionRunTransitions[from].includes(to);
+}
+
 export function canTransitionServiceQuote(from: ServiceQuoteStatus, to: ServiceQuoteStatus) {
   return from === to || serviceQuoteTransitions[from].includes(to);
 }
@@ -46,6 +60,10 @@ export function canTransitionServiceJob(from: ServiceJobStatus, to: ServiceJobSt
 
 export function nextKitchenTicketStatuses(from: KitchenTicketStatus): readonly KitchenTicketStatus[] {
   return kitchenTicketTransitions[from];
+}
+
+export function nextProductionRunStatuses(from: ProductionRunStatus): readonly ProductionRunStatus[] {
+  return productionRunTransitions[from];
 }
 
 export function nextServiceQuoteStatuses(from: ServiceQuoteStatus): readonly ServiceQuoteStatus[] {
