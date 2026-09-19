@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Pencil, Truck } from "lucide-react";
 
 import { StatusBadge } from "@/components/business/status-badge";
+import { FbrInvoiceStatusCard, type FbrInvoicePanelData } from "@/components/invoices/fbr-invoice-status-card";
 import { PrintButton } from "@/components/invoices/print-button";
 import { RecordPaymentForm } from "@/components/payments/record-payment-form";
 import { CancelSaleButton } from "@/components/sales/cancel-sale-button";
@@ -10,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { deliveryChallanNumber } from "@/lib/document-references";
 import { requireWorkspace } from "@/lib/server/auth";
 import { getCashBankAccounts } from "@/lib/server/accounting";
+import { buildFbrInvoiceDraft, fingerprintFbrPayload, getFbrSubmissionForInvoice } from "@/lib/server/fbr-digital-invoicing";
 import { getInvoice } from "@/lib/server/invoices";
 import { canPerformAction } from "@/lib/server/authorization";
 import { formatDate, formatPKR } from "@/lib/utils";
@@ -40,6 +42,57 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   ]);
   if (!invoice) notFound();
   const dcNumber = deliveryChallanNumber(invoice.invoiceNumber);
+
+  let fbrPanel: FbrInvoicePanelData | null = null;
+  if (canManageFinancials) {
+    const [draftResult, submissionResult] = await Promise.allSettled([
+      buildFbrInvoiceDraft(workspaceId, id),
+      getFbrSubmissionForInvoice(workspaceId, id),
+    ]);
+    const draft = draftResult.status === "fulfilled" ? draftResult.value : null;
+    const submission = submissionResult.status === "fulfilled" ? submissionResult.value : null;
+    const formatter = new Intl.DateTimeFormat("en-PK", {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone: workspace.timezone || "Asia/Karachi",
+    });
+    const timestamp = (value: Date | null | undefined) => value ? formatter.format(value) : null;
+    const unavailableMessage = draftResult.status === "rejected"
+      ? (draftResult.reason instanceof Error ? draftResult.reason.message : "FBR preflight could not be evaluated.")
+      : null;
+    const payloadStale = Boolean(
+      draft
+      && submission?.payloadSnapshot
+      && fingerprintFbrPayload(submission.payloadSnapshot) !== draft.fingerprint,
+    );
+
+    fbrPanel = {
+      environment: draft?.environment ?? submission?.environment ?? null,
+      readyForRemoteValidation: draft?.readyForRemoteValidation ?? false,
+      payloadStale,
+      unavailableMessage,
+      issues: draft?.issues ?? [],
+      submission: submission ? {
+        id: submission.id,
+        status: submission.status,
+        fbrInvoiceNumber: submission.fbrInvoiceNumber,
+        lastErrorCode: submission.lastErrorCode,
+        lastErrorMessage: submission.lastErrorMessage,
+        attemptCount: submission.attemptCount,
+        validatedAtLabel: timestamp(submission.validatedAt),
+        submittedAtLabel: timestamp(submission.submittedAt),
+        lastAttemptAtLabel: timestamp(submission.lastAttemptAt),
+        attempts: submission.attempts.slice(0, 3).map((attempt) => ({
+          id: attempt.id,
+          kind: attempt.kind,
+          succeeded: attempt.succeeded,
+          httpStatus: attempt.httpStatus,
+          errorCode: attempt.errorCode,
+          createdAtLabel: timestamp(attempt.createdAt) ?? "Unknown time",
+        })),
+      } : null,
+    };
+  }
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-6 print:max-w-none print:space-y-0">
@@ -73,7 +126,15 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
           {invoice.payments.length > 0 && <section className="border-t border-neutral-200 p-6 sm:p-8"><h3 className="font-semibold">Payment history</h3><div className="mt-3 overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Method / status</TableHead><TableHead>Receipt / reference</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader><TableBody>{invoice.payments.map((payment) => <TableRow key={payment.id}><TableCell>{formatDate(payment.date)}</TableCell><TableCell>{payment.method.replaceAll("_", " ")}{payment.isReversal ? " · Reversal" : payment.isReversed ? " · Reversed" : ""}</TableCell><TableCell><Link href={`/payments/${payment.id}`} className="font-medium hover:underline">{payment.reference}</Link></TableCell><TableCell className="text-right font-medium">{formatPKR(payment.amount)}</TableCell></TableRow>)}</TableBody></Table></div></section>}
         </article>
-        <aside className="rounded-xl border border-neutral-200 bg-white p-5 print:hidden 2xl:sticky 2xl:top-6"><div className="mb-5"><h2 className="font-semibold">Record payment</h2><p className="mt-1 text-sm text-neutral-500">Allocate a manual receipt to this invoice.</p></div>{canRecordPayments && invoice.balance > 0 && !["CANCELLED", "DRAFT"].includes(invoice.status) ? <RecordPaymentForm invoice={{ id: invoice.id, number: invoice.invoiceNumber, customerId: invoice.customer.id, customerName: invoice.customer.companyName, balance: invoice.balance }} cashBankAccounts={cashBankAccounts} /> : <p className="rounded-lg bg-neutral-50 p-4 text-sm text-neutral-600">{invoice.balance <= 0 ? "This invoice has been paid in full." : "Payment recording is unavailable for your role or this invoice."}</p>}</aside>
+        <aside className="space-y-6 print:hidden 2xl:sticky 2xl:top-6">
+          {fbrPanel && <FbrInvoiceStatusCard invoiceId={invoice.id} data={fbrPanel} />}
+          <section className="rounded-xl border border-neutral-200 bg-white p-5">
+            <div className="mb-5"><h2 className="font-semibold">Record payment</h2><p className="mt-1 text-sm text-neutral-500">Allocate a manual receipt to this invoice.</p></div>
+            {canRecordPayments && invoice.balance > 0 && !["CANCELLED", "DRAFT"].includes(invoice.status)
+              ? <RecordPaymentForm invoice={{ id: invoice.id, number: invoice.invoiceNumber, customerId: invoice.customer.id, customerName: invoice.customer.companyName, balance: invoice.balance }} cashBankAccounts={cashBankAccounts} />
+              : <p className="rounded-lg bg-neutral-50 p-4 text-sm text-neutral-600">{invoice.balance <= 0 ? "This invoice has been paid in full." : "Payment recording is unavailable for your role or this invoice."}</p>}
+          </section>
+        </aside>
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fbrEndpoint, validateFbrInvoicePayload, type FbrInvoicePayload } from "@/lib/fbr/digital-invoicing";
+import { assertFbrExpectedEnvironment, fbrEndpoint, validateFbrInvoicePayload, type FbrInvoicePayload } from "@/lib/fbr/digital-invoicing";
 
 function validPayload(): FbrInvoicePayload {
   return {
@@ -77,6 +77,11 @@ describe("FBR digital invoicing contract", () => {
       expect.objectContaining({ path: "items[0].quantity", code: "INVALID_QUANTITY" }),
       expect.objectContaining({ path: "items[0].salesTaxApplicable", code: "INVALID_AMOUNT" }),
     ]));
+  });
+
+  it("blocks a server operation when the expected FBR environment does not match", () => {
+    expect(() => assertFbrExpectedEnvironment("SANDBOX", "SANDBOX")).not.toThrow();
+    expect(() => assertFbrExpectedEnvironment("PRODUCTION", "SANDBOX")).toThrow(/environment mismatch/i);
   });
 
   it("uses the explicit v1.12 sandbox and production DI endpoints", () => {

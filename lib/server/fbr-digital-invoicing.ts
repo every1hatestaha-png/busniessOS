@@ -3,7 +3,7 @@ import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 
-import { validateFbrInvoicePayload, type FbrInvoicePayload, type FbrValidationIssue } from "@/lib/fbr/digital-invoicing";
+import { assertFbrExpectedEnvironment, validateFbrInvoicePayload, type FbrEnvironment, type FbrInvoicePayload, type FbrValidationIssue } from "@/lib/fbr/digital-invoicing";
 import { validateFbrProductionCompliance } from "@/lib/fbr/production-compliance";
 import { requirePermission } from "@/lib/server/authorization";
 import { db } from "@/lib/server/db";
@@ -272,10 +272,11 @@ export async function checkFbrSubmissionFreshness(input: {
   return { fresh: true as const, current };
 }
 
-export async function prepareFbrInvoiceSubmission(invoiceId: string) {
+export async function prepareFbrInvoiceSubmission(invoiceId: string, expectedEnvironment?: FbrEnvironment) {
   const context = await requirePermission("financial.manage");
   const draft = await buildFbrInvoiceDraft(context.workspaceId, invoiceId);
   const { invoice, environment, payload, issues } = draft;
+  assertFbrExpectedEnvironment(environment, expectedEnvironment);
   const status = issues.length ? "BLOCKED" : "DRAFT";
   const idempotencyKey = submissionKey(context.workspaceId, invoice.id, environment);
 
