@@ -80,22 +80,7 @@ jobs:
         run: npx eslint app components lib
 
       - name: Production dependency audit
-        shell: bash
-        run: |
-          runtime_dir="$(mktemp -d)"
-          node - "$runtime_dir/package.json" <<'NODE'
-          const fs = require("node:fs");
-          const source = require("./package.json");
-          fs.writeFileSync(process.argv[2], JSON.stringify({
-            name: "munshios-runtime-audit",
-            version: source.version,
-            private: true,
-            dependencies: source.dependencies,
-          }, null, 2));
-          NODE
-          cd "$runtime_dir"
-          npm install --ignore-scripts --no-audit --no-fund
-          npm audit --audit-level=high
+        run: npx --yes npm@11.19.1 audit --omit=dev --audit-level=high
 
   desktop-smoke:
     runs-on: windows-latest
