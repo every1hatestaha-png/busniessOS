@@ -115,6 +115,23 @@ export function ProductForm({ product }: ProductFormProps) {
             <p className="text-[11px] text-neutral-500">Use the description returned by the FBR UOM reference API.</p>
             {errors.fbrUom && <p className={errorClass}>{errors.fbrUom.message}</p>}
           </div>
+          <div className={fieldClass}>
+            <label className={labelClass} htmlFor="fbrTransactionTypeId">FBR transaction type ID</label>
+            <Input id="fbrTransactionTypeId" type="number" min="1" step="1" placeholder="Reference API transaction type ID" aria-invalid={!!errors.fbrTransactionTypeId} {...register("fbrTransactionTypeId", { setValueAs: (value) => value === "" ? undefined : Number(value) })} />
+            <p className="text-[11px] text-neutral-500">The official sale type description is fetched by MunshiOS during verification; it is not trusted from browser text.</p>
+            {errors.fbrTransactionTypeId && <p className={errorClass}>{errors.fbrTransactionTypeId.message}</p>}
+          </div>
+          <div className={fieldClass}>
+            <label className={labelClass} htmlFor="fbrRateId">FBR rate ID</label>
+            <Input id="fbrRateId" type="number" min="1" step="1" placeholder="Reference API rate ID" aria-invalid={!!errors.fbrRateId} {...register("fbrRateId", { setValueAs: (value) => value === "" ? undefined : Number(value) })} />
+            <p className="text-[11px] text-neutral-500">Validated against invoice-date rate rules for the seller province before production use.</p>
+            {errors.fbrRateId && <p className={errorClass}>{errors.fbrRateId.message}</p>}
+          </div>
+          {product && (
+            <div className="md:col-span-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+              Saving any HS code, UOM, transaction type or rate-ID change invalidates prior FBR verification. Save first, then verify the mapping from the product details page.
+            </div>
+          )}
           <div className="border-t pt-4 md:col-span-2"><p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Pricing and stock controls</p></div>
           <div className={fieldClass}>
             <label className={labelClass} htmlFor="costPrice">Cost price</label>

@@ -16,8 +16,48 @@ import {
 import { requirePermission } from "@/lib/server/authorization";
 import { transferWarehouseStock, IndustryDomainError } from "@/lib/server/industry-modules";
 import { productEditSchema, productSchema } from "@/lib/validation/product";
+import { FbrProductMappingError, verifyProductFbrReferenceMapping } from "@/lib/server/fbr-product-mapping";
 
 export type ProductActionState = { error?: string };
+
+export type FbrProductMappingState = {
+  status?: "success" | "error";
+  message?: string;
+  successToken?: number;
+};
+
+export async function verifyFbrProductMappingAction(
+  id: string,
+  _previousState: FbrProductMappingState,
+  _formData: FormData,
+): Promise<FbrProductMappingState> {
+  const context = await requirePermission("products.write");
+  try {
+    const result = await verifyProductFbrReferenceMapping(
+      { workspaceId: context.workspaceId, role: context.role, userId: context.user.id },
+      id,
+    );
+    revalidatePath(`/inventory/${id}`);
+    revalidatePath(`/inventory/${id}/edit`);
+    revalidatePath("/inventory");
+    return {
+      status: "success",
+      message: result.plainPercentageRate
+        ? `FBR mapping verified: ${result.transactionType.description} · ${result.rate.description} · ${result.uom.description}.`
+        : `FBR references verified, but rate "${result.rate.description}" uses a compound formula that MunshiOS will keep blocked from production submission.`,
+      successToken: Date.now(),
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof FbrProductMappingError || error instanceof Error
+        ? error.message
+        : "FBR product mapping could not be verified.",
+      successToken: Date.now(),
+    };
+  }
+}
+
 
 export async function createProductAction(
   _previousState: ProductActionState,
