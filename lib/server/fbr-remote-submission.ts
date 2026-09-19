@@ -8,6 +8,7 @@ import { writeAudit } from "@/lib/server/audit";
 import { requirePermission } from "@/lib/server/authorization";
 import { db } from "@/lib/server/db";
 import { FbrCredentialError, resolveFbrBearerToken } from "@/lib/server/fbr-credentials";
+import { checkFbrSubmissionFreshness } from "@/lib/server/fbr-digital-invoicing";
 
 type PostBody = {
   invoiceNumber?: string | null;
@@ -72,6 +73,25 @@ export async function runFbrInvoiceSubmission(submissionId: string) {
     throw new Error("The invoice must pass FBR remote validation before submission.");
   }
   if (!submission.payloadSnapshot) throw new Error("FBR payload snapshot is missing.");
+
+  const freshness = await checkFbrSubmissionFreshness({
+    workspaceId: context.workspaceId,
+    invoiceId: submission.invoiceId,
+    environment: submission.environment,
+    payloadSnapshot: submission.payloadSnapshot,
+  });
+  if (!freshness.fresh) {
+    const blocked = await db.fbrInvoiceSubmission.update({
+      where: { id: submission.id },
+      data: {
+        status: "BLOCKED",
+        lastErrorCode: freshness.code,
+        lastErrorMessage: freshness.message,
+        validatedAt: null,
+      },
+    });
+    return { status: "BLOCKED" as const, submission: blocked };
+  }
 
   const claimed = await db.fbrInvoiceSubmission.updateMany({
     where: {
