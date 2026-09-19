@@ -2,7 +2,9 @@ import { ForbiddenError, canPerformAction, requirePermission } from "@/lib/serve
 import { listInvitations, listMembers } from "@/lib/server/members";
 import { MemberManager } from "@/components/settings/member-manager";
 import { BusinessProfileForm } from "@/components/settings/business-profile-form";
+import { FbrIntegrationForm } from "@/components/settings/fbr-integration-form";
 import { db } from "@/lib/server/db";
+import { getFbrCredentialReadiness } from "@/lib/server/fbr-credentials";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -32,14 +34,19 @@ export default async function SettingsPage() {
   }
 
   const canManageMembers = canPerformAction(context.role, "members.manage");
-  const [members, invitations, workspace] = await Promise.all([
+  const [members, invitations, workspace, fbrConfig] = await Promise.all([
     canManageMembers ? listMembers(context.workspaceId) : Promise.resolve([]),
     canManageMembers ? listInvitations(context.workspaceId) : Promise.resolve([]),
     db.workspace.findUniqueOrThrow({
       where: { id: context.workspaceId },
       select: { name: true, phone: true, email: true, address: true, city: true, country: true, businessType: true, ntn: true, strn: true, province: true },
     }),
+    db.fbrIntegrationConfig.findUnique({
+      where: { workspaceId: context.workspaceId },
+      select: { enabled: true, environment: true, provider: true, integratorName: true, defaultScenarioId: true },
+    }),
   ]);
+  const fbrCredential = getFbrCredentialReadiness(context.workspaceId);
 
   const version = getAppVersion();
 
@@ -51,6 +58,7 @@ export default async function SettingsPage() {
         <p className="mt-1 text-neutral-500">Manage your business identity, location and team access.</p>
       </header>
       <BusinessProfileForm workspace={workspace} />
+      <FbrIntegrationForm config={fbrConfig} credential={fbrCredential} />
       {canManageMembers ? (
         <section className="space-y-3">
           <div>
