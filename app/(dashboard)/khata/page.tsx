@@ -8,6 +8,7 @@ import { RecordPaymentForm } from "@/components/payments/record-payment-form";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { requireWorkspace } from "@/lib/server/auth";
 import { getCashBankAccounts } from "@/lib/server/accounting";
+import { getCustomerOpeningBalanceOutstanding } from "@/lib/server/payments";
 import { getKhataSummary } from "@/lib/server/khata";
 import { canPerformAction } from "@/lib/server/authorization";
 import { formatPKR } from "@/lib/utils";
@@ -19,7 +20,18 @@ export default async function KhataPage() {
     getKhataSummary(workspaceId),
     canRecordPayments ? getCashBankAccounts(workspaceId) : Promise.resolve([]),
   ]);
-  const paymentCustomers = summary.customers.filter((customer) => customer.outstanding > 0).map((customer) => ({ id: customer.id, name: customer.name, balance: customer.outstanding }));
+  const customerIds = summary.customers.filter((customer) => customer.outstanding > 0).map((customer) => customer.id);
+  const openingBalances = canRecordPayments && customerIds.length
+    ? await getCustomerOpeningBalanceOutstanding(workspaceId, customerIds)
+    : new Map<string, number>();
+  const paymentCustomers = summary.customers
+    .filter((customer) => customer.outstanding > 0)
+    .map((customer) => ({
+      id: customer.id,
+      name: customer.name,
+      balance: customer.outstanding,
+      openingBalance: openingBalances.get(customer.id) ?? 0,
+    }));
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">
@@ -55,7 +67,7 @@ export default async function KhataPage() {
             </div>
           ) : <p className="px-4 py-12 text-center text-sm text-neutral-500">No customer accounts have been added yet.</p>}
          </div>
-         <div className="rounded-md border bg-white p-4 2xl:sticky 2xl:top-6"><div className="mb-4"><h2 className="text-sm font-semibold">Record payment</h2><p className="mt-0.5 text-[11px] text-muted-foreground">Unallocated receipts reduce the customer account balance.</p></div>{canRecordPayments ? <RecordPaymentForm customers={paymentCustomers} cashBankAccounts={cashBankAccounts} /> : <p className="text-xs text-muted-foreground">Your role cannot record payments.</p>}</div>
+         <div className="rounded-md border bg-white p-4 2xl:sticky 2xl:top-6"><div className="mb-4"><h2 className="text-sm font-semibold">Record payment</h2><p className="mt-0.5 text-[11px] text-muted-foreground">Choose whether the receipt settles opening balance or stays unallocated on the customer account.</p></div>{canRecordPayments ? <RecordPaymentForm customers={paymentCustomers} cashBankAccounts={cashBankAccounts} /> : <p className="text-xs text-muted-foreground">Your role cannot record payments.</p>}</div>
        </div>
       </div>
   );
