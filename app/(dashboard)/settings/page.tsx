@@ -37,7 +37,7 @@ export default async function SettingsPage() {
     listInvitations(context.workspaceId),
     db.workspace.findUniqueOrThrow({
       where: { id: context.workspaceId },
-      select: { name: true, phone: true, email: true, address: true, city: true, country: true, businessType: true },
+      select: { name: true, phone: true, email: true, address: true, city: true, country: true, businessType: true, ntn: true, strn: true },
     }),
   ]);
 
