@@ -41,6 +41,16 @@ export type ProductDTO = {
   defaultWeightKg: number | null;
   fbrHsCode: string;
   fbrUom: string;
+  fbrUomId: number | null;
+  fbrTransactionTypeId: number | null;
+  fbrTransactionTypeDesc: string;
+  fbrRateId: number | null;
+  fbrRateDesc: string;
+  fbrRateValue: number | null;
+  fbrReferenceVerifiedAt: string | null;
+  fbrReferenceVerifiedForDate: string | null;
+  fbrReferenceProvinceCode: number | null;
+  fbrReferenceProvinceDesc: string;
   unit: ProductUnit;
   status: ProductStatus;
   createdAt: string;
@@ -73,6 +83,16 @@ function toProductDTO(product: {
   defaultWeightKg: { toNumber(): number } | null;
   fbrHsCode: string | null;
   fbrUom: string | null;
+  fbrUomId: number | null;
+  fbrTransactionTypeId: number | null;
+  fbrTransactionTypeDesc: string | null;
+  fbrRateId: number | null;
+  fbrRateDesc: string | null;
+  fbrRateValue: { toNumber(): number } | null;
+  fbrReferenceVerifiedAt: Date | null;
+  fbrReferenceVerifiedForDate: Date | null;
+  fbrReferenceProvinceCode: number | null;
+  fbrReferenceProvinceDesc: string | null;
   unit: ProductUnit;
   status: ProductStatus;
   createdAt: Date;
@@ -90,6 +110,12 @@ function toProductDTO(product: {
     defaultWeightKg: product.defaultWeightKg?.toNumber() ?? null,
     fbrHsCode: product.fbrHsCode ?? "",
     fbrUom: product.fbrUom ?? "",
+    fbrTransactionTypeDesc: product.fbrTransactionTypeDesc ?? "",
+    fbrRateDesc: product.fbrRateDesc ?? "",
+    fbrRateValue: product.fbrRateValue?.toNumber() ?? null,
+    fbrReferenceVerifiedAt: product.fbrReferenceVerifiedAt?.toISOString() ?? null,
+    fbrReferenceVerifiedForDate: product.fbrReferenceVerifiedForDate?.toISOString() ?? null,
+    fbrReferenceProvinceDesc: product.fbrReferenceProvinceDesc ?? "",
     createdAt: product.createdAt.toISOString(),
     updatedAt: product.updatedAt.toISOString(),
   };
@@ -168,6 +194,8 @@ export async function createProduct(workspaceId: string, input: ProductData): Pr
         defaultWeightKg: input.defaultWeightKg ?? null,
         fbrHsCode: input.fbrHsCode || null,
         fbrUom: input.fbrUom || null,
+        fbrTransactionTypeId: input.fbrTransactionTypeId ?? null,
+        fbrRateId: input.fbrRateId ?? null,
         unit: input.unit,
         status: input.status,
         description: input.description,
@@ -213,7 +241,17 @@ export async function updateProduct(
 ): Promise<void> {
   if (!canPerformAction(context.role, "products.write")) throw new ProductDomainError("PERMISSION_DENIED", "Unauthorized");
   await withSerializableRetry(async (tx) => {
-    const existing = await tx.product.findFirst({ where: { id, workspaceId: context.workspaceId }, select: { stockQuantity: true, costPrice: true } });
+    const existing = await tx.product.findFirst({
+      where: { id, workspaceId: context.workspaceId },
+      select: {
+        stockQuantity: true,
+        costPrice: true,
+        fbrHsCode: true,
+        fbrUom: true,
+        fbrTransactionTypeId: true,
+        fbrRateId: true,
+      },
+    });
     if (!existing) throw new ProductDomainError("PRODUCT_NOT_FOUND", "Product not found.");
     if (!existing.stockQuantity.isZero() && !existing.costPrice.equals(input.costPrice)) {
       throw new ProductDomainError("INVALID_COST_PRICE", "Cost price cannot be changed while stock is on hand. Receive stock or adjust quantity through an auditable inventory transaction.");
@@ -230,6 +268,25 @@ export async function updateProduct(
         defaultWeightKg: input.defaultWeightKg ?? null,
         fbrHsCode: input.fbrHsCode || null,
         fbrUom: input.fbrUom || null,
+        fbrTransactionTypeId: input.fbrTransactionTypeId ?? null,
+        fbrRateId: input.fbrRateId ?? null,
+        ...(
+          existing.fbrHsCode !== (input.fbrHsCode || null)
+          || existing.fbrUom !== (input.fbrUom || null)
+          || existing.fbrTransactionTypeId !== (input.fbrTransactionTypeId ?? null)
+          || existing.fbrRateId !== (input.fbrRateId ?? null)
+            ? {
+                fbrUomId: null,
+                fbrTransactionTypeDesc: null,
+                fbrRateDesc: null,
+                fbrRateValue: null,
+                fbrReferenceVerifiedAt: null,
+                fbrReferenceVerifiedForDate: null,
+                fbrReferenceProvinceCode: null,
+                fbrReferenceProvinceDesc: null,
+              }
+            : {}
+        ),
         unit: input.unit,
         status: input.status,
         description: input.description,

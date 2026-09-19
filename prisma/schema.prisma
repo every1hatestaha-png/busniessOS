@@ -384,8 +384,18 @@ model Product {
   stockQuantity   Decimal       @default(0) @db.Decimal(15, 4)
   reorderLevel    Decimal       @default(0) @db.Decimal(15, 4)
   defaultWeightKg Decimal?      @db.Decimal(10, 3)
-  fbrHsCode       String?
-  fbrUom          String?
+  fbrHsCode                    String?
+  fbrUom                       String?
+  fbrUomId                     Int?
+  fbrTransactionTypeId         Int?
+  fbrTransactionTypeDesc       String?
+  fbrRateId                    Int?
+  fbrRateDesc                  String?
+  fbrRateValue                 Decimal?      @db.Decimal(7, 4)
+  fbrReferenceVerifiedAt       DateTime?
+  fbrReferenceVerifiedForDate  DateTime?
+  fbrReferenceProvinceCode     Int?
+  fbrReferenceProvinceDesc     String?
   unit            ProductUnit   @default(PIECE)
   status          ProductStatus @default(ACTIVE)
   createdAt       DateTime      @default(now())
@@ -582,7 +592,19 @@ model SalesOrderItem {
   totalPrice      Decimal     @db.Decimal(15, 2)
   taxRate         Decimal?    @db.Decimal(7, 4)
   taxableAmount   Decimal?    @db.Decimal(15, 2)
-  salesTaxAmount  Decimal?    @db.Decimal(15, 2)
+  salesTaxAmount              Decimal?    @db.Decimal(15, 2)
+  fbrHsCode                   String?
+  fbrUom                      String?
+  fbrUomId                    Int?
+  fbrTransactionTypeId        Int?
+  fbrSaleType                 String?
+  fbrRateId                   Int?
+  fbrRateDesc                 String?
+  fbrRateValue                Decimal?    @db.Decimal(7, 4)
+  fbrReferenceVerifiedAt      DateTime?
+  fbrReferenceVerifiedForDate DateTime?
+  fbrReferenceProvinceCode    Int?
+  fbrReferenceProvinceDesc    String?
   pricingMode     PricingMode @default(UNIT)
   unitWeight      Decimal?    @db.Decimal(10, 3)
   totalWeight     Decimal?    @db.Decimal(15, 3)
