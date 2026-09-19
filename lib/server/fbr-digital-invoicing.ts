@@ -59,6 +59,7 @@ export async function buildFbrInvoiceDraft(workspaceId: string, invoiceId: strin
     },
   });
   if (!invoice) throw new Error("Invoice not found.");
+  if (invoice.status === "DRAFT") throw new Error("Draft invoices cannot be prepared for FBR until they are issued.");
   if (invoice.status === "CANCELLED") throw new Error("Cancelled invoices cannot be prepared for FBR.");
   if (!invoice.salesOrder) throw new Error("FBR submission requires a linked sales order.");
   if (!invoice.salesOrder.items.length) throw new Error("FBR submission requires at least one invoice item.");
@@ -103,6 +104,8 @@ export async function buildFbrInvoiceDraft(workspaceId: string, invoiceId: strin
       integratorLicenseNo: config?.integratorLicenseNo,
       productionApprovedAt: config?.productionApprovedAt,
       productionApprovedBy: config?.productionApprovedBy,
+      // Keep this false until MunshiOS stores and validates FBR sale type/rate per line item.
+      taxMappingReady: false,
     }));
   }
 
@@ -278,7 +281,7 @@ export async function prepareFbrInvoiceSubmission(invoiceId: string) {
 
   const submission = await db.$transaction(async (tx) => {
     const existing = await tx.fbrInvoiceSubmission.findFirst({
-      where: { invoiceId: invoice.id, environment },
+      where: { workspaceId: context.workspaceId, invoiceId: invoice.id, environment },
     });
     if (existing?.status === "SUBMITTED") return existing;
 

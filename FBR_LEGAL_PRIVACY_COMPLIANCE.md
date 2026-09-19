@@ -22,12 +22,13 @@ This document records implementation decisions for engineering and release revie
 - https://www.moitt.gov.pk/Legislations
 - https://pakistancode.gov.pk/
 - https://download1.fbr.gov.pk/Docs/20257301172130815TechnicalDocumentationforDIAPIV1.12.pdf
+- https://download1.fbr.gov.pk/Docs/2026331133557466STGO01of2026.pdf
 
 ## Product rules
 
 1. MunshiOS must not describe itself as an FBR-licensed integrator unless FBR has actually issued a valid license.
 2. Sandbox and production are separate trust states.
-3. Production submission is default-deny until a licensed-integrator/PRAL route is configured, an authorized workspace user explicitly approves production, and the deployment-level production transmission switch is explicitly enabled.
+3. Production submission is default-deny until a licensed-integrator/PRAL route is configured, an authorized workspace user explicitly approves production, per-item FBR sale type/rate mapping is implemented and validated, and the deployment-level production transmission switch is explicitly enabled.
 4. For a non-PRAL integrator, MunshiOS stores a license/reference identifier for auditability; release operations should re-check the current FBR licensed-integrator list.
 5. FBR credentials/tokens must never be written to invoice payload snapshots, audit metadata, client-visible logs, source control, or ordinary workspace records.
 6. FBR invoice payloads contain tax and identity data and must be permission-scoped to authorized workspace users.
@@ -52,6 +53,7 @@ This document records implementation decisions for engineering and release revie
 - Confirm current FBR technical documentation and endpoint schema.
 - Confirm integrator appears on FBR's current licensed-integrator list, or use PRAL.
 - Complete sandbox/certification steps required by the selected integration route.
+- Implement and validate per-item FBR sale type and rate mapping before removing the production tax-mapping hold.
 - Verify workspace NTN/STRN/province and buyer/product master data.
 - Verify production credentials are held in protected secret storage only.
 - Keep `FBR_DI_PRODUCTION_TRANSMISSION_ENABLED=0` until the live-integration checklist is complete, then enable it deliberately in the production secret environment.

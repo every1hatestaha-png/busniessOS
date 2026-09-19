@@ -2,13 +2,25 @@ import { describe, expect, it } from "vitest";
 import { validateFbrProductionCompliance } from "@/lib/fbr/production-compliance";
 
 describe("FBR production compliance gate", () => {
-  it("allows an explicitly approved PRAL route", () => {
+  it("allows an explicitly approved PRAL route only when item tax mapping is ready", () => {
     expect(validateFbrProductionCompliance({
       provider: "PRAL",
       integratorName: "PRAL",
       productionApprovedAt: new Date("2026-09-19T00:00:00.000Z"),
       productionApprovedBy: "user_123",
+      taxMappingReady: true,
     })).toEqual([]);
+  });
+
+  it("blocks production while per-item sale type and rate mapping is not ready", () => {
+    expect(validateFbrProductionCompliance({
+      provider: "PRAL",
+      integratorName: "PRAL",
+      productionApprovedAt: new Date("2026-09-19T00:00:00.000Z"),
+      productionApprovedBy: "user_123",
+    })).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "PRODUCTION_TAX_MAPPING_NOT_READY" }),
+    ]));
   });
 
   it("blocks production when no licensed-integrator route is configured", () => {
@@ -16,6 +28,7 @@ describe("FBR production compliance gate", () => {
       provider: "PRAL",
       productionApprovedAt: new Date("2026-09-19T00:00:00.000Z"),
       productionApprovedBy: "user_123",
+      taxMappingReady: true,
     })).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: "LICENSED_INTEGRATOR_REQUIRED" }),
     ]));
@@ -27,6 +40,7 @@ describe("FBR production compliance gate", () => {
       integratorName: "Example Integrator",
       productionApprovedAt: new Date("2026-09-19T00:00:00.000Z"),
       productionApprovedBy: "user_123",
+      taxMappingReady: true,
     })).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: "LICENSE_REFERENCE_REQUIRED" }),
     ]));
@@ -36,18 +50,20 @@ describe("FBR production compliance gate", () => {
     expect(validateFbrProductionCompliance({
       provider: "PRAL",
       integratorName: "PRAL",
+      taxMappingReady: true,
     })).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: "PRODUCTION_APPROVAL_REQUIRED" }),
     ]));
   });
 
-  it("allows an approved non-PRAL route with a recorded license reference", () => {
+  it("allows an approved non-PRAL route with a recorded license reference when item tax mapping is ready", () => {
     expect(validateFbrProductionCompliance({
       provider: "THIRD_PARTY",
       integratorName: "Licensed Integrator Pvt Ltd",
       integratorLicenseNo: "LI-REFERENCE-001",
       productionApprovedAt: new Date("2026-09-19T00:00:00.000Z"),
       productionApprovedBy: "user_123",
+      taxMappingReady: true,
     })).toEqual([]);
   });
 });
