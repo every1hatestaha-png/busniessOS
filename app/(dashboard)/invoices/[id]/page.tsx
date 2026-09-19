@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Pencil, Truck } from "lucide-react";
 
 import { StatusBadge } from "@/components/business/status-badge";
+import { FbrControlPanel } from "@/components/invoices/fbr-control-panel";
 import { PrintButton } from "@/components/invoices/print-button";
 import { RecordPaymentForm } from "@/components/payments/record-payment-form";
 import { CancelSaleButton } from "@/components/sales/cancel-sale-button";
@@ -10,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { deliveryChallanNumber } from "@/lib/document-references";
 import { requireWorkspace } from "@/lib/server/auth";
 import { getCashBankAccounts } from "@/lib/server/accounting";
+import { buildFbrInvoiceDraft, getFbrSubmissionForInvoice } from "@/lib/server/fbr-digital-invoicing";
 import { getInvoice } from "@/lib/server/invoices";
 import { canPerformAction } from "@/lib/server/authorization";
 import { formatDate, formatPKR } from "@/lib/utils";
@@ -40,6 +42,81 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   ]);
   if (!invoice) notFound();
   const dcNumber = deliveryChallanNumber(invoice.invoiceNumber);
+
+  let fbrPanel: {
+    environment: "SANDBOX" | "PRODUCTION";
+    integrationEnabled: boolean;
+    readyForRemoteValidation: boolean;
+    preflightError: string | null;
+    issues: Array<{ path: string; code: string; message: string }>;
+    submission: null | {
+      id: string;
+      status: string;
+      fbrInvoiceNumber: string | null;
+      lastErrorCode: string | null;
+      lastErrorMessage: string | null;
+      attemptCount: number;
+      validatedAt: string | null;
+      submittedAt: string | null;
+      lastAttemptAt: string | null;
+      attempts: Array<{
+        id: string;
+        kind: string;
+        succeeded: boolean;
+        httpStatus: number | null;
+        errorCode: string | null;
+        errorMessage: string | null;
+        createdAt: string;
+      }>;
+    };
+  } | null = null;
+
+  if (canManageFinancials) {
+    let environment: "SANDBOX" | "PRODUCTION" = "SANDBOX";
+    let integrationEnabled = false;
+    let readyForRemoteValidation = false;
+    let preflightError: string | null = null;
+    let issues: Array<{ path: string; code: string; message: string }> = [];
+
+    try {
+      const draft = await buildFbrInvoiceDraft(workspaceId, invoice.id);
+      environment = draft.environment;
+      integrationEnabled = Boolean(draft.config?.enabled);
+      readyForRemoteValidation = draft.readyForRemoteValidation;
+      issues = draft.issues.map((issue) => ({ path: issue.path, code: issue.code, message: issue.message }));
+    } catch (error) {
+      preflightError = error instanceof Error ? error.message : "FBR preflight could not be prepared.";
+    }
+
+    const submission = await getFbrSubmissionForInvoice(workspaceId, invoice.id, environment);
+    fbrPanel = {
+      environment,
+      integrationEnabled,
+      readyForRemoteValidation,
+      preflightError,
+      issues,
+      submission: submission ? {
+        id: submission.id,
+        status: submission.status,
+        fbrInvoiceNumber: submission.fbrInvoiceNumber,
+        lastErrorCode: submission.lastErrorCode,
+        lastErrorMessage: submission.lastErrorMessage,
+        attemptCount: submission.attemptCount,
+        validatedAt: submission.validatedAt?.toISOString() ?? null,
+        submittedAt: submission.submittedAt?.toISOString() ?? null,
+        lastAttemptAt: submission.lastAttemptAt?.toISOString() ?? null,
+        attempts: submission.attempts.map((attempt) => ({
+          id: attempt.id,
+          kind: attempt.kind,
+          succeeded: attempt.succeeded,
+          httpStatus: attempt.httpStatus,
+          errorCode: attempt.errorCode,
+          errorMessage: attempt.errorMessage,
+          createdAt: attempt.createdAt.toISOString(),
+        })),
+      } : null,
+    };
+  }
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-6 print:max-w-none print:space-y-0">
@@ -73,7 +150,10 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
           {invoice.payments.length > 0 && <section className="border-t border-neutral-200 p-6 sm:p-8"><h3 className="font-semibold">Payment history</h3><div className="mt-3 overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Method / status</TableHead><TableHead>Receipt / reference</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader><TableBody>{invoice.payments.map((payment) => <TableRow key={payment.id}><TableCell>{formatDate(payment.date)}</TableCell><TableCell>{payment.method.replaceAll("_", " ")}{payment.isReversal ? " · Reversal" : payment.isReversed ? " · Reversed" : ""}</TableCell><TableCell><Link href={`/payments/${payment.id}`} className="font-medium hover:underline">{payment.reference}</Link></TableCell><TableCell className="text-right font-medium">{formatPKR(payment.amount)}</TableCell></TableRow>)}</TableBody></Table></div></section>}
         </article>
-        <aside className="rounded-xl border border-neutral-200 bg-white p-5 print:hidden 2xl:sticky 2xl:top-6"><div className="mb-5"><h2 className="font-semibold">Record payment</h2><p className="mt-1 text-sm text-neutral-500">Allocate a manual receipt to this invoice.</p></div>{canRecordPayments && invoice.balance > 0 && !["CANCELLED", "DRAFT"].includes(invoice.status) ? <RecordPaymentForm invoice={{ id: invoice.id, number: invoice.invoiceNumber, customerId: invoice.customer.id, customerName: invoice.customer.companyName, balance: invoice.balance }} cashBankAccounts={cashBankAccounts} /> : <p className="rounded-lg bg-neutral-50 p-4 text-sm text-neutral-600">{invoice.balance <= 0 ? "This invoice has been paid in full." : "Payment recording is unavailable for your role or this invoice."}</p>}</aside>
+        <aside className="space-y-6 print:hidden 2xl:sticky 2xl:top-6">
+          <div className="rounded-xl border border-neutral-200 bg-white p-5"><div className="mb-5"><h2 className="font-semibold">Record payment</h2><p className="mt-1 text-sm text-neutral-500">Allocate a manual receipt to this invoice.</p></div>{canRecordPayments && invoice.balance > 0 && !["CANCELLED", "DRAFT"].includes(invoice.status) ? <RecordPaymentForm invoice={{ id: invoice.id, number: invoice.invoiceNumber, customerId: invoice.customer.id, customerName: invoice.customer.companyName, balance: invoice.balance }} cashBankAccounts={cashBankAccounts} /> : <p className="rounded-lg bg-neutral-50 p-4 text-sm text-neutral-600">{invoice.balance <= 0 ? "This invoice has been paid in full." : "Payment recording is unavailable for your role or this invoice."}</p>}</div>
+          {fbrPanel && <FbrControlPanel invoiceId={invoice.id} {...fbrPanel} />}
+        </aside>
       </div>
     </div>
   );
