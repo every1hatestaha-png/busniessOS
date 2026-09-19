@@ -142,10 +142,24 @@ export async function getReceivablesAging(workspaceId: string, filters: Receivab
         AND (p."isReversed" = false OR p."reversedAt" > ${asOfEnd})
         ${customerFilter}
     `,
-    db.$queryRaw<Array<{ id: string; customerId: string; date: Date; debit: Prisma.Decimal; credit: Prisma.Decimal; customerName: string }>>`
-      SELECT le."id", le."customerId", le."date", le."debit", le."credit", COALESCE(c."companyName", c."name") AS "customerName"
+    db.$queryRaw<Array<{ id: string; customerId: string; date: Date; debit: Prisma.Decimal; credit: Prisma.Decimal; allocatedAmount: Prisma.Decimal; customerName: string }>>`
+      SELECT le."id", le."customerId", le."date", le."debit", le."credit",
+        COALESCE(pa."allocatedAmount", 0) AS "allocatedAmount",
+        COALESCE(c."companyName", c."name") AS "customerName"
       FROM "ledger_entries" le
       INNER JOIN "customers" c ON c."id" = le."customerId"
+      LEFT JOIN (
+        SELECT p."customerId", SUM(a."amount") AS "allocatedAmount"
+        FROM "payment_allocations" a
+        INNER JOIN "payments" p ON p."id" = a."paymentId"
+        WHERE a."workspaceId" = ${workspaceId}
+          AND a."isCustomerOpeningBalance" = true
+          AND a."createdAt" <= ${asOfEnd}
+          AND p."paymentDate" <= ${asOfEnd}
+          AND p."reversalOfId" IS NULL
+          AND (p."isReversed" = false OR p."reversedAt" > ${asOfEnd})
+        GROUP BY p."customerId"
+      ) pa ON pa."customerId" = le."customerId"
       WHERE le."workspaceId" = ${workspaceId}
         AND le."customerId" IS NOT NULL
         AND le."type" = 'OPENING_BALANCE'
@@ -172,14 +186,15 @@ export async function getReceivablesAging(workspaceId: string, filters: Receivab
   const items: ReceivablesAgingItem[] = [];
   for (const opening of openingBalances) {
     if (!opening.customerId) continue;
-    const outstanding = opening.debit.minus(opening.credit).toNumber();
+    const originalAmount = opening.debit.minus(opening.credit);
+    const outstanding = originalAmount.minus(opening.allocatedAmount).toNumber();
     if (outstanding <= 0) continue;
     const customerName = opening.customerName;
     if (search && !customerName.toLowerCase().includes(search) && !"opening balance".includes(search)) continue;
     const age = ageDays(opening.date, asOf, timeZone);
     const bucket = receivablesBucket(age);
     if (filters.bucket && bucket !== filters.bucket) continue;
-    items.push({ invoiceId: opening.id, documentNumber: "OPENING BALANCE", customerId: opening.customerId, customerName, invoiceDate: opening.date.toISOString(), dueDate: null, originalAmount: outstanding, paymentsApplied: 0, creditsApplied: 0, outstandingAmount: outstanding, ageDays: age, bucket, isOpeningBalance: true });
+    items.push({ invoiceId: opening.id, documentNumber: "OPENING BALANCE", customerId: opening.customerId, customerName, invoiceDate: opening.date.toISOString(), dueDate: null, originalAmount: originalAmount.toNumber(), paymentsApplied: opening.allocatedAmount.toNumber(), creditsApplied: 0, outstandingAmount: outstanding, ageDays: age, bucket, isOpeningBalance: true });
   }
   for (const invoice of invoices) {
     const paymentsApplied = invoice.paymentsApplied.toNumber();
