@@ -1,4 +1,4 @@
-# BusinessOS desktop development
+# MunshiOS desktop development
 
 Run from the repository root:
 
