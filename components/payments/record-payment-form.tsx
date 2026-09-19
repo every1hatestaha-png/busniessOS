@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatPKR } from "@/lib/utils";
 
-type CustomerOption = { id: string; name: string; balance: number };
+type CustomerOption = { id: string; name: string; balance: number; openingBalance?: number };
 type FixedInvoice = { id: string; number: string; customerId: string; customerName: string; balance: number };
 type CashBankOption = { cashBankAccountId: string; name: string; currentBalance: number; isBank: boolean; bankName?: string | null };
 
@@ -33,9 +33,12 @@ function PaymentFields({ customers, invoice, cashBankAccounts, state, action, pe
   const [customerId, setCustomerId] = useState(invoice?.customerId ?? "");
   const [amount, setAmount] = useState("");
   const [withholdingTax, setWithholdingTax] = useState("0");
+  const [target, setTarget] = useState<"ON_ACCOUNT" | "OPENING_BALANCE">("ON_ACCOUNT");
   const [idempotencyKey] = useState(() => crypto.randomUUID());
   const selectedCustomer = customers.find((customer) => customer.id === customerId);
-  const maximum = invoice?.balance ?? selectedCustomer?.balance;
+  const openingBalance = selectedCustomer?.openingBalance ?? 0;
+  const effectiveTarget = invoice ? "INVOICE" : target;
+  const maximum = invoice?.balance ?? (effectiveTarget === "OPENING_BALANCE" ? openingBalance : selectedCustomer?.balance);
   const grossAmount = Number(amount || 0);
   const withholdingAmount = Number(withholdingTax || 0);
   const netReceived = Math.max(0, grossAmount - withholdingAmount);
@@ -48,13 +51,17 @@ function PaymentFields({ customers, invoice, cashBankAccounts, state, action, pe
   return (
     <form action={action} className="space-y-4">
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} readOnly />
+      {!invoice && <input type="hidden" name="applyToOpeningBalance" value={effectiveTarget === "OPENING_BALANCE" ? "true" : "false"} />}
       {invoice ? (
         <div className="rounded-lg bg-neutral-50 p-3"><p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Applying to</p><p className="mt-1 font-semibold">{invoice.number}</p><p className="text-sm text-neutral-500">{invoice.customerName} · {formatPKR(invoice.balance)} due</p><input type="hidden" name="customerId" value={invoice.customerId} /><input type="hidden" name="invoiceId" value={invoice.id} /></div>
       ) : (
-        <div><label className={labelClass} htmlFor="payment-customer">Customer</label><select id="payment-customer" name="customerId" required value={customerId} onChange={(event) => setCustomerId(event.target.value)} className={fieldClass}><option value="">Select an account</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {formatPKR(customer.balance)}</option>)}</select>{customers.length === 0 && <p className="mt-1.5 text-xs text-neutral-500">There are no customer balances available to collect.</p>}</div>
+        <div className="space-y-3">
+          <div><label className={labelClass} htmlFor="payment-customer">Customer</label><select id="payment-customer" name="customerId" required value={customerId} onChange={(event) => { setCustomerId(event.target.value); setTarget("ON_ACCOUNT"); }} className={fieldClass}><option value="">Select an account</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {formatPKR(customer.balance)}</option>)}</select>{customers.length === 0 && <p className="mt-1.5 text-xs text-neutral-500">There are no customer balances available to collect.</p>}</div>
+          {selectedCustomer && <div><label className={labelClass} htmlFor="payment-target">Apply payment to</label><select id="payment-target" value={target} onChange={(event) => setTarget(event.target.value as "ON_ACCOUNT" | "OPENING_BALANCE")} className={fieldClass}><option value="ON_ACCOUNT">Customer account, unallocated</option>{openingBalance > 0 && <option value="OPENING_BALANCE">Opening balance · {formatPKR(openingBalance)} outstanding</option>}</select>{openingBalance > 0 && <p className="mt-1.5 text-xs text-neutral-500">Choose Opening balance when this receipt specifically settles the customer's brought-forward receivable.</p>}</div>}
+        </div>
       )}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-        <div><label className={labelClass} htmlFor={`payment-amount-${invoice?.id ?? "khata"}`}>Gross amount settled (PKR)</label><Input id={`payment-amount-${invoice?.id ?? "khata"}`} name="amount" type="number" min="0.01" max={maximum} step="0.01" required placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} /></div>
+        <div><label className={labelClass} htmlFor={`payment-amount-${invoice?.id ?? "khata"}`}>Gross amount settled (PKR)</label><Input id={`payment-amount-${invoice?.id ?? "khata"}`} name="amount" type="number" min="0.01" max={maximum} step="0.01" required placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} />{!invoice && effectiveTarget === "OPENING_BALANCE" && <p className="mt-1.5 text-xs text-neutral-500">Maximum opening balance settlement: {formatPKR(openingBalance)}</p>}</div>
         <div><label className={labelClass} htmlFor={`payment-wht-${invoice?.id ?? "khata"}`}>Withholding tax deducted (PKR)</label><Input id={`payment-wht-${invoice?.id ?? "khata"}`} name="withholdingTaxAmount" type="number" min="0" max={grossAmount || undefined} step="0.01" value={withholdingTax} onChange={(event) => setWithholdingTax(event.target.value)} aria-invalid={invalidWithholding} /></div>
         <div><label className={labelClass} htmlFor={`payment-date-${invoice?.id ?? "khata"}`}>Payment date</label><Input id={`payment-date-${invoice?.id ?? "khata"}`} name="paymentDate" type="date" defaultValue={localDate} required /></div>
       </div>
