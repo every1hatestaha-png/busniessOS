@@ -19,3 +19,12 @@ export function useUser() {
     },
   };
 }
+
+export function useReverification<T extends (...args: never[]) => Promise<unknown>>(fetcher: T) {
+  return async (...args: Parameters<T>) => {
+    const target = window as Window & { clerkReverificationCalls?: number; clerkReverificationMode?: string };
+    target.clerkReverificationCalls = (target.clerkReverificationCalls ?? 0) + 1;
+    if (target.clerkReverificationMode === "cancel") return null;
+    return fetcher(...args);
+  };
+}
