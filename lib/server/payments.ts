@@ -12,6 +12,39 @@ import { db } from "@/lib/server/db";
 
 export class PaymentDomainError extends Error {}
 
+export async function getCustomerOpeningBalanceOutstanding(workspaceId: string, customerIds?: string[]) {
+  const customerFilter = customerIds?.length
+    ? Prisma.sql`AND le."customerId" IN (${Prisma.join(customerIds.map((id) => Prisma.sql`${id}`))})`
+    : Prisma.empty;
+  const rows = await db.$queryRaw<Array<{ customerId: string; openingAmount: Prisma.Decimal; allocatedAmount: Prisma.Decimal }>>`
+    SELECT le."customerId"::text AS "customerId",
+           COALESCE(SUM(le."debit" - le."credit"), 0)::numeric AS "openingAmount",
+           COALESCE(pa."allocatedAmount", 0)::numeric AS "allocatedAmount"
+    FROM "ledger_entries" le
+    LEFT JOIN (
+      SELECT p."customerId",
+             SUM(a."amount") AS "allocatedAmount"
+      FROM "payment_allocations" a
+      INNER JOIN "payments" p ON p."id" = a."paymentId"
+      WHERE a."workspaceId" = ${workspaceId}
+        AND a."isCustomerOpeningBalance" = true
+        AND p."customerId" IS NOT NULL
+        AND p."isReversed" = false
+        AND p."reversalOfId" IS NULL
+      GROUP BY p."customerId"
+    ) pa ON pa."customerId" = le."customerId"
+    WHERE le."workspaceId" = ${workspaceId}
+      AND le."customerId" IS NOT NULL
+      AND le."type" = 'OPENING_BALANCE'
+      ${customerFilter}
+    GROUP BY le."customerId", pa."allocatedAmount"
+  `;
+  return new Map(rows.map((row) => [
+    row.customerId,
+    Prisma.Decimal.max(new Prisma.Decimal(0), row.openingAmount.minus(row.allocatedAmount)).toNumber(),
+  ]));
+}
+
 export async function getPaymentReceipt(workspaceId: string, id: string) {
   const payment = await db.payment.findFirst({
     where: { id, workspaceId, customerId: { not: null } },
@@ -24,7 +57,7 @@ export async function getPaymentReceipt(workspaceId: string, id: string) {
     },
   });
   if (!payment || !payment.customer) return null;
-  const allocations = payment.allocations.map((allocation) => ({ id: allocation.id, invoiceId: allocation.invoiceId, invoiceNumber: allocation.invoice?.invoiceNumber ?? "Unassigned", amount: Number(allocation.amount) }));
+  const allocations = payment.allocations.map((allocation) => ({ id: allocation.id, invoiceId: allocation.invoiceId, invoiceNumber: allocation.isCustomerOpeningBalance ? "OPENING BALANCE" : (allocation.invoice?.invoiceNumber ?? "Unassigned"), isCustomerOpeningBalance: allocation.isCustomerOpeningBalance, amount: Number(allocation.amount) }));
   const allocatedAmount = payment.allocations.length
     ? payment.allocations.reduce((sum, allocation) => sum.plus(allocation.amount), new Prisma.Decimal(0))
     : payment.invoice ? payment.amount : new Prisma.Decimal(0);
@@ -56,10 +89,13 @@ export async function recordPayment(context: ServiceContext, input: PaymentInput
   const netAmount = amount.minus(withholdingTaxAmount);
   return withSerializableRetry(async (tx) => {
     if (data.idempotencyKey) {
-      const existing = await tx.payment.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true, customerId: true, supplierId: true, amount: true, withholdingTaxAmount: true, cashBankAccountId: true, method: true, invoiceId: true, allocations: { select: { invoiceId: true, amount: true } } } });
+      const existing = await tx.payment.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true, customerId: true, supplierId: true, amount: true, withholdingTaxAmount: true, cashBankAccountId: true, method: true, invoiceId: true, allocations: { select: { invoiceId: true, amount: true, isCustomerOpeningBalance: true } } } });
       if (existing) {
         const requested = data.allocations?.length ? data.allocations : data.invoiceId ? [{ invoiceId: data.invoiceId, amount: data.amount }] : [];
-        const sameAllocations = requested.length === existing.allocations.length && requested.every((entry) => existing.allocations.some((allocation) => allocation.invoiceId === entry.invoiceId && allocation.amount.equals(entry.amount)));
+        const requestedOpening = Boolean(data.applyToOpeningBalance);
+        const sameAllocations = requestedOpening
+          ? existing.allocations.length === 1 && existing.allocations[0]?.isCustomerOpeningBalance === true && existing.allocations[0].amount.equals(data.amount)
+          : requested.length === existing.allocations.length && requested.every((entry) => existing.allocations.some((allocation) => allocation.invoiceId === entry.invoiceId && allocation.amount.equals(entry.amount) && !allocation.isCustomerOpeningBalance));
         if (existing.supplierId || existing.customerId !== data.customerId || !existing.amount.equals(data.amount) || !existing.withholdingTaxAmount.equals(withholdingTaxAmount) || existing.cashBankAccountId !== data.cashBankAccountId || existing.method !== data.method || !sameAllocations) throw new PaymentDomainError("This idempotency key was already used for a different payment request.");
         return { id: existing.id };
       }
@@ -70,6 +106,24 @@ export async function recordPayment(context: ServiceContext, input: PaymentInput
     const cashBankAccount = await tx.cashBankAccount.findFirst({ where: { id: data.cashBankAccountId, workspaceId: context.workspaceId, isActive: true }, select: { id: true } });
     if (!cashBankAccount) throw new PaymentDomainError("Cash/bank account is unavailable.");
     const requestedAllocations = data.allocations?.length ? data.allocations : data.invoiceId ? [{ invoiceId: data.invoiceId, amount: data.amount }] : [];
+    if (data.applyToOpeningBalance) {
+      const openingRows = await tx.$queryRaw<Array<{ openingAmount: Prisma.Decimal; allocatedAmount: Prisma.Decimal }>>`
+        SELECT
+          COALESCE((SELECT SUM("debit" - "credit") FROM "ledger_entries"
+            WHERE "workspaceId"=${context.workspaceId} AND "customerId"=${customer.id} AND "type"='OPENING_BALANCE'), 0)::numeric AS "openingAmount",
+          COALESCE((SELECT SUM(a."amount")
+            FROM "payment_allocations" a
+            INNER JOIN "payments" p ON p."id"=a."paymentId"
+            WHERE a."workspaceId"=${context.workspaceId}
+              AND a."isCustomerOpeningBalance"=true
+              AND p."customerId"=${customer.id}
+              AND p."isReversed"=false
+              AND p."reversalOfId" IS NULL), 0)::numeric AS "allocatedAmount"
+      `;
+      const outstandingOpening = new Prisma.Decimal(openingRows[0]?.openingAmount ?? 0).minus(openingRows[0]?.allocatedAmount ?? 0);
+      if (outstandingOpening.lte(0)) throw new PaymentDomainError("Customer opening balance is already settled.");
+      if (amount.gt(outstandingOpening)) throw new PaymentDomainError("Payment exceeds the outstanding customer opening balance.");
+    }
     let invoices: { id: string; amount: Prisma.Decimal; paidAmount: Prisma.Decimal; creditApplied: Prisma.Decimal; salesOrderId: string | null }[] = [];
     if (requestedAllocations.length) {
       const allocationTotal = requestedAllocations.reduce((sum, entry) => sum.plus(entry.amount), new Prisma.Decimal(0));
@@ -78,7 +132,19 @@ export async function recordPayment(context: ServiceContext, input: PaymentInput
       if (new Set(invoiceIds).size !== invoiceIds.length) throw new PaymentDomainError("Duplicate invoice allocations are not allowed.");
       invoices = await tx.invoice.findMany({ where: { id: { in: invoiceIds }, workspaceId: context.workspaceId, customerId: customer.id, status: { notIn: ["CANCELLED", "DRAFT"] } }, select: { id: true, amount: true, paidAmount: true, creditApplied: true, salesOrderId: true } });
       if (invoices.length !== requestedAllocations.length) throw new PaymentDomainError("One or more invoices are unavailable.");
-      for (const allocation of requestedAllocations) {
+      if (data.applyToOpeningBalance) {
+      await tx.paymentAllocation.create({
+        data: {
+          workspaceId: context.workspaceId,
+          paymentId: payment.id,
+          invoiceId: null,
+          isCustomerOpeningBalance: true,
+          amount,
+        },
+      });
+    }
+
+    for (const allocation of requestedAllocations) {
         const invoice = invoices.find((entry) => entry.id === allocation.invoiceId)!;
         if (new Prisma.Decimal(allocation.amount).greaterThan(invoice.amount.minus(invoice.paidAmount).minus(invoice.creditApplied))) throw new PaymentDomainError("Payment exceeds invoice balance or invoice is unavailable.");
       }
@@ -118,7 +184,7 @@ export async function recordPayment(context: ServiceContext, input: PaymentInput
       await tx.invoice.update({ where: { id: invoice.id, workspaceId: context.workspaceId }, data: { paidAmount, status: settledAmount.equals(invoice.amount) ? "PAID" : "PARTIALLY_PAID" } });
       if (invoice.salesOrderId) await tx.salesOrder.update({ where: { id: invoice.salesOrderId, workspaceId: context.workspaceId }, data: { paidAmount: { increment: allocationAmount }, balanceAmount: { decrement: allocationAmount } } });
     }
-    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "customer.payment_recorded", entityType: "Payment", entityId: payment.id, metadata: { amount: data.amount, netAmount: netAmount.toString(), withholdingTaxAmount: withholdingTaxAmount.toString() } });
+    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "customer.payment_recorded", entityType: "Payment", entityId: payment.id, metadata: { amount: data.amount, netAmount: netAmount.toString(), withholdingTaxAmount: withholdingTaxAmount.toString(), target: data.applyToOpeningBalance ? "OPENING_BALANCE" : requestedAllocations.length ? "INVOICE" : "ON_ACCOUNT" } });
     return { id: payment.id };
   });
 }
