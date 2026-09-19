@@ -78,12 +78,7 @@ async function downloadFile(url, destination, fetchImpl = globalThis.fetch) {
 
 async function sha256File(filePath) {
   const hash = createHash("sha256");
-  await pipeline(fs.createReadStream(filePath), async function* (source) {
-    for await (const chunk of source) {
-      hash.update(chunk);
-      yield chunk;
-    }
-  });
+  for await (const chunk of fs.createReadStream(filePath)) hash.update(chunk);
   return hash.digest("hex");
 }
 
