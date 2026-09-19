@@ -15,11 +15,13 @@ import {
 } from "lucide-react";
 
 import { StatusBadge } from "@/components/business/status-badge";
+import { DailyActionCenter } from "@/components/dashboard/daily-action-center";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getFinancialDashboard } from "@/lib/server/accounting";
 import { canPerformAction } from "@/lib/server/authorization";
 import { requireWorkspace } from "@/lib/server/auth";
+import { getDailyActionCenter } from "@/lib/server/daily-action-center";
 import { getDashboardActivity } from "@/lib/server/dashboard";
 import { formatDate, formatPKR, getStockStatus } from "@/lib/utils";
 
@@ -66,13 +68,14 @@ function QuickAction({ href, label, detail, icon: Icon, primary = false }: { hre
 export default async function DashboardPage() {
   const { user, workspace, role } = await requireWorkspace();
   const canViewFinancials = canPerformAction(role, "financial.manage");
-  const [financials, activity] = await Promise.all([
+  const [financials, activity, dailyActions] = await Promise.all([
     canViewFinancials ? getFinancialDashboard(workspace.id) : Promise.resolve(null),
     getDashboardActivity(workspace.id),
+    getDailyActionCenter(workspace.id, { canViewFinancials, timeZone: workspace.timezone || "Asia/Karachi" }),
   ]);
-  const currentDate = new Intl.DateTimeFormat("en-PK", { timeZone: "Asia/Karachi", weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date());
+  const currentDate = new Intl.DateTimeFormat("en-PK", { timeZone: workspace.timezone || "Asia/Karachi", weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date());
 
-  const rendered = (
+  return (
     <div className="mx-auto max-w-[1600px] space-y-6">
       <header className="flex flex-col items-start gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
@@ -84,6 +87,8 @@ export default async function DashboardPage() {
           <Plus className="size-3.5" />New sales order
         </Link>
       </header>
+
+      <DailyActionCenter data={dailyActions} canViewFinancials={canViewFinancials} />
 
       {financials && (
         <section aria-label="Financial overview" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -164,7 +169,7 @@ export default async function DashboardPage() {
             <CardContent className="space-y-3 p-4">
               <div>
                 <p className="text-[11px] text-slate-500">Open customer account balances</p>
-                 <p className="mt-1 text-xl font-semibold tracking-tight text-foreground tabular-nums">{formatPKR(financials.receivables)}</p>
+                <p className="mt-1 text-xl font-semibold tracking-tight text-foreground tabular-nums">{formatPKR(financials.receivables)}</p>
               </div>
               <div className="grid grid-cols-2 gap-2 border-t pt-3">
                 <div className="rounded border bg-slate-50 p-2.5"><p className="text-[10px] text-slate-500">Sales this month</p><p className="mt-1 text-xs font-semibold tabular-nums">{formatPKR(financials.salesThisMonth)}</p></div>
@@ -196,5 +201,4 @@ export default async function DashboardPage() {
       </section>
     </div>
   );
-  return rendered;
 }
