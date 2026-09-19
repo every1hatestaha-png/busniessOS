@@ -80,7 +80,9 @@ jobs:
         run: npx eslint app components lib
 
       - name: Production dependency audit
-        run: npx --yes npm@11.19.1 audit --omit=dev --audit-level=high
+        # Prisma CLI is a dev dependency and also an optional peer of @prisma/client.
+        # Omit both classes so this gate audits the deployable runtime tree only.
+        run: npx --yes npm@11.19.1 audit --omit=dev --omit=peer --audit-level=high
 
   desktop-smoke:
     runs-on: windows-latest
