@@ -3,6 +3,7 @@ import { listInvitations, listMembers } from "@/lib/server/members";
 import { MemberManager } from "@/components/settings/member-manager";
 import { BusinessProfileForm } from "@/components/settings/business-profile-form";
 import { FbrIntegrationForm } from "@/components/settings/fbr-integration-form";
+import { FbrHsUomAnnexureForm } from "@/components/settings/fbr-hs-uom-annexure-form";
 import { db } from "@/lib/server/db";
 import { resolveFbrBearerToken } from "@/lib/server/fbr-credentials";
 import { readFileSync } from "node:fs";
@@ -43,7 +44,18 @@ export default async function SettingsPage() {
     }),
     db.fbrIntegrationConfig.findUnique({
       where: { workspaceId: context.workspaceId },
-      select: { enabled: true, environment: true, defaultScenarioId: true, provider: true, integratorName: true, integratorLicenseNo: true },
+      select: {
+        enabled: true,
+        environment: true,
+        defaultScenarioId: true,
+        provider: true,
+        integratorName: true,
+        integratorLicenseNo: true,
+        hsUomAnnexureId: true,
+        hsUomAnnexureConfirmedAt: true,
+        hsUomAnnexureConfirmedBy: true,
+        hsUomAnnexureReference: true,
+      },
     }),
   ]);
 
@@ -66,6 +78,12 @@ export default async function SettingsPage() {
       </header>
       <BusinessProfileForm workspace={workspace} />
       <FbrIntegrationForm config={fbrConfig} sandboxCredentialReady={sandboxCredentialReady} />
+      <FbrHsUomAnnexureForm config={fbrConfig ? {
+        annexureId: fbrConfig.hsUomAnnexureId,
+        confirmedAt: fbrConfig.hsUomAnnexureConfirmedAt?.toISOString() ?? null,
+        confirmedBy: fbrConfig.hsUomAnnexureConfirmedBy,
+        reference: fbrConfig.hsUomAnnexureReference,
+      } : null} />
       {canManageMembers ? (
         <section className="space-y-3">
           <div>

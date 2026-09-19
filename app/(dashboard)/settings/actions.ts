@@ -168,3 +168,115 @@ export async function updateFbrSandboxConfigAction(
     message: enabled ? "FBR sandbox setup saved." : "FBR Digital Invoicing disabled for this workspace.",
   };
 }
+
+
+const fbrHsUomAnnexureSchema = z.object({
+  annexureId: z.coerce.number().int().positive().max(1_000_000),
+  reference: z.string().trim().min(3, "Record the FBR/PRAL/integrator confirmation reference.").max(160),
+  confirmed: z.literal("yes"),
+});
+
+export type FbrHsUomAnnexureState = { status?: "success" | "error"; message?: string };
+
+export async function confirmFbrHsUomAnnexureAction(
+  _previousState: FbrHsUomAnnexureState,
+  formData: FormData,
+): Promise<FbrHsUomAnnexureState> {
+  const context = await requirePermission("workspace.manage");
+  const parsed = fbrHsUomAnnexureSchema.safeParse({
+    annexureId: formData.get("annexureId"),
+    reference: String(formData.get("reference") ?? ""),
+    confirmed: formData.get("confirmed"),
+  });
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: parsed.error.issues[0]?.message ?? "Check the HS/UOM annexure confirmation.",
+    };
+  }
+
+  try {
+    await db.$transaction(async (tx) => {
+      const existing = await tx.fbrIntegrationConfig.findUnique({
+        where: { workspaceId: context.workspaceId },
+        select: { id: true, updatedAt: true, hsUomAnnexureId: true },
+      });
+      const confirmedAt = new Date();
+
+      let config;
+      if (existing) {
+        const updated = await tx.fbrIntegrationConfig.updateMany({
+          where: {
+            id: existing.id,
+            workspaceId: context.workspaceId,
+            updatedAt: existing.updatedAt,
+          },
+          data: {
+            hsUomAnnexureId: parsed.data.annexureId,
+            hsUomAnnexureConfirmedAt: confirmedAt,
+            hsUomAnnexureConfirmedBy: context.user.id,
+            hsUomAnnexureReference: parsed.data.reference,
+          },
+        });
+        if (updated.count !== 1) {
+          throw new Error("FBR configuration changed while you were confirming the annexure.");
+        }
+        config = await tx.fbrIntegrationConfig.findUniqueOrThrow({
+          where: { workspaceId: context.workspaceId },
+        });
+      } else {
+        config = await tx.fbrIntegrationConfig.create({
+          data: {
+            workspaceId: context.workspaceId,
+            enabled: false,
+            environment: "SANDBOX",
+            provider: "PRAL",
+            hsUomAnnexureId: parsed.data.annexureId,
+            hsUomAnnexureConfirmedAt: confirmedAt,
+            hsUomAnnexureConfirmedBy: context.user.id,
+            hsUomAnnexureReference: parsed.data.reference,
+          },
+        });
+      }
+
+      await tx.product.updateMany({
+        where: { workspaceId: context.workspaceId },
+        data: {
+          fbrHsUomVerifiedAt: null,
+          fbrHsUomAnnexureId: null,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          workspaceId: context.workspaceId,
+          actorId: context.user.id,
+          action: "fbr.hs_uom_annexure_confirmed",
+          entityType: "FbrIntegrationConfig",
+          entityId: config.id,
+          metadata: {
+            annexureId: parsed.data.annexureId,
+            reference: parsed.data.reference,
+            previousAnnexureId: existing?.hsUomAnnexureId ?? null,
+            productHsUomVerificationInvalidated: true,
+          },
+        },
+      });
+    });
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error
+        ? error.message
+        : "The FBR HS/UOM annexure confirmation could not be saved.",
+    };
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/inventory");
+  revalidatePath("/invoices");
+  return {
+    status: "success",
+    message: "HS/UOM annexure confirmation saved. Product compatibility checks must now be re-verified.",
+  };
+}

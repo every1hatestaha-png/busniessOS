@@ -4,6 +4,7 @@ import { Prisma, type Role } from "@prisma/client";
 
 import {
   fbrReferenceDate,
+  fetchFbrHsUoms,
   fetchFbrProvinces,
   fetchFbrRates,
   fetchFbrTransactionTypes,
@@ -44,7 +45,7 @@ export async function verifyProductFbrReferenceMapping(
     throw new FbrProductMappingError("You do not have permission to verify product FBR mappings.");
   }
 
-  const [product, workspace] = await Promise.all([
+  const [product, workspace, config] = await Promise.all([
     db.product.findFirst({
       where: { id: productId, workspaceId: context.workspaceId },
       select: {
@@ -59,6 +60,14 @@ export async function verifyProductFbrReferenceMapping(
     db.workspace.findUnique({
       where: { id: context.workspaceId },
       select: { province: true, timezone: true },
+    }),
+    db.fbrIntegrationConfig.findUnique({
+      where: { workspaceId: context.workspaceId },
+      select: {
+        hsUomAnnexureId: true,
+        hsUomAnnexureConfirmedAt: true,
+        hsUomAnnexureConfirmedBy: true,
+      },
     }),
   ]);
   if (!product) throw new FbrProductMappingError("Product not found.");
@@ -86,12 +95,26 @@ export async function verifyProductFbrReferenceMapping(
   if (!uom) throw new FbrProductMappingError("The entered FBR unit of measurement is not present in the current reference list.");
 
   const effectiveDate = fbrReferenceDate(now, workspace.timezone || "Asia/Karachi");
-  const rates = await fetchFbrRates({
-    token,
-    date: effectiveDate,
-    transactionTypeId: transactionType.id,
-    supplierProvinceCode: province.code,
-  });
+  const annexureConfirmed = Boolean(
+    config?.hsUomAnnexureId
+    && config.hsUomAnnexureConfirmedAt
+    && config.hsUomAnnexureConfirmedBy?.trim(),
+  );
+  const [rates, hsUoms] = await Promise.all([
+    fetchFbrRates({
+      token,
+      date: effectiveDate,
+      transactionTypeId: transactionType.id,
+      supplierProvinceCode: province.code,
+    }),
+    annexureConfirmed
+      ? fetchFbrHsUoms({
+          token,
+          hsCode: product.fbrHsCode,
+          annexureId: config!.hsUomAnnexureId!,
+        })
+      : Promise.resolve(null),
+  ]);
   const rate = rates.find((entry) => entry.id === product.fbrRateId);
   if (!rate) {
     const available = rates.slice(0, 6).map((entry) => `${entry.id} — ${entry.description}`).join("; ");
@@ -99,6 +122,19 @@ export async function verifyProductFbrReferenceMapping(
       available
         ? `The selected FBR rate ID is not valid for this transaction type, date and province. Current options: ${available}`
         : "FBR returned no valid rates for this transaction type, date and province.",
+    );
+  }
+
+  const hsUomVerified = Boolean(
+    annexureConfirmed
+    && hsUoms?.some((entry) => entry.id === uom.id),
+  );
+  if (annexureConfirmed && !hsUomVerified) {
+    const available = hsUoms?.slice(0, 8).map((entry) => `${entry.id} — ${entry.description}`).join("; ") ?? "";
+    throw new FbrProductMappingError(
+      available
+        ? `The selected UOM is not allowed for HS code ${product.fbrHsCode} under confirmed sales annexure ${config!.hsUomAnnexureId}. Current HS/UOM options: ${available}`
+        : `FBR returned no allowed UOM for HS code ${product.fbrHsCode} under confirmed sales annexure ${config!.hsUomAnnexureId}.`,
     );
   }
 
@@ -122,6 +158,8 @@ export async function verifyProductFbrReferenceMapping(
         fbrReferenceVerifiedForDate: dateOnly(effectiveDate),
         fbrReferenceProvinceCode: province.code,
         fbrReferenceProvinceDesc: province.description,
+        fbrHsUomVerifiedAt: hsUomVerified ? verifiedAt : null,
+        fbrHsUomAnnexureId: hsUomVerified ? config!.hsUomAnnexureId : null,
       },
     });
     if (updated.count !== 1) {
@@ -147,6 +185,8 @@ export async function verifyProductFbrReferenceMapping(
         provinceDesc: province.description,
         effectiveDate,
         plainPercentageRate: plainPercentageRate(rate.description, rate.value),
+        hsUomAnnexureId: annexureConfirmed ? config!.hsUomAnnexureId : null,
+        hsUomVerified,
       },
     });
   });
@@ -158,5 +198,7 @@ export async function verifyProductFbrReferenceMapping(
     province,
     effectiveDate,
     plainPercentageRate: plainPercentageRate(rate.description, rate.value),
+    hsUomVerified,
+    hsUomAnnexureId: hsUomVerified ? config!.hsUomAnnexureId : null,
   };
 }
