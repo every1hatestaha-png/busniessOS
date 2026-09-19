@@ -1,0 +1,92 @@
+name: Desktop Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "package.json"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'release:')
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+
+    steps:
+      - name: Checkout exact release commit
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Read and validate version
+        id: version
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "package.json version must be a stable x.y.z version"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=v$version" >> $env:GITHUB_OUTPUT
+
+      - name: Ensure release tag does not already exist
+        shell: pwsh
+        run: |
+          gh release view "${{ steps.version.outputs.tag }}" 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            throw "Release ${{ steps.version.outputs.tag }} already exists. Bump package.json before releasing."
+          }
+          $global:LASTEXITCODE = 0
+
+      - name: Run desktop smoke tests
+        run: npm run desktop:test
+
+      - name: Package Windows installer
+        run: npm run desktop:package
+
+      - name: Locate installer and create SHA-256 manifest
+        id: artifact
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path dist-desktop -Filter "*.exe" -File |
+            Where-Object { $_.Name -match 'MunshiOS.*Setup' } |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -First 1
+          if (-not $installer) {
+            throw "MunshiOS installer was not produced"
+          }
+
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer.FullName).Hash.ToLowerInvariant()
+          $checksumPath = "$($installer.FullName).sha256"
+          "$hash  $($installer.Name)" | Set-Content -LiteralPath $checksumPath -Encoding ascii
+
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
+          if ($env:CSC_LINK -and $signature.Status -ne 'Valid') {
+            throw "A signing credential was provided but the installer signature is not valid: $($signature.Status)"
+          }
+          if (-not $env:CSC_LINK) {
+            Write-Warning "WINDOWS_CSC_LINK is not configured. Release will be checksum-verified but unsigned; MunshiOS will refuse automatic installation."
+          }
+
+          "installer=$($installer.FullName)" >> $env:GITHUB_OUTPUT
+          "checksum=$checksumPath" >> $env:GITHUB_OUTPUT
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" "${{ steps.artifact.outputs.installer }}" "${{ steps.artifact.outputs.checksum }}" --target "$env:GITHUB_SHA" --title "MunshiOS ${{ steps.version.outputs.version }}" --generate-notes
