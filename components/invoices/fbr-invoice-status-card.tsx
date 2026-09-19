@@ -1,10 +1,11 @@
 "use client";
 
 import { useActionState } from "react";
-import { AlertTriangle, CheckCircle2, FlaskConical, LockKeyhole, RefreshCw, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FlaskConical, LockKeyhole, RefreshCw, Send, ShieldCheck } from "lucide-react";
 
 import {
   prepareFbrSandboxAction,
+  submitFbrSandboxAction,
   validateFbrSandboxAction,
   type FbrInvoiceActionState,
 } from "@/app/(dashboard)/invoices/actions";
@@ -49,20 +50,34 @@ export function FbrInvoiceStatusCard({
 }) {
   const prepare = prepareFbrSandboxAction.bind(null, invoiceId);
   const validate = validateFbrSandboxAction.bind(null, invoiceId, data.submission?.id ?? "");
+  const submit = submitFbrSandboxAction.bind(null, invoiceId, data.submission?.id ?? "");
   const [prepareState, prepareAction, preparePending] = useActionState(prepare, initialState);
   const [validateState, validateAction, validatePending] = useActionState(validate, initialState);
+  const [submitState, submitAction, submitPending] = useActionState(submit, initialState);
 
   const status = data.submission?.status ?? "NOT PREPARED";
   const sandbox = data.environment === "SANDBOX";
   const production = data.environment === "PRODUCTION";
-  const busy = preparePending || validatePending;
+  const feedback = [prepareState, validateState, submitState].reduce(
+    (latest, current) => (current.successToken ?? 0) > (latest.successToken ?? 0) ? current : latest,
+    initialState,
+  );
+  const manualReconciliationRequired = data.submission?.status === "BLOCKED"
+    && data.submission.lastErrorCode === "AMBIGUOUS_POST_RESULT";
+  const busy = preparePending || validatePending || submitPending;
   const canPrepare = sandbox
+    && !manualReconciliationRequired
     && !["VALIDATING", "SUBMITTING", "SUBMITTED"].includes(data.submission?.status ?? "");
   const canValidate = sandbox
+    && !manualReconciliationRequired
     && Boolean(data.submission)
     && data.readyForRemoteValidation
     && !data.payloadStale
     && ["DRAFT", "VALIDATION_FAILED", "FAILED", "BLOCKED"].includes(data.submission?.status ?? "");
+  const canSubmit = sandbox
+    && !manualReconciliationRequired
+    && !data.payloadStale
+    && data.submission?.status === "VALIDATED";
 
   return (
     <section className="rounded-xl border border-neutral-200 bg-white p-5">
@@ -136,6 +151,13 @@ export function FbrInvoiceStatusCard({
         </div>
       )}
 
+      {manualReconciliationRequired && (
+        <div className="mt-4 flex gap-2 rounded-lg border-2 border-red-300 bg-red-50 p-3 text-sm leading-5 text-red-900">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p><strong>Manual reconciliation required.</strong> FBR may already have accepted the previous POST. Do not prepare, validate, or submit again until the remote result is reconciled.</p>
+        </div>
+      )}
+
       {data.submission?.lastErrorMessage && (
         <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3">
           <p className="text-xs font-semibold text-red-800">{data.submission.lastErrorCode ?? "FBR ERROR"}</p>
@@ -146,7 +168,7 @@ export function FbrInvoiceStatusCard({
       {data.submission?.status === "VALIDATED" && sandbox && !data.payloadStale && (
         <div className="mt-4 flex gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-          <p>Sandbox validation passed. Production submission is not exposed from this screen.</p>
+          <p>Sandbox validation passed. You may now post this test invoice to FBR sandbox. Production remains locked.</p>
         </div>
       )}
 
@@ -167,14 +189,14 @@ export function FbrInvoiceStatusCard({
         </div>
       ) : null}
 
-      {(prepareState.error || validateState.error) && (
+      {feedback.error && (
         <p role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {validateState.error ?? prepareState.error}
+          {feedback.error}
         </p>
       )}
-      {(prepareState.success || validateState.success) && (
+      {feedback.success && (
         <p role="status" className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-          {validateState.success ?? prepareState.success}
+          {feedback.success}
         </p>
       )}
 
@@ -190,6 +212,12 @@ export function FbrInvoiceStatusCard({
             <Button type="submit" disabled={!canValidate || busy}>
               <FlaskConical className="h-4 w-4" />
               {validatePending ? "Validating..." : "Validate with FBR sandbox"}
+            </Button>
+          </form>
+          <form action={submitAction}>
+            <Button type="submit" disabled={!canSubmit || busy}>
+              <Send className="h-4 w-4" />
+              {submitPending ? "Submitting..." : "Post test invoice to FBR sandbox"}
             </Button>
           </form>
         </div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertFbrExpectedEnvironment, fbrEndpoint, validateFbrInvoicePayload, type FbrInvoicePayload } from "@/lib/fbr/digital-invoicing";
+import { assertFbrExpectedEnvironment, fbrEndpoint, requiresFbrManualReconciliation, validateFbrInvoicePayload, type FbrInvoicePayload } from "@/lib/fbr/digital-invoicing";
 
 function validPayload(): FbrInvoicePayload {
   return {
@@ -82,6 +82,12 @@ describe("FBR digital invoicing contract", () => {
   it("blocks a server operation when the expected FBR environment does not match", () => {
     expect(() => assertFbrExpectedEnvironment("SANDBOX", "SANDBOX")).not.toThrow();
     expect(() => assertFbrExpectedEnvironment("PRODUCTION", "SANDBOX")).toThrow(/environment mismatch/i);
+  });
+
+  it("keeps ambiguous POST outcomes locked for manual reconciliation", () => {
+    expect(requiresFbrManualReconciliation("BLOCKED", "AMBIGUOUS_POST_RESULT")).toBe(true);
+    expect(requiresFbrManualReconciliation("BLOCKED", "UNAUTHORIZED")).toBe(false);
+    expect(requiresFbrManualReconciliation("FAILED", "AMBIGUOUS_POST_RESULT")).toBe(false);
   });
 
   it("uses the explicit v1.12 sandbox and production DI endpoints", () => {
