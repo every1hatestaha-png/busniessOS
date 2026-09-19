@@ -6,6 +6,10 @@ let createSale: typeof import("@/lib/server/sales")["createSale"];
 let createPurchase: typeof import("@/lib/server/purchases")["createPurchase"];
 let createGoodsReceipt: typeof import("@/lib/server/purchases")["createGoodsReceipt"];
 let recordPayment: typeof import("@/lib/server/payments")["recordPayment"];
+let reverseCustomerPayment: typeof import("@/lib/server/payments")["reverseCustomerPayment"];
+let getCustomerOpeningBalanceOutstanding: typeof import("@/lib/server/payments")["getCustomerOpeningBalanceOutstanding"];
+let createCustomer: typeof import("@/lib/server/customers")["createCustomer"];
+let getReceivablesAging: typeof import("@/lib/server/receivables")["getReceivablesAging"];
 let recordSupplierPayment: typeof import("@/lib/server/suppliers")["recordSupplierPayment"];
 let getSupplierPaymentVoucher: typeof import("@/lib/server/suppliers")["getSupplierPaymentVoucher"];
 let createCashBankAccount: typeof import("@/lib/server/accounting")["createCashBankAccount"];
@@ -54,7 +58,9 @@ describe("cash/bank + payment voucher + WHT integration", () => {
     ({ db } = await import("@/lib/server/db"));
     ({ createSale } = await import("@/lib/server/sales"));
     ({ createPurchase, createGoodsReceipt } = await import("@/lib/server/purchases"));
-    ({ recordPayment } = await import("@/lib/server/payments"));
+    ({ recordPayment, reverseCustomerPayment, getCustomerOpeningBalanceOutstanding } = await import("@/lib/server/payments"));
+    ({ createCustomer } = await import("@/lib/server/customers"));
+    ({ getReceivablesAging } = await import("@/lib/server/receivables"));
     ({ recordSupplierPayment, getSupplierPaymentVoucher } = await import("@/lib/server/suppliers"));
     ({ createCashBankAccount, getCashBankAccounts, ensureDefaultAccounts } = await import("@/lib/server/accounting"));
     ({ getPayablesAging } = await import("@/lib/server/payables"));
@@ -149,6 +155,61 @@ describe("cash/bank + payment voucher + WHT integration", () => {
     expect(Number(bank.currentBalance)).toBe(1400);
     const customer = await db.customer.findUniqueOrThrow({ where: { id: customerId } });
     expect(Number(customer.currentBalance)).toBe(0);
+  });
+
+  it("settles and reverses a customer opening balance explicitly", async () => {
+    const openingCustomerId = await createCustomer(context(), {
+      name: "Opening Balance Customer",
+      companyName: "Opening Balance Customer",
+      phone: "",
+      email: "",
+      city: "Lahore",
+      address: "",
+      creditDays: 30,
+      creditLimit: "500000",
+      openingBalance: "1000",
+      status: "ACTIVE",
+      notes: "",
+    });
+
+    const before = await getCustomerOpeningBalanceOutstanding(workspaceId, [openingCustomerId]);
+    expect(before.get(openingCustomerId)).toBe(1000);
+
+    const payment = await recordPayment(context(), {
+      customerId: openingCustomerId,
+      cashBankAccountId: bankAccountCashBankId,
+      applyToOpeningBalance: true,
+      amount: 400,
+      withholdingTaxAmount: 0,
+      paymentDate: new Date(),
+      method: "BANK_TRANSFER",
+      reference: "OPEN-400",
+      notes: "Opening balance settlement",
+      idempotencyKey: randomUUID(),
+    });
+
+    const allocation = await db.paymentAllocation.findFirstOrThrow({ where: { paymentId: payment.id } });
+    expect(allocation.isCustomerOpeningBalance).toBe(true);
+    expect(allocation.invoiceId).toBeNull();
+    expect(Number(allocation.amount)).toBe(400);
+
+    const customerAfter = await db.customer.findUniqueOrThrow({ where: { id: openingCustomerId } });
+    expect(Number(customerAfter.currentBalance)).toBe(600);
+    const openingAfter = await getCustomerOpeningBalanceOutstanding(workspaceId, [openingCustomerId]);
+    expect(openingAfter.get(openingCustomerId)).toBe(600);
+
+    const aging = await getReceivablesAging(workspaceId, { customerId: openingCustomerId });
+    const openingItem = aging.customers[0]?.items.find((item) => item.isOpeningBalance);
+    expect(openingItem).toMatchObject({ originalAmount: 1000, paymentsApplied: 400, outstandingAmount: 600 });
+
+    await reverseCustomerPayment(context(), payment.id, "Opening balance payment entered incorrectly");
+
+    const restoredCustomer = await db.customer.findUniqueOrThrow({ where: { id: openingCustomerId } });
+    expect(Number(restoredCustomer.currentBalance)).toBe(1000);
+    const restoredOpening = await getCustomerOpeningBalanceOutstanding(workspaceId, [openingCustomerId]);
+    expect(restoredOpening.get(openingCustomerId)).toBe(1000);
+    const restoredAging = await getReceivablesAging(workspaceId, { customerId: openingCustomerId });
+    expect(restoredAging.customers[0]?.items.find((item) => item.isOpeningBalance)?.outstandingAmount).toBe(1000);
   });
 
   it("records a supplier voucher with WHT: Dr AP gross, Cr WHT, Cr bank net", async () => {
