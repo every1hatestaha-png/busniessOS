@@ -24,7 +24,7 @@ export async function updateWorkspaceProfileAction(
   _previousState: WorkspaceProfileState,
   formData: FormData,
 ): Promise<WorkspaceProfileState> {
-  const context = await requirePermission("members.manage");
+  const context = await requirePermission("workspace.manage");
   const parsed = workspaceProfileSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { status: "error", message: parsed.error.issues[0]?.message ?? "Check the business details and try again." };
