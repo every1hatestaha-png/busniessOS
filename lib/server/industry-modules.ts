@@ -372,7 +372,7 @@ export async function transferWarehouseStock(context: IndustryContext, input: { 
     const product = await tx.$queryRaw<Array<{ id: string; name: string; sku: string | null; stockQuantity: Prisma.Decimal }>>`
       SELECT "id"::text AS "id", "name", "sku", "stockQuantity"
       FROM "products"
-      WHERE "id"=${input.productId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
+      WHERE "id"=${input.productId} AND "workspaceId"=${context.workspaceId}
       FOR UPDATE
     `;
     if (!product[0]) throw new IndustryDomainError("NOT_FOUND", "Product was not found in this workspace.");
