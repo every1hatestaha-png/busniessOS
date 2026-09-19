@@ -5,6 +5,7 @@ import { db } from "@/lib/server/db";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";
 import { postCustomerReturnToGeneralLedger, postSaleToGeneralLedger, reverseGeneralLedgerEntries } from "@/lib/server/accounting";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
+import { allocateUniformSalesTax } from "@/lib/sales-tax";
 import { saleSchema, type SaleInput } from "@/lib/validation/sale";
 import { writeAudit } from "@/lib/server/audit";
 import { customerReturnSchema, type CustomerReturnInput } from "@/lib/validation/returns";
@@ -63,8 +64,13 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
     const subtotal = lines.reduce((sum, line) => sum.plus(new Prisma.Decimal(line.unitPrice).mul(line.quantity)), new Prisma.Decimal(0));
     const lineDiscount = lines.reduce((sum, line) => sum.plus(new Prisma.Decimal(line.discountPerUnit).mul(line.quantity)), new Prisma.Decimal(0));
     const discount = lineDiscount.plus(data.orderDiscount);
-    const taxableAmount = subtotal.minus(discount);
-    const gstAmount = taxableAmount.isPositive() ? taxableAmount.mul(new Prisma.Decimal(data.gstRate).div(100)).toDecimalPlaces(2) : new Prisma.Decimal(0);
+    const taxAllocation = allocateUniformSalesTax(
+      lines.map((line) => line.total),
+      new Prisma.Decimal(data.orderDiscount),
+      new Prisma.Decimal(data.gstRate),
+    );
+    const taxableAmount = taxAllocation.totalTaxable;
+    const gstAmount = taxAllocation.totalTax;
     const total = taxableAmount.plus(gstAmount);
     const paid = new Prisma.Decimal(data.paidAmount);
     if (taxableAmount.isNegative() || paid.greaterThan(total)) throw new SaleDomainError("INVALID_TOTAL", "Payment or discount exceeds the order total.");
@@ -124,9 +130,10 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
       }
     }
 
-    await tx.salesOrderItem.createMany({ data: lines.map((line) => {
+    await tx.salesOrderItem.createMany({ data: lines.map((line, index) => {
       const product = productById.get(line.productId)!;
-      return { salesOrderId: order.id, productId: line.productId, productName: product.name, productSku: product.sku, quantity: line.quantity, unitPrice: line.unitPrice, discountPerUnit: line.discountPerUnit, totalPrice: line.total, pricingMode: line.pricingMode, unitWeight: line.pricingMode === "WEIGHT" ? line.unitWeight : null, totalWeight: line.totalWeight, perKgRate: line.pricingMode === "WEIGHT" ? line.perKgRate : null };
+      const tax = taxAllocation.lines[index]!;
+      return { salesOrderId: order.id, productId: line.productId, productName: product.name, productSku: product.sku, quantity: line.quantity, unitPrice: line.unitPrice, discountPerUnit: line.discountPerUnit, totalPrice: line.total, taxRate: tax.taxRate, taxableAmount: tax.taxableAmount, salesTaxAmount: tax.salesTaxAmount, pricingMode: line.pricingMode, unitWeight: line.pricingMode === "WEIGHT" ? line.unitWeight : null, totalWeight: line.totalWeight, perKgRate: line.pricingMode === "WEIGHT" ? line.perKgRate : null };
     }) });
     await tx.inventoryTransaction.createMany({ data: lines.map((line) => {
       const product = productById.get(line.productId)!;
@@ -168,16 +175,27 @@ export async function createCustomerReturn(context: ServiceContext, input: Custo
       const source = order.items.find((entry) => entry.id === item.itemId);
       const returned = Number(previous.find((entry) => entry.salesOrderItemId === item.itemId)?._sum.quantity ?? 0);
       if (!source || item.quantity > source.quantity.toNumber() - returned) throw new SaleDomainError("INVALID_RETURN", "Return quantity exceeds sold quantity.");
-      const allocatedLineTotal = refundableBase.isZero() ? new Prisma.Decimal(0) : source.totalPrice.mul(order.total).div(refundableBase);
+      const hasTaxSnapshot = source.taxableAmount !== null && source.salesTaxAmount !== null;
+      const allocatedLineTotal = hasTaxSnapshot
+        ? source.taxableAmount!.plus(source.salesTaxAmount!)
+        : refundableBase.isZero()
+          ? new Prisma.Decimal(0)
+          : source.totalPrice.mul(order.total).div(refundableBase);
       const unitPrice = allocatedLineTotal.div(source.quantity);
-      return { source, quantity: item.quantity, unitPrice, total: unitPrice.mul(item.quantity) };
+      const salesTax = hasTaxSnapshot
+        ? source.salesTaxAmount!.div(source.quantity).mul(item.quantity).toDecimalPlaces(2)
+        : new Prisma.Decimal(0);
+      return { source, quantity: item.quantity, unitPrice, total: unitPrice.mul(item.quantity).toDecimalPlaces(2), salesTax };
     });
     const total = lines.reduce((sum, line) => sum.plus(line.total), new Prisma.Decimal(0));
+    const hasCompleteTaxSnapshot = lines.every((line) => line.source.taxableAmount !== null && line.source.salesTaxAmount !== null);
     const taxableOrderAmount = order.subtotal.minus(order.discount);
     const orderSalesTax = Prisma.Decimal.max(order.total.minus(taxableOrderAmount), new Prisma.Decimal(0));
-    const returnSalesTax = order.total.greaterThan(0) && orderSalesTax.greaterThan(0)
-      ? total.mul(orderSalesTax).div(order.total).toDecimalPlaces(2)
-      : new Prisma.Decimal(0);
+    const returnSalesTax = hasCompleteTaxSnapshot
+      ? lines.reduce((sum, line) => sum.plus(line.salesTax), new Prisma.Decimal(0)).toDecimalPlaces(2)
+      : order.total.greaterThan(0) && orderSalesTax.greaterThan(0)
+        ? total.mul(orderSalesTax).div(order.total).toDecimalPlaces(2)
+        : new Prisma.Decimal(0);
     const saleCosts = data.restock ? await tx.inventoryTransaction.findMany({ where: { workspaceId: context.workspaceId, reference: order.orderNumber, type: "SALE", productId: { in: lines.map((line) => line.source.productId) } }, select: { productId: true, unitCost: true } }) : [];
     const inventoryCost = lines.reduce((sum, line) => {
       const cost = saleCosts.find((entry) => entry.productId === line.source.productId)?.unitCost ?? new Prisma.Decimal(0);
