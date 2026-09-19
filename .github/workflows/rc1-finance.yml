@@ -57,6 +57,14 @@ jobs:
       - name: TypeScript gate
         run: npx tsc --noEmit
 
+      - name: Production Next.js build gate
+        env:
+          NODE_ENV: production
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Zml4dHVyZS5jbGVyay5hY2NvdW50cy5kZXYk
+          CLERK_SECRET_KEY: sk_test_fixture
+          CLERK_OAUTH_CLIENT_ID: fixture-client
+        run: npm run build:web
+
       - name: Visual QA harness syntax gate
         run: |
           node --check tests/visual-qa/generate-documents.js
