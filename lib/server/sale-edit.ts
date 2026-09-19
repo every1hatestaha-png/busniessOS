@@ -114,6 +114,8 @@ export async function updateSaleAndInvoice(context: EditContext, input: SaleEdit
       fbrReferenceVerifiedForDate: true,
       fbrReferenceProvinceCode: true,
       fbrReferenceProvinceDesc: true,
+      fbrHsUomVerifiedAt: true,
+      fbrHsUomAnnexureId: true,
     },
     });
 
@@ -219,6 +221,8 @@ export async function updateSaleAndInvoice(context: EditContext, input: SaleEdit
         fbrReferenceVerifiedForDate: line.product.fbrReferenceVerifiedForDate,
         fbrReferenceProvinceCode: line.product.fbrReferenceProvinceCode,
         fbrReferenceProvinceDesc: line.product.fbrReferenceProvinceDesc,
+        fbrHsUomVerifiedAt: line.product.fbrHsUomVerifiedAt,
+        fbrHsUomAnnexureId: line.product.fbrHsUomAnnexureId,
         pricingMode: line.item.pricingMode,
         unitWeight: line.item.pricingMode === "WEIGHT" ? line.item.unitWeight : null,
         totalWeight: line.totalWeight,

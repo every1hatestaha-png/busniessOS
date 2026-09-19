@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   fbrReferenceDate,
+  fetchFbrHsUoms,
   fetchFbrRates,
   parseFbrProvinces,
   parseFbrRates,
@@ -43,6 +44,21 @@ describe("FBR reference contract", () => {
       supplierProvinceCode: 7,
       fetchImpl,
     })).resolves.toEqual([{ id: 734, description: "18%", value: 18 }]);
+  });
+
+  it("builds HS/UOM lookup only from an explicit annexure ID", async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe("https://gw.fbr.gov.pk/pdi/v2/HS_UOM?hs_code=5904.9000&annexure_id=3");
+      expect(init?.headers).toEqual(expect.objectContaining({ Authorization: "Bearer secret" }));
+      return new Response(JSON.stringify([{ uoM_ID: 77, description: "Square Meter" }]), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await expect(fetchFbrHsUoms({
+      token: "secret",
+      hsCode: "5904.9000",
+      annexureId: 3,
+      fetchImpl,
+    })).resolves.toEqual([{ id: 77, description: "Square Meter" }]);
   });
 
   it("does not expose a rejected credential in the error", async () => {

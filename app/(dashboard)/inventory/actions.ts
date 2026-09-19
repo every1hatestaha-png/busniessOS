@@ -42,9 +42,11 @@ export async function verifyFbrProductMappingAction(
     revalidatePath("/inventory");
     return {
       status: "success",
-      message: result.plainPercentageRate
-        ? `FBR mapping verified: ${result.transactionType.description} · ${result.rate.description} · ${result.uom.description}.`
-        : `FBR references verified, but rate "${result.rate.description}" uses a compound formula that MunshiOS will keep blocked from production submission.`,
+      message: !result.plainPercentageRate
+        ? `FBR references verified, but rate "${result.rate.description}" uses a compound formula that MunshiOS will keep blocked from production submission.`
+        : result.hsUomVerified
+          ? `FBR mapping verified including HS/UOM compatibility under confirmed annexure ${result.hsUomAnnexureId}.`
+          : `FBR rate/sale-type/UOM references verified. HS/UOM compatibility remains pending until a confirmed sales-annexure ID is recorded in settings.`,
       successToken: Date.now(),
     };
   } catch (error) {

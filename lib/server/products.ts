@@ -51,6 +51,8 @@ export type ProductDTO = {
   fbrReferenceVerifiedForDate: string | null;
   fbrReferenceProvinceCode: number | null;
   fbrReferenceProvinceDesc: string;
+  fbrHsUomVerifiedAt: string | null;
+  fbrHsUomAnnexureId: number | null;
   unit: ProductUnit;
   status: ProductStatus;
   createdAt: string;
@@ -93,6 +95,8 @@ function toProductDTO(product: {
   fbrReferenceVerifiedForDate: Date | null;
   fbrReferenceProvinceCode: number | null;
   fbrReferenceProvinceDesc: string | null;
+  fbrHsUomVerifiedAt: Date | null;
+  fbrHsUomAnnexureId: number | null;
   unit: ProductUnit;
   status: ProductStatus;
   createdAt: Date;
@@ -116,6 +120,7 @@ function toProductDTO(product: {
     fbrReferenceVerifiedAt: product.fbrReferenceVerifiedAt?.toISOString() ?? null,
     fbrReferenceVerifiedForDate: product.fbrReferenceVerifiedForDate?.toISOString() ?? null,
     fbrReferenceProvinceDesc: product.fbrReferenceProvinceDesc ?? "",
+    fbrHsUomVerifiedAt: product.fbrHsUomVerifiedAt?.toISOString() ?? null,
     createdAt: product.createdAt.toISOString(),
     updatedAt: product.updatedAt.toISOString(),
   };
@@ -284,6 +289,8 @@ export async function updateProduct(
                 fbrReferenceVerifiedForDate: null,
                 fbrReferenceProvinceCode: null,
                 fbrReferenceProvinceDesc: null,
+                fbrHsUomVerifiedAt: null,
+                fbrHsUomAnnexureId: null,
               }
             : {}
         ),

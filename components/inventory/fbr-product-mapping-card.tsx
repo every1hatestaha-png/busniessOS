@@ -32,6 +32,7 @@ export function FbrProductMappingCard({
     && product.fbrRateDesc
     && product.fbrUomId,
   );
+  const hsUomVerified = Boolean(product.fbrHsUomVerifiedAt && product.fbrHsUomAnnexureId);
   const compoundRate = verified
     && product.fbrRateValue !== null
     && !new RegExp("^\\d+(?:\\.\\d+)?%$").test(product.fbrRateDesc.trim());
@@ -58,6 +59,7 @@ export function FbrProductMappingCard({
           <div><dt className="text-neutral-500">Rate</dt><dd className="mt-1 font-medium">{product.fbrRateDesc || (product.fbrRateId ? `ID ${product.fbrRateId}` : "—")}</dd></div>
           <div><dt className="text-neutral-500">Effective date</dt><dd className="mt-1 font-medium">{dateLabel(product.fbrReferenceVerifiedForDate)}</dd></div>
           <div className="col-span-2"><dt className="text-neutral-500">Seller province reference</dt><dd className="mt-1 font-medium">{product.fbrReferenceProvinceDesc || "—"}{product.fbrReferenceProvinceCode ? ` (#${product.fbrReferenceProvinceCode})` : ""}</dd></div>
+          <div className="col-span-2"><dt className="text-neutral-500">HS/UOM compatibility</dt><dd className="mt-1 font-medium">{hsUomVerified ? `Verified under annexure ${product.fbrHsUomAnnexureId}` : "Pending explicit annexure confirmation / verification"}</dd></div>
         </dl>
 
         {compoundRate && (
@@ -69,7 +71,7 @@ export function FbrProductMappingCard({
         {verified && !compoundRate && (
           <div className="flex gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-800">
             <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
-            <p>Transaction type, selected rate and UOM exist in the current FBR reference data. HS-code/UOM compatibility remains a separate production gate.</p>
+            <p>{hsUomVerified ? "Transaction type, rate and HS/UOM compatibility are reference-verified for the recorded annexure." : "Transaction type, selected rate and global UOM exist in FBR reference data. HS-code/UOM compatibility is still blocked until an authoritative annexure ID is confirmed and re-verified."}</p>
           </div>
         )}
 
