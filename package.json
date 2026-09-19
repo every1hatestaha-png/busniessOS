@@ -1,8 +1,8 @@
 {
-  "name": "business-os",
+  "name": "munshios",
   "version": "0.2.1",
-  "description": "BusinessOS - Accounting, Inventory & Sales Management",
-  "author": "BusinessOS",
+  "description": "MunshiOS - Pakistani business operating system for accounting, inventory, purchasing and sales",
+  "author": "MunshiOS",
   "private": true,
   "main": "desktop/main.cjs",
   "scripts": {
@@ -61,7 +61,7 @@
   },
   "build": {
     "appId": "com.businessos.desktop",
-    "productName": "BusinessOS",
+    "productName": "MunshiOS",
     "asar": true,
     "directories": {
       "output": "dist-desktop"
@@ -92,9 +92,9 @@
       "allowElevation": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "BusinessOS",
-      "menuCategory": "BusinessOS",
-      "uninstallDisplayName": "BusinessOS",
+      "shortcutName": "MunshiOS",
+      "menuCategory": "MunshiOS",
+      "uninstallDisplayName": "MunshiOS",
       "deleteAppDataOnUninstall": false
     }
   }
