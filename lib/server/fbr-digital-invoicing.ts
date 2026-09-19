@@ -20,9 +20,14 @@ function submissionKey(workspaceId: string, invoiceId: string, environment: "SAN
   return createHash("sha256").update(`fbr:${workspaceId}:${invoiceId}:${environment}:v1`).digest("hex");
 }
 
-export async function getFbrSubmissionForInvoice(workspaceId: string, invoiceId: string) {
+export async function getFbrSubmissionForInvoice(
+  workspaceId: string,
+  invoiceId: string,
+  environment?: "SANDBOX" | "PRODUCTION",
+) {
   return db.fbrInvoiceSubmission.findFirst({
-    where: { workspaceId, invoiceId },
+    where: { workspaceId, invoiceId, ...(environment ? { environment } : {}) },
+    orderBy: { updatedAt: "desc" },
     include: { attempts: { orderBy: { createdAt: "desc" }, take: 10 } },
   });
 }
@@ -133,7 +138,7 @@ export async function prepareFbrInvoiceSubmission(invoiceId: string) {
   const idempotencyKey = submissionKey(context.workspaceId, invoice.id, environment);
 
   const submission = await db.$transaction(async (tx) => {
-    const existing = await tx.fbrInvoiceSubmission.findUnique({ where: { invoiceId: invoice.id } });
+    const existing = await tx.fbrInvoiceSubmission.findFirst({ where: { invoiceId: invoice.id, environment } });
     if (existing?.status === "SUBMITTED") return existing;
 
     const saved = existing
