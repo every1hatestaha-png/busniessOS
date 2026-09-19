@@ -218,6 +218,8 @@ model Workspace {
   currency     String       @default("PKR")
   timezone     String       @default("Asia/Karachi")
   businessType BusinessType @default(WHOLESALER)
+  ntn          String?
+  strn         String?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
