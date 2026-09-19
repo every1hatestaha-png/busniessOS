@@ -58,6 +58,10 @@ export function FbrInvoiceStatusCard({
   const status = data.submission?.status ?? "NOT PREPARED";
   const sandbox = data.environment === "SANDBOX";
   const production = data.environment === "PRODUCTION";
+  const feedback = [prepareState, validateState, submitState].reduce(
+    (latest, current) => (current.successToken ?? 0) > (latest.successToken ?? 0) ? current : latest,
+    initialState,
+  );
   const manualReconciliationRequired = data.submission?.status === "BLOCKED"
     && data.submission.lastErrorCode === "AMBIGUOUS_POST_RESULT";
   const busy = preparePending || validatePending || submitPending;
@@ -185,14 +189,14 @@ export function FbrInvoiceStatusCard({
         </div>
       ) : null}
 
-      {(prepareState.error || validateState.error || submitState.error) && (
+      {feedback.error && (
         <p role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {submitState.error ?? validateState.error ?? prepareState.error}
+          {feedback.error}
         </p>
       )}
-      {(prepareState.success || validateState.success || submitState.success) && (
+      {feedback.success && (
         <p role="status" className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-          {submitState.success ?? validateState.success ?? prepareState.success}
+          {feedback.success}
         </p>
       )}
 

@@ -109,21 +109,42 @@ export async function updateFbrSandboxConfigAction(
     return { status: "error", message: "Choose an FBR sandbox scenario before enabling Digital Invoicing." };
   }
 
-  const config = await db.fbrIntegrationConfig.upsert({
-    where: { workspaceId: context.workspaceId },
-    create: {
-      workspaceId: context.workspaceId,
-      enabled,
-      environment: "SANDBOX",
-      provider: "PRAL",
-      defaultScenarioId: parsed.data.defaultScenarioId || null,
-    },
-    update: {
-      enabled,
-      environment: "SANDBOX",
-      defaultScenarioId: parsed.data.defaultScenarioId || null,
-    },
-  });
+  let config;
+  if (existing) {
+    const updated = await db.fbrIntegrationConfig.updateMany({
+      where: { workspaceId: context.workspaceId, environment: "SANDBOX" },
+      data: {
+        enabled,
+        defaultScenarioId: parsed.data.defaultScenarioId || null,
+      },
+    });
+    if (updated.count !== 1) {
+      return {
+        status: "error",
+        message: "FBR configuration changed while you were editing. Refresh settings before trying again.",
+      };
+    }
+    config = await db.fbrIntegrationConfig.findUniqueOrThrow({
+      where: { workspaceId: context.workspaceId },
+    });
+  } else {
+    try {
+      config = await db.fbrIntegrationConfig.create({
+        data: {
+          workspaceId: context.workspaceId,
+          enabled,
+          environment: "SANDBOX",
+          provider: "PRAL",
+          defaultScenarioId: parsed.data.defaultScenarioId || null,
+        },
+      });
+    } catch {
+      return {
+        status: "error",
+        message: "FBR configuration changed while you were editing. Refresh settings before trying again.",
+      };
+    }
+  }
 
   await db.auditLog.create({
     data: {
