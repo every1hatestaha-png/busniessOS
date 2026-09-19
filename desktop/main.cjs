@@ -7,6 +7,7 @@ const http = require("node:http");
 const net = require("node:net");
 const path = require("node:path");
 const { app, BrowserWindow, dialog, ipcMain, safeStorage, session, shell } = require("electron");
+const { scheduleDesktopUpdateChecks } = require("./updater.cjs");
 
 // Development has its own cookies and encrypted credentials. Never restore the
 // installed application's account while testing local code.
@@ -121,6 +122,7 @@ let bearerInjectionListener = null;
 let tokenRefreshTimer = null;
 let desktopAuthGeneration = 0;
 let desktopLogoutInProgress = false;
+let stopDesktopUpdateChecks = () => {};
 
 // ---------------------------------------------------------------------------
 // Desktop OAuth state (Electron main process owns everything)
@@ -1347,6 +1349,7 @@ if (!hasSingleInstanceLock) {
       appendLog("INFO", "STAGE: creating main window...");
       createMainWindow();
       if (!app.isPackaged) mainWindow.webContents.openDevTools({ mode: "right" });
+      stopDesktopUpdateChecks = scheduleDesktopUpdateChecks({ app, dialog, shell, log: appendLog });
       appendLog("INFO", "STAGE: main window created — startup complete");
     } catch (error) {
       closeSplashWindow();
@@ -1373,6 +1376,7 @@ if (!hasSingleInstanceLock) {
 
   app.on("before-quit", (event) => {
     quitting = true;
+    stopDesktopUpdateChecks();
     appendLog("INFO", "STAGE: before-quit fired");
     if (!serverProcess || shutdownStarted) return;
     event.preventDefault();

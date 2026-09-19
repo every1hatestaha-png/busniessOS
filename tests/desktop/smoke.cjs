@@ -60,7 +60,7 @@ app.whenReady().then(async () => {
       if (key === "isPackaged") return true;
       const value = Reflect.get(target, key);
       return typeof value === "function" ? value.bind(target) : value;
-    } }) } : require(name),
+    } }) } : name === "./updater.cjs" ? require(path.join(desktopSource, "updater.cjs")) : require(name),
     __dirname: path.join(root, "desktop"), process, Buffer, URL, URLSearchParams,
     setTimeout, clearTimeout, console, fetch,
   });
