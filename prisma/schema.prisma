@@ -210,6 +210,7 @@ enum FbrEnvironment {
 
 enum FbrSubmissionStatus {
   DRAFT
+  VALIDATING
   VALIDATION_FAILED
   VALIDATED
   SUBMITTING
