@@ -1,4 +1,19 @@
-# BusinessOS Desktop Update Plan
+# MunshiOS Desktop Update Plan
+
+## Implementation status — 2026-09-19
+
+The desktop update client is now implemented in `desktop/updater.cjs` and is wired into packaged-app startup.
+
+- Checks the latest stable GitHub Release after startup and every six hours.
+- Downloads only a release installer that has a matching `.sha256` asset.
+- Streams and verifies the installer SHA-256 before any install action.
+- Verifies Windows Authenticode and **refuses automatic installation when the signature is not valid**.
+- Prompts the user before download and again before installation.
+- Uses a detached Windows helper only after signature verification so the running app can close before NSIS replaces files.
+- `.github/workflows/desktop-release.yml` packages Windows releases and publishes the installer plus checksum.
+- The release workflow supports `WINDOWS_CSC_LINK` and `WINDOWS_CSC_KEY_PASSWORD` secrets. Until a trusted code-signing certificate is connected, releases may be published for manual install but automatic installation remains blocked by design.
+
+This means the software-side auto-update requirement is implemented. Trusted unattended installation still depends on the external Windows code-signing credential.
 
 Version: D8 (0.2.0)
 
