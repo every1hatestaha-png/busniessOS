@@ -2,6 +2,8 @@ import { ForbiddenError } from "@/lib/server/authorization";
 import { requirePermission } from "@/lib/server/authorization";
 import { listInvitations, listMembers } from "@/lib/server/members";
 import { MemberManager } from "@/components/settings/member-manager";
+import { BusinessProfileForm } from "@/components/settings/business-profile-form";
+import { db } from "@/lib/server/db";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -30,9 +32,13 @@ export default async function SettingsPage() {
     throw error;
   }
 
-  const [members, invitations] = await Promise.all([
+  const [members, invitations, workspace] = await Promise.all([
     listMembers(context.workspaceId),
     listInvitations(context.workspaceId),
+    db.workspace.findUniqueOrThrow({
+      where: { id: context.workspaceId },
+      select: { name: true, phone: true, email: true, address: true, city: true, country: true, businessType: true },
+    }),
   ]);
 
   const version = getAppVersion();
@@ -40,13 +46,18 @@ export default async function SettingsPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <header>
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">
-          Workspace
-        </p>
-        <h1 className="mt-1 text-3xl font-bold tracking-tight">Members</h1>
-        <p className="mt-1 text-neutral-500">Invite teammates and control access roles.</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Workspace</p>
+        <h1 className="mt-1 text-3xl font-bold tracking-tight">Business settings</h1>
+        <p className="mt-1 text-neutral-500">Manage your business identity, location and team access.</p>
       </header>
-      <MemberManager members={members} invitations={invitations} />
+      <BusinessProfileForm workspace={workspace} />
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold">Team & access</h2>
+          <p className="mt-0.5 text-sm text-neutral-500">Invite teammates and control access roles.</p>
+        </div>
+        <MemberManager members={members} invitations={invitations} />
+      </section>
       <div className="border-t border-neutral-200 pt-6">
         <p className="text-xs text-neutral-400">
           MunshiOS v{version}
