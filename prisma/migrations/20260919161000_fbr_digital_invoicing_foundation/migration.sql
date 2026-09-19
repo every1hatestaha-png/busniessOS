@@ -63,7 +63,7 @@ CREATE TABLE "fbr_invoice_attempts" (
 );
 
 CREATE UNIQUE INDEX "fbr_integration_configs_workspaceId_key" ON "fbr_integration_configs"("workspaceId");
-CREATE UNIQUE INDEX "fbr_invoice_submissions_invoiceId_key" ON "fbr_invoice_submissions"("invoiceId");
+CREATE UNIQUE INDEX "fbr_invoice_submissions_invoiceId_environment_key" ON "fbr_invoice_submissions"("invoiceId", "environment");
 CREATE UNIQUE INDEX "fbr_invoice_submissions_workspaceId_idempotencyKey_key" ON "fbr_invoice_submissions"("workspaceId", "idempotencyKey");
 CREATE INDEX "fbr_invoice_submissions_workspaceId_status_updatedAt_idx" ON "fbr_invoice_submissions"("workspaceId", "status", "updatedAt");
 CREATE INDEX "fbr_invoice_submissions_workspaceId_invoiceId_idx" ON "fbr_invoice_submissions"("workspaceId", "invoiceId");
