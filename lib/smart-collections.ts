@@ -3,6 +3,7 @@ import { splitContactPhones } from "@/lib/contact-phones";
 export type CollectionLanguage = "roman-urdu" | "english";
 export type CollectionStatus = "CURRENT" | "DUE" | "OVERDUE" | "CRITICAL" | "REVIEW";
 export type CollectionPriority = "URGENT" | "HIGH" | "NORMAL" | "REVIEW" | "NONE";
+export type CollectionPromiseTiming = "MISSED" | "TODAY" | "UPCOMING";
 
 export type CollectionDocument = {
   documentNumber: string;
@@ -27,6 +28,15 @@ export type WhatsAppContact = {
   isPrimary: boolean;
 };
 
+export type ActiveCollectionPromise = {
+  id: string;
+  amount: number;
+  promiseDate: string;
+  timing: CollectionPromiseTiming;
+  daysLate: number;
+  note: string;
+};
+
 export type SmartCollectionRow = {
   customerId: string;
   customerName: string;
@@ -42,6 +52,7 @@ export type SmartCollectionRow = {
   priority: CollectionPriority;
   pendingReferences: string[];
   needsContact: boolean;
+  activePromise?: ActiveCollectionPromise | null;
 };
 
 export type SmartCollectionsSummary = {
@@ -87,13 +98,18 @@ export function getCollectionPriority(status: CollectionStatus): CollectionPrior
   return "NONE";
 }
 
+export function applyActivePromise(row: SmartCollectionRow, promise: ActiveCollectionPromise | null): SmartCollectionRow {
+  if (!promise) return { ...row, activePromise: null };
+  if (promise.timing === "MISSED") return { ...row, activePromise: promise, needsContact: true, priority: "URGENT" };
+  if (promise.timing === "TODAY") return { ...row, activePromise: promise, needsContact: true, priority: row.priority === "URGENT" ? "URGENT" : "HIGH" };
+  return { ...row, activePromise: promise, needsContact: false };
+}
+
 export function buildSmartCollectionRows(customers: CollectionCustomerInput[]) {
   const priority: Record<CollectionStatus, number> = { CRITICAL: 0, OVERDUE: 1, DUE: 2, REVIEW: 3, CURRENT: 4 };
   return customers
     .filter((customer) => customer.currentBalance > 0)
     .map<SmartCollectionRow>((customer) => {
-      // Opening balances do not preserve the original invoice/due date. Never
-      // invent overdue days from the date the opening balance was entered.
       const datedItems = customer.items.filter((item) => !item.isOpeningBalance);
       const ageForTerms = datedItems.length
         ? Math.max(...datedItems.map((item) => item.ageDays))
@@ -125,6 +141,7 @@ export function buildSmartCollectionRows(customers: CollectionCustomerInput[]) {
         priority: getCollectionPriority(status),
         pendingReferences,
         needsContact: status === "DUE" || status === "OVERDUE" || status === "CRITICAL",
+        activePromise: null,
       };
     })
     .sort((a, b) => priority[a.status] - priority[b.status] || (b.daysPastTerms ?? -1) - (a.daysPastTerms ?? -1) || b.currentBalance - a.currentBalance);
@@ -132,7 +149,7 @@ export function buildSmartCollectionRows(customers: CollectionCustomerInput[]) {
 
 export function summarizeSmartCollections(rows: SmartCollectionRow[]): SmartCollectionsSummary {
   const dueRows = rows.filter((row) => row.needsContact);
-  const criticalRows = rows.filter((row) => row.status === "CRITICAL");
+  const criticalRows = dueRows.filter((row) => row.priority === "URGENT");
   return {
     totalOpen: roundMoney(rows.reduce((sum, row) => sum + row.currentBalance, 0)),
     dueNow: roundMoney(dueRows.reduce((sum, row) => sum + row.currentBalance, 0)),
@@ -147,64 +164,61 @@ function formatRupees(amount: number) {
   return `Rs ${amount.toLocaleString("en-PK", { minimumFractionDigits: Number.isInteger(amount) ? 0 : 2, maximumFractionDigits: 2 })}`;
 }
 
+function formatPromiseDate(dateKey: string) {
+  const date = new Date(`${dateKey}T12:00:00.000Z`);
+  return new Intl.DateTimeFormat("en-PK", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(date);
+}
+
 function referenceText(row: SmartCollectionRow) {
   return row.pendingReferences.length ? row.pendingReferences.join(", ") : "Account balance";
 }
 
 function englishReminderMeta(row: SmartCollectionRow) {
-  if (row.status === "CRITICAL") return {
+  const promise = row.activePromise;
+  if (promise?.timing === "MISSED") return {
     title: "IMPORTANT PAYMENT FOLLOW-UP",
-    statusLine: `${row.daysPastTerms} days past payment terms`,
-    action: "Please prioritize settlement and confirm the expected payment date.",
+    statusLine: `Promised payment of ${formatRupees(promise.amount)} was due on ${formatPromiseDate(promise.promiseDate)} and is ${promise.daysLate} day${promise.daysLate === 1 ? "" : "s"} late`,
+    action: "Please confirm the payment status or share a revised payment date.",
   };
-  if (row.status === "OVERDUE") return {
-    title: "PAYMENT FOLLOW-UP",
-    statusLine: `${row.daysPastTerms} day${row.daysPastTerms === 1 ? "" : "s"} past payment terms`,
-    action: "Kindly confirm the payment status or expected payment date.",
+  if (promise?.timing === "TODAY") return {
+    title: "PAYMENT PROMISE DUE TODAY",
+    statusLine: `Promised payment of ${formatRupees(promise.amount)} is due today`,
+    action: "Kindly confirm whether the promised payment is being processed today.",
   };
-  if (row.status === "DUE") return {
-    title: "PAYMENT REMINDER",
-    statusLine: "Payment is due according to the account terms",
-    action: "Kindly confirm the payment status or expected payment date.",
+  if (promise?.timing === "UPCOMING") return {
+    title: "PAYMENT PROMISE CONFIRMATION",
+    statusLine: `Payment promise of ${formatRupees(promise.amount)} is scheduled for ${formatPromiseDate(promise.promiseDate)}`,
+    action: "Thank you. This is a confirmation of the agreed payment date.",
   };
-  if (row.status === "REVIEW") return {
-    title: "ACCOUNT BALANCE CONFIRMATION",
-    statusLine: "Balance date requires manual confirmation",
-    action: "Kindly confirm the current balance and expected payment plan.",
-  };
-  return {
-    title: "ACCOUNT BALANCE UPDATE",
-    statusLine: "Within current payment terms",
-    action: "This is an account balance update for your records.",
-  };
+  if (row.status === "CRITICAL") return { title: "IMPORTANT PAYMENT FOLLOW-UP", statusLine: `${row.daysPastTerms} days past payment terms`, action: "Please prioritize settlement and confirm the expected payment date." };
+  if (row.status === "OVERDUE") return { title: "PAYMENT FOLLOW-UP", statusLine: `${row.daysPastTerms} day${row.daysPastTerms === 1 ? "" : "s"} past payment terms`, action: "Kindly confirm the payment status or expected payment date." };
+  if (row.status === "DUE") return { title: "PAYMENT REMINDER", statusLine: "Payment is due according to the account terms", action: "Kindly confirm the payment status or expected payment date." };
+  if (row.status === "REVIEW") return { title: "ACCOUNT BALANCE CONFIRMATION", statusLine: "Balance date requires manual confirmation", action: "Kindly confirm the current balance and expected payment plan." };
+  return { title: "ACCOUNT BALANCE UPDATE", statusLine: "Within current payment terms", action: "This is an account balance update for your records." };
 }
 
 function romanUrduReminderMeta(row: SmartCollectionRow) {
-  if (row.status === "CRITICAL") return {
+  const promise = row.activePromise;
+  if (promise?.timing === "MISSED") return {
     title: "IMPORTANT PAYMENT FOLLOW-UP",
-    statusLine: `${row.daysPastTerms} din payment terms se late`,
-    action: "Meherbani karke payment ko priority dein aur expected payment date confirm kar dein.",
+    statusLine: `${formatRupees(promise.amount)} ki promised payment ${formatPromiseDate(promise.promiseDate)} ko due thi aur ${promise.daysLate} din late hai`,
+    action: "Meherbani karke payment status ya revised payment date confirm kar dein.",
   };
-  if (row.status === "OVERDUE") return {
-    title: "PAYMENT FOLLOW-UP",
-    statusLine: `${row.daysPastTerms} din payment terms se late`,
-    action: "Meherbani karke payment status ya expected payment date confirm kar dein.",
+  if (promise?.timing === "TODAY") return {
+    title: "PAYMENT PROMISE DUE TODAY",
+    statusLine: `${formatRupees(promise.amount)} ki promised payment aaj due hai`,
+    action: "Meherbani karke confirm kar dein ke promised payment aaj process ho rahi hai.",
   };
-  if (row.status === "DUE") return {
-    title: "PAYMENT REMINDER",
-    statusLine: "Payment account terms ke mutabiq due hai",
-    action: "Meherbani karke payment status ya expected payment date confirm kar dein.",
+  if (promise?.timing === "UPCOMING") return {
+    title: "PAYMENT PROMISE CONFIRMATION",
+    statusLine: `${formatRupees(promise.amount)} ki payment ${formatPromiseDate(promise.promiseDate)} ke liye committed hai`,
+    action: "Shukriya. Ye agreed payment date ki confirmation hai.",
   };
-  if (row.status === "REVIEW") return {
-    title: "ACCOUNT BALANCE CONFIRMATION",
-    statusLine: "Balance ki date manual confirmation chahti hai",
-    action: "Meherbani karke current balance aur expected payment plan confirm kar dein.",
-  };
-  return {
-    title: "ACCOUNT BALANCE UPDATE",
-    statusLine: "Payment abhi current terms ke andar hai",
-    action: "Ye sirf aapke record ke liye account balance update hai.",
-  };
+  if (row.status === "CRITICAL") return { title: "IMPORTANT PAYMENT FOLLOW-UP", statusLine: `${row.daysPastTerms} din payment terms se late`, action: "Meherbani karke payment ko priority dein aur expected payment date confirm kar dein." };
+  if (row.status === "OVERDUE") return { title: "PAYMENT FOLLOW-UP", statusLine: `${row.daysPastTerms} din payment terms se late`, action: "Meherbani karke payment status ya expected payment date confirm kar dein." };
+  if (row.status === "DUE") return { title: "PAYMENT REMINDER", statusLine: "Payment account terms ke mutabiq due hai", action: "Meherbani karke payment status ya expected payment date confirm kar dein." };
+  if (row.status === "REVIEW") return { title: "ACCOUNT BALANCE CONFIRMATION", statusLine: "Balance ki date manual confirmation chahti hai", action: "Meherbani karke current balance aur expected payment plan confirm kar dein." };
+  return { title: "ACCOUNT BALANCE UPDATE", statusLine: "Payment abhi current terms ke andar hai", action: "Ye sirf aapke record ke liye account balance update hai." };
 }
 
 export function buildCollectionMessage(row: SmartCollectionRow, workspaceName: string, language: CollectionLanguage = "roman-urdu") {
