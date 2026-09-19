@@ -25,3 +25,16 @@ export function resolveFbrBearerToken(workspaceId: string) {
     "No FBR bearer token is configured for this workspace. Configure a workspace-scoped secret or explicitly enable the shared-token fallback.",
   );
 }
+
+
+export function getFbrCredentialReadiness(workspaceId: string) {
+  try {
+    const resolved = resolveFbrBearerToken(workspaceId);
+    return { configured: true as const, source: resolved.source };
+  } catch (error) {
+    if (error instanceof FbrCredentialError) {
+      return { configured: false as const, source: null };
+    }
+    throw error;
+  }
+}
