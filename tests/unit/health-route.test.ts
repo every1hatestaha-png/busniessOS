@@ -15,6 +15,7 @@ describe("public system endpoints", () => {
   it("explicitly exempts health and the Clerk webhook from Clerk protection", () => {
     const proxy = readFileSync(join(process.cwd(), "proxy.ts"), "utf8");
     expect(proxy).toContain('path === "/api/health"');
+    expect(proxy).toContain('path === "/api/readiness"');
     expect(proxy).toContain('path === "/api/webhooks/clerk"');
   });
 
