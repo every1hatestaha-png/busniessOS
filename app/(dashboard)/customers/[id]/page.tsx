@@ -9,6 +9,7 @@ import { RecordPaymentForm } from "@/components/payments/record-payment-form";
 import { buttonVariants } from "@/components/ui/button";
 import { requireWorkspace } from "@/lib/server/auth";
 import { getCashBankAccounts } from "@/lib/server/accounting";
+import { getCustomerOpeningBalanceOutstanding } from "@/lib/server/payments";
 import { getCustomer } from "@/lib/server/customers";
 import { canPerformAction } from "@/lib/server/authorization";
 import { formatPKR, getCreditStatus } from "@/lib/utils";
@@ -26,6 +27,10 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     canRecordPayments ? getCashBankAccounts(workspaceId) : Promise.resolve([]),
   ]);
   if (!customer) notFound();
+  const openingBalances = canRecordPayments
+    ? await getCustomerOpeningBalanceOutstanding(workspaceId, [customer.id])
+    : new Map<string, number>();
+  const openingBalanceOutstanding = openingBalances.get(customer.id) ?? 0;
   const credit = getCreditPresentation(customer.currentBalance, customer.creditLimit);
   const ledgerHref = `/reports/customer-statement?partyId=${customer.id}&from=2000-01-01`;
 
@@ -42,7 +47,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         <MetricCard label="Total sales" value={formatPKR(customer.totalSales)} detail="Lifetime sales" icon={ShoppingCart} />
         <MetricCard label="Total payments" value={formatPKR(customer.totalPayments)} detail="Lifetime receipts" icon={CircleDollarSign} />
       </div>
-      <div className={`grid items-start gap-4 ${customer.currentBalance > 0 && canRecordPayments ? "2xl:grid-cols-[minmax(0,1fr)_360px]" : ""}`}><CustomerDetailsTabs customer={customer} />{customer.currentBalance > 0 && canRecordPayments && <div className="rounded-xl border bg-white p-4"><h2 className="font-semibold">Record receipt</h2><p className="mb-4 mt-1 text-xs text-neutral-500">Unallocated receipt against this customer account.</p><RecordPaymentForm customers={[{ id: customer.id, name: customer.companyName, balance: customer.currentBalance }]} cashBankAccounts={cashBankAccounts} /></div>}</div>
+      <div className={`grid items-start gap-4 ${customer.currentBalance > 0 && canRecordPayments ? "2xl:grid-cols-[minmax(0,1fr)_360px]" : ""}`}><CustomerDetailsTabs customer={customer} />{customer.currentBalance > 0 && canRecordPayments && <div className="rounded-xl border bg-white p-4"><h2 className="font-semibold">Record receipt</h2><p className="mb-4 mt-1 text-xs text-neutral-500">Choose opening balance or leave the receipt unallocated on this customer account.</p><RecordPaymentForm customers={[{ id: customer.id, name: customer.companyName, balance: customer.currentBalance, openingBalance: openingBalanceOutstanding }]} cashBankAccounts={cashBankAccounts} /></div>}</div>
     </div>
   );
 }
