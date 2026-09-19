@@ -36,6 +36,7 @@ describe("FBR API client", () => {
       expect(String(url)).toContain("validateinvoicedata_sb");
       expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer secret-token");
       expect(init?.method).toBe("POST");
+      expect(init?.redirect).toBe("error");
       return new Response(JSON.stringify({ validationResponse: { statusCode: "00", status: "Valid", error: "" } }), { status: 200 });
     }) as unknown as typeof fetch;
 
