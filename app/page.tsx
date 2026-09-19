@@ -432,9 +432,9 @@ export default function Home() {
             </div>
             <div><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Product</p><div className="mt-4 space-y-3 text-sm text-slate-300"><a href="#features" className="block hover:text-white">Features</a><a href="#industries" className="block hover:text-white">Industries</a><a href="#pricing" className="block hover:text-white">Pricing</a></div></div>
             <div><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Account</p><div className="mt-4 space-y-3 text-sm text-slate-300"><Link href="/sign-in" className="block hover:text-white">Login</Link><Link href="/get-your-munshi" className="block hover:text-white">Get your Munshi</Link></div></div>
-            <div><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Support</p><div className="mt-4 space-y-3 text-sm text-slate-300"><a href={whatsappHref} className="block hover:text-white">WhatsApp</a><a href="#faq" className="block hover:text-white">FAQ</a></div></div>
+            <div><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Support</p><div className="mt-4 space-y-3 text-sm text-slate-300"><a href={whatsappHref} className="block hover:text-white">WhatsApp</a><a href="#faq" className="block hover:text-white">FAQ</a><Link href="/privacy" className="block hover:text-white">Privacy</Link><Link href="/terms" className="block hover:text-white">Terms</Link></div></div>
           </div>
-          <div className="flex flex-col gap-3 pt-7 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between"><span>© 2026 MunshiOS. All rights reserved.</span><span>Built for Pakistani businesses.</span></div>
+          <div className="flex flex-col gap-3 pt-7 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between"><span>© 2026 MunshiOS. All rights reserved.</span><div className="flex flex-wrap gap-4"><Link href="/privacy" className="hover:text-slate-300">Privacy</Link><Link href="/terms" className="hover:text-slate-300">Terms</Link><span>Built for Pakistani businesses.</span></div></div>
         </div>
       </footer>
 
