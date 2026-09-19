@@ -14,6 +14,8 @@ const workspaceProfileSchema = z.object({
   city: z.string().trim().min(2, "City is required.").max(80),
   country: z.string().trim().min(2, "Country is required.").max(80),
   businessType: z.enum(["WHOLESALER", "DISTRIBUTOR", "MANUFACTURER", "RETAILER", "OTHER"]),
+  ntn: z.string().trim().max(40).optional().default(""),
+  strn: z.string().trim().max(40).optional().default(""),
 });
 
 export type WorkspaceProfileState = { status?: "success" | "error"; message?: string };
@@ -22,7 +24,7 @@ export async function updateWorkspaceProfileAction(
   _previousState: WorkspaceProfileState,
   formData: FormData,
 ): Promise<WorkspaceProfileState> {
-  const context = await requirePermission("members.manage");
+  const context = await requirePermission("workspace.manage");
   const parsed = workspaceProfileSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { status: "error", message: parsed.error.issues[0]?.message ?? "Check the business details and try again." };
@@ -38,6 +40,8 @@ export async function updateWorkspaceProfileAction(
       city: parsed.data.city,
       country: parsed.data.country,
       businessType: parsed.data.businessType,
+      ntn: parsed.data.ntn || null,
+      strn: parsed.data.strn || null,
     },
   });
 
@@ -53,6 +57,8 @@ export async function updateWorkspaceProfileAction(
         city: parsed.data.city,
         country: parsed.data.country,
         businessType: parsed.data.businessType,
+        ntn: parsed.data.ntn || null,
+        strn: parsed.data.strn || null,
       },
     },
   });
