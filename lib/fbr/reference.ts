@@ -145,3 +145,21 @@ export async function fetchFbrRates(input: {
     fetchImpl: input.fetchImpl,
   }));
 }
+
+
+export async function fetchFbrHsUoms(input: {
+  token: string;
+  hsCode: string;
+  annexureId: number;
+  fetchImpl?: typeof fetch;
+}) {
+  const query = new URLSearchParams({
+    hs_code: input.hsCode.trim(),
+    annexure_id: String(input.annexureId),
+  });
+  return parseFbrUoms(await callReference({
+    path: `/pdi/v2/HS_UOM?${query.toString()}`,
+    token: input.token,
+    fetchImpl: input.fetchImpl,
+  }));
+}

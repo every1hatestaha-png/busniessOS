@@ -112,3 +112,35 @@ export function validateFbrLineMapping(input: FbrLineMappingInput): FbrLineMappi
 
   return issues;
 }
+
+
+export function validateFbrHsUomCompatibility(input: {
+  configuredAnnexureId: number | null | undefined;
+  annexureConfirmedAt: Date | null | undefined;
+  annexureConfirmedBy: string | null | undefined;
+  lineAnnexureId: number | null | undefined;
+  lineVerifiedAt: Date | null | undefined;
+}) {
+  if (!input.configuredAnnexureId || !input.annexureConfirmedAt || !input.annexureConfirmedBy?.trim()) {
+    return {
+      ready: false as const,
+      code: "FBR_HS_UOM_ANNEXURE_NOT_CONFIRMED",
+      message: "The FBR HS/UOM sales-annexure ID has not been explicitly confirmed for this workspace.",
+    };
+  }
+  if (!input.lineVerifiedAt || !input.lineAnnexureId) {
+    return {
+      ready: false as const,
+      code: "FBR_HS_UOM_UNVERIFIED",
+      message: "This sale line does not have an immutable FBR HS-code/UOM compatibility verification snapshot.",
+    };
+  }
+  if (input.lineAnnexureId !== input.configuredAnnexureId) {
+    return {
+      ready: false as const,
+      code: "FBR_HS_UOM_ANNEXURE_MISMATCH",
+      message: "This sale line was verified against a different FBR sales-annexure ID.",
+    };
+  }
+  return { ready: true as const };
+}
