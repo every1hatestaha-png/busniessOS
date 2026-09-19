@@ -31,9 +31,9 @@ const payload: FbrInvoicePayload = {
 };
 
 describe("FBR API client", () => {
-  it("sends bearer auth to the shared validate URL for sandbox token routing", async () => {
+  it("sends bearer auth to the explicit v1.12 sandbox validate URL", async () => {
     const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
-      expect(String(url)).toBe("https://gw.fbr.gov.pk/di_data/v1/di/validateinvoicedata");
+      expect(String(url)).toBe("https://gw.fbr.gov.pk/di_data/v1/di/validateinvoicedata_sb");
       expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer secret-token");
       expect(init?.method).toBe("POST");
       expect(init?.redirect).toBe("error");

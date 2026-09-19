@@ -79,10 +79,10 @@ describe("FBR digital invoicing contract", () => {
     ]));
   });
 
-  it("uses the official shared DI URLs and lets the bearer token select sandbox or production routing", () => {
-    expect(fbrEndpoint("SANDBOX", "VALIDATE")).toBe("https://gw.fbr.gov.pk/di_data/v1/di/validateinvoicedata");
+  it("uses the explicit v1.12 sandbox and production DI endpoints", () => {
+    expect(fbrEndpoint("SANDBOX", "VALIDATE")).toBe("https://gw.fbr.gov.pk/di_data/v1/di/validateinvoicedata_sb");
     expect(fbrEndpoint("PRODUCTION", "VALIDATE")).toBe("https://gw.fbr.gov.pk/di_data/v1/di/validateinvoicedata");
-    expect(fbrEndpoint("SANDBOX", "POST")).toBe("https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata");
+    expect(fbrEndpoint("SANDBOX", "POST")).toBe("https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata_sb");
     expect(fbrEndpoint("PRODUCTION", "POST")).toBe("https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata");
   });
 });
