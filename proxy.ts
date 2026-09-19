@@ -35,6 +35,8 @@ const handleProxy = clerkMiddleware(
       path.startsWith("/account-recovery") ||
       path.startsWith("/recovery") ||
       path.startsWith("/platform/sign-in") ||
+      path === "/privacy" ||
+      path === "/terms" ||
       (!isElectron && (path === "/" || path.startsWith("/get-your-munshi")))
     ) {
       return NextResponse.next();
