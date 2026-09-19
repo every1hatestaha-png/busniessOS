@@ -21,7 +21,7 @@ import {
 
 type FormValues = CustomerInput & { creditDays: number };
 
-const defaultFormValues = { name: "", companyName: "", phone: "", email: "", city: "", address: "", creditDays: 30, creditLimit: "0", openingBalance: "0", status: "ACTIVE" as const, notes: "" };
+const defaultFormValues = { name: "", companyName: "", phone: "", email: "", city: "", address: "", taxId: "", province: "", registrationType: "" as const, creditDays: 30, creditLimit: "0", openingBalance: "0", status: "ACTIVE" as const, notes: "" };
 const initialState: CreateCustomerState = {};
 const labelClassName = "mb-1.5 block text-sm font-medium text-neutral-700";
 const fieldClassName = "space-y-1";
@@ -68,6 +68,10 @@ export function CustomerForm({ customer }: CustomerFormProps) {
           </div>
           <div className={fieldClassName}><label className={labelClassName} htmlFor="email">Email</label><Input id="email" type="email" {...register("email")} aria-invalid={!!errors.email} placeholder="accounts@company.pk" />{error("email")}</div>
           <div className={fieldClassName}><label className={labelClassName} htmlFor="city">City</label><Input id="city" {...register("city")} aria-invalid={!!errors.city} placeholder="Lahore" />{error("city")}</div>
+          <div className="md:col-span-2 border-t pt-4"><p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">FBR Digital Invoicing identity</p><p className="mt-1 text-xs text-neutral-500">Optional for normal CRM use. Required when this customer is used on an FBR-submitted invoice.</p></div>
+          <div className={fieldClassName}><label className={labelClassName} htmlFor="registrationType">FBR registration type</label><select id="registrationType" {...register("registrationType")} className="h-8 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm"><option value="">Not configured</option><option value="Registered">Registered</option><option value="Unregistered">Unregistered</option></select>{error("registrationType")}</div>
+          <div className={fieldClassName}><label className={labelClassName} htmlFor="taxId">NTN / CNIC</label><Input id="taxId" {...register("taxId")} placeholder="7-digit NTN or 13-digit CNIC" />{error("taxId")}</div>
+          <div className={fieldClassName}><label className={labelClassName} htmlFor="province">Province</label><select id="province" {...register("province")} className="h-8 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm"><option value="">Select province</option><option value="PUNJAB">Punjab</option><option value="SINDH">Sindh</option><option value="KHYBER PAKHTUNKHWA">Khyber Pakhtunkhwa</option><option value="BALOCHISTAN">Balochistan</option><option value="ISLAMABAD CAPITAL TERRITORY">Islamabad Capital Territory</option><option value="GILGIT BALTISTAN">Gilgit Baltistan</option><option value="AZAD JAMMU AND KASHMIR">Azad Jammu and Kashmir</option></select>{error("province")}</div>
           <div className={fieldClassName}><label className={labelClassName} htmlFor="status">Status</label><select id="status" {...register("status")} className="h-8 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-neutral-200"><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option><option value="BLACKLISTED">Blacklisted</option></select>{error("status")}</div>
           <div className={`${fieldClassName} md:col-span-2`}><label className={labelClassName} htmlFor="address">Address</label><Input id="address" {...register("address")} aria-invalid={!!errors.address} placeholder="Street, market, city" />{error("address")}</div>
         </div>

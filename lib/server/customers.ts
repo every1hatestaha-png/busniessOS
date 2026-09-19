@@ -33,6 +33,9 @@ export type CustomerListItem = {
 
 export type CustomerDetail = CustomerListItem & {
   address: string;
+  taxId: string;
+  province: string;
+  registrationType: "" | "Registered" | "Unregistered";
   notes: string;
   totalSales: number;
   totalPayments: number;
@@ -108,13 +111,16 @@ export async function getCustomer(workspaceId: string, id: string): Promise<Cust
     email: string | null;
     city: string | null;
     address: string | null;
+    taxId: string | null;
+    province: string | null;
+    registrationType: string | null;
     notes: string | null;
     creditDays: number;
     creditLimit: Prisma.Decimal;
     currentBalance: Prisma.Decimal;
     status: "ACTIVE" | "INACTIVE" | "BLACKLISTED";
   }>>`
-    SELECT "id", "name", "companyName", "phone", "email", "city", "address", "notes", "creditDays", "creditLimit", "currentBalance", "status"
+    SELECT "id", "name", "companyName", "phone", "email", "city", "address", "taxId", "province", "registrationType", "notes", "creditDays", "creditLimit", "currentBalance", "status"
     FROM "customers"
     WHERE "id" = ${id} AND "workspaceId" = ${workspaceId}
     LIMIT 1
@@ -175,6 +181,9 @@ export async function getCustomer(workspaceId: string, id: string): Promise<Cust
     email: customer.email ?? "",
     city: customer.city ?? "",
     address: customer.address ?? "",
+    taxId: customer.taxId ?? "",
+    province: customer.province ?? "",
+    registrationType: customer.registrationType === "Registered" || customer.registrationType === "Unregistered" ? customer.registrationType : "",
     notes: customer.notes ?? "",
     creditDays: customer.creditDays,
     creditLimit: Number(customer.creditLimit),
@@ -217,6 +226,9 @@ export async function createCustomer(context: CustomerMutationContext, input: Cu
         email: input.email,
         city: input.city,
         address: input.address,
+        taxId: input.taxId || null,
+        province: input.province || null,
+        registrationType: input.registrationType || null,
         creditDays: input.creditDays ?? 30,
         creditLimit: input.creditLimit,
         currentBalance: openingBalance,
@@ -263,6 +275,9 @@ export async function updateCustomer(
         email: input.email,
         city: input.city,
         address: input.address,
+        taxId: input.taxId || null,
+        province: input.province || null,
+        registrationType: input.registrationType || null,
         ...(input.creditDays !== undefined ? { creditDays: input.creditDays } : {}),
         creditLimit: input.creditLimit,
         status: input.status,

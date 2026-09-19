@@ -103,6 +103,18 @@ export function ProductForm({ product }: ProductFormProps) {
             </select>
           </div>
           {product && <div className={fieldClass}><label className={labelClass} htmlFor="status">Status</label><select id="status" className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm" {...register("status")}><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option><option value="ARCHIVED">Archived</option></select></div>}
+          <div className="border-t pt-4 md:col-span-2"><p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">FBR Digital Invoicing mapping</p><p className="mt-1 text-xs text-neutral-500">Optional for inventory use. Required before this product can be submitted on an FBR invoice.</p></div>
+          <div className={fieldClass}>
+            <label className={labelClass} htmlFor="fbrHsCode">HS code</label>
+            <Input id="fbrHsCode" placeholder="e.g. 0101.2100" aria-invalid={!!errors.fbrHsCode} {...register("fbrHsCode")} />
+            {errors.fbrHsCode && <p className={errorClass}>{errors.fbrHsCode.message}</p>}
+          </div>
+          <div className={fieldClass}>
+            <label className={labelClass} htmlFor="fbrUom">FBR unit of measurement</label>
+            <Input id="fbrUom" placeholder="e.g. Numbers, pieces, units" aria-invalid={!!errors.fbrUom} {...register("fbrUom")} />
+            <p className="text-[11px] text-neutral-500">Use the description returned by the FBR UOM reference API.</p>
+            {errors.fbrUom && <p className={errorClass}>{errors.fbrUom.message}</p>}
+          </div>
           <div className="border-t pt-4 md:col-span-2"><p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Pricing and stock controls</p></div>
           <div className={fieldClass}>
             <label className={labelClass} htmlFor="costPrice">Cost price</label>

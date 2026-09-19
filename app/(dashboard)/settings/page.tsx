@@ -37,7 +37,7 @@ export default async function SettingsPage() {
     canManageMembers ? listInvitations(context.workspaceId) : Promise.resolve([]),
     db.workspace.findUniqueOrThrow({
       where: { id: context.workspaceId },
-      select: { name: true, phone: true, email: true, address: true, city: true, country: true, businessType: true, ntn: true, strn: true },
+      select: { name: true, phone: true, email: true, address: true, city: true, country: true, businessType: true, ntn: true, strn: true, province: true },
     }),
   ]);
 
