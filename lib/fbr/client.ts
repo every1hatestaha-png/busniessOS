@@ -59,6 +59,7 @@ async function callFbr(input: {
       body: JSON.stringify(input.payload),
       signal: controller.signal,
       cache: "no-store",
+      redirect: "error",
     });
 
     const body = await parseResponseBody(response);
