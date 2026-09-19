@@ -21,12 +21,13 @@ This document records implementation decisions for engineering and release revie
 - https://www.fbr.gov.pk/list-of-license-interprator/173967/173971
 - https://www.moitt.gov.pk/Legislations
 - https://pakistancode.gov.pk/
+- https://download1.fbr.gov.pk/Docs/20257301172130815TechnicalDocumentationforDIAPIV1.12.pdf
 
 ## Product rules
 
 1. MunshiOS must not describe itself as an FBR-licensed integrator unless FBR has actually issued a valid license.
 2. Sandbox and production are separate trust states.
-3. Production submission is default-deny until a licensed-integrator/PRAL route is configured and an authorized workspace user explicitly approves production.
+3. Production submission is default-deny until a licensed-integrator/PRAL route is configured, an authorized workspace user explicitly approves production, and the deployment-level production transmission switch is explicitly enabled.
 4. For a non-PRAL integrator, MunshiOS stores a license/reference identifier for auditability; release operations should re-check the current FBR licensed-integrator list.
 5. FBR credentials/tokens must never be written to invoice payload snapshots, audit metadata, client-visible logs, source control, or ordinary workspace records.
 6. FBR invoice payloads contain tax and identity data and must be permission-scoped to authorized workspace users.
@@ -53,6 +54,7 @@ This document records implementation decisions for engineering and release revie
 - Complete sandbox/certification steps required by the selected integration route.
 - Verify workspace NTN/STRN/province and buyer/product master data.
 - Verify production credentials are held in protected secret storage only.
+- Keep `FBR_DI_PRODUCTION_TRANSMISSION_ENABLED=0` until the live-integration checklist is complete, then enable it deliberately in the production secret environment.
 - Run contract, idempotency, retry, timeout, redaction and failure-mode tests.
 - Review privacy policy and terms against the exact live data flow.
 - Have a Pakistani tax/legal professional review the final production setup before broad commercial rollout.

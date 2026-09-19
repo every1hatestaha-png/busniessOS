@@ -4,6 +4,7 @@ import { FbrCredentialError, resolveFbrBearerToken } from "@/lib/server/fbr-cred
 
 const touched = [
   "FBR_DI_ALLOW_SHARED_TOKEN",
+  "FBR_DI_PRODUCTION_TRANSMISSION_ENABLED",
   "FBR_DI_SANDBOX_BEARER_TOKEN",
   "FBR_DI_PRODUCTION_BEARER_TOKEN",
   "FBR_DI_SANDBOX_TOKEN_ABC_123",
@@ -20,9 +21,23 @@ afterEach(() => {
 });
 
 describe("FBR credential resolver", () => {
+  it("keeps production transmission default-deny even when a production token exists", () => {
+    process.env.FBR_DI_PRODUCTION_TOKEN_ABC_123 = "production-secret";
+    delete process.env.FBR_DI_PRODUCTION_TRANSMISSION_ENABLED;
+
+    try {
+      resolveFbrBearerToken("abc-123", "PRODUCTION");
+      throw new Error("Expected production transmission to be disabled.");
+    } catch (error) {
+      expect(error).toBeInstanceOf(FbrCredentialError);
+      expect((error as FbrCredentialError).code).toBe("PRODUCTION_TRANSMISSION_DISABLED");
+    }
+  });
+
   it("keeps sandbox and production workspace credentials isolated", () => {
     process.env.FBR_DI_SANDBOX_TOKEN_ABC_123 = " sandbox-secret ";
     process.env.FBR_DI_PRODUCTION_TOKEN_ABC_123 = " production-secret ";
+    process.env.FBR_DI_PRODUCTION_TRANSMISSION_ENABLED = "1";
 
     expect(resolveFbrBearerToken("abc-123", "SANDBOX")).toEqual({
       token: "sandbox-secret",
@@ -37,8 +52,15 @@ describe("FBR credential resolver", () => {
   it("never crosses a sandbox credential into production", () => {
     process.env.FBR_DI_SANDBOX_TOKEN_ABC_123 = "sandbox-secret";
     delete process.env.FBR_DI_PRODUCTION_TOKEN_ABC_123;
+    process.env.FBR_DI_PRODUCTION_TRANSMISSION_ENABLED = "1";
 
-    expect(() => resolveFbrBearerToken("abc-123", "PRODUCTION")).toThrow(FbrCredentialError);
+    try {
+      resolveFbrBearerToken("abc-123", "PRODUCTION");
+      throw new Error("Expected a missing production credential.");
+    } catch (error) {
+      expect(error).toBeInstanceOf(FbrCredentialError);
+      expect((error as FbrCredentialError).code).toBe("CREDENTIAL_MISSING");
+    }
   });
 
   it("requires explicit opt-in before using a shared token", () => {
@@ -52,6 +74,7 @@ describe("FBR credential resolver", () => {
   it("uses only the shared token for the requested environment", () => {
     delete process.env.FBR_DI_SANDBOX_TOKEN_ABC_123;
     process.env.FBR_DI_ALLOW_SHARED_TOKEN = "1";
+    process.env.FBR_DI_PRODUCTION_TRANSMISSION_ENABLED = "1";
     process.env.FBR_DI_SANDBOX_BEARER_TOKEN = " sandbox-shared ";
     process.env.FBR_DI_PRODUCTION_BEARER_TOKEN = " production-shared ";
 

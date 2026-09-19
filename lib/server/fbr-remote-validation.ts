@@ -33,7 +33,7 @@ export async function runFbrRemoteValidation(submissionId: string) {
   if (!submission) throw new Error("FBR submission not found.");
   if (submission.status === "SUBMITTED") return { status: "SUBMITTED" as const, submission };
   const credentialBlocked = submission.status === "BLOCKED"
-    && ["CREDENTIAL_MISSING", "UNAUTHORIZED"].includes(submission.lastErrorCode ?? "");
+    && ["CREDENTIAL_MISSING", "PRODUCTION_TRANSMISSION_DISABLED", "UNAUTHORIZED"].includes(submission.lastErrorCode ?? "");
   if (submission.status === "BLOCKED" && !credentialBlocked) {
     throw new Error(submission.lastErrorMessage ?? "Resolve FBR preflight blockers before remote validation.");
   }
@@ -86,7 +86,7 @@ export async function runFbrRemoteValidation(submissionId: string) {
         where: { id: submission.id },
         data: {
           status: "BLOCKED",
-          lastErrorCode: "CREDENTIAL_MISSING",
+          lastErrorCode: error.code,
           lastErrorMessage: error.message,
         },
       });

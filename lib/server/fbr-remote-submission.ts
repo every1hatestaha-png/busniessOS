@@ -121,7 +121,7 @@ export async function runFbrInvoiceSubmission(submissionId: string) {
       where: { id: submission.id },
       data: {
         status: "BLOCKED",
-        lastErrorCode: "CREDENTIAL_MISSING",
+        lastErrorCode: error.code,
         lastErrorMessage: error.message,
       },
     });
