@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import { ArrowRightLeft } from "lucide-react";
 
 import {
@@ -33,21 +33,25 @@ export function WarehouseTransfer({
   balances: WarehouseBalance[];
 }) {
   const [state, action, pending] = useActionState(transferWarehouseStockAction, initialState);
-  const [productId, setProductId] = useState(products[0]?.id ?? "");
+  const initialProductId = products[0]?.id ?? "";
+  const initialSourceId = balances.find((row) => row.productId === initialProductId && row.quantity > 0)?.warehouseId ?? "";
+  const initialDestinationId = warehouses.find((warehouse) => warehouse.id !== initialSourceId)?.id ?? "";
+  const [productId, setProductId] = useState(initialProductId);
   const productBalances = useMemo(
     () => balances.filter((row) => row.productId === productId),
     [balances, productId],
   );
-  const [fromWarehouseId, setFromWarehouseId] = useState("");
-  const [toWarehouseId, setToWarehouseId] = useState("");
+  const [fromWarehouseId, setFromWarehouseId] = useState(initialSourceId);
+  const [toWarehouseId, setToWarehouseId] = useState(initialDestinationId);
 
-  useEffect(() => {
-    const available = productBalances.filter((row) => row.quantity > 0);
-    setFromWarehouseId((current) => available.some((row) => row.warehouseId === current) ? current : (available[0]?.warehouseId ?? ""));
-    setToWarehouseId((current) => warehouses.some((warehouse) => warehouse.id === current && warehouse.id !== available[0]?.warehouseId)
-      ? current
-      : (warehouses.find((warehouse) => warehouse.id !== available[0]?.warehouseId)?.id ?? ""));
-  }, [productBalances, warehouses]);
+  function selectProduct(nextProductId: string) {
+    const available = balances.filter((row) => row.productId === nextProductId && row.quantity > 0);
+    const nextSourceId = available[0]?.warehouseId ?? "";
+    const nextDestinationId = warehouses.find((warehouse) => warehouse.id !== nextSourceId)?.id ?? "";
+    setProductId(nextProductId);
+    setFromWarehouseId(nextSourceId);
+    setToWarehouseId(nextDestinationId);
+  }
 
   const sourceBalance = productBalances.find((row) => row.warehouseId === fromWarehouseId)?.quantity ?? 0;
 
@@ -68,7 +72,7 @@ export function WarehouseTransfer({
         <form action={action} className="grid gap-3 lg:grid-cols-[minmax(180px,1.4fr)_1fr_1fr_140px_auto] lg:items-end">
           <label className="space-y-1.5 text-xs font-medium">
             <span>Product</span>
-            <select name="productId" value={productId} onChange={(event) => setProductId(event.target.value)} className={selectClass} required>
+            <select name="productId" value={productId} onChange={(event) => selectProduct(event.target.value)} className={selectClass} required>
               {products.map((product) => <option key={product.id} value={product.id}>{product.sku ? product.sku + " · " : ""}{product.name}</option>)}
             </select>
           </label>
