@@ -280,6 +280,38 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="py-20 sm:py-24">
+        <div className="mx-auto max-w-[1320px] px-5 sm:px-6 lg:px-10">
+          <div className="grid gap-10 lg:grid-cols-[.72fr_1.28fr] lg:items-end">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">How it works</p>
+              <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] sm:text-5xl">From signup to your working business system.</h2>
+              <p className="mt-5 max-w-xl text-sm leading-7 text-slate-600">MunshiOS guides you through the setup instead of dropping you into an empty ERP and expecting you to figure it out.</p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_16px_45px_-34px_rgba(15,23,42,.4)]">
+                <div className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-50 text-emerald-700"><Store className="h-4 w-4" /></div>
+                <p className="mt-5 text-xs font-bold uppercase tracking-wider text-slate-400">01</p>
+                <h3 className="mt-2 font-bold">Choose your business</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-500">Retail, restaurant, wholesale, manufacturing or services.</p>
+              </div>
+              <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_16px_45px_-34px_rgba(15,23,42,.4)]">
+                <div className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-50 text-emerald-700"><Sparkles className="h-4 w-4" /></div>
+                <p className="mt-5 text-xs font-bold uppercase tracking-wider text-slate-400">02</p>
+                <h3 className="mt-2 font-bold">Pick your modules</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-500">Start with the recommended setup and keep only what you need.</p>
+              </div>
+              <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_16px_45px_-34px_rgba(15,23,42,.4)]">
+                <div className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-50 text-emerald-700"><LayoutDashboard className="h-4 w-4" /></div>
+                <p className="mt-5 text-xs font-bold uppercase tracking-wider text-slate-400">03</p>
+                <h3 className="mt-2 font-bold">Create your workspace</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-500">Add your business details and open a workspace configured around your setup.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section id="industries" className="py-24 sm:py-28">
         <div className="mx-auto max-w-[1400px] px-5 sm:px-6 lg:px-10">
           <div className="mx-auto max-w-3xl text-center">
