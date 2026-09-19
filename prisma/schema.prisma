@@ -854,6 +854,7 @@ model PaymentAllocation {
   purchaseOrderId          String?
   goodReceivedNoteId       String?
   isSupplierOpeningBalance Boolean  @default(false)
+  isCustomerOpeningBalance Boolean  @default(false)
   amount                   Decimal  @db.Decimal(15, 2)
   createdAt                DateTime @default(now())
 
@@ -869,6 +870,7 @@ model PaymentAllocation {
   @@index([purchaseOrderId])
   @@index([goodReceivedNoteId])
   @@index([workspaceId, isSupplierOpeningBalance])
+  @@index([workspaceId, isCustomerOpeningBalance])
   @@map("payment_allocations")
 }
 
