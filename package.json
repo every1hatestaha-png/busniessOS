@@ -69,6 +69,7 @@
     "files": [
       "desktop/main.cjs",
       "desktop/preload.cjs",
+      "desktop/updater.cjs",
       "package.json",
       "!node_modules/**/*",
       "!**/.env*",
