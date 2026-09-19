@@ -1086,9 +1086,12 @@ model FbrIntegrationConfig {
   workspaceId       String         @unique
   enabled           Boolean        @default(false)
   environment       FbrEnvironment @default(SANDBOX)
-  provider          String         @default("PRAL")
-  integratorName    String?
-  defaultScenarioId String?
+  provider             String         @default("PRAL")
+  integratorName       String?
+  integratorLicenseNo  String?
+  defaultScenarioId    String?
+  productionApprovedAt DateTime?
+  productionApprovedBy String?
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 

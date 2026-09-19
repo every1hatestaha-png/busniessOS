@@ -4,6 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 
 import { validateFbrInvoicePayload, type FbrInvoicePayload, type FbrValidationIssue } from "@/lib/fbr/digital-invoicing";
+import { validateFbrProductionCompliance } from "@/lib/fbr/production-compliance";
 import { requirePermission } from "@/lib/server/authorization";
 import { db } from "@/lib/server/db";
 import { writeAudit } from "@/lib/server/audit";
@@ -69,6 +70,16 @@ export async function prepareFbrInvoiceSubmission(invoiceId: string) {
   }
   if (environment === "SANDBOX" && !config?.defaultScenarioId?.trim()) {
     preflight.push({ path: "scenarioId", code: "MISSING_MASTER_DATA", message: "Choose an FBR sandbox scenario before validation." });
+  }
+
+  if (environment === "PRODUCTION") {
+    preflight.push(...validateFbrProductionCompliance({
+      provider: config?.provider,
+      integratorName: config?.integratorName,
+      integratorLicenseNo: config?.integratorLicenseNo,
+      productionApprovedAt: config?.productionApprovedAt,
+      productionApprovedBy: config?.productionApprovedBy,
+    }));
   }
 
   const subtotal = Number(invoice.salesOrder.subtotal);
