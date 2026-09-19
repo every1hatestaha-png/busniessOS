@@ -70,3 +70,80 @@ export async function updateWorkspaceProfileAction(
   revalidatePath("/dashboard");
   return { status: "success", message: "Business profile updated." };
 }
+
+
+const fbrSandboxConfigSchema = z.object({
+  defaultScenarioId: z.string().trim().toUpperCase().max(12).refine(
+    (value) => value === "" || /^SN\d{3}$/.test(value),
+    "Use an FBR sandbox scenario such as SN001.",
+  ),
+});
+
+export type FbrSandboxConfigState = { status?: "success" | "error"; message?: string };
+
+export async function updateFbrSandboxConfigAction(
+  _previousState: FbrSandboxConfigState,
+  formData: FormData,
+): Promise<FbrSandboxConfigState> {
+  const context = await requirePermission("workspace.manage");
+  const existing = await db.fbrIntegrationConfig.findUnique({
+    where: { workspaceId: context.workspaceId },
+    select: { environment: true },
+  });
+  if (existing?.environment === "PRODUCTION") {
+    return {
+      status: "error",
+      message: "Production FBR configuration cannot be changed from the sandbox settings form.",
+    };
+  }
+
+  const parsed = fbrSandboxConfigSchema.safeParse({
+    defaultScenarioId: String(formData.get("defaultScenarioId") ?? ""),
+  });
+  if (!parsed.success) {
+    return { status: "error", message: parsed.error.issues[0]?.message ?? "Check the FBR sandbox setup." };
+  }
+
+  const enabled = formData.get("enabled") === "on";
+  if (enabled && !parsed.data.defaultScenarioId) {
+    return { status: "error", message: "Choose an FBR sandbox scenario before enabling Digital Invoicing." };
+  }
+
+  const config = await db.fbrIntegrationConfig.upsert({
+    where: { workspaceId: context.workspaceId },
+    create: {
+      workspaceId: context.workspaceId,
+      enabled,
+      environment: "SANDBOX",
+      provider: "PRAL",
+      defaultScenarioId: parsed.data.defaultScenarioId || null,
+    },
+    update: {
+      enabled,
+      environment: "SANDBOX",
+      defaultScenarioId: parsed.data.defaultScenarioId || null,
+    },
+  });
+
+  await db.auditLog.create({
+    data: {
+      workspaceId: context.workspaceId,
+      actorId: context.user.id,
+      action: "fbr.sandbox_config_updated",
+      entityType: "FbrIntegrationConfig",
+      entityId: config.id,
+      metadata: {
+        enabled,
+        environment: "SANDBOX",
+        defaultScenarioId: parsed.data.defaultScenarioId || null,
+      },
+    },
+  });
+
+  revalidatePath("/settings");
+  revalidatePath("/invoices");
+  return {
+    status: "success",
+    message: enabled ? "FBR sandbox setup saved." : "FBR Digital Invoicing disabled for this workspace.",
+  };
+}
