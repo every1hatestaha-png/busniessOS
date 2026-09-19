@@ -78,8 +78,10 @@ export function FbrControlPanel(props: FbrPanelProps) {
   const remoteBusy = validating || submitting;
   const isSandbox = props.environment === "SANDBOX";
   const isSubmitted = props.submission?.status === "SUBMITTED";
-  const canValidate = isSandbox && props.integrationEnabled && props.readyForRemoteValidation && !isSubmitted;
-  const canSubmit = isSandbox && props.submission?.status === "VALIDATED";
+  const manualReconciliationRequired = props.submission?.status === "BLOCKED"
+    && props.submission.lastErrorCode === "AMBIGUOUS_POST_RESULT";
+  const canValidate = isSandbox && props.integrationEnabled && props.readyForRemoteValidation && !isSubmitted && !manualReconciliationRequired;
+  const canSubmit = isSandbox && props.submission?.status === "VALIDATED" && !manualReconciliationRequired;
 
   return (
     <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
@@ -138,6 +140,13 @@ export function FbrControlPanel(props: FbrPanelProps) {
           </div>
         )}
 
+        {manualReconciliationRequired && (
+          <div className="flex gap-2 rounded-lg border-2 border-red-300 bg-red-50 p-3 text-xs leading-5 text-red-900">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <span><strong>Manual reconciliation required.</strong> FBR may already have accepted the previous POST. Do not prepare, validate, or submit again until the remote result has been reconciled.</span>
+          </div>
+        )}
+
         {props.submission?.lastErrorMessage && (
           <div className="rounded-lg border border-red-200 bg-red-50 p-3">
             <p className="text-xs font-semibold text-red-800">{props.submission.lastErrorMessage}</p>
@@ -160,7 +169,7 @@ export function FbrControlPanel(props: FbrPanelProps) {
 
         <div className="grid gap-2">
           <form action={prepareAction}>
-            <Button type="submit" variant="outline" className="w-full justify-center" disabled={preparing || remoteBusy || isSubmitted}>
+            <Button type="submit" variant="outline" className="w-full justify-center" disabled={preparing || remoteBusy || isSubmitted || manualReconciliationRequired}>
               <RefreshCw className={"size-4 " + (preparing ? "animate-spin" : "")} />
               {preparing ? "Checking preflight..." : "Prepare / refresh preflight"}
             </Button>
