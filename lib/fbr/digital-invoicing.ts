@@ -136,8 +136,7 @@ export function validateFbrInvoicePayload(
   return issues;
 }
 
-export function fbrEndpoint(environment: FbrEnvironment, kind: "VALIDATE" | "POST") {
-  const suffix = environment === "SANDBOX" ? "_sb" : "";
+export function fbrEndpoint(_environment: FbrEnvironment, kind: "VALIDATE" | "POST") {
   const method = kind === "VALIDATE" ? "validateinvoicedata" : "postinvoicedata";
-  return `https://gw.fbr.gov.pk/di_data/v1/di/${method}${suffix}`;
+  return `https://gw.fbr.gov.pk/di_data/v1/di/${method}`;
 }
