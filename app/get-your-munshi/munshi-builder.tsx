@@ -234,8 +234,8 @@ export function MunshiBuilder() {
                 <h2 className="font-semibold">What happens next?</h2>
                 <div className="mt-4 space-y-4 text-sm text-slate-600">
                   <div className="flex gap-3"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-800">1</span><p>Create your secure MunshiOS account.</p></div>
-                  <div className="flex gap-3"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-800">2</span><p>Complete payment through the available checkout method.</p></div>
-                  <div className="flex gap-3"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-800">3</span><p>Your workspace opens with these modules enabled for your business.</p></div>
+                  <div className="flex gap-3"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-800">2</span><p>Your 30-day trial starts and your selected workspace is provisioned.</p></div>
+                  <div className="flex gap-3"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-800">3</span><p>When you are ready, request paid activation from Subscription; online checkout will use the same flow once enabled.</p></div>
                 </div>
               </div>
             </div>
@@ -259,7 +259,7 @@ export function MunshiBuilder() {
               <Link href={checkoutHref} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400">
                 Create account & continue <ArrowRight className="h-4 w-4" />
               </Link>
-              <p className="mt-3 text-center text-[11px] leading-5 text-slate-500">The live payment gateway will be connected to this checkout before paid subscriptions are activated.</p>
+              <p className="mt-3 text-center text-[11px] leading-5 text-slate-500">No card is charged during the 30-day trial. Paid activation currently uses the MunshiOS owner approval flow; online payment will be added to the same subscription workflow.</p>
             </div>
           </div>
         </div>
