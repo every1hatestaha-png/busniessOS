@@ -21,6 +21,7 @@ const DEFAULT_ACCOUNTS: Array<{ code: string; name: string; category: AccountCat
   { code: "1200", name: "Inventory", category: "ASSET", normalBalance: "DEBIT", systemCode: "INVENTORY" },
   { code: "2000", name: "Accounts Payable", category: "LIABILITY", normalBalance: "CREDIT", systemCode: "ACCOUNTS_PAYABLE" },
   { code: "2100", name: "Withholding Tax Payable", category: "LIABILITY", normalBalance: "CREDIT", systemCode: "WITHHOLDING_TAX_PAYABLE" },
+  { code: "2200", name: "Sales Tax Payable", category: "LIABILITY", normalBalance: "CREDIT", systemCode: "SALES_TAX_PAYABLE" },
   { code: "3000", name: "Owner Equity", category: "EQUITY", normalBalance: "CREDIT", systemCode: "OWNER_EQUITY" },
   { code: "4000", name: "Sales Revenue", category: "INCOME", normalBalance: "CREDIT", systemCode: "SALES_REVENUE" },
   { code: "4100", name: "Other Income", category: "INCOME", normalBalance: "CREDIT", systemCode: "OTHER_INCOME" },
@@ -152,14 +153,22 @@ export async function reverseGeneralLedgerEntries(tx: Prisma.TransactionClient, 
   return { reversed: entries.length };
 }
 
-export async function postSaleToGeneralLedger(tx: Prisma.TransactionClient, params: { workspaceId: string; saleId: string; orderNumber: string; date: Date; revenue: Prisma.Decimal; costOfGoodsSold: Prisma.Decimal; cashReceived: Prisma.Decimal; cashBankAccountId?: string | null }) {
-  const accounts = await getSystemAccounts(tx, params.workspaceId, ["ACCOUNTS_RECEIVABLE", "SALES_REVENUE", "COST_OF_GOODS_SOLD", "INVENTORY"]);
+export async function postSaleToGeneralLedger(tx: Prisma.TransactionClient, params: { workspaceId: string; saleId: string; orderNumber: string; date: Date; revenue: Prisma.Decimal; salesTax?: Prisma.Decimal; costOfGoodsSold: Prisma.Decimal; cashReceived: Prisma.Decimal; cashBankAccountId?: string | null }) {
+  const accounts = await getSystemAccounts(tx, params.workspaceId, ["ACCOUNTS_RECEIVABLE", "SALES_REVENUE", "SALES_TAX_PAYABLE", "COST_OF_GOODS_SOLD", "INVENTORY"]);
   const cashBank = params.cashReceived.greaterThan(0) ? await resolveCashBankAccount(tx, params.workspaceId, params.cashBankAccountId) : null;
+  const salesTax = params.salesTax ?? new Prisma.Decimal(0);
+  if (salesTax.isNegative()) throw new AccountingDomainError("Sales tax cannot be negative.");
+  const receivable = params.revenue.plus(salesTax);
   const narration = `Sale ${params.orderNumber}`;
   const entries: Prisma.GeneralLedgerEntryCreateManyInput[] = [
-    { workspaceId: params.workspaceId, accountId: accounts.ACCOUNTS_RECEIVABLE.id, sourceType: "SALE", sourceId: params.saleId, documentNo: params.orderNumber, date: params.date, narration, debit: params.revenue, credit: 0 },
+    { workspaceId: params.workspaceId, accountId: accounts.ACCOUNTS_RECEIVABLE.id, sourceType: "SALE", sourceId: params.saleId, documentNo: params.orderNumber, date: params.date, narration, debit: receivable, credit: 0 },
     { workspaceId: params.workspaceId, accountId: accounts.SALES_REVENUE.id, sourceType: "SALE", sourceId: params.saleId, documentNo: params.orderNumber, date: params.date, narration, debit: 0, credit: params.revenue },
   ];
+  if (salesTax.greaterThan(0)) {
+    entries.push(
+      { workspaceId: params.workspaceId, accountId: accounts.SALES_TAX_PAYABLE.id, sourceType: "SALE", sourceId: params.saleId, documentNo: params.orderNumber, date: params.date, narration: `Sales tax on ${params.orderNumber}`, debit: 0, credit: salesTax },
+    );
+  }
   if (params.costOfGoodsSold.greaterThan(0)) {
     entries.push(
       { workspaceId: params.workspaceId, accountId: accounts.COST_OF_GOODS_SOLD.id, sourceType: "SALE", sourceId: params.saleId, documentNo: params.orderNumber, date: params.date, narration: `COGS ${params.orderNumber}`, debit: params.costOfGoodsSold, credit: 0 },
@@ -218,12 +227,20 @@ export async function postSupplierPaymentToGeneralLedger(tx: Prisma.TransactionC
   if (netAmount.greaterThan(0)) await tx.cashBankAccount.update({ where: { id: cashBank.id, workspaceId: params.workspaceId }, data: { currentBalance: { decrement: netAmount } } });
 }
 
-export async function postCustomerReturnToGeneralLedger(tx: Prisma.TransactionClient, params: { workspaceId: string; returnId: string; documentNo: string; date: Date; amount: Prisma.Decimal; inventoryCost?: Prisma.Decimal }) {
-  const accounts = await getSystemAccounts(tx, params.workspaceId, ["SALES_REVENUE", "ACCOUNTS_RECEIVABLE", "INVENTORY", "COST_OF_GOODS_SOLD"]);
+export async function postCustomerReturnToGeneralLedger(tx: Prisma.TransactionClient, params: { workspaceId: string; returnId: string; documentNo: string; date: Date; amount: Prisma.Decimal; salesTax?: Prisma.Decimal; inventoryCost?: Prisma.Decimal }) {
+  const accounts = await getSystemAccounts(tx, params.workspaceId, ["SALES_REVENUE", "SALES_TAX_PAYABLE", "ACCOUNTS_RECEIVABLE", "INVENTORY", "COST_OF_GOODS_SOLD"]);
+  const salesTax = params.salesTax ?? new Prisma.Decimal(0);
+  if (salesTax.isNegative() || salesTax.greaterThan(params.amount)) throw new AccountingDomainError("Customer-return sales tax is invalid.");
+  const revenue = params.amount.minus(salesTax);
   const entries: Prisma.GeneralLedgerEntryCreateManyInput[] = [
-    { workspaceId: params.workspaceId, accountId: accounts.SALES_REVENUE.id, sourceType: "CUSTOMER_RETURN", sourceId: params.returnId, documentNo: params.documentNo, date: params.date, narration: `Customer return ${params.documentNo}`, debit: params.amount, credit: 0 },
+    { workspaceId: params.workspaceId, accountId: accounts.SALES_REVENUE.id, sourceType: "CUSTOMER_RETURN", sourceId: params.returnId, documentNo: params.documentNo, date: params.date, narration: `Customer return ${params.documentNo}`, debit: revenue, credit: 0 },
     { workspaceId: params.workspaceId, accountId: accounts.ACCOUNTS_RECEIVABLE.id, sourceType: "CUSTOMER_RETURN", sourceId: params.returnId, documentNo: params.documentNo, date: params.date, narration: `Customer return ${params.documentNo}`, debit: 0, credit: params.amount },
   ];
+  if (salesTax.greaterThan(0)) {
+    entries.push(
+      { workspaceId: params.workspaceId, accountId: accounts.SALES_TAX_PAYABLE.id, sourceType: "CUSTOMER_RETURN", sourceId: params.returnId, documentNo: params.documentNo, date: params.date, narration: `Sales tax reversal on ${params.documentNo}`, debit: salesTax, credit: 0 },
+    );
+  }
   if (params.inventoryCost?.greaterThan(0)) {
     entries.push(
       { workspaceId: params.workspaceId, accountId: accounts.INVENTORY.id, sourceType: "CUSTOMER_RETURN", sourceId: params.returnId, documentNo: params.documentNo, date: params.date, narration: `Returned inventory ${params.documentNo}`, debit: params.inventoryCost, credit: 0 },
