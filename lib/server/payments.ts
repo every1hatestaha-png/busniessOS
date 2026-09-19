@@ -132,19 +132,7 @@ export async function recordPayment(context: ServiceContext, input: PaymentInput
       if (new Set(invoiceIds).size !== invoiceIds.length) throw new PaymentDomainError("Duplicate invoice allocations are not allowed.");
       invoices = await tx.invoice.findMany({ where: { id: { in: invoiceIds }, workspaceId: context.workspaceId, customerId: customer.id, status: { notIn: ["CANCELLED", "DRAFT"] } }, select: { id: true, amount: true, paidAmount: true, creditApplied: true, salesOrderId: true } });
       if (invoices.length !== requestedAllocations.length) throw new PaymentDomainError("One or more invoices are unavailable.");
-      if (data.applyToOpeningBalance) {
-      await tx.paymentAllocation.create({
-        data: {
-          workspaceId: context.workspaceId,
-          paymentId: payment.id,
-          invoiceId: null,
-          isCustomerOpeningBalance: true,
-          amount,
-        },
-      });
-    }
-
-    for (const allocation of requestedAllocations) {
+      for (const allocation of requestedAllocations) {
         const invoice = invoices.find((entry) => entry.id === allocation.invoiceId)!;
         if (new Prisma.Decimal(allocation.amount).greaterThan(invoice.amount.minus(invoice.paidAmount).minus(invoice.creditApplied))) throw new PaymentDomainError("Payment exceeds invoice balance or invoice is unavailable.");
       }
@@ -157,6 +145,18 @@ export async function recordPayment(context: ServiceContext, input: PaymentInput
     if (netAmount.greaterThan(0)) {
       await postCustomerPaymentToGeneralLedger(tx, { workspaceId: context.workspaceId, paymentId: payment.id, documentNo: paymentNumber, date: data.paymentDate, amount: netAmount, cashBankAccountId: cashBankAccount.id });
     }
+    if (data.applyToOpeningBalance) {
+      await tx.paymentAllocation.create({
+        data: {
+          workspaceId: context.workspaceId,
+          paymentId: payment.id,
+          invoiceId: null,
+          isCustomerOpeningBalance: true,
+          amount,
+        },
+      });
+    }
+
     if (withholdingTaxAmount.greaterThan(0)) {
       const [accountsReceivable, withholdingTaxReceivable] = await Promise.all([
         tx.account.findUnique({ where: { workspaceId_systemCode: { workspaceId: context.workspaceId, systemCode: "ACCOUNTS_RECEIVABLE" } }, select: { id: true } }),
