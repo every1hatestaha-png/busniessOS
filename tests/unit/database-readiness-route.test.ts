@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const checkDatabaseReadiness = vi.fn();
+const { checkDatabaseReadiness } = vi.hoisted(() => ({ checkDatabaseReadiness: vi.fn() }));
 
 vi.mock("@/lib/server/database-readiness", () => ({ checkDatabaseReadiness }));
 
