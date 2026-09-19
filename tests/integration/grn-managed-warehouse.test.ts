@@ -268,6 +268,7 @@ describe("managed warehouse GRN lifecycle", () => {
       goodReceivedNoteId: grn.id,
       idempotencyKey: "managed-return-" + runId,
       reason: "Damaged stock",
+      notes: "",
       items: [{ itemId: item.id, quantity: 2 }],
     });
 
@@ -317,6 +318,7 @@ describe("managed warehouse GRN lifecycle", () => {
       goodReceivedNoteId: firstGrn.id,
       idempotencyKey: "managed-return-scope-a-" + runId,
       reason: "Return first receipt",
+      notes: "",
       items: [{ itemId: item.id, quantity: 3 }],
     });
     await createSupplierReturn(context(), {
@@ -324,6 +326,7 @@ describe("managed warehouse GRN lifecycle", () => {
       goodReceivedNoteId: secondGrn.id,
       idempotencyKey: "managed-return-scope-b-" + runId,
       reason: "Return second receipt",
+      notes: "",
       items: [{ itemId: item.id, quantity: 3 }],
     });
 
