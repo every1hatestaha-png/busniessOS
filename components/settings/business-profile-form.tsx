@@ -20,6 +20,8 @@ export function BusinessProfileForm({
     city: string | null;
     country: string;
     businessType: "WHOLESALER" | "DISTRIBUTOR" | "MANUFACTURER" | "RETAILER" | "OTHER";
+    ntn: string | null;
+    strn: string | null;
   };
 }) {
   const [state, formAction, pending] = useActionState(updateWorkspaceProfileAction, initialState);
@@ -68,6 +70,12 @@ export function BusinessProfileForm({
           <Field label="Country">
             <Input name="country" defaultValue={workspace.country} minLength={2} maxLength={80} required />
           </Field>
+          <Field label="NTN" hint="Optional · appears on business documents">
+            <Input name="ntn" defaultValue={workspace.ntn ?? ""} maxLength={40} placeholder="e.g. 1234567-8" />
+          </Field>
+          <Field label="STRN" hint="Optional · sales tax registration number">
+            <Input name="strn" defaultValue={workspace.strn ?? ""} maxLength={40} placeholder="e.g. 3277876123456" />
+          </Field>
         </div>
 
         <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
@@ -82,6 +90,6 @@ export function BusinessProfileForm({
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label className="block"><span className="mb-1.5 block text-xs font-semibold text-slate-700">{label}</span>{children}</label>;
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return <label className="block"><span className="mb-1.5 block text-xs font-semibold text-slate-700">{label}</span>{hint && <span className="-mt-0.5 mb-1.5 block text-[11px] text-slate-500">{hint}</span>}{children}</label>;
 }
