@@ -4,6 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 
 import { validateFbrInvoicePayload, type FbrInvoicePayload, type FbrValidationIssue } from "@/lib/fbr/digital-invoicing";
+import { validateFbrProductionCompliance } from "@/lib/fbr/production-compliance";
 import { requirePermission } from "@/lib/server/authorization";
 import { db } from "@/lib/server/db";
 import { writeAudit } from "@/lib/server/audit";
@@ -72,30 +73,13 @@ export async function prepareFbrInvoiceSubmission(invoiceId: string) {
   }
 
   if (environment === "PRODUCTION") {
-    if (!config?.integratorName?.trim()) {
-      preflight.push({
-        path: "integration.integratorName",
-        code: "LICENSED_INTEGRATOR_REQUIRED",
-        message: "Production FBR transmission requires a configured licensed integrator or PRAL onboarding route.",
-      });
-    }
-
-    const provider = config?.provider?.trim().toUpperCase();
-    if (provider && provider !== "PRAL" && !config?.integratorLicenseNo?.trim()) {
-      preflight.push({
-        path: "integration.integratorLicenseNo",
-        code: "LICENSE_REFERENCE_REQUIRED",
-        message: "Record the licensed integrator reference before enabling production transmission.",
-      });
-    }
-
-    if (!config?.productionApprovedAt || !config.productionApprovedBy?.trim()) {
-      preflight.push({
-        path: "integration.productionApproval",
-        code: "PRODUCTION_APPROVAL_REQUIRED",
-        message: "Production transmission is blocked until an authorized workspace user confirms the licensed-integrator setup.",
-      });
-    }
+    preflight.push(...validateFbrProductionCompliance({
+      provider: config?.provider,
+      integratorName: config?.integratorName,
+      integratorLicenseNo: config?.integratorLicenseNo,
+      productionApprovedAt: config?.productionApprovedAt,
+      productionApprovedBy: config?.productionApprovedBy,
+    }));
   }
 
   const subtotal = Number(invoice.salesOrder.subtotal);
