@@ -34,12 +34,13 @@ function _bootstrapLog(level, message) {
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       _bootstrapLogPath = path.join(dir, "bootstrap.log");
     }
+    rotateLogFile(_bootstrapLogPath);
     fs.appendFileSync(_bootstrapLogPath, line, "utf8");
   } catch { /* Last resort */ }
   if (level === "ERROR") {
-    console.error(`[BusinessOS:BOOT] ${safeMessage}`);
+    console.error(`[MunshiOS:BOOT] ${safeMessage}`);
   } else {
-    console.log(`[BusinessOS:BOOT] ${safeMessage}`);
+    console.log(`[MunshiOS:BOOT] ${safeMessage}`);
   }
 }
 
@@ -52,7 +53,7 @@ try {
   _bootstrapLog("INFO", `process.platform=${process.platform}`);
   _bootstrapLog("INFO", `process.arch=${process.arch}`);
 } catch (e) {
-  console.log(`[BusinessOS:BOOT] Bootstrap metadata error: ${e.message}`);
+  console.log(`[MunshiOS:BOOT] Bootstrap metadata error: ${e.message}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -102,6 +103,9 @@ const SHUTDOWN_TIMEOUT_MS = 5_000;
 const OAUTH_CALLBACK_PORT = 49200;
 const OAUTH_STATE_TIMEOUT_MS = 5 * 60 * 1000;
 const TOKEN_REFRESH_BUFFER_MS = 60_000;
+const TOKEN_REFRESH_RETRY_MS = 30_000;
+const LOG_MAX_BYTES = 5 * 1024 * 1024;
+const LOG_BACKUP_COUNT = 3;
 const APP_VERSION = app.getVersion();
 
 const DEFAULT_PRODUCTION_ORIGIN = "https://business-os-khzr.vercel.app";
@@ -223,6 +227,21 @@ function logWindowInventory(event) {
   }
 }
 
+function rotateLogFile(filePath) {
+  try {
+    if (!fs.existsSync(filePath) || fs.statSync(filePath).size < LOG_MAX_BYTES) return;
+    for (let index = LOG_BACKUP_COUNT; index >= 1; index -= 1) {
+      const source = index === 1 ? filePath : `${filePath}.${index - 1}`;
+      const target = `${filePath}.${index}`;
+      if (!fs.existsSync(source)) continue;
+      if (fs.existsSync(target)) fs.unlinkSync(target);
+      fs.renameSync(source, target);
+    }
+  } catch (error) {
+    console.warn(`[MunshiOS] Log rotation skipped: ${error.message}`);
+  }
+}
+
 function ensureLogDir() {
   const dir = path.join(app.getPath("userData"), "logs");
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -234,12 +253,14 @@ function appendLog(level, message) {
   const safeMessage = sanitizeDiagnosticText(message);
   const line = `[${timestamp}] [${level}] ${safeMessage}\n`;
   try {
-    fs.appendFileSync(path.join(ensureLogDir(), "desktop.log"), line, "utf8");
+    const logPath = path.join(ensureLogDir(), "desktop.log");
+    rotateLogFile(logPath);
+    fs.appendFileSync(logPath, line, "utf8");
   } catch { /* Best effort */ }
   if (level === "ERROR") {
-    console.error(`[BusinessOS] ${safeMessage}`);
+    console.error(`[MunshiOS] ${safeMessage}`);
   } else {
-    console.log(`[BusinessOS] ${safeMessage}`);
+    console.log(`[MunshiOS] ${safeMessage}`);
   }
 }
 
@@ -444,8 +465,8 @@ async function startLocalServer() {
         appendLog("ERROR", `Server exited unexpectedly (code ${code ?? "unknown"})`);
         if (!quitting) {
           dialog.showErrorBox(
-            "BusinessOS server stopped",
-            `The local server exited unexpectedly (code ${code ?? "unknown"}).\nThe application will close.`
+            "MunshiOS service stopped",
+            `The local MunshiOS service exited unexpectedly (code ${code ?? "unknown"}).\nThe application will close.`
           );
           app.quit();
         }
@@ -460,7 +481,7 @@ async function startLocalServer() {
     }
   }
 
-  throw lastError ?? new Error("Could not start the local BusinessOS server after 3 attempts.");
+  throw lastError ?? new Error("Could not start the local MunshiOS service after 3 attempts.");
 }
 
 function stopLocalServer() {
@@ -561,29 +582,48 @@ function exchangeCodeForTokens(code, codeVerifier) {
   });
 }
 
-function refreshAccessToken() {
-  if (!desktopRefreshToken) return Promise.reject(new Error("No refresh token"));
+async function refreshAccessToken() {
+  if (!desktopRefreshToken) throw new Error("No refresh token");
 
   const fapiUrl = getFapiUrl();
   const clientId = process.env.CLERK_OAUTH_CLIENT_ID;
+  let lastError = null;
 
-  return fetch(`${fapiUrl}/oauth/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: desktopRefreshToken,
-      client_id: clientId,
-    }).toString(),
-  }).then(async (res) => {
-    appendLog("INFO", `[D4][oauth] token refresh status=${res.status} ok=${res.ok ? "YES" : "NO"}`);
-    const body = await res.json();
-    appendLog("INFO", `[D4][oauth] refreshed access token received=${body.access_token ? "YES" : "NO"} refresh token received=${body.refresh_token ? "YES" : "NO"}`);
-    if (!res.ok) {
-      throw new Error(`Token refresh failed with HTTP ${res.status}`);
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const res = await fetch(`${fapiUrl}/oauth/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          refresh_token: desktopRefreshToken,
+          client_id: clientId,
+        }).toString(),
+      });
+      appendLog("INFO", `[D4][oauth] token refresh attempt=${attempt} status=${res.status} ok=${res.ok ? "YES" : "NO"}`);
+      const body = await res.json().catch(() => ({}));
+      appendLog("INFO", `[D4][oauth] refreshed access token received=${body.access_token ? "YES" : "NO"} refresh token received=${body.refresh_token ? "YES" : "NO"}`);
+      if (res.ok) return body;
+
+      const error = new Error(`Token refresh failed with HTTP ${res.status}`);
+      error.retryable = res.status === 429 || res.status >= 500;
+      if (!error.retryable) throw error;
+      lastError = error;
+    } catch (error) {
+      if (error?.retryable === false) throw error;
+      lastError = error instanceof Error ? error : new Error(String(error));
+      lastError.retryable = true;
     }
-    return body;
-  });
+
+    if (attempt < 3) {
+      const delay = 500 * (2 ** (attempt - 1));
+      appendLog("WARN", `[D4][auth] transient token refresh failure; retrying in ${delay}ms`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+
+  if (lastError) lastError.retryable = true;
+  throw lastError ?? Object.assign(new Error("Token refresh failed"), { retryable: true });
 }
 
 async function getOAuthUserId(accessToken = desktopAuthToken) {
@@ -995,7 +1035,17 @@ async function performTokenRefresh({ duringStartup = false } = {}) {
     return true;
   } catch (err) {
     if (refreshGeneration !== desktopAuthGeneration) return false;
-    appendLog("ERROR", `[D4][auth] token refresh failed error=${err.message}`);
+    appendLog(err.retryable ? "WARN" : "ERROR", `[D4][auth] token refresh failed error=${err.message}`);
+    if (err.retryable) {
+      if (!duringStartup) {
+        clearTokenRefreshTimer();
+        tokenRefreshTimer = setTimeout(() => {
+          if (!quitting) void performTokenRefresh();
+        }, TOKEN_REFRESH_RETRY_MS);
+        appendLog("WARN", `[D4][auth] keeping encrypted session and retrying refresh in ${TOKEN_REFRESH_RETRY_MS / 1000}s`);
+      }
+      return false;
+    }
     clearCredentials();
     if (!duringStartup && mainWindow && !mainWindow.isDestroyed()) {
       dialog.showMessageBox(mainWindow, {
@@ -1271,14 +1321,14 @@ if (!hasSingleInstanceLock) {
   app.whenReady().then(async () => {
     appendLog("INFO", "STAGE: app.whenReady() resolved");
     try {
-      appendLog("INFO", `BusinessOS starting (packaged=${app.isPackaged})`);
+      appendLog("INFO", `MunshiOS starting (packaged=${app.isPackaged})`);
 
       appendLog("INFO", "STAGE: creating splash window...");
       createSplashWindow();
 
-      appendLog("INFO", "STAGE: connecting to BusinessOS service...");
+      appendLog("INFO", "STAGE: connecting to MunshiOS service...");
       await startLocalServer();
-      appendLog("INFO", "STAGE: BusinessOS service ready");
+      appendLog("INFO", "STAGE: MunshiOS service ready");
 
       appendLog("INFO", "STAGE: loading desktop credentials...");
       const storedCredentialsReady = await prepareStoredCredentials();
