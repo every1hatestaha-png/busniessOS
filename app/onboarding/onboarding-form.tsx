@@ -132,6 +132,14 @@ export function OnboardingForm({
               <input type="hidden" name="selectedModules" value={provisioning.modules.join(",")} />
               <input type="hidden" name="billing" value={provisioning.billing} />
               <input type="hidden" name="builderBusiness" value={provisioning.builderBusiness ?? ""} />
+              {step === 2 && (
+                <>
+                  <input type="hidden" name="businessName" value={businessName} />
+                  <input type="hidden" name="ownerName" value={ownerName} />
+                  <input type="hidden" name="phone" value={phone} />
+                  <input type="hidden" name="email" value={email} />
+                </>
+              )}
 
               {step === 1 ? (
                 <div className="space-y-8">
