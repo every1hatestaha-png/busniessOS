@@ -94,8 +94,8 @@ jobs:
           }, null, 2));
           NODE
           cd "$runtime_dir"
-          npm install --package-lock-only --ignore-scripts --omit=peer
-          npm audit --omit=peer --audit-level=high
+          npm install --ignore-scripts --no-audit --no-fund
+          npm audit --audit-level=high
 
   desktop-smoke:
     runs-on: windows-latest
