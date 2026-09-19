@@ -129,6 +129,10 @@ describe("accounting GL integration", () => {
       idempotencyKey: randomUUID(),
     });
     const saleRows = await glLines(sale.id);
+    const taxSnapshot = await db.salesOrderItem.findFirstOrThrow({ where: { salesOrderId: sale.id } });
+    expect(Number(taxSnapshot.taxRate)).toBe(18);
+    expect(Number(taxSnapshot.taxableAmount)).toBe(100);
+    expect(Number(taxSnapshot.salesTaxAmount)).toBe(18);
     expect(lineAmount(saleRows, "ACCOUNTS_RECEIVABLE", "debit")).toBe(118);
     expect(lineAmount(saleRows, "SALES_REVENUE", "credit")).toBe(100);
     expect(lineAmount(saleRows, "SALES_TAX_PAYABLE", "credit")).toBe(18);

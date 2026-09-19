@@ -5,6 +5,7 @@ import { Prisma, type Role } from "@prisma/client";
 import { postSaleToGeneralLedger } from "@/lib/server/accounting";
 import { writeAudit } from "@/lib/server/audit";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
+import { allocateUniformSalesTax } from "@/lib/sales-tax";
 import { applyManagedWarehouseStockDelta, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
 import { saleEditSchema, type SaleEditInput } from "@/lib/validation/sale-edit";
 
@@ -117,9 +118,18 @@ export async function updateSaleAndInvoice(context: EditContext, input: SaleEdit
     const lineDiscount = lines.reduce((sum, line) => sum.plus(line.discountPerUnit.mul(line.quantity)), new Prisma.Decimal(0));
     const orderDiscount = new Prisma.Decimal(data.orderDiscount);
     const discount = lineDiscount.plus(orderDiscount);
-    const taxableAmount = subtotal.minus(discount);
-    if (taxableAmount.isNegative()) throw new SaleEditDomainError("Discount exceeds the invoice value.");
-    const gstAmount = taxableAmount.mul(new Prisma.Decimal(data.gstRate).div(100)).toDecimalPlaces(2);
+    let taxAllocation;
+    try {
+      taxAllocation = allocateUniformSalesTax(
+        lines.map((line) => line.total),
+        orderDiscount,
+        new Prisma.Decimal(data.gstRate),
+      );
+    } catch (error) {
+      throw new SaleEditDomainError(error instanceof Error ? error.message : "Sales tax allocation failed.");
+    }
+    const taxableAmount = taxAllocation.totalTaxable;
+    const gstAmount = taxAllocation.totalTax;
     const total = taxableAmount.plus(gstAmount);
 
     const projectedCustomerBalance = newCustomer.currentBalance
@@ -167,7 +177,7 @@ export async function updateSaleAndInvoice(context: EditContext, input: SaleEdit
 
     await tx.salesOrderItem.deleteMany({ where: { salesOrderId: order.id } });
     await tx.salesOrderItem.createMany({
-      data: lines.map((line) => ({
+      data: lines.map((line, index) => ({
         salesOrderId: order.id,
         productId: line.product.id,
         productName: line.product.name,
@@ -176,6 +186,9 @@ export async function updateSaleAndInvoice(context: EditContext, input: SaleEdit
         unitPrice: line.unitPrice,
         discountPerUnit: line.discountPerUnit,
         totalPrice: line.total,
+        taxRate: taxAllocation.lines[index]!.taxRate,
+        taxableAmount: taxAllocation.lines[index]!.taxableAmount,
+        salesTaxAmount: taxAllocation.lines[index]!.salesTaxAmount,
         pricingMode: line.item.pricingMode,
         unitWeight: line.item.pricingMode === "WEIGHT" ? line.item.unitWeight : null,
         totalWeight: line.totalWeight,
