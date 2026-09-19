@@ -21,6 +21,7 @@ export async function recordPaymentAction(
     customerId: formData.get("customerId"),
     invoiceId: formData.get("invoiceId") ?? "",
     cashBankAccountId: formData.get("cashBankAccountId") ?? "",
+    applyToOpeningBalance: formData.get("applyToOpeningBalance") === "true",
     amount: formData.get("amount"),
     withholdingTaxAmount: formData.get("withholdingTaxAmount") ?? 0,
     paymentDate: formData.get("paymentDate"),
