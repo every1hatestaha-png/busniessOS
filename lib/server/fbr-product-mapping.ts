@@ -103,31 +103,31 @@ export async function verifyProductFbrReferenceMapping(
   }
 
   const verifiedAt = new Date();
-  const updated = await db.product.updateMany({
-    where: {
-      id: product.id,
-      workspaceId: context.workspaceId,
-      fbrHsCode: product.fbrHsCode,
-      fbrUom: product.fbrUom,
-      fbrTransactionTypeId: product.fbrTransactionTypeId,
-      fbrRateId: product.fbrRateId,
-    },
-    data: {
-      fbrUomId: uom.id,
-      fbrTransactionTypeDesc: transactionType.description,
-      fbrRateDesc: rate.description,
-      fbrRateValue: new Prisma.Decimal(rate.value),
-      fbrReferenceVerifiedAt: verifiedAt,
-      fbrReferenceVerifiedForDate: dateOnly(effectiveDate),
-      fbrReferenceProvinceCode: province.code,
-      fbrReferenceProvinceDesc: province.description,
-    },
-  });
-  if (updated.count !== 1) {
-    throw new FbrProductMappingError("The product FBR mapping changed during verification. Refresh the product and verify again.");
-  }
-
   await db.$transaction(async (tx) => {
+    const updated = await tx.product.updateMany({
+      where: {
+        id: product.id,
+        workspaceId: context.workspaceId,
+        fbrHsCode: product.fbrHsCode,
+        fbrUom: product.fbrUom,
+        fbrTransactionTypeId: product.fbrTransactionTypeId,
+        fbrRateId: product.fbrRateId,
+      },
+      data: {
+        fbrUomId: uom.id,
+        fbrTransactionTypeDesc: transactionType.description,
+        fbrRateDesc: rate.description,
+        fbrRateValue: new Prisma.Decimal(rate.value),
+        fbrReferenceVerifiedAt: verifiedAt,
+        fbrReferenceVerifiedForDate: dateOnly(effectiveDate),
+        fbrReferenceProvinceCode: province.code,
+        fbrReferenceProvinceDesc: province.description,
+      },
+    });
+    if (updated.count !== 1) {
+      throw new FbrProductMappingError("The product FBR mapping changed during verification. Refresh the product and verify again.");
+    }
+
     await writeAudit(tx, {
       workspaceId: context.workspaceId,
       actorId: context.userId,

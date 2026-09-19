@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { FBR_STANDARD_RATE_SALE_TYPE, validateFbrLineMapping } from "@/lib/fbr/tax-mapping";
+import { FBR_STANDARD_RATE_SALE_TYPE, validateFbrLineMapping, type FbrLineMappingInput } from "@/lib/fbr/tax-mapping";
 
-function valid() {
+function valid(): FbrLineMappingInput {
   return {
     invoiceDate: "2026-09-19",
     sellerProvince: "Punjab",
