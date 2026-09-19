@@ -9,6 +9,8 @@ export const productSchema = z.object({
   stockQuantity: z.coerce.number().min(0, "Opening stock cannot be negative"),
   reorderLevel: z.coerce.number().min(0, "Reorder level cannot be negative"),
   defaultWeightKg: z.preprocess((value) => value === "" || value == null ? undefined : value, z.coerce.number().positive("Default weight must be greater than zero").max(100000).optional()),
+  fbrHsCode: z.string().trim().max(20, "HS code is too long").optional().default(""),
+  fbrUom: z.string().trim().max(120, "FBR unit is too long").optional().default(""),
   unit: z.enum(["PIECE", "BOX", "CARTON", "KG", "SET", "LITER", "METER"]),
   status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).default("ACTIVE"),
   description: z.string().trim().min(10, "Description must be at least 10 characters").max(500, "Description cannot exceed 500 characters"),
