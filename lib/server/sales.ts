@@ -50,7 +50,25 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
         throw error;
       }
     }
-    const products = await tx.product.findMany({ where: { workspaceId: context.workspaceId, id: { in: data.items.map((item) => item.productId) }, status: "ACTIVE" }, select: { id: true, name: true, sku: true, stockQuantity: true, costPrice: true } });
+    const products = await tx.product.findMany({ where: { workspaceId: context.workspaceId, id: { in: data.items.map((item) => item.productId) }, status: "ACTIVE" }, select: {
+      id: true,
+      name: true,
+      sku: true,
+      stockQuantity: true,
+      costPrice: true,
+      fbrHsCode: true,
+      fbrUom: true,
+      fbrUomId: true,
+      fbrTransactionTypeId: true,
+      fbrTransactionTypeDesc: true,
+      fbrRateId: true,
+      fbrRateDesc: true,
+      fbrRateValue: true,
+      fbrReferenceVerifiedAt: true,
+      fbrReferenceVerifiedForDate: true,
+      fbrReferenceProvinceCode: true,
+      fbrReferenceProvinceDesc: true,
+    } });
     if (products.length !== data.items.length) throw new SaleDomainError("PRODUCT_NOT_FOUND", "One or more products are unavailable.");
 
     const lines = data.items.map((item) => {
@@ -133,7 +151,35 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
     await tx.salesOrderItem.createMany({ data: lines.map((line, index) => {
       const product = productById.get(line.productId)!;
       const tax = taxAllocation.lines[index]!;
-      return { salesOrderId: order.id, productId: line.productId, productName: product.name, productSku: product.sku, quantity: line.quantity, unitPrice: line.unitPrice, discountPerUnit: line.discountPerUnit, totalPrice: line.total, taxRate: tax.taxRate, taxableAmount: tax.taxableAmount, salesTaxAmount: tax.salesTaxAmount, pricingMode: line.pricingMode, unitWeight: line.pricingMode === "WEIGHT" ? line.unitWeight : null, totalWeight: line.totalWeight, perKgRate: line.pricingMode === "WEIGHT" ? line.perKgRate : null };
+      return {
+        salesOrderId: order.id,
+        productId: line.productId,
+        productName: product.name,
+        productSku: product.sku,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+        discountPerUnit: line.discountPerUnit,
+        totalPrice: line.total,
+        taxRate: tax.taxRate,
+        taxableAmount: tax.taxableAmount,
+        salesTaxAmount: tax.salesTaxAmount,
+        fbrHsCode: product.fbrHsCode,
+        fbrUom: product.fbrUom,
+        fbrUomId: product.fbrUomId,
+        fbrTransactionTypeId: product.fbrTransactionTypeId,
+        fbrSaleType: product.fbrTransactionTypeDesc,
+        fbrRateId: product.fbrRateId,
+        fbrRateDesc: product.fbrRateDesc,
+        fbrRateValue: product.fbrRateValue,
+        fbrReferenceVerifiedAt: product.fbrReferenceVerifiedAt,
+        fbrReferenceVerifiedForDate: product.fbrReferenceVerifiedForDate,
+        fbrReferenceProvinceCode: product.fbrReferenceProvinceCode,
+        fbrReferenceProvinceDesc: product.fbrReferenceProvinceDesc,
+        pricingMode: line.pricingMode,
+        unitWeight: line.pricingMode === "WEIGHT" ? line.unitWeight : null,
+        totalWeight: line.totalWeight,
+        perKgRate: line.pricingMode === "WEIGHT" ? line.perKgRate : null,
+      };
     }) });
     await tx.inventoryTransaction.createMany({ data: lines.map((line) => {
       const product = productById.get(line.productId)!;
