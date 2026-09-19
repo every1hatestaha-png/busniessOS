@@ -39,6 +39,8 @@ export type ProductDTO = {
   stockQuantity: number;
   reorderLevel: number;
   defaultWeightKg: number | null;
+  fbrHsCode: string;
+  fbrUom: string;
   unit: ProductUnit;
   status: ProductStatus;
   createdAt: string;
@@ -69,6 +71,8 @@ function toProductDTO(product: {
   stockQuantity: { toNumber(): number };
   reorderLevel: { toNumber(): number };
   defaultWeightKg: { toNumber(): number } | null;
+  fbrHsCode: string | null;
+  fbrUom: string | null;
   unit: ProductUnit;
   status: ProductStatus;
   createdAt: Date;
@@ -84,6 +88,8 @@ function toProductDTO(product: {
     stockQuantity: product.stockQuantity.toNumber(),
     reorderLevel: product.reorderLevel.toNumber(),
     defaultWeightKg: product.defaultWeightKg?.toNumber() ?? null,
+    fbrHsCode: product.fbrHsCode ?? "",
+    fbrUom: product.fbrUom ?? "",
     createdAt: product.createdAt.toISOString(),
     updatedAt: product.updatedAt.toISOString(),
   };
@@ -160,6 +166,8 @@ export async function createProduct(workspaceId: string, input: ProductData): Pr
         stockQuantity: input.stockQuantity,
         reorderLevel: input.reorderLevel,
         defaultWeightKg: input.defaultWeightKg ?? null,
+        fbrHsCode: input.fbrHsCode || null,
+        fbrUom: input.fbrUom || null,
         unit: input.unit,
         status: input.status,
         description: input.description,
@@ -220,6 +228,8 @@ export async function updateProduct(
         sellingPrice: input.sellingPrice,
         reorderLevel: input.reorderLevel,
         defaultWeightKg: input.defaultWeightKg ?? null,
+        fbrHsCode: input.fbrHsCode || null,
+        fbrUom: input.fbrUom || null,
         unit: input.unit,
         status: input.status,
         description: input.description,
