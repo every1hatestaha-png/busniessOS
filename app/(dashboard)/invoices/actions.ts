@@ -2,8 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 
+import { requiresFbrManualReconciliation } from "@/lib/fbr/digital-invoicing";
 import { requirePermission } from "@/lib/server/authorization";
 import { getFbrSubmissionForInvoice, prepareFbrInvoiceSubmission } from "@/lib/server/fbr-digital-invoicing";
+import { runFbrInvoiceSubmission } from "@/lib/server/fbr-remote-submission";
 import { runFbrRemoteValidation } from "@/lib/server/fbr-remote-validation";
 import { recordPayment } from "@/lib/server/payments";
 import { paymentSchema } from "@/lib/validation/payment";
@@ -23,6 +25,13 @@ export async function prepareFbrSandboxAction(
   try {
     const prepared = await prepareFbrInvoiceSubmission(invoiceId, "SANDBOX");
     revalidatePath(`/invoices/${invoiceId}`);
+    if (requiresFbrManualReconciliation(prepared.submission.status, prepared.submission.lastErrorCode)) {
+      return {
+        error: prepared.submission.lastErrorMessage
+          ?? "The previous FBR POST has an uncertain outcome. Reconcile it before any retry.",
+        successToken: Date.now(),
+      };
+    }
     if (!prepared.readyForRemoteValidation) {
       return {
         error: prepared.issues[0]?.message ?? "Resolve the FBR preflight blockers before sandbox validation.",
@@ -55,6 +64,13 @@ export async function validateFbrSandboxAction(
     if (!sandboxSubmission || sandboxSubmission.id !== submissionId) {
       return { error: "The sandbox submission changed. Refresh the invoice and prepare it again.", successToken: Date.now() };
     }
+    if (requiresFbrManualReconciliation(sandboxSubmission.status, sandboxSubmission.lastErrorCode)) {
+      return {
+        error: sandboxSubmission.lastErrorMessage
+          ?? "The previous FBR POST has an uncertain outcome. Reconcile it before any retry.",
+        successToken: Date.now(),
+      };
+    }
 
     const result = await runFbrRemoteValidation(submissionId, "SANDBOX");
     revalidatePath(`/invoices/${invoiceId}`);
@@ -72,6 +88,52 @@ export async function validateFbrSandboxAction(
       error: error instanceof Error && error.message
         ? error.message
         : "FBR sandbox validation could not be completed.",
+      successToken: Date.now(),
+    };
+  }
+}
+
+export async function submitFbrSandboxAction(
+  invoiceId: string,
+  submissionId: string,
+  _previousState: FbrInvoiceActionState,
+  _formData: FormData,
+): Promise<FbrInvoiceActionState> {
+  try {
+    const context = await requirePermission("financial.manage");
+    const sandboxSubmission = await getFbrSubmissionForInvoice(context.workspaceId, invoiceId, "SANDBOX");
+    if (!sandboxSubmission || sandboxSubmission.id !== submissionId) {
+      return { error: "The sandbox submission changed. Refresh the invoice before submitting.", successToken: Date.now() };
+    }
+    if (requiresFbrManualReconciliation(sandboxSubmission.status, sandboxSubmission.lastErrorCode)) {
+      return {
+        error: sandboxSubmission.lastErrorMessage
+          ?? "The previous FBR POST has an uncertain outcome. Reconcile it before any retry.",
+        successToken: Date.now(),
+      };
+    }
+    if (sandboxSubmission.status === "SUBMITTED") {
+      return { success: "This test invoice is already submitted to FBR sandbox.", successToken: Date.now() };
+    }
+    if (sandboxSubmission.status !== "VALIDATED") {
+      return { error: "The invoice must pass FBR sandbox validation before sandbox submission.", successToken: Date.now() };
+    }
+
+    const result = await runFbrInvoiceSubmission(submissionId, "SANDBOX");
+    revalidatePath(`/invoices/${invoiceId}`);
+
+    if (result.status === "SUBMITTED") {
+      return { success: "Invoice submitted to FBR sandbox successfully.", successToken: Date.now() };
+    }
+    return {
+      error: result.submission.lastErrorMessage ?? "FBR sandbox submission did not complete.",
+      successToken: Date.now(),
+    };
+  } catch (error) {
+    return {
+      error: error instanceof Error && error.message
+        ? error.message
+        : "FBR sandbox submission could not be completed.",
       successToken: Date.now(),
     };
   }

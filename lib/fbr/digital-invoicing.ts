@@ -145,6 +145,13 @@ export function assertFbrExpectedEnvironment(
   }
 }
 
+export function requiresFbrManualReconciliation(
+  status: string,
+  lastErrorCode: string | null | undefined,
+) {
+  return status === "BLOCKED" && lastErrorCode === "AMBIGUOUS_POST_RESULT";
+}
+
 export function fbrEndpoint(environment: FbrEnvironment, kind: "VALIDATE" | "POST") {
   const method = kind === "VALIDATE" ? "validateinvoicedata" : "postinvoicedata";
   const suffix = environment === "SANDBOX" ? "_sb" : "";
