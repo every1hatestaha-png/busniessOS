@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { CheckCircle2, CircleAlert, FileCheck2, Send, ShieldAlert } from "lucide-react";
 
 import {
@@ -42,6 +43,7 @@ export function FbrInvoicePanel({
   submission: Submission | null;
   issues: FbrIssue[];
 }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<{ ok: boolean; message: string } | null>(null);
   const ambiguous = submission?.lastErrorCode === "AMBIGUOUS_POST_RESULT";
@@ -51,6 +53,7 @@ export function FbrInvoicePanel({
     startTransition(async () => {
       const result = await task();
       setFeedback(result);
+      router.refresh();
     });
   }
 
