@@ -1,9 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useClerk, useUser } from "@clerk/nextjs";
+import { useClerk, useReverification, useUser } from "@clerk/nextjs";
 import { LogOut, UserRoundCog, UserRoundPlus } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
+import { authorizeDesktopAccountSwitchAction } from "@/app/(dashboard)/desktop-account-actions";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,6 +18,7 @@ import {
 export function DesktopAccountMenu() {
   const clerk = useClerk();
   const { user } = useUser();
+  const authorizeAccountSwitch = useReverification(authorizeDesktopAccountSwitchAction);
   const busy = useRef(false);
   const [pendingAction, setPendingAction] = useState<"switch" | "signout" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +35,9 @@ export function DesktopAccountMenu() {
       const desktop = window.businessOSDesktop;
       if (!desktop?.signOut || !desktop.switchAccount) throw new Error("Desktop bridge unavailable");
       if (action === "switch") {
+        stage = "verification";
+        const verification = await authorizeAccountSwitch();
+        if (!verification?.ok) throw new Error("Fresh verification was not completed");
         stage = "Electron";
         if (await desktop.switchAccount() !== true) throw new Error("Desktop account switch did not complete");
         return;
