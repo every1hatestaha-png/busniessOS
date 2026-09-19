@@ -4,6 +4,7 @@ import { ArrowLeft, Pencil, Truck } from "lucide-react";
 
 import { StatusBadge } from "@/components/business/status-badge";
 import { PrintButton } from "@/components/invoices/print-button";
+import { FbrInvoicePanel } from "@/components/invoices/fbr-invoice-panel";
 import { RecordPaymentForm } from "@/components/payments/record-payment-form";
 import { CancelSaleButton } from "@/components/sales/cancel-sale-button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -11,6 +12,8 @@ import { deliveryChallanNumber } from "@/lib/document-references";
 import { requireWorkspace } from "@/lib/server/auth";
 import { getCashBankAccounts } from "@/lib/server/accounting";
 import { getInvoice } from "@/lib/server/invoices";
+import { getFbrSubmissionForInvoice } from "@/lib/server/fbr-digital-invoicing";
+import { db } from "@/lib/server/db";
 import { canPerformAction } from "@/lib/server/authorization";
 import { formatDate, formatPKR } from "@/lib/utils";
 import { Prisma } from "@prisma/client";
@@ -27,6 +30,16 @@ function formatUnit(unit: string) {
   return unit.toLowerCase();
 }
 
+function readFbrIssues(value: Prisma.JsonValue | null) {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((issue) => {
+    if (!issue || typeof issue !== "object" || Array.isArray(issue)) return [];
+    const record = issue as Record<string, unknown>;
+    if (typeof record.path !== "string" || typeof record.code !== "string" || typeof record.message !== "string") return [];
+    return [{ path: record.path, code: record.code, message: record.message }];
+  });
+}
+
 const actionLink = "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-medium hover:bg-neutral-50";
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -34,11 +47,21 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const { workspaceId, workspace, role } = await requireWorkspace();
   const canRecordPayments = canPerformAction(role, "payments.record");
   const canManageFinancials = canPerformAction(role, "financial.manage");
-  const [invoice, cashBankAccounts] = await Promise.all([
+  const [invoice, cashBankAccounts, fbrConfig] = await Promise.all([
     getInvoice(workspaceId, id),
     canRecordPayments ? getCashBankAccounts(workspaceId) : Promise.resolve([]),
+    canManageFinancials
+      ? db.fbrIntegrationConfig.findUnique({
+          where: { workspaceId },
+          select: { enabled: true, environment: true },
+        })
+      : Promise.resolve(null),
   ]);
   if (!invoice) notFound();
+  const fbrSubmission = canManageFinancials && fbrConfig
+    ? await getFbrSubmissionForInvoice(workspaceId, id, fbrConfig.environment)
+    : null;
+  const fbrIssues = readFbrIssues(fbrSubmission?.validationResponse ?? null);
   const dcNumber = deliveryChallanNumber(invoice.invoiceNumber);
 
   return (
@@ -73,7 +96,29 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
           {invoice.payments.length > 0 && <section className="border-t border-neutral-200 p-6 sm:p-8"><h3 className="font-semibold">Payment history</h3><div className="mt-3 overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Method / status</TableHead><TableHead>Receipt / reference</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader><TableBody>{invoice.payments.map((payment) => <TableRow key={payment.id}><TableCell>{formatDate(payment.date)}</TableCell><TableCell>{payment.method.replaceAll("_", " ")}{payment.isReversal ? " · Reversal" : payment.isReversed ? " · Reversed" : ""}</TableCell><TableCell><Link href={`/payments/${payment.id}`} className="font-medium hover:underline">{payment.reference}</Link></TableCell><TableCell className="text-right font-medium">{formatPKR(payment.amount)}</TableCell></TableRow>)}</TableBody></Table></div></section>}
         </article>
-        <aside className="rounded-xl border border-neutral-200 bg-white p-5 print:hidden 2xl:sticky 2xl:top-6"><div className="mb-5"><h2 className="font-semibold">Record payment</h2><p className="mt-1 text-sm text-neutral-500">Allocate a manual receipt to this invoice.</p></div>{canRecordPayments && invoice.balance > 0 && !["CANCELLED", "DRAFT"].includes(invoice.status) ? <RecordPaymentForm invoice={{ id: invoice.id, number: invoice.invoiceNumber, customerId: invoice.customer.id, customerName: invoice.customer.companyName, balance: invoice.balance }} cashBankAccounts={cashBankAccounts} /> : <p className="rounded-lg bg-neutral-50 p-4 text-sm text-neutral-600">{invoice.balance <= 0 ? "This invoice has been paid in full." : "Payment recording is unavailable for your role or this invoice."}</p>}</aside>
+        <aside className="space-y-4 print:hidden 2xl:sticky 2xl:top-6">
+          {canManageFinancials && (
+            <FbrInvoicePanel
+              invoiceId={invoice.id}
+              submission={fbrSubmission ? {
+                id: fbrSubmission.id,
+                environment: fbrSubmission.environment,
+                status: fbrSubmission.status,
+                fbrInvoiceNumber: fbrSubmission.fbrInvoiceNumber,
+                lastErrorCode: fbrSubmission.lastErrorCode,
+                lastErrorMessage: fbrSubmission.lastErrorMessage,
+                attemptCount: fbrSubmission.attemptCount,
+              } : null}
+              issues={fbrIssues}
+            />
+          )}
+          <div className="rounded-xl border border-neutral-200 bg-white p-5">
+            <div className="mb-5"><h2 className="font-semibold">Record payment</h2><p className="mt-1 text-sm text-neutral-500">Allocate a manual receipt to this invoice.</p></div>
+            {canRecordPayments && invoice.balance > 0 && !["CANCELLED", "DRAFT"].includes(invoice.status)
+              ? <RecordPaymentForm invoice={{ id: invoice.id, number: invoice.invoiceNumber, customerId: invoice.customer.id, customerName: invoice.customer.companyName, balance: invoice.balance }} cashBankAccounts={cashBankAccounts} />
+              : <p className="rounded-lg bg-neutral-50 p-4 text-sm text-neutral-600">{invoice.balance <= 0 ? "This invoice has been paid in full." : "Payment recording is unavailable for your role or this invoice."}</p>}
+          </div>
+        </aside>
       </div>
     </div>
   );
