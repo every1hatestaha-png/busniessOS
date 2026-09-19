@@ -401,7 +401,7 @@ export async function getSupplierPaymentVoucher(workspaceId: string, paymentId: 
     netAmount: Number(payment.netAmount ?? payment.amount.minus(payment.withholdingTaxAmount)),
     supplier: payment.supplier ? { name: payment.supplier.name, companyName: payment.supplier.companyName, phone: payment.supplier.phone, address: payment.supplier.address, city: payment.supplier.city } : null,
     cashBankAccount: payment.cashBankAccount ? { name: payment.cashBankAccount.name, code: payment.cashBankAccount.account.code, isBank: payment.cashBankAccount.isBank, bankName: payment.cashBankAccount.bankName, accountTitle: payment.cashBankAccount.accountTitle, accountNumber: payment.cashBankAccount.accountNumber } : null,
-    workspace: { name: payment.workspace.name, phone: payment.workspace.phone, email: payment.workspace.email, address: payment.workspace.address, city: payment.workspace.city, country: payment.workspace.country },
+    workspace: { name: payment.workspace.name, phone: payment.workspace.phone, email: payment.workspace.email, address: payment.workspace.address, city: payment.workspace.city, country: payment.workspace.country, ntn: payment.workspace.ntn, strn: payment.workspace.strn },
     allocations: payment.allocations.map((allocation) => ({
       id: allocation.id,
       amount: Number(allocation.amount),
