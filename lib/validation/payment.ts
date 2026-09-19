@@ -5,6 +5,7 @@ export const paymentSchema = z.object({
   invoiceId: z.string().uuid().optional().or(z.literal("")),
   cashBankAccountId: z.string().uuid().optional().or(z.literal("")),
   allocations: z.array(z.object({ invoiceId: z.string().uuid(), amount: z.coerce.number().positive().max(100000000) })).max(100).optional(),
+  applyToOpeningBalance: z.coerce.boolean().default(false),
   amount: z.coerce.number().positive().max(100000000),
   withholdingTaxAmount: z.coerce.number().min(0).max(100000000).default(0),
   paymentDate: z.coerce.date(),
@@ -13,6 +14,9 @@ export const paymentSchema = z.object({
   notes: z.string().trim().max(500).default(""),
   idempotencyKey: z.string().trim().min(8).max(200).optional(),
 }).superRefine((data, ctx) => {
+  if (data.applyToOpeningBalance && (data.invoiceId || data.allocations?.length)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["applyToOpeningBalance"], message: "Opening balance settlement cannot also target invoices." });
+  }
   if (data.withholdingTaxAmount > data.amount) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
