@@ -5,7 +5,7 @@ import { Prisma } from "@prisma/client";
 
 import { assertFbrExpectedEnvironment, requiresFbrManualReconciliation, validateFbrInvoicePayload, type FbrEnvironment, type FbrInvoicePayload, type FbrValidationIssue } from "@/lib/fbr/digital-invoicing";
 import { validateFbrProductionCompliance } from "@/lib/fbr/production-compliance";
-import { validateFbrLineMapping } from "@/lib/fbr/tax-mapping";
+import { validateFbrHsUomCompatibility, validateFbrLineMapping } from "@/lib/fbr/tax-mapping";
 import { requirePermission } from "@/lib/server/authorization";
 import { businessDateKey } from "@/lib/server/business-time";
 import { db } from "@/lib/server/db";
@@ -106,6 +106,7 @@ export async function buildFbrInvoiceDraft(workspaceId: string, invoiceId: strin
   const gstAmount = Math.max(0, invoiceTotal - taxableAmount);
   const invoiceDate = businessDateKey(invoice.issuedAt, invoice.workspace.timezone || "Asia/Karachi");
   let taxMappingReady = true;
+  let hsUomCompatibilityReady = true;
 
   const lineDrafts = invoice.salesOrder.items.map((item, index) => {
     const quantity = Number(item.quantity);
@@ -143,6 +144,24 @@ export async function buildFbrInvoiceDraft(workspaceId: string, invoiceId: strin
         code: issue.code,
         message: `${item.productName ?? item.product.name}: ${issue.message}`,
       })));
+    }
+
+    if (environment === "PRODUCTION") {
+      const compatibility = validateFbrHsUomCompatibility({
+        configuredAnnexureId: config?.hsUomAnnexureId,
+        annexureConfirmedAt: config?.hsUomAnnexureConfirmedAt,
+        annexureConfirmedBy: config?.hsUomAnnexureConfirmedBy,
+        lineAnnexureId: item.fbrHsUomAnnexureId,
+        lineVerifiedAt: item.fbrHsUomVerifiedAt,
+      });
+      if (!compatibility.ready) {
+        hsUomCompatibilityReady = false;
+        preflight.push({
+          path: `items[${index}].uoM`,
+          code: compatibility.code,
+          message: `${item.productName ?? item.product.name}: ${compatibility.message}`,
+        });
+      }
     }
 
     if (lineDiscount < -0.01) {
@@ -218,10 +237,7 @@ export async function buildFbrInvoiceDraft(workspaceId: string, invoiceId: strin
       productionApprovedAt: config?.productionApprovedAt,
       productionApprovedBy: config?.productionApprovedBy,
       taxMappingReady,
-      // The official HS_UOM endpoint requires a sales-annexure id. Until the
-      // licensed integration path confirms how MunshiOS should derive it,
-      // production remains explicitly blocked rather than guessing.
-      hsUomCompatibilityReady: false,
+      hsUomCompatibilityReady,
     }));
   }
 

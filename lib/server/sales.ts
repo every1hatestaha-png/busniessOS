@@ -68,6 +68,8 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
       fbrReferenceVerifiedForDate: true,
       fbrReferenceProvinceCode: true,
       fbrReferenceProvinceDesc: true,
+      fbrHsUomVerifiedAt: true,
+      fbrHsUomAnnexureId: true,
     } });
     if (products.length !== data.items.length) throw new SaleDomainError("PRODUCT_NOT_FOUND", "One or more products are unavailable.");
 
@@ -175,6 +177,8 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
         fbrReferenceVerifiedForDate: product.fbrReferenceVerifiedForDate,
         fbrReferenceProvinceCode: product.fbrReferenceProvinceCode,
         fbrReferenceProvinceDesc: product.fbrReferenceProvinceDesc,
+        fbrHsUomVerifiedAt: product.fbrHsUomVerifiedAt,
+        fbrHsUomAnnexureId: product.fbrHsUomAnnexureId,
         pricingMode: line.pricingMode,
         unitWeight: line.pricingMode === "WEIGHT" ? line.unitWeight : null,
         totalWeight: line.totalWeight,
