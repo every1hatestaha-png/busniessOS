@@ -118,6 +118,37 @@ describe("accounting GL integration", () => {
     expect(lineAmount(rows, "ACCOUNTS_RECEIVABLE", "credit")).toBe(50);
   });
 
+  it("separates GST from sales revenue and reverses tax on customer return", async () => {
+    const sale = await createSale(context(), {
+      customerId,
+      items: [{ productId, quantity: 1, unitPrice: 100, discountPerUnit: 0 }],
+      gstRate: 18,
+      paidAmount: 0,
+      orderDiscount: 0,
+      notes: "",
+      idempotencyKey: randomUUID(),
+    });
+    const saleRows = await glLines(sale.id);
+    expect(lineAmount(saleRows, "ACCOUNTS_RECEIVABLE", "debit")).toBe(118);
+    expect(lineAmount(saleRows, "SALES_REVENUE", "credit")).toBe(100);
+    expect(lineAmount(saleRows, "SALES_TAX_PAYABLE", "credit")).toBe(18);
+
+    const saleDetail = await db.salesOrder.findUniqueOrThrow({ where: { id: sale.id }, include: { items: true } });
+    const customerReturn = await createCustomerReturn(context(), {
+      salesOrderId: sale.id,
+      items: [{ itemId: saleDetail.items[0].id, quantity: 1 }],
+      restock: false,
+      reason: "GST return",
+      notes: "",
+      idempotencyKey: randomUUID(),
+    });
+    const returnRows = await glLines(customerReturn.id);
+    expect(lineAmount(returnRows, "SALES_REVENUE", "debit")).toBe(100);
+    expect(lineAmount(returnRows, "SALES_TAX_PAYABLE", "debit")).toBe(18);
+    expect(lineAmount(returnRows, "ACCOUNTS_RECEIVABLE", "credit")).toBe(118);
+    expect(await accountBalance("SALES_TAX_PAYABLE", "CREDIT")).toBe(0);
+  });
+
   it("posts a balanced standalone customer payment", async () => {
     const payment = await recordPayment(context(), { customerId, cashBankAccountId, amount: 50, paymentDate: new Date(), method: "CASH", reference: "", notes: "", idempotencyKey: randomUUID() });
     expect(await glTotals(payment.id)).toEqual({ count: 2, debit: 50, credit: 50 });

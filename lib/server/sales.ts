@@ -144,7 +144,7 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
       await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, type: "PAYMENT_RECEIVED", credit: paid, description: `Payment ${paymentNumber}`, referenceId: payment.id } });
       await tx.customer.update({ where: { id: customer.id, workspaceId: context.workspaceId }, data: { currentBalance: { decrement: paid } } });
     }
-    await postSaleToGeneralLedger(tx, { workspaceId: context.workspaceId, saleId: order.id, orderNumber, date: order.orderDate, revenue: total, costOfGoodsSold, cashReceived: paid, cashBankAccountId });
+    await postSaleToGeneralLedger(tx, { workspaceId: context.workspaceId, saleId: order.id, orderNumber, date: order.orderDate, revenue: taxableAmount, salesTax: gstAmount, costOfGoodsSold, cashReceived: paid, cashBankAccountId });
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "sale.created", entityType: "SalesOrder", entityId: order.id, metadata: { orderNumber, taxableAmount: taxableAmount.toString(), gstRate: data.gstRate, gstAmount: gstAmount.toString(), total: total.toString() } });
     return { id: order.id };
   });
@@ -173,6 +173,11 @@ export async function createCustomerReturn(context: ServiceContext, input: Custo
       return { source, quantity: item.quantity, unitPrice, total: unitPrice.mul(item.quantity) };
     });
     const total = lines.reduce((sum, line) => sum.plus(line.total), new Prisma.Decimal(0));
+    const taxableOrderAmount = order.subtotal.minus(order.discount);
+    const orderSalesTax = Prisma.Decimal.max(order.total.minus(taxableOrderAmount), new Prisma.Decimal(0));
+    const returnSalesTax = order.total.greaterThan(0) && orderSalesTax.greaterThan(0)
+      ? total.mul(orderSalesTax).div(order.total).toDecimalPlaces(2)
+      : new Prisma.Decimal(0);
     const saleCosts = data.restock ? await tx.inventoryTransaction.findMany({ where: { workspaceId: context.workspaceId, reference: order.orderNumber, type: "SALE", productId: { in: lines.map((line) => line.source.productId) } }, select: { productId: true, unitCost: true } }) : [];
     const inventoryCost = lines.reduce((sum, line) => {
       const cost = saleCosts.find((entry) => entry.productId === line.source.productId)?.unitCost ?? new Prisma.Decimal(0);
@@ -209,7 +214,7 @@ export async function createCustomerReturn(context: ServiceContext, input: Custo
     await tx.creditNote.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, salesOrderId: order.id, customerReturnId: customerReturn.id, number: noteNumber, reason: data.reason || "Customer return", amount: total, appliedAmount: 0, remainingAmount: total, status: "OPEN", reference: number, notes: data.notes || null } });
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, type: "SALES_RETURN", credit: total, description: `Customer return ${number}`, referenceId: customerReturn.id } });
     await tx.customer.update({ where: { id: order.customerId, workspaceId: context.workspaceId }, data: { currentBalance: { decrement: total } } });
-    await postCustomerReturnToGeneralLedger(tx, { workspaceId: context.workspaceId, returnId: customerReturn.id, documentNo: number, date: customerReturn.date, amount: total, inventoryCost });
+    await postCustomerReturnToGeneralLedger(tx, { workspaceId: context.workspaceId, returnId: customerReturn.id, documentNo: number, date: customerReturn.date, amount: total, salesTax: returnSalesTax, inventoryCost });
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "customer_return.created", entityType: "CustomerReturn", entityId: customerReturn.id, metadata: { salesOrderId: order.id, total: total.toString() } });
     return customerReturn;
   });

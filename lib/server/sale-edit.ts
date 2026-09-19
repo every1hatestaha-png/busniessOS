@@ -245,7 +245,8 @@ export async function updateSaleAndInvoice(context: EditContext, input: SaleEdit
       saleId: order.id,
       orderNumber: order.orderNumber,
       date: data.issuedAt,
-      revenue: total,
+      revenue: taxableAmount,
+      salesTax: gstAmount,
       costOfGoodsSold,
       cashReceived: new Prisma.Decimal(0),
     });
