@@ -49,7 +49,7 @@ export default async function KhataPage() {
           {summary.customers.length > 0 ? (
             <div className="overflow-x-auto">
               <Table className="min-w-[850px]">
-                <TableHeader><TableRow><TableHead>Customer</TableHead><TableHead className="text-right">Total sales</TableHead><TableHead className="text-right">Total paid</TableHead><TableHead className="text-right">Outstanding</TableHead><TableHead className="w-44">Credit usage</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Customer</TableHead><TableHead className="text-right">Total sales</TableHead><TableHead className="text-right">Total paid</TableHead><TableHead className="text-right">Outstanding</TableHead><TableHead className="w-44">Credit limit</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
                 <TableBody>{summary.customers.map((customer) => {
                   const usage = customer.creditLimit > 0 ? Math.max(0, Math.round((customer.outstanding / customer.creditLimit) * 100)) : null;
                   return (
@@ -58,7 +58,7 @@ export default async function KhataPage() {
                       <TableCell className="text-right tabular-nums">{formatPKR(customer.totalSales)}</TableCell>
                       <TableCell className="text-right tabular-nums text-emerald-700">{formatPKR(customer.totalPaid)}</TableCell>
                       <TableCell className="text-right font-semibold tabular-nums">{formatPKR(customer.outstanding)}</TableCell>
-                      <TableCell>{usage == null ? <><p className="text-xs font-medium">No monetary limit</p><p className="mt-1 text-xs text-neutral-400">Utilization not applicable</p></> : <><div className="flex items-center gap-3"><div className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-100"><div className={`h-full rounded-full ${usage >= 80 ? "bg-amber-500" : "bg-neutral-800"}`} style={{ width: `${Math.min(100, usage)}%` }} /></div><span className="w-11 text-right text-xs font-medium">{usage}%</span></div><p className="mt-1 text-xs text-neutral-400">Limit {formatPKR(customer.creditLimit)}</p></>}</TableCell>
+                      <TableCell>{usage == null ? <><p className="text-xs font-medium">No monetary limit</p><p className="mt-1 text-xs text-neutral-400">Utilization not applicable</p></> : <><div className="flex items-center gap-3"><div className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-100"><div className={`h-full rounded-full ${usage >= 80 ? "bg-amber-500" : "bg-neutral-800"}`} style={{ width: `${Math.min(100, usage)}%` }} /></div><span className="w-16 text-right text-xs font-medium">{usage}% used</span></div><p className="mt-1 text-xs text-neutral-400">Approved limit {formatPKR(customer.creditLimit)}</p></>}</TableCell>
                       <TableCell><StatusBadge status={customer.status} /></TableCell>
                     </TableRow>
                   );
