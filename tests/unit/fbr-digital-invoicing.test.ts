@@ -79,7 +79,7 @@ describe("FBR digital invoicing contract", () => {
     ]));
   });
 
-  it("returns official validate/post endpoint variants", () => {
+  it("uses the explicit v1.12 sandbox and production DI endpoints", () => {
     expect(fbrEndpoint("SANDBOX", "VALIDATE")).toBe("https://gw.fbr.gov.pk/di_data/v1/di/validateinvoicedata_sb");
     expect(fbrEndpoint("PRODUCTION", "VALIDATE")).toBe("https://gw.fbr.gov.pk/di_data/v1/di/validateinvoicedata");
     expect(fbrEndpoint("SANDBOX", "POST")).toBe("https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata_sb");

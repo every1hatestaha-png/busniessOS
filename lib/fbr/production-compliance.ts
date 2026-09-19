@@ -4,6 +4,7 @@ export type FbrProductionComplianceInput = {
   integratorLicenseNo?: string | null;
   productionApprovedAt?: Date | null;
   productionApprovedBy?: string | null;
+  taxMappingReady?: boolean;
 };
 
 export type FbrComplianceIssue = {
@@ -37,6 +38,14 @@ export function validateFbrProductionCompliance(input: FbrProductionComplianceIn
       path: "integration.productionApproval",
       code: "PRODUCTION_APPROVAL_REQUIRED",
       message: "Production transmission is blocked until an authorized workspace user confirms the licensed-integrator setup.",
+    });
+  }
+
+  if (!input.taxMappingReady) {
+    issues.push({
+      path: "items[].saleType",
+      code: "PRODUCTION_TAX_MAPPING_NOT_READY",
+      message: "Production transmission remains blocked until per-item FBR sale type and rate mapping is implemented and validated with the licensed integrator or PRAL.",
     });
   }
 
