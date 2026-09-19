@@ -13,7 +13,8 @@ describe("production release workflow", () => {
     expect(workflow).toContain("npx prisma migrate deploy");
     expect(workflow).toContain("npx prisma migrate status");
     expect(targetAssertion).toContain("ep-plain-smoke-b35qxc96");
-    expect(targetAssertion).not.toContain("ep-icy-recipe-b3fwtekt");
+    expect(targetAssertion).toContain("development: new Set");
+    expect(targetAssertion).toContain("classification !== \"production\"");
   });
 
   it("does not deploy application code until production migrations succeed", () => {
