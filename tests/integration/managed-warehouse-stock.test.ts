@@ -272,6 +272,12 @@ describe("managed warehouse stock primitive", () => {
   });
 
   it("applies increments and decrements atomically without allowing negative location stock", async () => {
+    await db.$executeRawUnsafe(
+      'DELETE FROM "warehouse_stocks" WHERE "workspaceId"=$1::uuid AND "productId"=$2::uuid',
+      workspaceId,
+      productId,
+    );
+
     const first = await db.$transaction((tx) =>
       applyManagedWarehouseStockDelta(tx, { workspaceId, warehouseId, productId, delta: 5 }),
     );
