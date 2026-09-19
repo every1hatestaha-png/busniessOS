@@ -3,7 +3,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 
 import { postInvoiceToFbr, type FbrRemoteResult } from "@/lib/fbr/client";
-import type { FbrInvoicePayload } from "@/lib/fbr/digital-invoicing";
+import { assertFbrExpectedEnvironment, type FbrEnvironment, type FbrInvoicePayload } from "@/lib/fbr/digital-invoicing";
 import { writeAudit } from "@/lib/server/audit";
 import { requirePermission } from "@/lib/server/authorization";
 import { db } from "@/lib/server/db";
@@ -62,12 +62,13 @@ export function interpretFbrPostResult(remote: FbrRemoteResult): FbrPostDisposit
   };
 }
 
-export async function runFbrInvoiceSubmission(submissionId: string) {
+export async function runFbrInvoiceSubmission(submissionId: string, expectedEnvironment?: FbrEnvironment) {
   const context = await requirePermission("financial.manage");
   const submission = await db.fbrInvoiceSubmission.findFirst({
     where: { id: submissionId, workspaceId: context.workspaceId },
   });
   if (!submission) throw new Error("FBR submission not found.");
+  assertFbrExpectedEnvironment(submission.environment, expectedEnvironment);
   if (submission.status === "SUBMITTED") return { status: "SUBMITTED" as const, submission };
   if (submission.status !== "VALIDATED") {
     throw new Error("The invoice must pass FBR remote validation before submission.");

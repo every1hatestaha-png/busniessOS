@@ -3,7 +3,7 @@ import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 
-import { assertFbrExpectedEnvironment, validateFbrInvoicePayload, type FbrEnvironment, type FbrInvoicePayload, type FbrValidationIssue } from "@/lib/fbr/digital-invoicing";
+import { assertFbrExpectedEnvironment, requiresFbrManualReconciliation, validateFbrInvoicePayload, type FbrEnvironment, type FbrInvoicePayload, type FbrValidationIssue } from "@/lib/fbr/digital-invoicing";
 import { validateFbrProductionCompliance } from "@/lib/fbr/production-compliance";
 import { requirePermission } from "@/lib/server/authorization";
 import { db } from "@/lib/server/db";
@@ -285,6 +285,9 @@ export async function prepareFbrInvoiceSubmission(invoiceId: string, expectedEnv
       where: { workspaceId: context.workspaceId, invoiceId: invoice.id, environment },
     });
     if (existing?.status === "SUBMITTED") return existing;
+    if (existing && requiresFbrManualReconciliation(existing.status, existing.lastErrorCode)) {
+      return existing;
+    }
 
     const data = {
       environment,
