@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { BookOpenText, Check, Copy, MessageCircle, Phone, PhoneOff, RotateCcw, Search, X } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { Ban, BookOpenText, CalendarClock, Check, CircleCheck, Copy, MessageCircle, Phone, PhoneOff, RotateCcw, Save, Search, X } from "lucide-react";
 
+import { resolveCollectionPromiseAction, saveCollectionPromiseAction } from "@/app/(dashboard)/collections/promise-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -17,8 +18,8 @@ import {
 import { cn, formatPKR } from "@/lib/utils";
 
 const priorityMeta: Record<CollectionPriority, { label: string; detail: string; className: string }> = {
-  URGENT: { label: "Urgent", detail: "30+ days past terms", className: "border-red-200 bg-red-50 text-red-700" },
-  HIGH: { label: "High", detail: "Past payment terms", className: "border-amber-200 bg-amber-50 text-amber-800" },
+  URGENT: { label: "Urgent", detail: "Immediate follow-up", className: "border-red-200 bg-red-50 text-red-700" },
+  HIGH: { label: "High", detail: "Follow up today", className: "border-amber-200 bg-amber-50 text-amber-800" },
   NORMAL: { label: "Normal", detail: "Payment due", className: "border-blue-200 bg-blue-50 text-blue-700" },
   REVIEW: { label: "Review", detail: "Confirm balance timing", className: "border-violet-200 bg-violet-50 text-violet-700" },
   NONE: { label: "No action", detail: "Within current terms", className: "border-slate-200 bg-slate-50 text-slate-600" },
@@ -27,6 +28,10 @@ const priorityMeta: Record<CollectionPriority, { label: string; detail: string; 
 function PriorityPill({ priority }: { priority: CollectionPriority }) {
   const meta = priorityMeta[priority];
   return <span className={cn("inline-flex rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide", meta.className)}>{meta.label}</span>;
+}
+
+function formatPromiseDate(dateKey: string) {
+  return new Intl.DateTimeFormat("en-PK", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${dateKey}T12:00:00.000Z`));
 }
 
 export function SmartCollectionsTable({ rows, workspaceName }: { rows: SmartCollectionRow[]; workspaceName: string }) {
@@ -39,6 +44,12 @@ export function SmartCollectionsTable({ rows, workspaceName }: { rows: SmartColl
   const [composerLanguage, setComposerLanguage] = useState<CollectionLanguage>("roman-urdu");
   const [composerMessage, setComposerMessage] = useState("");
   const [composerCopied, setComposerCopied] = useState(false);
+  const [promiseAmount, setPromiseAmount] = useState("");
+  const [promiseDate, setPromiseDate] = useState("");
+  const [promiseNote, setPromiseNote] = useState("");
+  const [promiseFeedback, setPromiseFeedback] = useState("");
+  const [promiseSuccess, setPromiseSuccess] = useState(false);
+  const [isPromisePending, startPromiseTransition] = useTransition();
 
   const visibleRows = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -68,6 +79,11 @@ export function SmartCollectionsTable({ rows, workspaceName }: { rows: SmartColl
     setComposerLanguage(language);
     setComposerMessage(buildCollectionMessage(row, workspaceName, language));
     setComposerCopied(false);
+    setPromiseAmount(row.activePromise ? String(row.activePromise.amount) : "");
+    setPromiseDate(row.activePromise?.promiseDate ?? "");
+    setPromiseNote(row.activePromise?.note ?? "");
+    setPromiseFeedback("");
+    setPromiseSuccess(false);
   }
 
   function changeComposerLanguage(nextLanguage: CollectionLanguage) {
@@ -97,13 +113,37 @@ export function SmartCollectionsTable({ rows, workspaceName }: { rows: SmartColl
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
+  function savePromise() {
+    if (!composerRow) return;
+    setPromiseFeedback("");
+    setPromiseSuccess(false);
+    startPromiseTransition(async () => {
+      const result = await saveCollectionPromiseAction({ customerId: composerRow.customerId, amount: promiseAmount, promiseDate, note: promiseNote });
+      setPromiseFeedback(result.message);
+      setPromiseSuccess(result.ok);
+      if (result.ok) window.setTimeout(() => window.location.reload(), 650);
+    });
+  }
+
+  function resolvePromise(status: "FULFILLED" | "CANCELLED") {
+    if (!composerRow?.activePromise) return;
+    setPromiseFeedback("");
+    setPromiseSuccess(false);
+    startPromiseTransition(async () => {
+      const result = await resolveCollectionPromiseAction({ promiseId: composerRow.activePromise!.id, status });
+      setPromiseFeedback(result.message);
+      setPromiseSuccess(result.ok);
+      if (result.ok) window.setTimeout(() => window.location.reload(), 650);
+    });
+  }
+
   return (
     <>
       <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-sm font-semibold text-slate-900">Collection queue</h2>
-            <p className="mt-0.5 text-xs text-slate-500">Balances come from the customer account. Prepare a professional reminder, choose the exact contact number, preview it, then open WhatsApp.</p>
+            <p className="mt-0.5 text-xs text-slate-500">Balances, reminders and payment promises stay connected. Future promises are snoozed until they become due.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-[220px] flex-1 sm:flex-none">
@@ -126,7 +166,7 @@ export function SmartCollectionsTable({ rows, workspaceName }: { rows: SmartColl
                 <TableHead className="text-right text-[11px] font-semibold uppercase tracking-wide text-slate-500">Outstanding</TableHead>
                 <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wide text-slate-500">Age / terms</TableHead>
                 <TableHead className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Priority</TableHead>
-                <TableHead className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Pending refs</TableHead>
+                <TableHead className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Promise / refs</TableHead>
                 <TableHead className="pr-4 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-500">Action</TableHead>
               </TableRow>
             </TableHeader>
@@ -142,9 +182,11 @@ export function SmartCollectionsTable({ rows, workspaceName }: { rows: SmartColl
                     <p className="text-xs font-medium text-slate-700">{row.oldestAgeDays === null ? "Needs review" : `${row.oldestAgeDays} days old`}</p>
                     <p className="text-[10px] text-slate-500">Terms: {row.creditDays} days{row.daysPastTerms && row.daysPastTerms > 0 ? ` · ${row.daysPastTerms} late` : ""}</p>
                   </TableCell>
-                  <TableCell><PriorityPill priority={row.priority} /><p className="mt-1 text-[10px] text-slate-400">{priorityMeta[row.priority].detail}</p></TableCell>
+                  <TableCell><PriorityPill priority={row.priority} /><p className="mt-1 text-[10px] text-slate-400">{row.activePromise?.timing === "UPCOMING" ? "Snoozed to promise date" : priorityMeta[row.priority].detail}</p></TableCell>
                   <TableCell>
-                    {row.pendingReferences.length ? <p className="max-w-[260px] truncate text-xs text-slate-600" title={row.pendingReferences.join(", ")}>{row.pendingReferences.join(", ")}</p> : <span className="text-xs text-slate-400">Account balance</span>}
+                    {row.activePromise ? (
+                      <div><p className={cn("text-xs font-semibold", row.activePromise.timing === "MISSED" ? "text-red-700" : row.activePromise.timing === "TODAY" ? "text-amber-700" : "text-emerald-700")}>{row.activePromise.timing === "MISSED" ? `Missed by ${row.activePromise.daysLate}d` : row.activePromise.timing === "TODAY" ? "Due today" : `Promised ${formatPromiseDate(row.activePromise.promiseDate)}`}</p><p className="mt-0.5 text-[10px] text-slate-500">{formatPKR(row.activePromise.amount)}</p></div>
+                    ) : row.pendingReferences.length ? <p className="max-w-[260px] truncate text-xs text-slate-600" title={row.pendingReferences.join(", ")}>{row.pendingReferences.join(", ")}</p> : <span className="text-xs text-slate-400">Account balance</span>}
                   </TableCell>
                   <TableCell className="pr-4">
                     <div className="flex justify-end gap-1.5">
@@ -154,7 +196,7 @@ export function SmartCollectionsTable({ rows, workspaceName }: { rows: SmartColl
                       </Button>
                       {row.whatsappPhones.length ? (
                         <Button type="button" size="sm" onClick={() => openComposer(row)} className="bg-emerald-600 text-white hover:bg-emerald-700">
-                          <MessageCircle className="size-3.5" />Prepare reminder
+                          <MessageCircle className="size-3.5" />{row.activePromise ? "Follow up" : "Prepare reminder"}
                         </Button>
                       ) : (
                         <Link href={`/customers/${row.customerId}/edit`} className="inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
@@ -174,12 +216,12 @@ export function SmartCollectionsTable({ rows, workspaceName }: { rows: SmartColl
 
       {composerRow && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-6" role="dialog" aria-modal="true" aria-label={`Prepare reminder for ${composerRow.customerName}`}>
-          <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border bg-white shadow-2xl">
+          <div className="flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border bg-white shadow-2xl">
             <div className="flex items-start gap-3 border-b px-5 py-4">
               <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700"><MessageCircle className="size-5" /></div>
               <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2"><h3 className="truncate text-base font-semibold text-slate-950">Payment reminder — {composerRow.customerName}</h3><PriorityPill priority={composerRow.priority} /></div>
-                <p className="mt-1 text-xs text-slate-500">Review the exact recipient and wording before opening WhatsApp. Nothing is sent automatically from this screen.</p>
+                <div className="flex flex-wrap items-center gap-2"><h3 className="truncate text-base font-semibold text-slate-950">Collection follow-up — {composerRow.customerName}</h3><PriorityPill priority={composerRow.priority} /></div>
+                <p className="mt-1 text-xs text-slate-500">Review recipient and wording, then record any payment promise the customer gives you.</p>
               </div>
               <button type="button" onClick={() => setComposerRow(null)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close reminder composer"><X className="size-4" /></button>
             </div>
@@ -193,18 +235,34 @@ export function SmartCollectionsTable({ rows, workspaceName }: { rows: SmartColl
               <div className="mt-4 grid gap-3 rounded-xl border bg-slate-50 p-3 sm:grid-cols-3">
                 <div><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Outstanding</p><p className="mt-1 text-sm font-semibold text-slate-900">{formatPKR(composerRow.currentBalance)}</p></div>
                 <div><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Follow-up priority</p><p className="mt-1 text-sm font-semibold text-slate-900">{priorityMeta[composerRow.priority].label}</p></div>
-                <div><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Payment timing</p><p className="mt-1 text-sm font-semibold text-slate-900">{composerRow.daysPastTerms !== null && composerRow.daysPastTerms > 0 ? `${composerRow.daysPastTerms} days past terms` : composerRow.status === "DUE" ? "Due now" : composerRow.status === "REVIEW" ? "Needs confirmation" : "Within terms"}</p></div>
+                <div><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Payment timing</p><p className="mt-1 text-sm font-semibold text-slate-900">{composerRow.activePromise ? (composerRow.activePromise.timing === "MISSED" ? `Promise ${composerRow.activePromise.daysLate}d late` : composerRow.activePromise.timing === "TODAY" ? "Promise due today" : `Promise ${formatPromiseDate(composerRow.activePromise.promiseDate)}`) : composerRow.daysPastTerms !== null && composerRow.daysPastTerms > 0 ? `${composerRow.daysPastTerms} days past terms` : composerRow.status === "DUE" ? "Due now" : composerRow.status === "REVIEW" ? "Needs confirmation" : "Within terms"}</p></div>
               </div>
 
               <div className="mt-4">
                 <div className="mb-1.5 flex items-center justify-between gap-2"><label htmlFor="collection-reminder-message" className="text-xs font-semibold text-slate-700">Message preview</label><button type="button" onClick={resetComposer} className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-900"><RotateCcw className="size-3" />Reset professional template</button></div>
-                <textarea id="collection-reminder-message" value={composerMessage} onChange={(event) => setComposerMessage(event.target.value)} rows={15} className="w-full resize-y rounded-xl border bg-white px-3.5 py-3 text-sm leading-6 text-slate-800 outline-none focus:ring-2 focus:ring-primary/20" />
-                <p className="mt-1.5 text-[11px] text-slate-400">You can edit the wording before sending. The outstanding amount and references were prepared from the current MunshiOS account data.</p>
+                <textarea id="collection-reminder-message" value={composerMessage} onChange={(event) => setComposerMessage(event.target.value)} rows={11} className="w-full resize-y rounded-xl border bg-white px-3.5 py-3 text-sm leading-6 text-slate-800 outline-none focus:ring-2 focus:ring-primary/20" />
+                <p className="mt-1.5 text-[11px] text-slate-400">The outstanding amount and references come from current MunshiOS account data. You may edit the wording before WhatsApp opens.</p>
               </div>
+
+              <section className="mt-5 rounded-xl border border-emerald-100 bg-emerald-50/30 p-4" aria-label="Promise to pay">
+                <div className="flex items-start gap-2"><CalendarClock className="mt-0.5 size-4 text-emerald-700" /><div><h4 className="text-xs font-semibold text-slate-900">Promise to Pay</h4><p className="mt-0.5 text-[11px] text-slate-500">When the customer commits an amount and date, save it here. Future promises are snoozed; due and missed promises return to Aaj ka Munshi.</p></div></div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <label className="space-y-1"><span className="text-[11px] font-semibold text-slate-600">Promised amount (PKR)</span><Input type="number" min="0.01" step="0.01" value={promiseAmount} onChange={(event) => setPromiseAmount(event.target.value)} placeholder="e.g. 200000" /></label>
+                  <label className="space-y-1"><span className="text-[11px] font-semibold text-slate-600">Promised date</span><Input type="date" value={promiseDate} onChange={(event) => setPromiseDate(event.target.value)} /></label>
+                  <label className="space-y-1 sm:col-span-2"><span className="text-[11px] font-semibold text-slate-600">Note <span className="font-normal text-slate-400">(optional)</span></span><Input value={promiseNote} onChange={(event) => setPromiseNote(event.target.value)} placeholder="Cheque expected, bank transfer, person spoken to..." maxLength={300} /></label>
+                </div>
+                {promiseFeedback && <p className={cn("mt-3 rounded-md border px-3 py-2 text-xs", promiseSuccess ? "border-emerald-200 bg-white text-emerald-700" : "border-red-200 bg-red-50 text-red-700")}>{promiseFeedback}</p>}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button type="button" size="sm" onClick={savePromise} disabled={isPromisePending || !promiseAmount || !promiseDate}><Save className="size-3.5" />{composerRow.activePromise ? "Update promise" : "Save promise"}</Button>
+                  {composerRow.activePromise && <Button type="button" variant="outline" size="sm" onClick={() => resolvePromise("FULFILLED")} disabled={isPromisePending}><CircleCheck className="size-3.5" />Mark promise kept</Button>}
+                  {composerRow.activePromise && <Button type="button" variant="outline" size="sm" onClick={() => resolvePromise("CANCELLED")} disabled={isPromisePending}><Ban className="size-3.5" />Cancel promise</Button>}
+                </div>
+                <p className="mt-2 text-[10px] leading-4 text-slate-500"><strong>Important:</strong> Marking a promise kept does not record customer payment or change the ledger. Record the actual receipt separately when money is received.</p>
+              </section>
             </div>
 
             <div className="flex flex-col-reverse gap-2 border-t bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-[10px] leading-4 text-slate-400">Opening WhatsApp does not change the customer balance, ledger, invoice, or collection status.</p>
+              <p className="text-[10px] leading-4 text-slate-400">Opening WhatsApp never changes the customer balance, ledger, invoice, or promise by itself.</p>
               <div className="flex gap-2 sm:shrink-0">
                 <Button type="button" variant="outline" size="sm" onClick={() => void copyComposerMessage()}>{composerCopied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}{composerCopied ? "Copied" : "Copy message"}</Button>
                 <Button type="button" size="sm" onClick={openComposerWhatsApp} disabled={!composerPhone || !composerMessage.trim()} className="bg-emerald-600 text-white hover:bg-emerald-700"><MessageCircle className="size-3.5" />Open WhatsApp</Button>
