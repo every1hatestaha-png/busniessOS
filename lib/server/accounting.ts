@@ -383,7 +383,7 @@ export async function getExpenseVoucher(workspaceId: string, id: string) {
   const expense = await db.expense.findFirst({
     where: { id, workspaceId },
     include: {
-      workspace: { select: { name: true, phone: true, email: true, address: true, city: true, country: true } },
+      workspace: { select: { name: true, phone: true, email: true, address: true, city: true, country: true, ntn: true, strn: true } },
       expenseAccount: { select: { name: true, code: true } },
       paymentAccount: { select: { name: true, code: true } },
     },
