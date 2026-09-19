@@ -37,7 +37,14 @@ const handleProxy = clerkMiddleware(
       path.startsWith("/platform/sign-in") ||
       path === "/privacy" ||
       path === "/terms" ||
-      (!isElectron && (path === "/" || path.startsWith("/get-your-munshi")))
+      (!isElectron && (
+        path === "/" ||
+        path.startsWith("/get-your-munshi") ||
+        path === "/features" ||
+        path === "/industries" ||
+        path === "/pricing" ||
+        path === "/faq"
+      ))
     ) {
       return NextResponse.next();
     }
