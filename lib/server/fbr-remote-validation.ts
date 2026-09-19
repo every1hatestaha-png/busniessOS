@@ -28,18 +28,21 @@ export async function runFbrRemoteValidation(submissionId: string) {
 
   const submission = await db.fbrInvoiceSubmission.findFirst({
     where: { id: submissionId, workspaceId: context.workspaceId },
-    include: { workspace: { select: { id: true } } },
   });
   if (!submission) throw new Error("FBR submission not found.");
   if (submission.status === "SUBMITTED") return { status: "SUBMITTED" as const, submission };
-  if (submission.status === "BLOCKED") throw new Error(submission.lastErrorMessage ?? "Resolve FBR preflight blockers before remote validation.");
+  const credentialBlocked = submission.status === "BLOCKED"
+    && ["CREDENTIAL_MISSING", "UNAUTHORIZED"].includes(submission.lastErrorCode ?? "");
+  if (submission.status === "BLOCKED" && !credentialBlocked) {
+    throw new Error(submission.lastErrorMessage ?? "Resolve FBR preflight blockers before remote validation.");
+  }
   if (!submission.payloadSnapshot) throw new Error("FBR payload snapshot is missing.");
 
   const claimed = await db.fbrInvoiceSubmission.updateMany({
     where: {
       id: submission.id,
       workspaceId: context.workspaceId,
-      status: { in: ["DRAFT", "VALIDATION_FAILED", "FAILED"] },
+      status: { in: ["DRAFT", "VALIDATION_FAILED", "FAILED", ...(credentialBlocked ? ["BLOCKED" as const] : [])] },
     },
     data: {
       status: "VALIDATING",
@@ -93,7 +96,7 @@ export async function runFbrRemoteValidation(submissionId: string) {
         submissionId: submission.id,
         kind: "VALIDATE",
         requestBody: payload as unknown as Prisma.InputJsonValue,
-        responseBody: remote.body as Prisma.InputJsonValue,
+        responseBody: (remote.body ?? Prisma.JsonNull) as Prisma.InputJsonValue,
         httpStatus: remote.httpStatus || null,
         succeeded: valid,
         errorCode: valid ? null : remote.errorCode ?? (remote.httpStatus === 401 ? "UNAUTHORIZED" : "FBR_VALIDATION_FAILED"),
@@ -105,7 +108,7 @@ export async function runFbrRemoteValidation(submissionId: string) {
       where: { id: submission.id },
       data: {
         status: nextStatus,
-        validationResponse: remote.body as Prisma.InputJsonValue,
+        validationResponse: (remote.body ?? Prisma.JsonNull) as Prisma.InputJsonValue,
         attemptCount: { increment: 1 },
         validatedAt: valid ? new Date() : null,
         lastAttemptAt: new Date(),
