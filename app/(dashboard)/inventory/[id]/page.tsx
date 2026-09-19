@@ -12,6 +12,7 @@ import { calculateInventoryValue, cn, formatDate, formatPKR, getStockStatus } fr
 import { requireWorkspace } from "@/lib/server/auth";
 import { canPerformAction } from "@/lib/server/authorization";
 import { ArchiveProductButton } from "@/components/inventory/archive-product-button";
+import { FbrProductMappingCard } from "@/components/inventory/fbr-product-mapping-card";
 import { RemoveProductButton } from "@/components/inventory/remove-product-button";
 import { getWarehouseStockMode, listActiveStockWarehouses } from "@/lib/server/managed-warehouse-stock";
 import { db } from "@/lib/server/db";
@@ -60,13 +61,16 @@ export default async function ProductDetailsPage({ params }: { params: Promise<{
             </Table>
           </CardContent>
         </Card>
-         <Card className="h-fit gap-0 py-0 shadow-none">
+         <div className="space-y-4">
+          <FbrProductMappingCard product={product} canManage={canPerformAction(role, "products.write")} />
+                   <Card className="h-fit gap-0 py-0 shadow-none">
            <CardHeader className="border-b px-4 py-3"><CardTitle>Product details</CardTitle></CardHeader>
            <CardContent className="space-y-4 p-4">
             <div><p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Description</p><p className="mt-1 leading-6 text-neutral-700">{product.description}</p></div>
             <dl className="grid grid-cols-2 gap-4 border-t pt-4"><div><dt className="text-xs text-neutral-500">Category</dt><dd className="mt-1 font-medium">{product.category}</dd></div><div><dt className="text-xs text-neutral-500">Unit</dt><dd className="mt-1 capitalize">{product.unit.toLowerCase()}</dd></div><div><dt className="text-xs text-neutral-500">Catalog status</dt><dd className="mt-1"><StatusBadge status={product.status} /></dd></div><div><dt className="text-xs text-neutral-500">Gross margin</dt><dd className="mt-1 font-medium">{Math.round(((product.sellingPrice - product.costPrice) / product.sellingPrice) * 100)}%</dd></div></dl>
           </CardContent>
         </Card>
+        </div>
       </section>
     </main>
   );

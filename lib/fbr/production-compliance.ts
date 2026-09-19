@@ -5,6 +5,7 @@ export type FbrProductionComplianceInput = {
   productionApprovedAt?: Date | null;
   productionApprovedBy?: string | null;
   taxMappingReady?: boolean;
+  hsUomCompatibilityReady?: boolean;
 };
 
 export type FbrComplianceIssue = {
@@ -45,7 +46,15 @@ export function validateFbrProductionCompliance(input: FbrProductionComplianceIn
     issues.push({
       path: "items[].saleType",
       code: "PRODUCTION_TAX_MAPPING_NOT_READY",
-      message: "Production transmission remains blocked until per-item FBR sale type and rate mapping is implemented and validated with the licensed integrator or PRAL.",
+      message: "Production transmission remains blocked until every invoice line has an immutable, reference-verified FBR sale type and rate that reconciles to the stored tax calculation.",
+    });
+  }
+
+  if (!input.hsUomCompatibilityReady) {
+    issues.push({
+      path: "items[].uoM",
+      code: "PRODUCTION_HS_UOM_COMPATIBILITY_NOT_READY",
+      message: "Production transmission remains blocked until each HS code and UOM combination is verified through the FBR HS_UOM reference rule using a confirmed sales-annexure mapping.",
     });
   }
 

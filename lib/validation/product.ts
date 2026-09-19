@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+const optionalPositiveInt = z.preprocess(
+  (value) => value === "" || value == null ? undefined : value,
+  z.coerce.number().int().positive().optional(),
+);
+
 export const productSchema = z.object({
   name: z.string().trim().min(2, "Product name must be at least 2 characters").max(160, "Product name is too long"),
   sku: z.string().trim().min(3, "SKU must be at least 3 characters").max(60, "SKU is too long").regex(/^[A-Za-z0-9-]+$/, "SKU can contain only letters, numbers, and hyphens").transform((value) => value.toUpperCase()),
@@ -11,6 +16,8 @@ export const productSchema = z.object({
   defaultWeightKg: z.preprocess((value) => value === "" || value == null ? undefined : value, z.coerce.number().positive("Default weight must be greater than zero").max(100000).optional()),
   fbrHsCode: z.string().trim().max(20, "HS code is too long").optional(),
   fbrUom: z.string().trim().max(120, "FBR unit is too long").optional(),
+  fbrTransactionTypeId: optionalPositiveInt,
+  fbrRateId: optionalPositiveInt,
   unit: z.enum(["PIECE", "BOX", "CARTON", "KG", "SET", "LITER", "METER"]),
   status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).default("ACTIVE"),
   description: z.string().trim().min(10, "Description must be at least 10 characters").max(500, "Description cannot exceed 500 characters"),

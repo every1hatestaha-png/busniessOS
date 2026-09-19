@@ -5,7 +5,9 @@ import { Prisma } from "@prisma/client";
 
 import { assertFbrExpectedEnvironment, requiresFbrManualReconciliation, validateFbrInvoicePayload, type FbrEnvironment, type FbrInvoicePayload, type FbrValidationIssue } from "@/lib/fbr/digital-invoicing";
 import { validateFbrProductionCompliance } from "@/lib/fbr/production-compliance";
+import { validateFbrLineMapping } from "@/lib/fbr/tax-mapping";
 import { requirePermission } from "@/lib/server/authorization";
+import { businessDateKey } from "@/lib/server/business-time";
 import { db } from "@/lib/server/db";
 import { writeAudit } from "@/lib/server/audit";
 
@@ -97,92 +99,99 @@ export async function buildFbrInvoiceDraft(workspaceId: string, invoiceId: strin
     });
   }
 
-  if (environment === "PRODUCTION") {
-    preflight.push(...validateFbrProductionCompliance({
-      provider: config?.provider,
-      integratorName: config?.integratorName,
-      integratorLicenseNo: config?.integratorLicenseNo,
-      productionApprovedAt: config?.productionApprovedAt,
-      productionApprovedBy: config?.productionApprovedBy,
-      // Keep this false until MunshiOS stores and validates FBR sale type/rate per line item.
-      taxMappingReady: false,
-    }));
-  }
-
   const subtotal = Number(invoice.salesOrder.subtotal);
   const discount = Number(invoice.salesOrder.discount);
   const taxableAmount = Math.max(0, subtotal - discount);
   const invoiceTotal = Number(invoice.amount);
   const gstAmount = Math.max(0, invoiceTotal - taxableAmount);
-  const gstRate = taxableAmount > 0 ? (gstAmount / taxableAmount) * 100 : 0;
-
-  if (!(gstRate > 0)) {
-    preflight.push({
-      path: "items[].rate",
-      code: "UNSUPPORTED_TAX_MAPPING",
-      message: "This foundation currently requires a positive standard sales-tax rate. Zero-rated/exempt/SRO scenarios need explicit FBR mapping.",
-    });
-  }
+  const invoiceDate = businessDateKey(invoice.issuedAt, invoice.workspace.timezone || "Asia/Karachi");
+  let taxMappingReady = true;
 
   const lineDrafts = invoice.salesOrder.items.map((item, index) => {
-    if (!item.product.fbrHsCode?.trim()) {
-      preflight.push({
-        path: `items[${index}].hsCode`,
-        code: "MISSING_MASTER_DATA",
-        message: `Add an FBR HS code to ${item.product.name}.`,
-      });
+    const quantity = Number(item.quantity);
+    const gross = money(quantity * Number(item.unitPrice));
+    const storedTaxable = item.taxableAmount?.toNumber();
+    const storedTax = item.salesTaxAmount?.toNumber();
+    const storedTaxRate = item.taxRate?.toNumber();
+    const taxable = storedTaxable ?? 0;
+    const salesTax = storedTax ?? 0;
+    const lineDiscount = money(gross - taxable);
+
+    const mappingIssues = validateFbrLineMapping({
+      invoiceDate,
+      sellerProvince: invoice.workspace.province ?? "",
+      hsCode: item.fbrHsCode,
+      uom: item.fbrUom,
+      uomId: item.fbrUomId,
+      transactionTypeId: item.fbrTransactionTypeId,
+      saleType: item.fbrSaleType,
+      rateId: item.fbrRateId,
+      rateDesc: item.fbrRateDesc,
+      rateValue: item.fbrRateValue?.toNumber(),
+      referenceVerifiedAt: item.fbrReferenceVerifiedAt,
+      referenceVerifiedForDate: item.fbrReferenceVerifiedForDate,
+      referenceProvinceCode: item.fbrReferenceProvinceCode,
+      referenceProvinceDesc: item.fbrReferenceProvinceDesc,
+      taxRate: storedTaxRate,
+      taxableAmount: storedTaxable,
+      salesTaxAmount: storedTax,
+    });
+    if (mappingIssues.length) {
+      taxMappingReady = false;
+      preflight.push(...mappingIssues.map((issue) => ({
+        path: `items[${index}]`,
+        code: issue.code,
+        message: `${item.productName ?? item.product.name}: ${issue.message}`,
+      })));
     }
-    if (!item.product.fbrUom?.trim()) {
+
+    if (lineDiscount < -0.01) {
+      taxMappingReady = false;
       preflight.push({
-        path: `items[${index}].uoM`,
-        code: "MISSING_MASTER_DATA",
-        message: `Add an FBR unit of measurement to ${item.product.name}.`,
+        path: `items[${index}].discount`,
+        code: "FBR_LINE_DISCOUNT_MISMATCH",
+        message: `${item.productName ?? item.product.name}: stored taxable value exceeds the line gross value.`,
       });
     }
 
-    const quantity = Number(item.quantity);
-    const gross = quantity * Number(item.unitPrice);
-    const lineDiscount = quantity * Number(item.discountPerUnit);
-    const valueSalesExcludingST = Math.max(0, gross - lineDiscount);
-    return { item, quantity, lineDiscount, valueSalesExcludingST };
+    return {
+      item,
+      quantity,
+      gross,
+      taxable,
+      salesTax,
+      lineDiscount: Math.max(0, lineDiscount),
+    };
   });
 
-  const taxableFromLines = lineDrafts.reduce((sum, line) => sum + line.valueSalesExcludingST, 0);
+  const taxableFromLines = lineDrafts.reduce((sum, line) => sum + line.taxable, 0);
   if (Math.abs(money(taxableFromLines) - money(taxableAmount)) > 0.01) {
     preflight.push({
-      path: "items",
+      path: "items[].taxableAmount",
       code: "TAXABLE_TOTAL_MISMATCH",
-      message: "Invoice line taxable values do not reconcile to the stored invoice taxable amount.",
+      message: "Stored sale-line taxable values do not reconcile to the invoice taxable amount.",
     });
   }
 
-  let allocatedTax = 0;
-  const items = lineDrafts.map((line, index) => {
-    const isLast = index === lineDrafts.length - 1;
-    const proportionalTax = line.valueSalesExcludingST * (gstRate / 100);
-    const lineTax = isLast ? money(gstAmount - allocatedTax) : money(proportionalTax);
-    allocatedTax = money(allocatedTax + lineTax);
-
-    return {
-      hsCode: line.item.product.fbrHsCode ?? "",
-      productDescription: line.item.productName ?? line.item.product.name,
-      rate: `${Number(gstRate.toFixed(4))}%`,
-      uoM: line.item.product.fbrUom ?? "",
-      quantity: line.quantity,
-      totalValues: money(line.valueSalesExcludingST + lineTax),
-      valueSalesExcludingST: money(line.valueSalesExcludingST),
-      fixedNotifiedValueOrRetailPrice: 0,
-      salesTaxApplicable: lineTax,
-      salesTaxWithheldAtSource: 0,
-      extraTax: 0,
-      furtherTax: 0,
-      sroScheduleNo: "",
-      fedPayable: 0,
-      discount: money(line.lineDiscount),
-      saleType: "Goods at standard rate (default)",
-      sroItemSerialNo: "",
-    };
-  });
+  const items = lineDrafts.map((line) => ({
+    hsCode: line.item.fbrHsCode ?? "",
+    productDescription: line.item.productName ?? line.item.product.name,
+    rate: line.item.fbrRateDesc ?? "",
+    uoM: line.item.fbrUom ?? "",
+    quantity: line.quantity,
+    totalValues: money(line.taxable + line.salesTax),
+    valueSalesExcludingST: money(line.taxable),
+    fixedNotifiedValueOrRetailPrice: 0,
+    salesTaxApplicable: money(line.salesTax),
+    salesTaxWithheldAtSource: 0,
+    extraTax: 0,
+    furtherTax: 0,
+    sroScheduleNo: "",
+    fedPayable: 0,
+    discount: money(line.lineDiscount),
+    saleType: line.item.fbrSaleType ?? "",
+    sroItemSerialNo: "",
+  }));
 
   const reconciledTax = items.reduce((sum, item) => sum + item.salesTaxApplicable, 0);
   const reconciledTotal = items.reduce((sum, item) => sum + item.totalValues, 0);
@@ -190,7 +199,7 @@ export async function buildFbrInvoiceDraft(workspaceId: string, invoiceId: strin
     preflight.push({
       path: "items[].salesTaxApplicable",
       code: "GST_TOTAL_MISMATCH",
-      message: "Line sales tax does not reconcile to the stored invoice GST amount.",
+      message: "Stored sale-line sales tax does not reconcile to the invoice GST amount.",
     });
   }
   if (Math.abs(money(reconciledTotal) - money(invoiceTotal)) > 0.01) {
@@ -201,9 +210,24 @@ export async function buildFbrInvoiceDraft(workspaceId: string, invoiceId: strin
     });
   }
 
+  if (environment === "PRODUCTION") {
+    preflight.push(...validateFbrProductionCompliance({
+      provider: config?.provider,
+      integratorName: config?.integratorName,
+      integratorLicenseNo: config?.integratorLicenseNo,
+      productionApprovedAt: config?.productionApprovedAt,
+      productionApprovedBy: config?.productionApprovedBy,
+      taxMappingReady,
+      // The official HS_UOM endpoint requires a sales-annexure id. Until the
+      // licensed integration path confirms how MunshiOS should derive it,
+      // production remains explicitly blocked rather than guessing.
+      hsUomCompatibilityReady: false,
+    }));
+  }
+
   const payload: FbrInvoicePayload = {
     invoiceType: "Sale Invoice",
-    invoiceDate: invoice.issuedAt.toISOString().slice(0, 10),
+    invoiceDate,
     sellerNTNCNIC: normalizeTaxId(invoice.workspace.ntn) ?? "",
     sellerBusinessName: invoice.workspace.name,
     sellerProvince: invoice.workspace.province ?? "",
