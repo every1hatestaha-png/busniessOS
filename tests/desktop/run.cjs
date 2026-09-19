@@ -8,10 +8,11 @@ async function run() {
     configFile: false,
     mode: "production",
     define: { "process.env.NODE_ENV": JSON.stringify("production") },
-    resolve: { alias: {
-      "@clerk/nextjs": path.resolve("tests/desktop/clerk-fixture.ts"),
-      "@": process.cwd(),
-    } },
+    resolve: { alias: [
+      { find: "@/app/(dashboard)/desktop-account-actions", replacement: path.resolve("tests/desktop/account-action-fixture.ts") },
+      { find: "@clerk/nextjs", replacement: path.resolve("tests/desktop/clerk-fixture.ts") },
+      { find: "@", replacement: process.cwd() },
+    ] },
     esbuild: { jsx: "automatic", jsxDev: false },
     build: {
       outDir: ".desktop-test/renderer", emptyOutDir: false,
