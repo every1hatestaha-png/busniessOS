@@ -3,7 +3,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 
 import { validateInvoiceWithFbr } from "@/lib/fbr/client";
-import type { FbrInvoicePayload } from "@/lib/fbr/digital-invoicing";
+import { assertFbrExpectedEnvironment, type FbrEnvironment, type FbrInvoicePayload } from "@/lib/fbr/digital-invoicing";
 import { writeAudit } from "@/lib/server/audit";
 import { requirePermission } from "@/lib/server/authorization";
 import { db } from "@/lib/server/db";
@@ -24,13 +24,14 @@ function acceptedByFbr(body: unknown) {
   return validation?.statusCode === "00" && String(validation?.status ?? "").toLowerCase() === "valid";
 }
 
-export async function runFbrRemoteValidation(submissionId: string) {
+export async function runFbrRemoteValidation(submissionId: string, expectedEnvironment?: FbrEnvironment) {
   const context = await requirePermission("financial.manage");
 
   const submission = await db.fbrInvoiceSubmission.findFirst({
     where: { id: submissionId, workspaceId: context.workspaceId },
   });
   if (!submission) throw new Error("FBR submission not found.");
+  assertFbrExpectedEnvironment(submission.environment, expectedEnvironment);
   if (submission.status === "SUBMITTED") return { status: "SUBMITTED" as const, submission };
   const credentialBlocked = submission.status === "BLOCKED"
     && ["CREDENTIAL_MISSING", "PRODUCTION_TRANSMISSION_DISABLED", "UNAUTHORIZED"].includes(submission.lastErrorCode ?? "");

@@ -136,6 +136,15 @@ export function validateFbrInvoicePayload(
   return issues;
 }
 
+export function assertFbrExpectedEnvironment(
+  actual: FbrEnvironment,
+  expected?: FbrEnvironment,
+) {
+  if (expected && actual !== expected) {
+    throw new Error(`FBR environment mismatch. Expected ${expected}, but the submission is ${actual}.`);
+  }
+}
+
 export function fbrEndpoint(environment: FbrEnvironment, kind: "VALIDATE" | "POST") {
   const method = kind === "VALIDATE" ? "validateinvoicedata" : "postinvoicedata";
   const suffix = environment === "SANDBOX" ? "_sb" : "";
