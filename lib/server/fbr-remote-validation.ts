@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 import { validateInvoiceWithFbr } from "@/lib/fbr/client";
 import type { FbrInvoicePayload } from "@/lib/fbr/digital-invoicing";
