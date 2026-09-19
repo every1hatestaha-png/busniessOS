@@ -12,9 +12,9 @@ describe("line-level sales tax allocation", () => {
     );
     expect(result.totalTaxable.toNumber()).toBe(140);
     expect(result.totalTax.toNumber()).toBe(25.2);
-    expect(result.lines.reduce((sum, line) => sum + line.orderDiscount.toNumber(), 0)).toBe(10);
-    expect(result.lines.reduce((sum, line) => sum + line.taxableAmount.toNumber(), 0)).toBe(140);
-    expect(result.lines.reduce((sum, line) => sum + line.salesTaxAmount.toNumber(), 0)).toBe(25.2);
+    expect(result.lines.reduce((sum, line) => sum.plus(line.orderDiscount), new Prisma.Decimal(0)).equals(10)).toBe(true);
+    expect(result.lines.reduce((sum, line) => sum.plus(line.taxableAmount), new Prisma.Decimal(0)).equals(140)).toBe(true);
+    expect(result.lines.reduce((sum, line) => sum.plus(line.salesTaxAmount), new Prisma.Decimal(0)).equals(25.2)).toBe(true);
   });
 
   it("preserves zero tax and rejects excessive discounts", () => {
