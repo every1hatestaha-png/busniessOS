@@ -9,6 +9,9 @@ const path = require("node:path");
 const { app, BrowserWindow, dialog, ipcMain, safeStorage, session, shell } = require("electron");
 const { scheduleDesktopUpdateChecks } = require("./updater.cjs");
 
+const LOG_MAX_BYTES = 5 * 1024 * 1024;
+const LOG_BACKUP_COUNT = 3;
+
 // Development has its own cookies and encrypted credentials. Never restore the
 // installed application's account while testing local code.
 if (!app.isPackaged) {
@@ -105,8 +108,6 @@ const OAUTH_CALLBACK_PORT = 49200;
 const OAUTH_STATE_TIMEOUT_MS = 5 * 60 * 1000;
 const TOKEN_REFRESH_BUFFER_MS = 60_000;
 const TOKEN_REFRESH_RETRY_MS = 30_000;
-const LOG_MAX_BYTES = 5 * 1024 * 1024;
-const LOG_BACKUP_COUNT = 3;
 const APP_VERSION = app.getVersion();
 
 const DEFAULT_PRODUCTION_ORIGIN = "https://business-os-khzr.vercel.app";
