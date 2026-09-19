@@ -58,8 +58,6 @@ function PaymentFields({ customers, invoice, cashBankAccounts, state, action, pe
   useEffect(() => {
     if (invoice || target !== "INVOICES" || !customerId) return;
     const controller = new AbortController();
-    setLoadingReceivables(true);
-    setReceivablesError("");
     fetch(`/api/v1/customers/${customerId}/receivables`, { signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error("Could not load customer invoices.");
