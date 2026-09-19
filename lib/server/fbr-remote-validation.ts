@@ -79,7 +79,7 @@ export async function runFbrRemoteValidation(submissionId: string) {
 
   let token: string;
   try {
-    token = resolveFbrBearerToken(context.workspaceId).token;
+    token = resolveFbrBearerToken(context.workspaceId, submission.environment).token;
   } catch (error) {
     if (error instanceof FbrCredentialError) {
       const blocked = await db.fbrInvoiceSubmission.update({

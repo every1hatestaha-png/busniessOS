@@ -71,6 +71,24 @@ describe("FBR API client", () => {
     expect(result.errorMessage).toBe("Provide rate.");
   });
 
+
+  it("extracts item-level FBR validation errors when the header error is empty", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      validationResponse: {
+        statusCode: "00",
+        status: "Invalid",
+        errorCode: null,
+        error: "",
+        invoiceStatuses: [
+          { itemSNo: "1", statusCode: "01", status: "Invalid", errorCode: "0046", error: "Provide rate." },
+        ],
+      },
+    }), { status: 200 })) as unknown as typeof fetch;
+    const result = await validateInvoiceWithFbr({ environment: "SANDBOX", token: "token", payload, fetchImpl });
+    expect(result.errorCode).toBe("0046");
+    expect(result.errorMessage).toBe("Provide rate.");
+  });
+
   it("fails before network access when the token is blank", async () => {
     const fetchImpl = vi.fn() as unknown as typeof fetch;
     await expect(validateInvoiceWithFbr({ environment: "SANDBOX", token: "  ", payload, fetchImpl })).rejects.toThrow("FBR bearer token is not configured");

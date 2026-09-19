@@ -52,6 +52,19 @@ describe("FBR post result interpretation", () => {
     expect(result).toEqual(expect.objectContaining({ state: "BLOCKED", code: "AMBIGUOUS_POST_RESULT" }));
   });
 
+
+  it("blocks all retryable POST failures instead of risking a duplicate fiscal invoice", () => {
+    for (const httpStatus of [408, 425, 429, 500, 503]) {
+      const result = interpretFbrPostResult({
+        ok: false,
+        httpStatus,
+        retryable: true,
+        body: { error: "Retry later" },
+      });
+      expect(result).toEqual(expect.objectContaining({ state: "BLOCKED", code: "AMBIGUOUS_POST_RESULT" }));
+    }
+  });
+
   it("keeps explicit validation rejection retryable only after correction", () => {
     const result = interpretFbrPostResult({
       ok: true,

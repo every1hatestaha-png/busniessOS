@@ -47,7 +47,7 @@ export function interpretFbrPostResult(remote: FbrRemoteResult): FbrPostDisposit
   // A timeout, network disconnect, or server-side failure can happen after the
   // remote service has already accepted the invoice. Blindly retrying could
   // create a duplicate fiscal invoice, so force reconciliation instead.
-  if (remote.httpStatus === 0 || remote.httpStatus === 408 || remote.httpStatus >= 500) {
+  if (remote.retryable) {
     return {
       state: "BLOCKED",
       code: "AMBIGUOUS_POST_RESULT",
@@ -114,7 +114,7 @@ export async function runFbrInvoiceSubmission(submissionId: string) {
 
   let token: string;
   try {
-    token = resolveFbrBearerToken(context.workspaceId).token;
+    token = resolveFbrBearerToken(context.workspaceId, submission.environment).token;
   } catch (error) {
     if (!(error instanceof FbrCredentialError)) throw error;
     const blocked = await db.fbrInvoiceSubmission.update({

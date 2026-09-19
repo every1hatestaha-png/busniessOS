@@ -13,14 +13,31 @@ function isRetryableHttpStatus(status: number) {
   return status === 408 || status === 425 || status === 429 || status >= 500;
 }
 
+function firstNonEmpty(...values: unknown[]) {
+  for (const value of values) {
+    const normalized = String(value ?? "").trim();
+    if (normalized) return normalized;
+  }
+  return undefined;
+}
+
 function extractError(body: unknown) {
   if (!body || typeof body !== "object") return {};
   const record = body as Record<string, unknown>;
   const validation = record.validationResponse && typeof record.validationResponse === "object"
     ? record.validationResponse as Record<string, unknown>
     : null;
-  const errorCode = String(validation?.errorCode ?? record.errorCode ?? "").trim() || undefined;
-  const errorMessage = String(validation?.error ?? record.error ?? "").trim() || undefined;
+  const invoiceStatuses = validation && Array.isArray(validation.invoiceStatuses)
+    ? validation.invoiceStatuses.filter(
+        (item): item is Record<string, unknown> => Boolean(item) && typeof item === "object",
+      )
+    : [];
+  const itemError = invoiceStatuses.find((item) =>
+    firstNonEmpty(item.errorCode, item.error, item.status)?.toLowerCase() === "invalid"
+    || Boolean(firstNonEmpty(item.errorCode, item.error)),
+  );
+  const errorCode = firstNonEmpty(validation?.errorCode, itemError?.errorCode, record.errorCode);
+  const errorMessage = firstNonEmpty(validation?.error, itemError?.error, record.error);
   return { errorCode, errorMessage };
 }
 
