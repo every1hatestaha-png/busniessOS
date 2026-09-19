@@ -12,3 +12,8 @@ export function fbrRemoteUiBlock(environment: FbrEnvironment, operation: FbrRemo
       : "Production FBR submission is locked in the invoice UI until the live release checklist is complete.",
   };
 }
+
+
+export function requiresFbrManualReconciliation(status: string, lastErrorCode: string | null | undefined) {
+  return status === "BLOCKED" && lastErrorCode === "AMBIGUOUS_POST_RESULT";
+}

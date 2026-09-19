@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 
 import { validateFbrInvoicePayload, type FbrInvoicePayload, type FbrValidationIssue } from "@/lib/fbr/digital-invoicing";
 import { validateFbrProductionCompliance } from "@/lib/fbr/production-compliance";
+import { requiresFbrManualReconciliation } from "@/lib/fbr/control-plane";
 import { requirePermission } from "@/lib/server/authorization";
 import { db } from "@/lib/server/db";
 import { writeAudit } from "@/lib/server/audit";
@@ -284,6 +285,9 @@ export async function prepareFbrInvoiceSubmission(invoiceId: string) {
       where: { workspaceId: context.workspaceId, invoiceId: invoice.id, environment },
     });
     if (existing?.status === "SUBMITTED") return existing;
+    if (existing && requiresFbrManualReconciliation(existing.status, existing.lastErrorCode)) {
+      return existing;
+    }
 
     const data = {
       environment,

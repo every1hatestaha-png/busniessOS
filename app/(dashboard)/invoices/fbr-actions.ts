@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { fbrRemoteUiBlock } from "@/lib/fbr/control-plane";
+import { fbrRemoteUiBlock, requiresFbrManualReconciliation } from "@/lib/fbr/control-plane";
 import { requirePermission } from "@/lib/server/authorization";
 import {
   getFbrSubmissionForInvoice,
@@ -33,6 +33,12 @@ export async function prepareFbrInvoiceAction(
   try {
     const result = await prepareFbrInvoiceSubmission(invoiceId);
     refreshInvoice(invoiceId);
+    if (requiresFbrManualReconciliation(result.submission.status, result.submission.lastErrorCode)) {
+      return {
+        status: "error",
+        message: result.submission.lastErrorMessage ?? "This FBR submission requires manual reconciliation before any retry.",
+      };
+    }
     if (!result.readyForRemoteValidation) {
       const first = result.issues[0]?.message ?? "Resolve the FBR preflight blockers.";
       return { status: "error", message: "FBR preflight found " + result.issues.length + " blocker(s). " + first };
@@ -50,6 +56,12 @@ export async function validateFbrSandboxAction(
 ): Promise<FbrInvoiceActionState> {
   try {
     const prepared = await prepareFbrInvoiceSubmission(invoiceId);
+    if (requiresFbrManualReconciliation(prepared.submission.status, prepared.submission.lastErrorCode)) {
+      return {
+        status: "error",
+        message: prepared.submission.lastErrorMessage ?? "This FBR submission requires manual reconciliation before any retry.",
+      };
+    }
     const blocked = fbrRemoteUiBlock(prepared.submission.environment, "VALIDATE");
     if (blocked) return { status: "error", message: blocked.message };
     if (!prepared.readyForRemoteValidation) {
