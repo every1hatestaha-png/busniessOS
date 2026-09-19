@@ -149,6 +149,7 @@ app.whenReady().then(async () => {
   assert.equal(await win.webContents.executeJavaScript("window.clerkReverificationCalls"), 1, "Switch account must complete Clerk reverification before Electron OAuth starts");
   assert.equal(api.state().token && api.state().refresh && api.state().bearer && api.state().file, true, "Account A remains recoverable until the new OAuth callback succeeds");
   assert(logs.some((line) => line.includes("preload switch-account invoked")));
+  assert.equal(logs.some((line) => line.includes("Log rotation skipped")), false, "Bootstrap logging must not reference log-rotation constants before initialization");
   console.log("PASS: account menu → Clerk fixture → packaged-compatible preload → sign-out/switch IPC → safeStorage deletion → cookies/storage → desktop-auth or account-select OAuth; retry and persistence verified. No real account or DB used.");
   clearTimeout(deadline);
   server.close();
