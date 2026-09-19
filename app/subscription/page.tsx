@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { getCurrentWorkspace } from "@/lib/server/auth";
 import { getWorkspaceAccess } from "@/lib/server/subscriptions";
+import { SubscriptionRequestForm } from "@/components/subscription/subscription-request-form";
 
 function formatDate(value: Date | null) {
   if (!value) return "Not set";
@@ -76,10 +77,8 @@ export default async function SubscriptionPage() {
             {access.allowed && (
               <Link href="/dashboard" className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800">Open MunshiOS</Link>
             )}
-            {!access.allowed && (
-              <p className="self-center text-sm text-slate-600">Contact the MunshiOS account owner to renew or restore access.</p>
-            )}
           </div>
+          <SubscriptionRequestForm currentPlan={access.planCode} />
         </section>
       </div>
     </main>
