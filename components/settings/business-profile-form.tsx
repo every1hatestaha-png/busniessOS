@@ -22,6 +22,7 @@ export function BusinessProfileForm({
     businessType: "WHOLESALER" | "DISTRIBUTOR" | "MANUFACTURER" | "RETAILER" | "OTHER";
     ntn: string | null;
     strn: string | null;
+    province: string | null;
   };
 }) {
   const [state, formAction, pending] = useActionState(updateWorkspaceProfileAction, initialState);
@@ -69,6 +70,18 @@ export function BusinessProfileForm({
           </Field>
           <Field label="Country">
             <Input name="country" defaultValue={workspace.country} minLength={2} maxLength={80} required />
+          </Field>
+          <Field label="Province" hint="Required for FBR Digital Invoicing">
+            <select name="province" defaultValue={workspace.province ?? ""} className="h-9 w-full rounded-md border bg-white px-3 text-sm">
+              <option value="">Select province</option>
+              <option value="PUNJAB">Punjab</option>
+              <option value="SINDH">Sindh</option>
+              <option value="KHYBER PAKHTUNKHWA">Khyber Pakhtunkhwa</option>
+              <option value="BALOCHISTAN">Balochistan</option>
+              <option value="ISLAMABAD CAPITAL TERRITORY">Islamabad Capital Territory</option>
+              <option value="GILGIT BALTISTAN">Gilgit Baltistan</option>
+              <option value="AZAD JAMMU AND KASHMIR">Azad Jammu and Kashmir</option>
+            </select>
           </Field>
           <Field label="NTN" hint="Optional · appears on business documents">
             <Input name="ntn" defaultValue={workspace.ntn ?? ""} maxLength={40} placeholder="e.g. 1234567-8" />
