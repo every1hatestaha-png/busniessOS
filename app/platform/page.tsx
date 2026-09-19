@@ -86,7 +86,15 @@ export default async function PlatformPage() {
                         <tr key={workspace.workspaceId} className="align-top transition-colors hover:bg-slate-50/60">
                           <td className="px-5 py-4"><p className="font-semibold text-slate-900">{workspace.workspaceName}</p><p className="mt-1 text-xs text-slate-500">{workspace.workspaceCity || "Pakistan"}</p></td>
                           <td className="px-5 py-4 text-slate-600">{workspace.ownerEmail || workspace.workspaceEmail || "—"}</td>
-                          <td className="px-5 py-4 font-medium">{workspace.planName || "Unassigned"}</td>
+                          <td className="px-5 py-4">
+                            <p className="font-medium">{workspace.planName || "Unassigned"}</p>
+                            {workspace.activationRequestedAt && (
+                              <div className="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-2 text-[11px] leading-4 text-sky-800">
+                                <p className="font-semibold">Activation requested</p>
+                                <p>{workspace.activationRequest?.planCode || "plan"} · {workspace.activationRequest?.billing || "billing"} · {formatDate(workspace.activationRequestedAt)}</p>
+                              </div>
+                            )}
+                          </td>
                           <td className="px-5 py-4"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${statusClass(workspace.status)}`}>{workspace.status}</span></td>
                           <td className="px-5 py-4 text-slate-600">{formatDate(accessEnd)}</td>
                           <td className="px-5 py-4 tabular-nums">{workspace.memberCount}</td>
