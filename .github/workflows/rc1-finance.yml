@@ -80,9 +80,22 @@ jobs:
         run: npx eslint app components lib
 
       - name: Production dependency audit
-        # Prisma CLI is a dev dependency and also an optional peer of @prisma/client.
-        # Omit both classes so this gate audits the deployable runtime tree only.
-        run: npx --yes npm@11.19.1 audit --omit=dev --omit=peer --audit-level=high
+        shell: bash
+        run: |
+          runtime_dir="$(mktemp -d)"
+          node - "$runtime_dir/package.json" <<'NODE'
+          const fs = require("node:fs");
+          const source = require("./package.json");
+          fs.writeFileSync(process.argv[2], JSON.stringify({
+            name: "munshios-runtime-audit",
+            version: source.version,
+            private: true,
+            dependencies: source.dependencies,
+          }, null, 2));
+          NODE
+          cd "$runtime_dir"
+          npx --yes npm@11.19.1 install --ignore-scripts --no-audit --no-fund --omit=peer
+          npx --yes npm@11.19.1 audit --omit=peer --audit-level=high
 
   desktop-smoke:
     runs-on: windows-latest
