@@ -71,6 +71,33 @@ export async function prepareFbrInvoiceSubmission(invoiceId: string) {
     preflight.push({ path: "scenarioId", code: "MISSING_MASTER_DATA", message: "Choose an FBR sandbox scenario before validation." });
   }
 
+  if (environment === "PRODUCTION") {
+    if (!config?.integratorName?.trim()) {
+      preflight.push({
+        path: "integration.integratorName",
+        code: "LICENSED_INTEGRATOR_REQUIRED",
+        message: "Production FBR transmission requires a configured licensed integrator or PRAL onboarding route.",
+      });
+    }
+
+    const provider = config?.provider?.trim().toUpperCase();
+    if (provider && provider !== "PRAL" && !config?.integratorLicenseNo?.trim()) {
+      preflight.push({
+        path: "integration.integratorLicenseNo",
+        code: "LICENSE_REFERENCE_REQUIRED",
+        message: "Record the licensed integrator reference before enabling production transmission.",
+      });
+    }
+
+    if (!config?.productionApprovedAt || !config.productionApprovedBy?.trim()) {
+      preflight.push({
+        path: "integration.productionApproval",
+        code: "PRODUCTION_APPROVAL_REQUIRED",
+        message: "Production transmission is blocked until an authorized workspace user confirms the licensed-integrator setup.",
+      });
+    }
+  }
+
   const subtotal = Number(invoice.salesOrder.subtotal);
   const discount = Number(invoice.salesOrder.discount);
   const taxableAmount = Math.max(0, subtotal - discount);
