@@ -16,6 +16,7 @@ const workspaceProfileSchema = z.object({
   businessType: z.enum(["WHOLESALER", "DISTRIBUTOR", "MANUFACTURER", "RETAILER", "OTHER"]),
   ntn: z.string().trim().max(40).optional().default(""),
   strn: z.string().trim().max(40).optional().default(""),
+  province: z.string().trim().max(80).optional().default(""),
 });
 
 export type WorkspaceProfileState = { status?: "success" | "error"; message?: string };
@@ -42,6 +43,7 @@ export async function updateWorkspaceProfileAction(
       businessType: parsed.data.businessType,
       ntn: parsed.data.ntn || null,
       strn: parsed.data.strn || null,
+      province: parsed.data.province || null,
     },
   });
 
@@ -59,6 +61,7 @@ export async function updateWorkspaceProfileAction(
         businessType: parsed.data.businessType,
         ntn: parsed.data.ntn || null,
         strn: parsed.data.strn || null,
+        province: parsed.data.province || null,
       },
     },
   });
