@@ -735,7 +735,7 @@ model Invoice {
   payments          Payment[]
   allocations       PaymentAllocation[]
   creditAllocations CustomerCreditAllocation[]
-  fbrSubmission    FbrInvoiceSubmission?
+  fbrSubmissions   FbrInvoiceSubmission[]
 
   @@unique([workspaceId, invoiceNumber])
   @@unique([salesOrderId])
@@ -1100,7 +1100,7 @@ model FbrIntegrationConfig {
 model FbrInvoiceSubmission {
   id                 String              @id @default(uuid())
   workspaceId        String
-  invoiceId          String              @unique
+  invoiceId          String
   environment        FbrEnvironment
   status             FbrSubmissionStatus @default(DRAFT)
   idempotencyKey     String
@@ -1122,6 +1122,7 @@ model FbrInvoiceSubmission {
   attempts  FbrInvoiceAttempt[]
 
   @@unique([workspaceId, idempotencyKey])
+  @@unique([invoiceId, environment])
   @@index([workspaceId, status, updatedAt])
   @@index([workspaceId, invoiceId])
   @@map("fbr_invoice_submissions")
