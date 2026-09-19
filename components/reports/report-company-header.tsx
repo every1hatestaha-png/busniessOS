@@ -7,6 +7,8 @@ type WorkspaceDetails = {
   address?: string | null;
   city?: string | null;
   country?: string | null;
+  ntn?: string | null;
+  strn?: string | null;
 };
 
 export function ReportCompanyHeader({
@@ -26,6 +28,7 @@ export function ReportCompanyHeader({
 }) {
   const location = [workspace.address, workspace.city, workspace.country].filter(Boolean).join(", ");
   const contact = [workspace.phone, workspace.email].filter(Boolean).join("  |  ");
+  const taxIdentity = [workspace.ntn ? `NTN: ${workspace.ntn}` : null, workspace.strn ? `STRN: ${workspace.strn}` : null].filter(Boolean).join("  |  ");
 
   return (
     <header className="border-b-2 border-neutral-900 pb-4">
@@ -34,6 +37,7 @@ export function ReportCompanyHeader({
           <p className="text-xl font-bold tracking-tight text-neutral-950">{workspace.name}</p>
           {location && <p className="mt-1 text-xs text-neutral-500">{location}</p>}
           {contact && <p className="text-xs text-neutral-500">{contact}</p>}
+          {taxIdentity && <p className="text-xs font-medium text-neutral-600">{taxIdentity}</p>}
         </div>
         <div className="max-w-[55%] text-right">
           <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-neutral-500">Financial report</p>
