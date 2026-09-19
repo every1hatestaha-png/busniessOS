@@ -203,6 +203,26 @@ enum InvitationStatus {
   EXPIRED
 }
 
+enum FbrEnvironment {
+  SANDBOX
+  PRODUCTION
+}
+
+enum FbrSubmissionStatus {
+  DRAFT
+  VALIDATION_FAILED
+  VALIDATED
+  SUBMITTING
+  SUBMITTED
+  FAILED
+  BLOCKED
+}
+
+enum FbrAttemptKind {
+  VALIDATE
+  POST
+}
+
 // ----------------------------------------
 // TENANT & AUTH MODELS
 // ----------------------------------------
@@ -220,6 +240,7 @@ model Workspace {
   businessType BusinessType @default(WHOLESALER)
   ntn          String?
   strn         String?
+  province     String?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
@@ -247,6 +268,8 @@ model Workspace {
   generalLedgerEntries      GeneralLedgerEntry[]
   goodReceivedNotes         GoodReceivedNote[]
   customerCreditAllocations CustomerCreditAllocation[]
+  fbrIntegrationConfig       FbrIntegrationConfig?
+  fbrInvoiceSubmissions      FbrInvoiceSubmission[]
 
   @@map("workspaces")
 }
@@ -297,6 +320,9 @@ model Customer {
   email          String?
   address        String?
   city           String?
+  taxId          String?
+  province       String?
+  registrationType String?
   creditDays     Int            @default(30)
   creditLimit    Decimal        @default(0) @db.Decimal(15, 2)
   currentBalance Decimal        @default(0) @db.Decimal(15, 2)
@@ -356,6 +382,8 @@ model Product {
   stockQuantity   Decimal       @default(0) @db.Decimal(15, 4)
   reorderLevel    Decimal       @default(0) @db.Decimal(15, 4)
   defaultWeightKg Decimal?      @db.Decimal(10, 3)
+  fbrHsCode       String?
+  fbrUom          String?
   unit            ProductUnit   @default(PIECE)
   status          ProductStatus @default(ACTIVE)
   createdAt       DateTime      @default(now())
@@ -707,6 +735,7 @@ model Invoice {
   payments          Payment[]
   allocations       PaymentAllocation[]
   creditAllocations CustomerCreditAllocation[]
+  fbrSubmissions   FbrInvoiceSubmission[]
 
   @@unique([workspaceId, invoiceNumber])
   @@unique([salesOrderId])
@@ -1045,4 +1074,74 @@ model SupplierReturnItem {
   @@index([supplierReturnId])
   @@index([purchaseOrderItemId])
   @@map("supplier_return_items")
+}
+
+
+// ----------------------------------------
+// FBR DIGITAL INVOICING
+// ----------------------------------------
+
+model FbrIntegrationConfig {
+  id                String         @id @default(uuid())
+  workspaceId       String         @unique
+  enabled           Boolean        @default(false)
+  environment       FbrEnvironment @default(SANDBOX)
+  provider          String         @default("PRAL")
+  integratorName    String?
+  defaultScenarioId String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("fbr_integration_configs")
+}
+
+model FbrInvoiceSubmission {
+  id                 String              @id @default(uuid())
+  workspaceId        String
+  invoiceId          String
+  environment        FbrEnvironment
+  status             FbrSubmissionStatus @default(DRAFT)
+  idempotencyKey     String
+  payloadSnapshot    Json?
+  validationResponse Json?
+  submissionResponse Json?
+  fbrInvoiceNumber   String?
+  lastErrorCode      String?
+  lastErrorMessage   String?
+  attemptCount       Int                 @default(0)
+  validatedAt        DateTime?
+  submittedAt        DateTime?
+  lastAttemptAt      DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  workspace Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invoice   Invoice              @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  attempts  FbrInvoiceAttempt[]
+
+  @@unique([workspaceId, idempotencyKey])
+  @@unique([invoiceId, environment])
+  @@index([workspaceId, status, updatedAt])
+  @@index([workspaceId, invoiceId])
+  @@map("fbr_invoice_submissions")
+}
+
+model FbrInvoiceAttempt {
+  id           String         @id @default(uuid())
+  submissionId String
+  kind         FbrAttemptKind
+  requestBody  Json?
+  responseBody Json?
+  httpStatus   Int?
+  succeeded    Boolean        @default(false)
+  errorCode    String?
+  errorMessage String?
+  createdAt    DateTime       @default(now())
+
+  submission FbrInvoiceSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId, createdAt])
+  @@map("fbr_invoice_attempts")
 }
