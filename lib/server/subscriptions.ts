@@ -111,6 +111,46 @@ export async function requirePlatformOwner() {
   return user;
 }
 
+export async function requestWorkspaceActivation(input: { planCode: string; billing: "monthly" | "annual" }) {
+  const context = await requireWorkspace();
+  const user = await getCurrentUser();
+  const safePlanCode = input.planCode.trim().toLowerCase();
+  if (!PLATFORM_PLANS.has(safePlanCode)) throw new Error("Invalid subscription plan.");
+  if (input.billing !== "monthly" && input.billing !== "annual") throw new Error("Invalid billing cycle.");
+
+  await ensureWorkspaceSubscription(context.workspaceId);
+  const subscription = await getSubscriptionRow(context.workspaceId);
+  if (!subscription) throw new Error("Workspace subscription not found.");
+
+  const recent = await db.$queryRaw<Array<{ createdAt: Date }>>`
+    SELECT "createdAt"
+    FROM "subscription_events"
+    WHERE "workspaceId" = ${context.workspaceId}
+      AND "subscriptionId" = ${String(subscription.id)}
+      AND "type" = 'activation.requested'
+      AND "createdAt" > CURRENT_TIMESTAMP - INTERVAL '5 minutes'
+    ORDER BY "createdAt" DESC
+    LIMIT 1
+  `;
+  if (recent[0]) return { alreadyRequested: true };
+
+  const metadata = JSON.stringify({ planCode: safePlanCode, billing: input.billing, source: "subscription-page" });
+  await db.$executeRaw`
+    INSERT INTO "subscription_events" (
+      "id", "workspaceId", "subscriptionId", "actorUserId", "type", "metadata"
+    )
+    VALUES (
+      ${`sevt_${randomUUID().replaceAll("-", "")}`},
+      ${context.workspaceId},
+      ${String(subscription.id)},
+      ${user.id},
+      'activation.requested',
+      ${metadata}::jsonb
+    )
+  `;
+  return { alreadyRequested: false };
+}
+
 export type PlatformWorkspaceRow = {
   workspaceId: string;
   workspaceName: string;
@@ -126,6 +166,8 @@ export type PlatformWorkspaceRow = {
   graceEndsAt: Date | null;
   suspendedAt: Date | null;
   createdAt: Date;
+  activationRequest: { planCode?: string; billing?: string } | null;
+  activationRequestedAt: Date | null;
 };
 
 export async function getPlatformDashboard() {
@@ -146,7 +188,21 @@ export async function getPlatformDashboard() {
       s."currentPeriodEnd",
       s."graceEndsAt",
       s."suspendedAt",
-      w."createdAt"
+      w."createdAt",
+      (
+        SELECT se."metadata"
+        FROM "subscription_events" se
+        WHERE se."workspaceId" = w."id" AND se."type" = 'activation.requested'
+        ORDER BY se."createdAt" DESC
+        LIMIT 1
+      ) AS "activationRequest",
+      (
+        SELECT se."createdAt"
+        FROM "subscription_events" se
+        WHERE se."workspaceId" = w."id" AND se."type" = 'activation.requested'
+        ORDER BY se."createdAt" DESC
+        LIMIT 1
+      ) AS "activationRequestedAt"
     FROM "workspaces" w
     JOIN "workspace_subscriptions" s ON s."workspaceId" = w."id"
     LEFT JOIN "saas_plans" p ON p."id" = s."planId"
