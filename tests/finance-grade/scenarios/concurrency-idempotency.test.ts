@@ -184,7 +184,28 @@ describe("F6: Concurrency and Idempotency", () => {
     expect(count).toBe(1);
   });
 
-  it("6.6 Page refresh during save — createSupplier has no idempotency contract", async () => {
+  it("6.6 rejects a conflicting sale replay that reuses the same idempotency key", async () => {
+    const { createSale } = await import("@/lib/server/sales");
+    await db.product.update({ where: { id: product1Id }, data: { stockQuantity: 10 } });
+    const key = crypto.randomUUID();
+
+    const original = await createSale(ctx, {
+      customerId: customer1Id,
+      items: [{ productId: product1Id, quantity: 1, unitPrice: 800, discountPerUnit: 0 }],
+      orderDiscount: 0, paidAmount: 0, notes: "Original request", idempotencyKey: key,
+    });
+
+    await expect(createSale(ctx, {
+      customerId: customer1Id,
+      items: [{ productId: product1Id, quantity: 2, unitPrice: 800, discountPerUnit: 0 }],
+      orderDiscount: 0, paidAmount: 0, notes: "Changed request", idempotencyKey: key,
+    })).rejects.toThrow("idempotency key was already used for a different sale request");
+
+    expect(await db.salesOrder.count({ where: { workspaceId, idempotencyKey: key } })).toBe(1);
+    expect((await db.salesOrder.findUniqueOrThrow({ where: { id: original.id } })).notes).toBe("Original request");
+  });
+
+  it("6.7 Page refresh during save — createSupplier has no idempotency contract", async () => {
     const { createSupplier } = await import("@/lib/server/suppliers");
 
     const sup1 = await createSupplier(ctx, { name: "Refresh Test", companyName: "Test", phone: "", city: "Karachi", openingBalance: 0 });

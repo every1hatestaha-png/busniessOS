@@ -15,7 +15,7 @@ import { applyManagedWarehouseStockDelta, assertManagedWarehouseSelection, getWa
 
 export type ServiceContext = { workspaceId: string; role: Role; userId?: string };
 export class SaleDomainError extends Error {
-  constructor(public code: "CUSTOMER_NOT_FOUND" | "PRODUCT_NOT_FOUND" | "INSUFFICIENT_STOCK" | "INVALID_TOTAL" | "CREDIT_LIMIT_EXCEEDED" | "PAYMENT_PERMISSION_DENIED" | "PAYMENT_ACCOUNT_UNAVAILABLE" | "SALE_NOT_FOUND" | "INVALID_RETURN" | "PERMISSION_DENIED" | "WAREHOUSE_REQUIRED" | "WAREHOUSE_NOT_FOUND" | "WAREHOUSE_STOCK_ERROR", message: string) {
+  constructor(public code: "CUSTOMER_NOT_FOUND" | "PRODUCT_NOT_FOUND" | "INSUFFICIENT_STOCK" | "INVALID_TOTAL" | "CREDIT_LIMIT_EXCEEDED" | "PAYMENT_PERMISSION_DENIED" | "PAYMENT_ACCOUNT_UNAVAILABLE" | "SALE_NOT_FOUND" | "INVALID_RETURN" | "PERMISSION_DENIED" | "WAREHOUSE_REQUIRED" | "WAREHOUSE_NOT_FOUND" | "WAREHOUSE_STOCK_ERROR" | "IDEMPOTENCY_CONFLICT", message: string) {
     super(message);
   }
 }
@@ -23,8 +23,86 @@ export class SaleDomainError extends Error {
 export async function createSale(context: ServiceContext, input: SaleInput) {
   const data = saleSchema.parse(input);
   return withSerializableRetry(async (tx) => {
-    const existing = await tx.salesOrder.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true } });
-    if (existing) return existing;
+    const existing = await tx.salesOrder.findFirst({
+      where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey },
+      select: {
+        id: true,
+        customerId: true,
+        warehouseId: true,
+        discount: true,
+        paidAmount: true,
+        notes: true,
+        items: {
+          select: {
+            productId: true,
+            quantity: true,
+            unitPrice: true,
+            discountPerUnit: true,
+            taxRate: true,
+            pricingMode: true,
+            unitWeight: true,
+            perKgRate: true,
+          },
+        },
+        invoices: {
+          select: {
+            payments: {
+              where: { isReversed: false, reversalOfId: null },
+              select: { cashBankAccountId: true, amount: true },
+              take: 1,
+            },
+          },
+          take: 1,
+        },
+      },
+    });
+    if (existing) {
+      const itemByProduct = new Map(existing.items.map((item) => [item.productId, item]));
+      const expectedLineDiscount = data.items.reduce(
+        (sum, item) => sum.plus(new Prisma.Decimal(item.discountPerUnit).mul(item.quantity)),
+        new Prisma.Decimal(0),
+      );
+      const existingOrderDiscount = existing.discount.minus(expectedLineDiscount);
+      const recordedPayment = existing.invoices[0]?.payments[0] ?? null;
+      const sameItems = existing.items.length === data.items.length && data.items.every((requested) => {
+        const stored = itemByProduct.get(requested.productId);
+        if (!stored) return false;
+        const requestedUnitPrice = requested.pricingMode === "WEIGHT"
+          ? new Prisma.Decimal(requested.unitWeight!).mul(requested.perKgRate!)
+          : new Prisma.Decimal(requested.unitPrice);
+        const requestedTaxRate = new Prisma.Decimal(requested.taxRate ?? data.gstRate);
+        return stored.quantity.equals(requested.quantity)
+          && stored.unitPrice.equals(requestedUnitPrice)
+          && stored.discountPerUnit.equals(requested.discountPerUnit)
+          && new Prisma.Decimal(stored.taxRate ?? 0).equals(requestedTaxRate)
+          && stored.pricingMode === requested.pricingMode
+          && (
+            requested.pricingMode !== "WEIGHT"
+            || (
+              new Prisma.Decimal(stored.unitWeight ?? 0).equals(requested.unitWeight!)
+              && new Prisma.Decimal(stored.perKgRate ?? 0).equals(requested.perKgRate!)
+            )
+          );
+      });
+      const sameCore = existing.customerId === data.customerId
+        && (existing.warehouseId ?? "") === (data.warehouseId ?? "")
+        && existingOrderDiscount.equals(data.orderDiscount)
+        && existing.paidAmount.equals(data.paidAmount)
+        && (existing.notes ?? "") === data.notes
+        && (
+          data.paidAmount === 0
+            ? !recordedPayment
+            : Boolean(
+                recordedPayment
+                && recordedPayment.amount.equals(data.paidAmount)
+                && (recordedPayment.cashBankAccountId ?? "") === (data.cashBankAccountId ?? ""),
+              )
+        );
+      if (!sameCore || !sameItems) {
+        throw new SaleDomainError("IDEMPOTENCY_CONFLICT", "This idempotency key was already used for a different sale request.");
+      }
+      return { id: existing.id };
+    }
     const customer = await tx.customer.findFirst({ where: { id: data.customerId, workspaceId: context.workspaceId, status: "ACTIVE" }, select: { id: true, currentBalance: true, creditLimit: true, creditDays: true } });
     if (!customer) throw new SaleDomainError("CUSTOMER_NOT_FOUND", "Customer is unavailable.");
 
