@@ -66,6 +66,7 @@ const sections: SidebarSection[] = [
     { href: "/receivables", label: "Receivables", icon: HandCoins, financial: true },
     { href: "/accounting/cash-bank", label: "Cash & Bank", icon: Landmark, financial: true },
     { href: "/accounting/expenses", label: "Expenses", icon: CircleDollarSign, financial: true },
+    { href: "/accounting/notes", label: "Credit & Debit Notes", icon: FileText, financial: true },
     { href: "/payables", label: "Payables", icon: Landmark, financial: true },
     { href: "/reports", label: "Reports", icon: ChartNoAxesCombined, financial: true },
   ] },
