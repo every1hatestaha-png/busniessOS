@@ -164,7 +164,11 @@ export async function getProduct(id: string, authorizedWorkspaceId?: string): Pr
   return { ...toProductDTO(product), movements };
 }
 
-export async function createProduct(workspaceId: string, input: ProductData): Promise<string> {
+export async function createProduct(workspaceOrContext: string | ProductMutationContext, input: ProductData): Promise<string> {
+  const context = typeof workspaceOrContext === "string"
+    ? { workspaceId: workspaceOrContext, userId: undefined }
+    : workspaceOrContext;
+  const workspaceId = context.workspaceId;
   return db.$transaction(async (transaction) => {
     const warehouseMode = await getWarehouseStockModeInTransaction(transaction, workspaceId);
     let openingWarehouseId: string | undefined;
@@ -234,6 +238,7 @@ export async function createProduct(workspaceId: string, input: ProductData): Pr
       },
     });
     if (input.stockQuantity > 0 && input.costPrice > 0) await postOpeningAssetToGeneralLedger(transaction, { workspaceId, sourceId: product.id, documentNo: `OPEN-STOCK-${product.id.slice(0, 8).toUpperCase()}`, date: new Date(), assetSystemCode: "INVENTORY", amount: new Prisma.Decimal(input.costPrice).mul(input.stockQuantity) });
+    await writeAudit(transaction, { workspaceId, actorId: context.userId, action: "product.created", entityType: "Product", entityId: product.id, metadata: { sku: product.sku, openingStock: input.stockQuantity, status: input.status } });
 
     return product.id;
   }, { timeout: 30_000 });
