@@ -15,7 +15,7 @@ export function SubscriptionRequestForm({ currentPlan }: { currentPlan: string |
     <form action={formAction} className="mt-6 rounded-2xl border border-slate-200 bg-slate-50/70 p-5">
       <div>
         <h3 className="font-semibold text-slate-950">Upgrade or renew</h3>
-        <p className="mt-1 text-xs leading-5 text-slate-500">Choose what you want. Your request goes directly to the MunshiOS owner console for activation. Online payment will plug into this same flow when the payment gateway is enabled.</p>
+        <p className="mt-1 text-xs leading-5 text-slate-500">Choose what you want. This form only sends an activation request to the MunshiOS owner console; submitting it does not charge you. Before any paid activation, the applicable price, billing frequency, renewal terms, and cancellation method must be shown to you.</p>
       </div>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <label className="block">
