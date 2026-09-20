@@ -42,6 +42,7 @@ export async function createWorkspace(
     builderBusiness,
   );
   const billing = sanitizeBilling(String(formData.get("billing") ?? "monthly"));
+  const createAdditional = formData.get("creationMode") === "additional";
 
   const user = await getCurrentUser();
   try {
@@ -49,6 +50,8 @@ export async function createWorkspace(
       modules,
       billing,
       builderBusiness,
+    }, {
+      allowAdditional: createAdditional,
     });
   } catch {
     return { error: "We could not create your workspace. Please try again." };
