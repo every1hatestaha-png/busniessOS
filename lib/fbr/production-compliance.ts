@@ -2,6 +2,7 @@ export type FbrProductionComplianceInput = {
   provider?: string | null;
   integratorName?: string | null;
   integratorLicenseNo?: string | null;
+  softwareRegistrationNo?: string | null;
   productionApprovedAt?: Date | null;
   productionApprovedBy?: string | null;
   taxMappingReady?: boolean;
@@ -31,6 +32,14 @@ export function validateFbrProductionCompliance(input: FbrProductionComplianceIn
       path: "integration.integratorLicenseNo",
       code: "LICENSE_REFERENCE_REQUIRED",
       message: "Record the licensed integrator reference before enabling production transmission.",
+    });
+  }
+
+  if (!input.softwareRegistrationNo?.trim()) {
+    issues.push({
+      path: "integration.softwareRegistrationNo",
+      code: "FBR_SOFTWARE_REGISTRATION_REQUIRED",
+      message: "Production transmission is blocked until the FBR-verifiable electronic invoicing software registration number is recorded.",
     });
   }
 
