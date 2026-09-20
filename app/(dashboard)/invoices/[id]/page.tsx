@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Pencil, Truck } from "lucide-react";
+import { ArrowLeft, MessageCircleMore, Pencil, Truck } from "lucide-react";
 
 import { StatusBadge } from "@/components/business/status-badge";
 import { FbrInvoiceStatusCard, type FbrInvoicePanelData } from "@/components/invoices/fbr-invoice-status-card";
@@ -17,6 +17,7 @@ import { getInvoice } from "@/lib/server/invoices";
 import { db } from "@/lib/server/db";
 import { canPerformAction } from "@/lib/server/authorization";
 import { formatDate, formatPKR } from "@/lib/utils";
+import { buildWhatsAppShareUrl } from "@/lib/whatsapp";
 import { Prisma } from "@prisma/client";
 
 function calculateSaleLine(item: { quantity: number | Prisma.Decimal; unitPrice: number; discountPerUnit: number }) {
@@ -44,6 +45,10 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   ]);
   if (!invoice) notFound();
   const dcNumber = deliveryChallanNumber(invoice.invoiceNumber);
+  const whatsappUrl = buildWhatsAppShareUrl(
+    invoice.customer.phone,
+    `Assalam-o-Alaikum. ${workspace.name} invoice ${invoice.invoiceNumber}: total ${formatPKR(invoice.total)}, balance due ${formatPKR(invoice.balance)}.`,
+  );
 
   const [fbrPrintConfig, fbrProductionSubmission] = await Promise.all([
     db.fbrIntegrationConfig.findUnique({
@@ -120,6 +125,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         <div className="flex flex-wrap items-center gap-2">
           {invoice.order && invoice.status !== "CANCELLED" && canManageFinancials && <Link href={`/sales/${invoice.order.id}/edit`} className={actionLink}><Pencil className="h-4 w-4" />Edit invoice</Link>}
           {invoice.order && <Link href={`/invoices/${invoice.id}/gate-pass`} className={actionLink}><Truck className="h-4 w-4" />Gate Pass {dcNumber}</Link>}
+          {whatsappUrl && <a href={whatsappUrl} target="_blank" rel="noreferrer" className={actionLink}><MessageCircleMore className="h-4 w-4" />WhatsApp</a>}
           <PrintButton label={fbrPrintBlocked ? "FBR print blocked" : "Print invoice"} disabled={fbrPrintBlocked} />
           {invoice.order && invoice.status !== "CANCELLED" && canManageFinancials && <CancelSaleButton saleId={invoice.order.id} orderNumber={invoice.order.number} />}
         </div>
