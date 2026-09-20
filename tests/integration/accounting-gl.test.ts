@@ -271,8 +271,10 @@ describe("accounting GL integration", () => {
 
     const customerKhata = await db.ledgerEntry.aggregate({ where: { workspaceId, customerId }, _sum: { debit: true, credit: true } });
     const supplierKhata = await db.ledgerEntry.aggregate({ where: { workspaceId, supplierId }, _sum: { debit: true, credit: true } });
-    expect(Number(customerKhata._sum.debit ?? 0) - Number(customerKhata._sum.credit ?? 0)).toBe(Number(customer.currentBalance));
-    expect(Number(supplierKhata._sum.credit ?? 0) - Number(supplierKhata._sum.debit ?? 0)).toBe(Number(supplier.currentBalance));
+    const customerKhataBalance = Number((Number(customerKhata._sum.debit ?? 0) - Number(customerKhata._sum.credit ?? 0)).toFixed(2));
+    const supplierKhataBalance = Number((Number(supplierKhata._sum.credit ?? 0) - Number(supplierKhata._sum.debit ?? 0)).toFixed(2));
+    expect(customerKhataBalance).toBe(Number(customer.currentBalance));
+    expect(supplierKhataBalance).toBe(Number(supplier.currentBalance));
 
     const payableAging = await getPayablesAging(workspaceId, { asOf: new Date(), timeZone: "Asia/Karachi" });
     expect(payableAging.totalOutstanding).toBe(Number(supplier.currentBalance));
