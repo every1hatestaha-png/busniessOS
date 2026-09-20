@@ -185,7 +185,7 @@ export function ProductForm({ product }: ProductFormProps) {
             <datalist id="fbr-rate-options">
               {currentRateOptions.map((entry) => <option key={entry.id} value={String(entry.id)} label={`${entry.description}${entry.plainPercentage ? "" : " · compound/unsupported"}`} />)}
             </datalist>
-            {selectedFbrTransactionTypeId && referenceState.status === "success" && referenceState.rateTransactionTypeId !== Number(selectedFbrTransactionTypeId) && (
+            {Number(selectedFbrTransactionTypeId) > 0 && referenceState.status === "success" && referenceState.rateTransactionTypeId !== Number(selectedFbrTransactionTypeId) && (
               <p className="text-[11px] text-amber-700">Transaction type changed after the last reference load. Refresh FBR references before choosing a rate.</p>
             )}
             {currentRateOptions.some((entry) => !entry.plainPercentage) && (
