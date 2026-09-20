@@ -75,7 +75,7 @@ function validateWeightReceipt<T extends {
  * Status defaults to ORDERED.
  */
 export async function createPurchase(context: ServiceContext, input: PurchaseInput) {
-  if (!canPerformAction(context.role, "financial.manage")) throw new PurchaseDomainError("PERMISSION_DENIED", "Unauthorized");
+  if (!canPerformAction(context.role, "purchases.create")) throw new PurchaseDomainError("PERMISSION_DENIED", "Unauthorized");
   const data = purchaseSchema.parse(input);
   return withSerializableRetry(async (tx) => {
     const existing = await tx.purchaseOrder.findFirst({
@@ -209,7 +209,7 @@ export async function createPurchase(context: ServiceContext, input: PurchaseInp
  * This is the financial trigger: inventory increases, supplier payable created, GL posted.
  */
 export async function createGoodsReceipt(context: ServiceContext, input: GoodsReceiptInput) {
-  if (!canPerformAction(context.role, "financial.manage")) throw new PurchaseDomainError("PERMISSION_DENIED", "Unauthorized");
+  if (!canPerformAction(context.role, "grn.create")) throw new PurchaseDomainError("PERMISSION_DENIED", "Unauthorized");
   const data = goodsReceiptSchema.parse(input);
   return withSerializableRetry(async (tx) => {
     if (data.idempotencyKey) {
@@ -488,7 +488,7 @@ const inventoryUnitCost = item.acceptedQuantity > 0 ? item.totalCost.div(item.ac
 }
 
 export async function cancelPurchase(context: ServiceContext, id: string, reverseInitialPayment: boolean) {
-  if (!canPerformAction(context.role, "financial.manage")) throw new PurchaseDomainError("PERMISSION_DENIED", "Unauthorized");
+  if (!canPerformAction(context.role, "purchases.create")) throw new PurchaseDomainError("PERMISSION_DENIED", "Unauthorized");
   return withSerializableRetry(async (tx) => {
     const order = await tx.purchaseOrder.findFirst({
       where: { id, workspaceId: context.workspaceId },
@@ -589,7 +589,7 @@ export async function cancelPurchase(context: ServiceContext, id: string, revers
 }
 
 export async function createSupplierReturn(context: ServiceContext, input: SupplierReturnInput) {
-  if (!canPerformAction(context.role, "financial.manage")) throw new PurchaseDomainError("PERMISSION_DENIED", "Unauthorized");
+  if (!canPerformAction(context.role, "returns.create")) throw new PurchaseDomainError("PERMISSION_DENIED", "Unauthorized");
   const data = supplierReturnSchema.parse(input);
   return withSerializableRetry(async (tx) => {
     if (data.idempotencyKey) {
@@ -1075,7 +1075,7 @@ export async function getSupplierReturn(workspaceId: string, id: string) {
  * Header fields (notes, expectedDeliveryDate) remain editable.
  */
 export async function updatePurchase(context: ServiceContext, id: string, input: UpdatePurchaseInput) {
-  if (!canPerformAction(context.role, "financial.manage")) throw new PurchaseDomainError("PERMISSION_DENIED", "You do not have permission to edit purchase orders.");
+  if (!canPerformAction(context.role, "purchases.create")) throw new PurchaseDomainError("PERMISSION_DENIED", "You do not have permission to edit purchase orders.");
   const data = updatePurchaseSchema.parse(input);
   return withSerializableRetry(async (tx) => {
     const order = await tx.purchaseOrder.findFirst({
@@ -1118,7 +1118,7 @@ export async function updatePurchase(context: ServiceContext, id: string, input:
  * Otherwise, must use cancelPurchase.
  */
 export async function deletePurchase(context: ServiceContext, id: string) {
-  if (!canPerformAction(context.role, "financial.manage")) throw new PurchaseDomainError("PERMISSION_DENIED", "You do not have permission to delete purchase orders.");
+  if (!canPerformAction(context.role, "purchases.create")) throw new PurchaseDomainError("PERMISSION_DENIED", "You do not have permission to delete purchase orders.");
   return withSerializableRetry(async (tx) => {
     const order = await tx.purchaseOrder.findFirst({
       where: { id, workspaceId: context.workspaceId },
