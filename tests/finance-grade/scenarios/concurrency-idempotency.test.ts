@@ -74,7 +74,7 @@ describe("F6: Concurrency and Idempotency", () => {
     await db.purchaseOrder.delete({ where: { id: po1.id } });
   });
 
-  it("6.2 Same idempotency key with different params remains single-write", async () => {
+  it("6.2 Same purchase idempotency key with different params is rejected", async () => {
     const { createPurchase } = await import("@/lib/server/purchases");
     const key = `idem-po-diff-${runId}`;
 
@@ -85,19 +85,18 @@ describe("F6: Concurrency and Idempotency", () => {
       idempotencyKey: key,
     });
 
-    const po2 = await createPurchase(ctx, {
+    await expect(createPurchase(ctx, {
       supplierId: supplier1Id,
       items: [{ productId: product1Id, quantity: 20, unitCost: 500 }],
       pricingMode: "UNIT",
       idempotencyKey: key,
-    });
+    })).rejects.toThrow("idempotency key was already used for a different purchase request");
 
-    expect(po2.id).toBe(po1.id);
     const count = await db.purchaseOrder.count({ where: { workspaceId, idempotencyKey: key } });
     expect(count).toBe(1);
 
-    await db.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: po2.id } });
-    await db.purchaseOrder.delete({ where: { id: po2.id } });
+    await db.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: po1.id } });
+    await db.purchaseOrder.delete({ where: { id: po1.id } });
   });
 
   it("6.3 Two sales competing for same stock — one succeeds, one fails", async () => {
