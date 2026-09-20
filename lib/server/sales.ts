@@ -386,7 +386,12 @@ export async function getSale(workspaceId: string, id: string) {
     : null;
   const taxableAmount = Math.max(0, Number(row.subtotal) - Number(row.discount));
   const gstAmount = Math.max(0, Number(row.total) - taxableAmount);
-  const gstRate = taxableAmount > 0 ? Number(((gstAmount / taxableAmount) * 100).toFixed(4)) : 0;
+  const aggregateGstRate = taxableAmount > 0 ? Number(((gstAmount / taxableAmount) * 100).toFixed(4)) : 0;
+  const hasCompleteTaxRates = row.items.length > 0 && row.items.every((item) => item.taxRate !== null);
+  const storedTaxRates = hasCompleteTaxRates
+    ? [...new Set(row.items.map((item) => Number(item.taxRate)))]
+    : [];
+  const gstRate = storedTaxRates.length > 1 ? null : (storedTaxRates[0] ?? aggregateGstRate);
   return {
     id: row.id,
     orderNumber: row.orderNumber,
@@ -403,7 +408,7 @@ export async function getSale(workspaceId: string, id: string) {
     notes: row.notes ?? "",
     warehouse,
     customer: { id: row.customer.id, name: row.customer.name, companyName: row.customer.companyName ?? row.customer.name, phone: row.customer.phone ?? "", address: row.customer.address ?? "", currentBalance: Number(row.customer.currentBalance), creditDays: row.customer.creditDays, creditLimit: Number(row.customer.creditLimit) },
-    items: row.items.map((item) => ({ id: item.id, productName: item.productName ?? item.product.name, sku: item.productSku ?? item.product.sku ?? "", quantity: item.quantity, unitPrice: Number(item.unitPrice), discountPerUnit: Number(item.discountPerUnit), total: Number(item.totalPrice), pricingMode: item.pricingMode, unitWeight: item.unitWeight ? Number(item.unitWeight) : null, totalWeight: item.totalWeight ? Number(item.totalWeight) : null, perKgRate: item.perKgRate ? Number(item.perKgRate) : null })),
+    items: row.items.map((item) => ({ id: item.id, productName: item.productName ?? item.product.name, sku: item.productSku ?? item.product.sku ?? "", quantity: item.quantity, unitPrice: Number(item.unitPrice), discountPerUnit: Number(item.discountPerUnit), total: Number(item.totalPrice), pricingMode: item.pricingMode, taxRate: item.taxRate ? Number(item.taxRate) : null, unitWeight: item.unitWeight ? Number(item.unitWeight) : null, totalWeight: item.totalWeight ? Number(item.totalWeight) : null, perKgRate: item.perKgRate ? Number(item.perKgRate) : null })),
     invoice: row.invoices[0] ? { id: row.invoices[0].id, number: row.invoices[0].invoiceNumber } : null,
     returns: row.returns.map((entry) => ({
       id: entry.id,
