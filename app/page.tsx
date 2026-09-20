@@ -168,6 +168,15 @@ function DashboardPreview() {
 }
 
 export default function Home() {
+  const faqStructuredData = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqs.map(([question, answer]) => ({
+      "@type": "Question",
+      name: question,
+      acceptedAnswer: { "@type": "Answer", text: answer },
+    })),
+  };
   const whatsappNumber = process.env.NEXT_PUBLIC_MUNSHIOS_WHATSAPP?.replace(/\D/g, "");
   const whatsappHref = whatsappNumber
     ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent("Salam, I want to know more about MunshiOS and the free first month.")}`
@@ -176,7 +185,7 @@ export default function Home() {
   const laptopShareHref = `https://wa.me/?text=${encodeURIComponent(`Open MunshiOS on your laptop: ${siteUrl}`)}`;
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#fbfcfa] pb-20 text-[#0b1720] selection:bg-emerald-200 lg:pb-0">
+    <main className="min-h-screen overflow-x-hidden bg-[#fbfcfa] pb-20 text-[#0b1720] selection:bg-emerald-200 lg:pb-0">\n      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqStructuredData) }} />
       <header className="sticky top-0 z-50 border-b border-slate-200/70 bg-white/90 backdrop-blur-2xl">
         <div className="mx-auto flex h-[68px] max-w-[1400px] items-center justify-between px-4 sm:px-6 lg:px-10">
           <Link href="/" className="flex items-center gap-2.5" aria-label="MunshiOS home">
@@ -299,7 +308,7 @@ export default function Home() {
               {[
                 ["01", "Set up your records", "Add products, customers, suppliers and opening balances."],
                 ["02", "Run side by side", "Keep Excel or your current software while your team tests MunshiOS."],
-                ["03", "Move when ready", "Use real workflows before deciding whether to continue monthly."],
+                ["03", "Move when ready", "Use real workflows before deciding whether to continue on a paid plan."],
               ].map(([number, title, text]) => (
                 <div key={number} className="rounded-[24px] border border-slate-200 bg-[#fbfcfa] p-5">
                   <p className="text-xs font-bold text-emerald-700">{number}</p>
@@ -357,6 +366,7 @@ export default function Home() {
                 <div className="mt-5 flex flex-wrap gap-2">
                   {items.map((item) => <span key={item} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">{item}</span>)}
                 </div>
+                <Link href={title === "Manufacturing" ? "/industries/manufacturing" : "/industries/wholesale"} className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-emerald-700">Explore {title.toLowerCase()} <ArrowRight className="size-4" /></Link>
               </div>
             ))}
           </div>
