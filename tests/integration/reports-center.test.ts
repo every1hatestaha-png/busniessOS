@@ -119,6 +119,34 @@ describe("reports center integration", () => {
     expect(report.closingBalance).toBe(120);
   }, 60_000);
 
+  it("bounds large general-ledger views while keeping the full closing balance", async () => {
+    const account = await db.account.findUniqueOrThrow({ where: { workspaceId_systemCode: { workspaceId, systemCode: "OTHER_INCOME" } } });
+    const bulkDate = date("2026-08-20");
+    await db.generalLedgerEntry.createMany({
+      data: Array.from({ length: 2002 }, (_, index) => ({
+        workspaceId,
+        accountId: account.id,
+        sourceType: "ADJUSTMENT" as const,
+        sourceId: randomUUID(),
+        documentNo: `BULK-${runId}-${index}`,
+        date: bulkDate,
+        narration: "Bulk ledger scalability test",
+        debit: 0,
+        credit: 1,
+      })),
+    });
+
+    const report = await getGeneralLedger(workspaceId, {
+      accountId: account.id,
+      from: date("2026-08-01"),
+      to: date("2026-08-31"),
+    });
+    expect(report.entries).toHaveLength(2000);
+    expect(report.truncated).toBe(true);
+    expect(report.closingBalance).toBe(2002);
+    expect(report.entries.at(-1)?.runningBalance).toBe(2000);
+  }, 60_000);
+
   it("reports revenue, historical COGS, expenses, gross profit, and net profit by date", async () => {
     await db.salesOrder.create({ data: { workspaceId, customerId, orderNumber: `SO-PNL-${runId}`, status: "CONFIRMED", subtotal: 200, total: 200, balanceAmount: 200, orderDate: date("2026-08-05") } });
     await db.salesOrder.create({ data: { workspaceId, customerId, orderNumber: `SO-CANCEL-PNL-${runId}`, status: "CANCELLED", subtotal: 500, total: 500, orderDate: date("2026-08-06") } });
