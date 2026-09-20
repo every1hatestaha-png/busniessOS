@@ -30,8 +30,8 @@ export async function getPurchasePriceHistory(workspaceId: string, filters: {
       } : {}),
     },
     orderBy: [
-      { goodReceivedNote: { receiptDate: "asc" } },
-      { createdAt: "asc" },
+      { goodReceivedNote: { receiptDate: "desc" } },
+      { createdAt: "desc" },
     ],
     take: 2001,
     select: {
@@ -56,7 +56,7 @@ export async function getPurchasePriceHistory(workspaceId: string, filters: {
   });
 
   const truncated = rows.length > 2000;
-  const visible = rows.slice(0, 2000);
+  const visible = rows.slice(0, 2000).reverse();
   const latestByProduct = new Map<string, number>();
   const chronological = visible.map((row) => {
     const unitCost = Number(row.unitCost);
