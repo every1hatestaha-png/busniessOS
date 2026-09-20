@@ -105,7 +105,7 @@ export async function runFbrRemoteValidation(submissionId: string, expectedEnvir
   });
   const safeRemote = {
     ...remote,
-    body: redactSensitiveFbrData(remote.body),
+    body: redactSensitiveFbrData(remote.body, [token]),
     errorMessage: sanitizeFbrErrorMessage(remote.errorMessage, token),
   };
   const valid = safeRemote.ok && acceptedByFbr(safeRemote.body);
