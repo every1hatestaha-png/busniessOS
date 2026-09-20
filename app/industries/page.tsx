@@ -80,6 +80,7 @@ export default function IndustriesPage() {
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{description}</p>
                 </div>
               </div>
+              {(title === "Manufacturing" || title === "Wholesale & Distribution") && <Link href={title === "Manufacturing" ? "/industries/manufacturing" : "/industries/wholesale"} className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-emerald-700">Explore this setup <ArrowRight className="size-4" /></Link>}
               <div className={`mt-6 grid gap-2 border-t border-slate-100 pt-5 ${index === 2 ? "sm:grid-cols-4" : "sm:grid-cols-2"}`}>
                 {workflows.map((workflow) => <div key={workflow} className="flex items-center gap-2 text-sm text-slate-700"><Check className="size-4 text-emerald-600" />{workflow}</div>)}
               </div>
