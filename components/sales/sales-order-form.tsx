@@ -67,10 +67,12 @@ function mixedTaxPreview(items: Array<{ quantity?: number; unitPrice?: number; d
   return { lines, taxableAmount, taxAmount, total: money(taxableAmount + taxAmount) };
 }
 
-export function SalesOrderForm({ customers, products, cashBankAccounts = [], canRecordPayments = true, warehouseMode = "LEGACY", warehouses = [], warehouseStocks = [], priceRules = [] }: { customers: CustomerOption[]; products: ProductOption[]; cashBankAccounts?: CashBankOption[]; canRecordPayments?: boolean; warehouseMode?: "LEGACY" | "MANAGED"; warehouses?: WarehouseOption[]; warehouseStocks?: WarehouseStockOption[]; priceRules?: CustomerPriceRuleLike[] }) {
+export function SalesOrderForm({ customers, products, cashBankAccounts = [], canRecordPayments = true, warehouseMode = "LEGACY", warehouses = [], warehouseStocks = [] }: { customers: CustomerOption[]; products: ProductOption[]; cashBankAccounts?: CashBankOption[]; canRecordPayments?: boolean; warehouseMode?: "LEGACY" | "MANAGED"; warehouses?: WarehouseOption[]; warehouseStocks?: WarehouseStockOption[] }) {
   const [actionState, submitAction, isPending] = useActionState(createSaleAction, {} as CreateSaleState);
   const [scanCode, setScanCode] = useState("");
   const [scanMessage, setScanMessage] = useState("");
+  const [priceRules, setPriceRules] = useState<CustomerPriceRuleLike[]>([]);
+  const [pricingMessage, setPricingMessage] = useState("");
   const { control, register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<OrderFormInput, unknown, OrderFormValues>({
     resolver: zodResolver(orderSchema),
     defaultValues: { customerId: "", warehouseId: warehouseMode === "MANAGED" ? (warehouses.find((warehouse) => warehouse.isDefault)?.id ?? "") : undefined, items: [{ productId: "", quantity: 1, pricingMode: "UNIT", unitWeight: undefined, perKgRate: undefined, unitPrice: 0, discountPerUnit: 0, taxRate: 18 }], orderDiscount: 0, gstRate: 18, paidAmount: 0, cashBankAccountId: "", notes: "", idempotencyKey: "00000000-0000-0000-0000-000000000000" },
@@ -109,12 +111,36 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
     setValue(`items.${index}.discountPerUnit`, rule?.discountPerUnit ?? 0, { shouldValidate: true, shouldDirty: true });
   }
 
-  function repriceUnitLines(nextCustomerId: string) {
+  function repriceUnitLines(nextCustomerId: string, rules = priceRules) {
     items.forEach((line, index) => {
       if (!line?.productId || line.pricingMode === "WEIGHT") return;
       const product = products.find((entry) => entry.id === line.productId);
-      if (product) applyCustomerPricing(index, product, Number(line.quantity || 0), nextCustomerId);
+      if (!product) return;
+      const rule = findCustomerPriceRule(rules, nextCustomerId, product.id, Number(line.quantity || 0));
+      setValue(`items.${index}.unitPrice`, rule?.unitPrice ?? product.sellingPrice, { shouldValidate: true, shouldDirty: true });
+      setValue(`items.${index}.discountPerUnit`, rule?.discountPerUnit ?? 0, { shouldValidate: true, shouldDirty: true });
     });
+  }
+
+  async function loadCustomerPricing(nextCustomerId: string) {
+    setPriceRules([]);
+    setPricingMessage("");
+    if (!nextCustomerId) {
+      repriceUnitLines("", []);
+      return;
+    }
+    try {
+      const response = await fetch(`/api/v1/customers/${nextCustomerId}/pricing`);
+      if (!response.ok) throw new Error("Customer pricing could not be loaded.");
+      const body = await response.json();
+      const rules = (body.data?.rules ?? []) as CustomerPriceRuleLike[];
+      setPriceRules(rules);
+      repriceUnitLines(nextCustomerId, rules);
+      if (rules.length) setPricingMessage(`${rules.length} customer pricing tier${rules.length === 1 ? "" : "s"} loaded.`);
+    } catch {
+      repriceUnitLines(nextCustomerId, []);
+      setPricingMessage("Customer-specific pricing could not be loaded. Standard prices are being used.");
+    }
   }
 
   function selectProduct(index: number, productId: string) {
@@ -208,9 +234,9 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
         <Card className="gap-0 overflow-hidden rounded-lg border py-0 shadow-sm ring-0">
           <CardHeader className="border-b bg-slate-50/60 px-5 py-4"><CardTitle className="text-sm font-semibold">Customer & Order</CardTitle></CardHeader>
           <CardContent className="p-5">
-            <Field label="Customer" error={errors.customerId?.message}><select {...register("customerId", { onChange: (event) => repriceUnitLines(event.target.value) })} className={fieldClass} aria-invalid={Boolean(errors.customerId)}><option value="">Choose a customer</option>{customers.filter((customer) => customer.status === "ACTIVE").map((customer) => <option key={customer.id} value={customer.id}>{customer.companyName} · {customer.name}</option>)}</select></Field>
+            <Field label="Customer" error={errors.customerId?.message}><select {...register("customerId", { onChange: (event) => { void loadCustomerPricing(event.target.value); } })} className={fieldClass} aria-invalid={Boolean(errors.customerId)}><option value="">Choose a customer</option>{customers.filter((customer) => customer.status === "ACTIVE").map((customer) => <option key={customer.id} value={customer.id}>{customer.companyName} · {customer.name}</option>)}</select></Field>
             {warehouseMode === "MANAGED" && <div className="mt-4"><Field label="Issuing warehouse" hint="Stock will be deducted here" error={errors.warehouseId?.message}><select {...register("warehouseId")} className={fieldClass} required><option value="">Choose warehouse</option>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name} · {warehouse.code}{warehouse.isDefault ? " · Default" : ""}</option>)}</select>{warehouses.length === 0 && <span className="mt-1 block text-[10px] font-medium text-red-600">No active warehouse is available. Configure inventory locations first.</span>}</Field></div>}
-            {selectedCustomer && <div className="mt-4 grid overflow-hidden rounded-lg border bg-slate-50 sm:grid-cols-3 sm:divide-x"><AccountFact label="Contact" value={selectedCustomer.phone || "No phone provided"} /><AccountFact label="Current balance" value={formatPKR(selectedCustomer.currentBalance)} /><AccountFact label="Available credit" value={selectedCustomer.creditLimit > 0 ? formatPKR(Math.max(0, selectedCustomer.creditLimit - selectedCustomer.currentBalance)) : "Not configured"} /></div>}
+            {pricingMessage && <p className="mt-3 text-[11px] font-medium text-slate-500">{pricingMessage}</p>}{selectedCustomer && <div className="mt-4 grid overflow-hidden rounded-lg border bg-slate-50 sm:grid-cols-3 sm:divide-x"><AccountFact label="Contact" value={selectedCustomer.phone || "No phone provided"} /><AccountFact label="Current balance" value={formatPKR(selectedCustomer.currentBalance)} /><AccountFact label="Available credit" value={selectedCustomer.creditLimit > 0 ? formatPKR(Math.max(0, selectedCustomer.creditLimit - selectedCustomer.currentBalance)) : "Not configured"} /></div>}
           </CardContent>
         </Card>
 
