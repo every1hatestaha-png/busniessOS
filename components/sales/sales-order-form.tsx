@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { calculateBalance, formatPKR } from "@/lib/utils";
 import { findProductByScanCode } from "@/lib/product-scan";
 import { quantityInputConstraints } from "@/lib/inventory/quantity-input";
+import { findCustomerPriceRule, type CustomerPriceRuleLike } from "@/lib/customer-pricing";
 import { saleSchema, type SaleInput } from "@/lib/validation/sale";
 
 const orderSchema = saleSchema.superRefine((order, context) => {
@@ -65,7 +66,7 @@ function mixedTaxPreview(items: Array<{ quantity?: number; unitPrice?: number; d
   return { lines, taxableAmount, taxAmount, total: money(taxableAmount + taxAmount) };
 }
 
-export function SalesOrderForm({ customers, products, cashBankAccounts = [], canRecordPayments = true, warehouseMode = "LEGACY", warehouses = [], warehouseStocks = [] }: { customers: CustomerOption[]; products: ProductOption[]; cashBankAccounts?: CashBankOption[]; canRecordPayments?: boolean; warehouseMode?: "LEGACY" | "MANAGED"; warehouses?: WarehouseOption[]; warehouseStocks?: WarehouseStockOption[] }) {
+export function SalesOrderForm({ customers, products, cashBankAccounts = [], canRecordPayments = true, warehouseMode = "LEGACY", warehouses = [], warehouseStocks = [], priceRules = [] }: { customers: CustomerOption[]; products: ProductOption[]; cashBankAccounts?: CashBankOption[]; canRecordPayments?: boolean; warehouseMode?: "LEGACY" | "MANAGED"; warehouses?: WarehouseOption[]; warehouseStocks?: WarehouseStockOption[]; priceRules?: CustomerPriceRuleLike[] }) {
   const [actionState, submitAction, isPending] = useActionState(createSaleAction, {} as CreateSaleState);
   const [scanCode, setScanCode] = useState("");
   const [scanMessage, setScanMessage] = useState("");
@@ -94,6 +95,20 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
   const taxLabel = taxRates.length === 1 ? `${taxRates[0]}%` : "Mixed";
   const balance = calculateBalance(total, paidAmount);
 
+  function applyCustomerPricing(index: number, product: ProductOption, quantity: number, nextCustomerId = customerId) {
+    const rule = findCustomerPriceRule(priceRules, nextCustomerId, product.id, quantity);
+    setValue(`items.${index}.unitPrice`, rule?.unitPrice ?? product.sellingPrice, { shouldValidate: true, shouldDirty: true });
+    setValue(`items.${index}.discountPerUnit`, rule?.discountPerUnit ?? 0, { shouldValidate: true, shouldDirty: true });
+  }
+
+  function repriceUnitLines(nextCustomerId: string) {
+    items.forEach((line, index) => {
+      if (!line?.productId || line.pricingMode === "WEIGHT") return;
+      const product = products.find((entry) => entry.id === line.productId);
+      if (product) applyCustomerPricing(index, product, Number(line.quantity || 0), nextCustomerId);
+    });
+  }
+
   function selectProduct(index: number, productId: string) {
     setValue(`items.${index}.productId`, productId, { shouldValidate: true, shouldDirty: true });
     const product = products.find((entry) => entry.id === productId);
@@ -102,7 +117,8 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
       setValue(`items.${index}.pricingMode`, weighted ? "WEIGHT" : "UNIT", { shouldValidate: true, shouldDirty: true });
       setValue(`items.${index}.unitWeight`, weighted ? product.defaultWeightKg! : undefined, { shouldValidate: true, shouldDirty: true });
       setValue(`items.${index}.perKgRate`, weighted ? product.sellingPrice : undefined, { shouldValidate: true, shouldDirty: true });
-      setValue(`items.${index}.unitPrice`, weighted ? product.defaultWeightKg! * product.sellingPrice : product.sellingPrice, { shouldValidate: true, shouldDirty: true });
+      if (weighted) setValue(`items.${index}.unitPrice`, product.defaultWeightKg! * product.sellingPrice, { shouldValidate: true, shouldDirty: true });
+      else applyCustomerPricing(index, product, Number(items[index]?.quantity || 1));
       setValue(`items.${index}.taxRate`, product.verifiedTaxRate ?? gstRate, { shouldValidate: true, shouldDirty: true });
     }
   }
@@ -116,21 +132,24 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
 
     const existingIndex = items.findIndex((item) => item?.productId === product.id);
     if (existingIndex >= 0) {
-      setValue(`items.${existingIndex}.quantity`, Number(items[existingIndex]?.quantity || 0) + 1, { shouldValidate: true, shouldDirty: true });
+      const nextQuantity = Number(items[existingIndex]?.quantity || 0) + 1;
+      setValue(`items.${existingIndex}.quantity`, nextQuantity, { shouldValidate: true, shouldDirty: true });
+      if (items[existingIndex]?.pricingMode !== "WEIGHT") applyCustomerPricing(existingIndex, product, nextQuantity);
     } else {
       const emptyIndex = items.findIndex((item) => !item?.productId);
       if (emptyIndex >= 0) {
         selectProduct(emptyIndex, product.id);
       } else {
         const weighted = Boolean(product.defaultWeightKg && product.defaultWeightKg > 0);
+        const rule = weighted ? null : findCustomerPriceRule(priceRules, customerId, product.id, 1);
         append({
           productId: product.id,
           quantity: 1,
           pricingMode: weighted ? "WEIGHT" : "UNIT",
           unitWeight: weighted ? product.defaultWeightKg! : undefined,
           perKgRate: weighted ? product.sellingPrice : undefined,
-          unitPrice: weighted ? product.defaultWeightKg! * product.sellingPrice : product.sellingPrice,
-          discountPerUnit: 0,
+          unitPrice: weighted ? product.defaultWeightKg! * product.sellingPrice : (rule?.unitPrice ?? product.sellingPrice),
+          discountPerUnit: weighted ? 0 : (rule?.discountPerUnit ?? 0),
           taxRate: product.verifiedTaxRate ?? gstRate,
         });
       }
@@ -148,7 +167,7 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
       if (weight > 0) setValue(`items.${index}.unitWeight`, weight, { shouldValidate: true, shouldDirty: true });
       if (rate > 0) setValue(`items.${index}.perKgRate`, rate, { shouldValidate: true, shouldDirty: true });
       if (weight > 0 && rate > 0) setValue(`items.${index}.unitPrice`, weight * rate, { shouldValidate: true, shouldDirty: true });
-    } else if (product) setValue(`items.${index}.unitPrice`, product.sellingPrice, { shouldValidate: true, shouldDirty: true });
+    } else if (product) applyCustomerPricing(index, product, Number(items[index]?.quantity || 1));
   }
 
   function setWeightValue(index: number, field: "unitWeight" | "perKgRate", value: number) {
@@ -180,7 +199,7 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
         <Card className="gap-0 overflow-hidden rounded-lg border py-0 shadow-sm ring-0">
           <CardHeader className="border-b bg-slate-50/60 px-5 py-4"><CardTitle className="text-sm font-semibold">Customer & Order</CardTitle></CardHeader>
           <CardContent className="p-5">
-            <Field label="Customer" error={errors.customerId?.message}><select {...register("customerId")} className={fieldClass} aria-invalid={Boolean(errors.customerId)}><option value="">Choose a customer</option>{customers.filter((customer) => customer.status === "ACTIVE").map((customer) => <option key={customer.id} value={customer.id}>{customer.companyName} · {customer.name}</option>)}</select></Field>
+            <Field label="Customer" error={errors.customerId?.message}><select {...register("customerId", { onChange: (event) => repriceUnitLines(event.target.value) })} className={fieldClass} aria-invalid={Boolean(errors.customerId)}><option value="">Choose a customer</option>{customers.filter((customer) => customer.status === "ACTIVE").map((customer) => <option key={customer.id} value={customer.id}>{customer.companyName} · {customer.name}</option>)}</select></Field>
             {warehouseMode === "MANAGED" && <div className="mt-4"><Field label="Issuing warehouse" hint="Stock will be deducted here" error={errors.warehouseId?.message}><select {...register("warehouseId")} className={fieldClass} required><option value="">Choose warehouse</option>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name} · {warehouse.code}{warehouse.isDefault ? " · Default" : ""}</option>)}</select>{warehouses.length === 0 && <span className="mt-1 block text-[10px] font-medium text-red-600">No active warehouse is available. Configure inventory locations first.</span>}</Field></div>}
             {selectedCustomer && <div className="mt-4 grid overflow-hidden rounded-lg border bg-slate-50 sm:grid-cols-3 sm:divide-x"><AccountFact label="Contact" value={selectedCustomer.phone || "No phone provided"} /><AccountFact label="Current balance" value={formatPKR(selectedCustomer.currentBalance)} /><AccountFact label="Available credit" value={selectedCustomer.creditLimit > 0 ? formatPKR(Math.max(0, selectedCustomer.creditLimit - selectedCustomer.currentBalance)) : "Not configured"} /></div>}
           </CardContent>
@@ -194,9 +213,10 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
               const line = items[index];
               const lineTotal = Math.max(0, (line?.quantity || 0) * (line?.unitPrice || 0) - (line?.quantity || 0) * (line?.discountPerUnit || 0));
               const selectedProduct = products.find((product) => product.id === line?.productId);
+              const appliedPriceRule = selectedProduct && line?.pricingMode !== "WEIGHT" ? findCustomerPriceRule(priceRules, customerId, selectedProduct.id, Number(line?.quantity || 0)) : null;
               return <div key={field.id} className="grid grid-cols-[minmax(210px,1fr)_80px_110px_105px_120px_36px] items-start gap-2 border-b px-5 py-3 last:border-0">
-                <Field error={errors.items?.[index]?.productId?.message}><select value={line?.productId ?? ""} onChange={(event) => selectProduct(index, event.target.value)} className={fieldClass}><option value="">Select product</option>{products.filter((product) => product.status === "ACTIVE").map((product) => <option key={product.id} value={product.id}>{product.name} ({product.sku})</option>)}</select>{selectedProduct && <><span className="mt-1 block text-[10px] text-slate-500">Available {availableStock(selectedProduct.id)} {selectedProduct.unit.toLowerCase()}{warehouseMode === "MANAGED" ? " in selected warehouse" : ""}</span>{selectedProduct.verifiedTaxRate !== null && <span className="mt-1 block text-[10px] font-medium text-emerald-700">Verified FBR rate: {selectedProduct.verifiedTaxRate}%</span>}<div className="mt-2 grid grid-cols-[100px_1fr_1fr] gap-1.5"><select aria-label="Pricing mode" value={line?.pricingMode ?? "UNIT"} onChange={(event) => setPricing(index, event.target.value as "UNIT" | "WEIGHT")} className={fieldClass}><option value="UNIT">By unit</option><option value="WEIGHT">By weight</option></select>{line?.pricingMode === "WEIGHT" && <><Input aria-label="Actual weight per unit kg" type="number" min="0.001" step="0.001" value={line?.unitWeight ?? ""} onChange={(event) => setWeightValue(index, "unitWeight", Number(event.target.value))} placeholder="kg/unit" className="text-right text-xs" /><Input aria-label="Rate per kg" type="number" min="0.01" step="0.01" value={line?.perKgRate ?? ""} onChange={(event) => setWeightValue(index, "perKgRate", Number(event.target.value))} placeholder="Rs/kg" className="text-right text-xs" /></>}</div>{line?.pricingMode === "WEIGHT" && <span className="mt-1 block text-[10px] font-medium text-emerald-700">Actual {Number(line?.unitWeight || 0).toFixed(3)} kg/unit · {formatPKR(Number(line?.perKgRate || 0))}/kg · total {(Number(line?.unitWeight || 0) * Number(line?.quantity || 0)).toFixed(3)} kg</span>}{line?.pricingMode === "WEIGHT" && (errors.items?.[index]?.unitWeight?.message || errors.items?.[index]?.perKgRate?.message) && <span className="mt-1 block text-[10px] font-medium text-red-600">{errors.items?.[index]?.unitWeight?.message || errors.items?.[index]?.perKgRate?.message}</span>}</>}</Field>
-                <Field error={errors.items?.[index]?.quantity?.message}><Input type="number" {...quantityInputConstraints(selectedProduct?.unit)} className="text-right text-sm" {...register(`items.${index}.quantity`, { valueAsNumber: true })} /></Field>
+                <Field error={errors.items?.[index]?.productId?.message}><select value={line?.productId ?? ""} onChange={(event) => selectProduct(index, event.target.value)} className={fieldClass}><option value="">Select product</option>{products.filter((product) => product.status === "ACTIVE").map((product) => <option key={product.id} value={product.id}>{product.name} ({product.sku})</option>)}</select>{selectedProduct && <><span className="mt-1 block text-[10px] text-slate-500">Available {availableStock(selectedProduct.id)} {selectedProduct.unit.toLowerCase()}{warehouseMode === "MANAGED" ? " in selected warehouse" : ""}</span>{appliedPriceRule && <span className="mt-1 block text-[10px] font-medium text-blue-700">Customer tier: {appliedPriceRule.minQuantity}+ · {formatPKR(appliedPriceRule.unitPrice)}{appliedPriceRule.discountPerUnit > 0 ? ` · ${formatPKR(appliedPriceRule.discountPerUnit)} discount/unit` : ""}</span>{selectedProduct.verifiedTaxRate !== null && <span className="mt-1 block text-[10px] font-medium text-emerald-700">Verified FBR rate: {selectedProduct.verifiedTaxRate}%</span>}<div className="mt-2 grid grid-cols-[100px_1fr_1fr] gap-1.5"><select aria-label="Pricing mode" value={line?.pricingMode ?? "UNIT"} onChange={(event) => setPricing(index, event.target.value as "UNIT" | "WEIGHT")} className={fieldClass}><option value="UNIT">By unit</option><option value="WEIGHT">By weight</option></select>{line?.pricingMode === "WEIGHT" && <><Input aria-label="Actual weight per unit kg" type="number" min="0.001" step="0.001" value={line?.unitWeight ?? ""} onChange={(event) => setWeightValue(index, "unitWeight", Number(event.target.value))} placeholder="kg/unit" className="text-right text-xs" /><Input aria-label="Rate per kg" type="number" min="0.01" step="0.01" value={line?.perKgRate ?? ""} onChange={(event) => setWeightValue(index, "perKgRate", Number(event.target.value))} placeholder="Rs/kg" className="text-right text-xs" /></>}</div>{line?.pricingMode === "WEIGHT" && <span className="mt-1 block text-[10px] font-medium text-emerald-700">Actual {Number(line?.unitWeight || 0).toFixed(3)} kg/unit · {formatPKR(Number(line?.perKgRate || 0))}/kg · total {(Number(line?.unitWeight || 0) * Number(line?.quantity || 0)).toFixed(3)} kg</span>}{line?.pricingMode === "WEIGHT" && (errors.items?.[index]?.unitWeight?.message || errors.items?.[index]?.perKgRate?.message) && <span className="mt-1 block text-[10px] font-medium text-red-600">{errors.items?.[index]?.unitWeight?.message || errors.items?.[index]?.perKgRate?.message}</span>}</>}</Field>
+                <Field error={errors.items?.[index]?.quantity?.message}><Input type="number" {...quantityInputConstraints(selectedProduct?.unit)} className="text-right text-sm" {...register(`items.${index}.quantity`, { valueAsNumber: true, onChange: (event) => { const quantity = Number(event.target.value); if (selectedProduct && line?.pricingMode !== "WEIGHT") applyCustomerPricing(index, selectedProduct, quantity); } })} /></Field>
                 <Field error={errors.items?.[index]?.unitPrice?.message}><Input type="number" min="0" step="0.01" readOnly={line?.pricingMode === "WEIGHT"} className="text-right text-sm read-only:bg-slate-50" {...register(`items.${index}.unitPrice`, { valueAsNumber: true })} /></Field>
                 <Field error={errors.items?.[index]?.discountPerUnit?.message}><Input type="number" min="0" step="1" className="text-right text-sm" {...register(`items.${index}.discountPerUnit`, { valueAsNumber: true })} /></Field>
                 <Field error={errors.items?.[index]?.taxRate?.message}><Input type="number" min="0" max="100" step="0.01" className="text-right text-sm" {...register(`items.${index}.taxRate`, { valueAsNumber: true })} /></Field>
