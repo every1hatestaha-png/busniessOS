@@ -415,15 +415,90 @@ export async function getGeneralLedger(workspaceId: string, input: LedgerReportI
   await ensureDefaultAccounts(workspaceId);
   const account = await db.account.findFirst({ where: { id: data.accountId, workspaceId } });
   if (!account) throw new AccountingDomainError("Account not found.");
-  const [opening, entries] = await Promise.all([
-    db.generalLedgerEntry.aggregate({ where: { workspaceId, accountId: account.id, date: { lt: from } }, _sum: { debit: true, credit: true } }),
-    db.generalLedgerEntry.findMany({ where: { workspaceId, accountId: account.id, date: { gte: from, lte: to } }, orderBy: [{ date: "asc" }, { createdAt: "asc" }, { id: "asc" }] }),
+
+  const runningDelta = account.normalBalance === "DEBIT"
+    ? Prisma.sql`SUM("debit" - "credit") OVER (ORDER BY "date" ASC, "createdAt" ASC, "id" ASC)`
+    : Prisma.sql`SUM("credit" - "debit") OVER (ORDER BY "date" ASC, "createdAt" ASC, "id" ASC)`;
+  const searchPattern = data.search?.trim() ? `%${data.search.trim()}%` : null;
+  const searchClause = searchPattern
+    ? Prisma.sql`WHERE ("documentNo" ILIKE ${searchPattern} OR "narration" ILIKE ${searchPattern})`
+    : Prisma.empty;
+
+  const [opening, periodTotals, rawEntries] = await Promise.all([
+    db.generalLedgerEntry.aggregate({
+      where: { workspaceId, accountId: account.id, date: { lt: from } },
+      _sum: { debit: true, credit: true },
+    }),
+    db.generalLedgerEntry.aggregate({
+      where: { workspaceId, accountId: account.id, date: { gte: from, lte: to } },
+      _sum: { debit: true, credit: true },
+    }),
+    db.$queryRaw<Array<{
+      id: string;
+      sourceId: string;
+      date: Date;
+      sourceType: GeneralLedgerSourceType;
+      documentNo: string;
+      narration: string;
+      debit: Prisma.Decimal;
+      credit: Prisma.Decimal;
+      runningDelta: Prisma.Decimal;
+    }>>(Prisma.sql`
+      WITH period_entries AS (
+        SELECT
+          "id",
+          "sourceId",
+          "date",
+          "createdAt",
+          "sourceType",
+          "documentNo",
+          "narration",
+          "debit",
+          "credit",
+          ${runningDelta} AS "runningDelta"
+        FROM "general_ledger_entries"
+        WHERE "workspaceId" = ${workspaceId}
+          AND "accountId" = ${account.id}
+          AND "date" >= ${from}
+          AND "date" <= ${to}
+      )
+      SELECT "id", "sourceId", "date", "sourceType", "documentNo", "narration", "debit", "credit", "runningDelta"
+      FROM period_entries
+      ${searchClause}
+      ORDER BY "date" ASC, "createdAt" ASC, "id" ASC
+      LIMIT 2001
+    `),
   ]);
-  const openingBalance = account.normalBalance === "DEBIT" ? amount(opening._sum.debit) - amount(opening._sum.credit) : amount(opening._sum.credit) - amount(opening._sum.debit);
-  const allRows = calculateRunningBalance(openingBalance, account.normalBalance, entries.map((entry) => ({ debit: amount(entry.debit), credit: amount(entry.credit) }))).map((entry, index) => ({ id: entries[index].id, sourceId: entries[index].sourceId, date: entries[index].date.toISOString(), sourceType: entries[index].sourceType, documentNo: entries[index].documentNo, narration: entries[index].narration, debit: entry.debit, credit: entry.credit, runningBalance: entry.runningBalance }));
-  const search = data.search?.toLowerCase();
-  const rows = search ? allRows.filter((entry) => entry.documentNo.toLowerCase().includes(search) || entry.narration.toLowerCase().includes(search)) : allRows;
-  return { account: { id: account.id, code: account.code, name: account.name, category: account.category, normalBalance: account.normalBalance }, from: from.toISOString(), to: to.toISOString(), openingBalance, entries: rows, closingBalance: allRows.at(-1)?.runningBalance ?? openingBalance };
+
+  const openingBalance = account.normalBalance === "DEBIT"
+    ? amount(opening._sum.debit) - amount(opening._sum.credit)
+    : amount(opening._sum.credit) - amount(opening._sum.debit);
+  const periodMovement = account.normalBalance === "DEBIT"
+    ? new Prisma.Decimal(periodTotals._sum.debit ?? 0).minus(periodTotals._sum.credit ?? 0)
+    : new Prisma.Decimal(periodTotals._sum.credit ?? 0).minus(periodTotals._sum.debit ?? 0);
+  const closingBalance = new Prisma.Decimal(openingBalance).plus(periodMovement).toNumber();
+  const truncated = rawEntries.length > 2000;
+  const entries = rawEntries.slice(0, 2000).map((entry) => ({
+    id: entry.id,
+    sourceId: entry.sourceId,
+    date: entry.date.toISOString(),
+    sourceType: entry.sourceType,
+    documentNo: entry.documentNo,
+    narration: entry.narration,
+    debit: amount(entry.debit),
+    credit: amount(entry.credit),
+    runningBalance: new Prisma.Decimal(openingBalance).plus(entry.runningDelta).toNumber(),
+  }));
+
+  return {
+    account: { id: account.id, code: account.code, name: account.name, category: account.category, normalBalance: account.normalBalance },
+    from: from.toISOString(),
+    to: to.toISOString(),
+    openingBalance,
+    entries,
+    closingBalance,
+    truncated,
+  };
 }
 
 export async function getProfitAndLoss(workspaceId: string, input: ProfitLossInput = {}) {
