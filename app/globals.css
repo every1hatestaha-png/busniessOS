@@ -179,6 +179,40 @@
     margin: 10mm;
   }
 
+  @page thermal {
+    size: 80mm auto;
+    margin: 4mm;
+  }
+
+  html[data-print-format="thermal"] [data-document] {
+    page: thermal;
+    width: 72mm !important;
+    max-width: 72mm !important;
+    font-size: 7.5pt !important;
+    line-height: 1.25 !important;
+  }
+
+  html[data-print-format="thermal"] [data-document] header,
+  html[data-print-format="thermal"] [data-document] section {
+    padding: 2mm !important;
+  }
+
+  html[data-print-format="thermal"] [data-document] table {
+    table-layout: fixed !important;
+    font-size: 6.5pt !important;
+  }
+
+  html[data-print-format="thermal"] [data-document] th,
+  html[data-print-format="thermal"] [data-document] td {
+    padding: 1mm 0.5mm !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  html[data-print-format="thermal"] [data-document] [data-document-totals] > div {
+    max-width: none !important;
+    width: 100% !important;
+  }
+
   * {
     print-color-adjust: exact;
   }

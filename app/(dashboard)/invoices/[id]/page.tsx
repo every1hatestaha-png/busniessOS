@@ -127,6 +127,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           {invoice.order && <Link href={`/invoices/${invoice.id}/gate-pass`} className={actionLink}><Truck className="h-4 w-4" />Gate Pass {dcNumber}</Link>}
           {whatsappUrl && <a href={whatsappUrl} target="_blank" rel="noreferrer" className={actionLink}><MessageCircleMore className="h-4 w-4" />WhatsApp</a>}
           <PrintButton label={fbrPrintBlocked ? "FBR print blocked" : "Print invoice"} disabled={fbrPrintBlocked} />
+          <PrintButton label={fbrPrintBlocked ? "FBR thermal blocked" : "80mm receipt"} disabled={fbrPrintBlocked} format="thermal" />
           {invoice.order && invoice.status !== "CANCELLED" && canManageFinancials && <CancelSaleButton saleId={invoice.order.id} orderNumber={invoice.order.number} />}
         </div>
       </div>
