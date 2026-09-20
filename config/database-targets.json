@@ -1,0 +1,15 @@
+{
+  "database": "neondb",
+  "productionHosts": [
+    "ep-plain-smoke-b35qxc96.c-4.ap-southeast-1.aws.neon.tech",
+    "ep-plain-smoke-b35qxc96-pooler.c-4.ap-southeast-1.aws.neon.tech",
+    "ep-plain-smoke-b35qxc96-pql.c-4.ap-southeast-1.aws.neon.tech",
+    "ep-plain-smoke-b35qxc96-pql-pooler.c-4.ap-southeast-1.aws.neon.tech"
+  ],
+  "developmentHosts": [
+    "ep-icy-recipe-b3fwtekt.c-4.ap-southeast-1.aws.neon.tech",
+    "ep-icy-recipe-b3fwtekt-pooler.c-4.ap-southeast-1.aws.neon.tech",
+    "ep-icy-recipe-b3fwtekt-q05.c-4.ap-southeast-1.aws.neon.tech",
+    "ep-icy-recipe-b3fwtekt-q05-pooler.c-4.ap-southeast-1.aws.neon.tech"
+  ]
+}

@@ -1,18 +1,10 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const { createHash } = require("node:crypto");
+const targetConfig = require("../config/database-targets.json");
 
 const TARGETS = {
-  production: new Set([
-    "ep-plain-smoke-b35qxc96.c-4.ap-southeast-1.aws.neon.tech",
-    "ep-plain-smoke-b35qxc96-pooler.c-4.ap-southeast-1.aws.neon.tech",
-    "ep-plain-smoke-b35qxc96-pql.c-4.ap-southeast-1.aws.neon.tech",
-    "ep-plain-smoke-b35qxc96-pql-pooler.c-4.ap-southeast-1.aws.neon.tech",
-  ]),
-  development: new Set([
-    "ep-icy-recipe-b3fwtekt.c-4.ap-southeast-1.aws.neon.tech",
-    "ep-icy-recipe-b3fwtekt-pooler.c-4.ap-southeast-1.aws.neon.tech",
-    "ep-icy-recipe-b3fwtekt-q05.c-4.ap-southeast-1.aws.neon.tech",
-    "ep-icy-recipe-b3fwtekt-q05-pooler.c-4.ap-southeast-1.aws.neon.tech",
-  ]),
+  production: new Set(targetConfig.productionHosts),
+  development: new Set(targetConfig.developmentHosts),
 };
 
 function fail(message) {
@@ -43,7 +35,7 @@ const fingerprint = createHash("sha256").update(hostname).digest("hex").slice(0,
 if (classification !== "production") {
   fail(`Refusing production migration: database target classification=${classification}; hostFingerprint=${fingerprint}.`);
 }
-if (decodeURIComponent(parsed.pathname.replace(/^\//, "")) !== "neondb") {
+if (decodeURIComponent(parsed.pathname.replace(/^\//, "")) !== targetConfig.database) {
   fail("Refusing production migration: DATABASE_URL does not target the approved production database.");
 }
 
