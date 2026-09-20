@@ -1131,10 +1131,8 @@ if (order._count.paymentAllocations > 0) throw new PurchaseDomainError("PURCHASE
     if (order._count.goodsReceivedNotes > 0) throw new PurchaseDomainError("CANNOT_DELETE_PO", "Cannot delete this purchase because goods have already been received. Void the related GRN first.");
     if (order.status !== "DRAFT") throw new PurchaseDomainError("CANNOT_DELETE_PO", `Cannot delete this purchase in ${order.status} status. Use cancel purchase instead.`);
 
-    const [ledgerCount, generalLedgerCount] = await Promise.all([
-      tx.ledgerEntry.count({ where: { workspaceId: context.workspaceId, referenceId: id } }),
-      tx.generalLedgerEntry.count({ where: { workspaceId: context.workspaceId, sourceId: id } }),
-    ]);
+    const ledgerCount = await tx.ledgerEntry.count({ where: { workspaceId: context.workspaceId, referenceId: id } });
+    const generalLedgerCount = await tx.generalLedgerEntry.count({ where: { workspaceId: context.workspaceId, sourceId: id } });
     if (ledgerCount > 0 || generalLedgerCount > 0) throw new PurchaseDomainError("CANNOT_DELETE_PO", "Cannot delete this purchase because accounting activity references it.");
 
     const deleted = await tx.purchaseOrder.delete({
