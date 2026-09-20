@@ -270,6 +270,7 @@ model Workspace {
   generalLedgerEntries      GeneralLedgerEntry[]
   goodReceivedNotes         GoodReceivedNote[]
   customerCreditAllocations CustomerCreditAllocation[]
+  customerPriceRules        CustomerPriceRule[]
   fbrIntegrationConfig       FbrIntegrationConfig?
   fbrInvoiceSubmissions      FbrInvoiceSubmission[]
 
