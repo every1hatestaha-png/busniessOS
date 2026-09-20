@@ -234,6 +234,7 @@ export async function buildFbrInvoiceDraft(workspaceId: string, invoiceId: strin
       provider: config?.provider,
       integratorName: config?.integratorName,
       integratorLicenseNo: config?.integratorLicenseNo,
+      softwareRegistrationNo: config?.softwareRegistrationNo,
       productionApprovedAt: config?.productionApprovedAt,
       productionApprovedBy: config?.productionApprovedBy,
       taxMappingReady,
