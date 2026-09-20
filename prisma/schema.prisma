@@ -1120,6 +1120,7 @@ model FbrIntegrationConfig {
   provider             String         @default("PRAL")
   integratorName       String?
   integratorLicenseNo  String?
+  softwareRegistrationNo String?
   defaultScenarioId    String?
   productionApprovedAt       DateTime?
   productionApprovedBy       String?

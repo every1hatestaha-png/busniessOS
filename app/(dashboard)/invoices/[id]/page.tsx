@@ -9,10 +9,12 @@ import { RecordPaymentForm } from "@/components/payments/record-payment-form";
 import { CancelSaleButton } from "@/components/sales/cancel-sale-button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { deliveryChallanNumber } from "@/lib/document-references";
+import { validateFbrProductionPrintReadiness } from "@/lib/fbr/print-compliance";
 import { requireWorkspace } from "@/lib/server/auth";
 import { getCashBankAccounts } from "@/lib/server/accounting";
 import { buildFbrInvoiceDraft, fingerprintFbrPayload, getFbrSubmissionForInvoice } from "@/lib/server/fbr-digital-invoicing";
 import { getInvoice } from "@/lib/server/invoices";
+import { db } from "@/lib/server/db";
 import { canPerformAction } from "@/lib/server/authorization";
 import { formatDate, formatPKR } from "@/lib/utils";
 import { Prisma } from "@prisma/client";
@@ -42,6 +44,23 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   ]);
   if (!invoice) notFound();
   const dcNumber = deliveryChallanNumber(invoice.invoiceNumber);
+
+  const [fbrPrintConfig, fbrProductionSubmission] = await Promise.all([
+    db.fbrIntegrationConfig.findUnique({
+      where: { workspaceId },
+      select: { enabled: true, environment: true, softwareRegistrationNo: true },
+    }),
+    getFbrSubmissionForInvoice(workspaceId, id, "PRODUCTION"),
+  ]);
+  const fbrPrintIssues = fbrPrintConfig?.enabled && fbrPrintConfig.environment === "PRODUCTION"
+    ? validateFbrProductionPrintReadiness({
+        environment: "PRODUCTION",
+        submissionStatus: fbrProductionSubmission?.status,
+        fbrInvoiceNumber: fbrProductionSubmission?.fbrInvoiceNumber,
+        softwareRegistrationNo: fbrPrintConfig.softwareRegistrationNo,
+      })
+    : [];
+  const fbrPrintBlocked = fbrPrintIssues.length > 0;
 
   let fbrPanel: FbrInvoicePanelData | null = null;
   if (canManageFinancials) {
@@ -101,13 +120,22 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         <div className="flex flex-wrap items-center gap-2">
           {invoice.order && invoice.status !== "CANCELLED" && canManageFinancials && <Link href={`/sales/${invoice.order.id}/edit`} className={actionLink}><Pencil className="h-4 w-4" />Edit invoice</Link>}
           {invoice.order && <Link href={`/invoices/${invoice.id}/gate-pass`} className={actionLink}><Truck className="h-4 w-4" />Gate Pass {dcNumber}</Link>}
-          <PrintButton label="Print invoice" />
+          <PrintButton label={fbrPrintBlocked ? "FBR print blocked" : "Print invoice"} disabled={fbrPrintBlocked} />
           {invoice.order && invoice.status !== "CANCELLED" && canManageFinancials && <CancelSaleButton saleId={invoice.order.id} orderNumber={invoice.order.number} />}
         </div>
       </div>
 
+      {fbrPrintBlocked && (
+        <div className="hidden print:block border-4 border-black p-8">
+          <h1 className="text-2xl font-black">FBR PRODUCTION PRINT BLOCKED</h1>
+          <p className="mt-3 text-sm">This invoice must not be issued as an FBR-compliant production invoice yet.</p>
+          <ul className="mt-4 list-disc space-y-2 pl-5 text-sm">
+            {fbrPrintIssues.map((issue) => <li key={issue.code}>{issue.message}</li>)}
+          </ul>
+        </div>
+      )}
       <div className="grid items-start gap-6 2xl:grid-cols-[minmax(0,1fr)_360px] print:block">
-        <article data-document className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-none print:rounded-none print:border-0">
+        <article data-document className={"overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-none print:rounded-none print:border-0 " + (fbrPrintBlocked ? "print:hidden" : "")}>
           <header className="border-b border-neutral-200 p-6 sm:p-8">
             <div className="flex flex-col justify-between gap-6 sm:flex-row">
               <div><p className="text-xs font-bold uppercase tracking-[0.2em] text-neutral-400">Invoice</p><h2 className="mt-2 text-2xl font-bold">{workspace.name}</h2><div className="mt-2 space-y-0.5 text-sm text-neutral-500">{workspace.address && <p>{workspace.address}</p>}<p>{[workspace.city, workspace.country].filter(Boolean).join(", ")}</p>{workspace.phone && <p>{workspace.phone}</p>}{workspace.email && <p>{workspace.email}</p>}{(workspace.ntn || workspace.strn) && <p className="pt-1 font-medium">{[workspace.ntn ? `NTN: ${workspace.ntn}` : null, workspace.strn ? `STRN: ${workspace.strn}` : null].filter(Boolean).join(" · ")}</p>}</div></div>
@@ -127,6 +155,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           {invoice.payments.length > 0 && <section className="border-t border-neutral-200 p-6 sm:p-8"><h3 className="font-semibold">Payment history</h3><div className="mt-3 overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Method / status</TableHead><TableHead>Receipt / reference</TableHead><TableHead className="text-right">Amount</TableHead></TableRow></TableHeader><TableBody>{invoice.payments.map((payment) => <TableRow key={payment.id}><TableCell>{formatDate(payment.date)}</TableCell><TableCell>{payment.method.replaceAll("_", " ")}{payment.isReversal ? " · Reversal" : payment.isReversed ? " · Reversed" : ""}</TableCell><TableCell><Link href={`/payments/${payment.id}`} className="font-medium hover:underline">{payment.reference}</Link></TableCell><TableCell className="text-right font-medium">{formatPKR(payment.amount)}</TableCell></TableRow>)}</TableBody></Table></div></section>}
         </article>
         <aside className="space-y-6 print:hidden 2xl:sticky 2xl:top-6">
+          {fbrPrintBlocked && (
+            <section className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-900">
+              <h2 className="font-semibold">FBR production printing blocked</h2>
+              <p className="mt-1 text-xs leading-5">{fbrPrintIssues[0]?.message}</p>
+            </section>
+          )}
           {fbrPanel && <FbrInvoiceStatusCard invoiceId={invoice.id} data={fbrPanel} />}
           <section className="rounded-xl border border-neutral-200 bg-white p-5">
             <div className="mb-5"><h2 className="font-semibold">Record payment</h2><p className="mt-1 text-sm text-neutral-500">Allocate a manual receipt to this invoice.</p></div>
