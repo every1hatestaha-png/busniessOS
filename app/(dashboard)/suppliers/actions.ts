@@ -25,7 +25,7 @@ export async function createSupplierAction(
   _previousState: SupplierFormState,
   input: SupplierInput,
 ): Promise<SupplierFormState> {
-  const context = await requirePermission("financial.manage");
+  const context = await requirePermission("suppliers.manage");
   const parsed = supplierSchema.safeParse(input);
   if (!parsed.success) return { message: "Please correct the highlighted fields.", fieldErrors: collectFieldErrors(parsed.error.issues) };
 
@@ -46,7 +46,7 @@ export async function updateSupplierAction(
   _previousState: SupplierFormState,
   input: SupplierInput,
 ): Promise<SupplierFormState> {
-  const context = await requirePermission("financial.manage");
+  const context = await requirePermission("suppliers.manage");
   const parsed = supplierSchema.safeParse(input);
   if (!parsed.success) return { message: "Please correct the highlighted fields.", fieldErrors: collectFieldErrors(parsed.error.issues) };
 
