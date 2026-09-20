@@ -73,7 +73,7 @@ const modules = [
 const faqs = [
   ["Is there a free trial?", "Yes. Your first month is free, so you can use MunshiOS with your business before deciding whether to continue monthly."],
   ["Can I use it alongside Excel?", "Yes. During your first month you can keep your current process running while you test MunshiOS with real workflows."],
-  ["Can you help move my existing data?", "MunshiOS supports products, customers, suppliers and opening balances. The exact migration approach depends on the format and condition of your current data."],
+  ["Can you help move my existing data?", "We can help set up products, customers, suppliers and opening balances. The exact migration approach depends on the format and condition of your current data."],
   ["Is my company data separated from other companies?", "Yes. MunshiOS uses company-scoped workspaces with separate business records and user permissions."],
   ["Does MunshiOS work on phones?", "The public website works on phones. The business application is designed for laptop and desktop use, where larger business screens are easier to manage."],
   ["Does MunshiOS support FBR e-invoicing?", "MunshiOS has tax and FBR-related product fields, but this website does not claim live FBR e-invoicing until that integration is fully verified for production use."],
@@ -173,7 +173,7 @@ export default function Home() {
   const whatsappHref = whatsappNumber
     ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent("Salam, I want to know more about MunshiOS and the free first month.")}`
     : "/get-your-munshi?intent=contact";
-  const laptopShareHref = `https://wa.me/?text=${encodeURIComponent("Open MunshiOS on your laptop: https://business-os-khzr.vercel.app")}`;
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://business-os-one-gules.vercel.app";\n  const laptopShareHref = `https://wa.me/?text=${encodeURIComponent(`Open MunshiOS on your laptop: ${siteUrl}`)}`;
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#fbfcfa] pb-20 text-[#0b1720] selection:bg-emerald-200 lg:pb-0">
