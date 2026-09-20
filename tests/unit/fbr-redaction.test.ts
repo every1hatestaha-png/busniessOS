@@ -11,13 +11,15 @@ describe("FBR evidence redaction", () => {
         nested: [{ apiKey: "abc", error: "Provide rate." }],
       },
       invoiceNumber: "INV-1",
-    })).toEqual({
+      error: "upstream echoed super-secret-token",
+    }, ["super-secret-token"])).toEqual({
       validationResponse: {
         statusCode: "01",
         token: "[REDACTED]",
         nested: [{ apiKey: "[REDACTED]", error: "Provide rate." }],
       },
       invoiceNumber: "INV-1",
+      error: "upstream echoed [REDACTED]",
     });
   });
 
