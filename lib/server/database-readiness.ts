@@ -3,6 +3,7 @@ import "server-only";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
+import { assertApprovedProductionDatabaseTarget } from "@/lib/database-target";
 import { db } from "@/lib/server/db";
 
 type AppliedMigrationRow = { migration_name: string };
@@ -18,6 +19,8 @@ async function expectedMigrationNames() {
 }
 
 export async function checkDatabaseReadiness() {
+  assertApprovedProductionDatabaseTarget(process.env.DATABASE_URL);
+
   const [expected, rows] = await Promise.all([
     expectedMigrationNames(),
     db.$queryRaw<AppliedMigrationRow[]>`
