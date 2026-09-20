@@ -60,7 +60,7 @@ export function WorkspaceSwitcher({ activeId, workspaces }: { activeId: string; 
         ))}
       </select>}
       <Link href="/onboarding?mode=new" className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border bg-white px-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50" aria-label="Add another business">
-        <Plus className="h-3.5 w-3.5" /> Add business
+        <Plus className="h-3.5 w-3.5" /><span className="hidden sm:inline">Add business</span>
       </Link>
       {message && <span id="workspace-switch-error" role="alert" className="max-w-56 text-[10px] text-red-600">{message}</span>}
     </div>
