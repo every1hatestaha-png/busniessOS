@@ -5,7 +5,7 @@ import { db } from "@/lib/server/db";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";
 import { postCustomerReturnToGeneralLedger, postSaleToGeneralLedger, reverseGeneralLedgerEntries } from "@/lib/server/accounting";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
-import { allocateUniformSalesTax } from "@/lib/sales-tax";
+import { allocateSalesTaxByLine } from "@/lib/sales-tax";
 import { saleSchema, type SaleInput } from "@/lib/validation/sale";
 import { writeAudit } from "@/lib/server/audit";
 import { customerReturnSchema, type CustomerReturnInput } from "@/lib/validation/returns";
@@ -84,10 +84,10 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
     const subtotal = lines.reduce((sum, line) => sum.plus(new Prisma.Decimal(line.unitPrice).mul(line.quantity)), new Prisma.Decimal(0));
     const lineDiscount = lines.reduce((sum, line) => sum.plus(new Prisma.Decimal(line.discountPerUnit).mul(line.quantity)), new Prisma.Decimal(0));
     const discount = lineDiscount.plus(data.orderDiscount);
-    const taxAllocation = allocateUniformSalesTax(
+    const taxAllocation = allocateSalesTaxByLine(
       lines.map((line) => line.total),
       new Prisma.Decimal(data.orderDiscount),
-      new Prisma.Decimal(data.gstRate),
+      lines.map((line) => new Prisma.Decimal(line.taxRate ?? data.gstRate)),
     );
     const taxableAmount = taxAllocation.totalTaxable;
     const gstAmount = taxAllocation.totalTax;
@@ -202,7 +202,14 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
       await tx.customer.update({ where: { id: customer.id, workspaceId: context.workspaceId }, data: { currentBalance: { decrement: paid } } });
     }
     await postSaleToGeneralLedger(tx, { workspaceId: context.workspaceId, saleId: order.id, orderNumber, date: order.orderDate, revenue: taxableAmount, salesTax: gstAmount, costOfGoodsSold, cashReceived: paid, cashBankAccountId });
-    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "sale.created", entityType: "SalesOrder", entityId: order.id, metadata: { orderNumber, taxableAmount: taxableAmount.toString(), gstRate: data.gstRate, gstAmount: gstAmount.toString(), total: total.toString() } });
+    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "sale.created", entityType: "SalesOrder", entityId: order.id, metadata: {
+        orderNumber,
+        taxableAmount: taxableAmount.toString(),
+        legacyGstRate: data.gstRate,
+        taxRates: taxAllocation.lines.map((line) => line.taxRate.toString()),
+        gstAmount: gstAmount.toString(),
+        total: total.toString(),
+      } });
     return { id: order.id };
   });
 }

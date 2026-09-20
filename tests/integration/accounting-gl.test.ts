@@ -153,6 +153,35 @@ describe("accounting GL integration", () => {
     expect(await accountBalance("SALES_TAX_PAYABLE", "CREDIT")).toBe(0);
   });
 
+  it("posts mixed sales-tax rates line by line and keeps revenue tax-exclusive", async () => {
+    const [mixedA, mixedB] = await Promise.all([
+      db.product.create({ data: { workspaceId, name: "Mixed Tax A", sku: `mix-a-${runId}`, stockQuantity: 10, costPrice: 30, sellingPrice: 100 } }),
+      db.product.create({ data: { workspaceId, name: "Mixed Tax B", sku: `mix-b-${runId}`, stockQuantity: 10, costPrice: 50, sellingPrice: 200 } }),
+    ]);
+    const sale = await createSale(context(), {
+      customerId,
+      items: [
+        { productId: mixedA.id, quantity: 1, unitPrice: 100, discountPerUnit: 0, taxRate: 18 },
+        { productId: mixedB.id, quantity: 1, unitPrice: 200, discountPerUnit: 0, taxRate: 0 },
+      ],
+      gstRate: 5,
+      paidAmount: 0,
+      orderDiscount: 30,
+      notes: "",
+      idempotencyKey: randomUUID(),
+    });
+
+    const snapshots = await db.salesOrderItem.findMany({ where: { salesOrderId: sale.id }, orderBy: { productName: "asc" } });
+    expect(snapshots.map((line) => Number(line.taxRate))).toEqual([18, 0]);
+    expect(snapshots.map((line) => Number(line.taxableAmount))).toEqual([90, 180]);
+    expect(snapshots.map((line) => Number(line.salesTaxAmount))).toEqual([16.2, 0]);
+
+    const rows = await glLines(sale.id);
+    expect(lineAmount(rows, "ACCOUNTS_RECEIVABLE", "debit")).toBe(286.2);
+    expect(lineAmount(rows, "SALES_REVENUE", "credit")).toBe(270);
+    expect(lineAmount(rows, "SALES_TAX_PAYABLE", "credit")).toBe(16.2);
+  });
+
   it("posts a balanced standalone customer payment", async () => {
     const payment = await recordPayment(context(), { customerId, cashBankAccountId, amount: 50, paymentDate: new Date(), method: "CASH", reference: "", notes: "", idempotencyKey: randomUUID() });
     expect(await glTotals(payment.id)).toEqual({ count: 2, debit: 50, credit: 50 });

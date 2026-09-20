@@ -5,7 +5,7 @@ import { Prisma, type Role } from "@prisma/client";
 import { postSaleToGeneralLedger } from "@/lib/server/accounting";
 import { writeAudit } from "@/lib/server/audit";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
-import { allocateUniformSalesTax } from "@/lib/sales-tax";
+import { allocateSalesTaxByLine } from "@/lib/sales-tax";
 import { applyManagedWarehouseStockDelta, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
 import { saleEditSchema, type SaleEditInput } from "@/lib/validation/sale-edit";
 
@@ -140,10 +140,10 @@ export async function updateSaleAndInvoice(context: EditContext, input: SaleEdit
     const discount = lineDiscount.plus(orderDiscount);
     let taxAllocation;
     try {
-      taxAllocation = allocateUniformSalesTax(
+      taxAllocation = allocateSalesTaxByLine(
         lines.map((line) => line.total),
         orderDiscount,
-        new Prisma.Decimal(data.gstRate),
+        lines.map((line) => new Prisma.Decimal(line.item.taxRate ?? data.gstRate)),
       );
     } catch (error) {
       throw new SaleEditDomainError(error instanceof Error ? error.message : "Sales tax allocation failed.");
