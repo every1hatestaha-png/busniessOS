@@ -6,6 +6,7 @@ describe("FBR production compliance gate", () => {
     expect(validateFbrProductionCompliance({
       provider: "PRAL",
       integratorName: "PRAL",
+      softwareRegistrationNo: "SW-REG-001",
       productionApprovedAt: new Date("2026-09-19T00:00:00.000Z"),
       productionApprovedBy: "user_123",
       taxMappingReady: true,
@@ -17,6 +18,7 @@ describe("FBR production compliance gate", () => {
     expect(validateFbrProductionCompliance({
       provider: "PRAL",
       integratorName: "PRAL",
+      softwareRegistrationNo: "SW-REG-001",
       productionApprovedAt: new Date("2026-09-19T00:00:00.000Z"),
       productionApprovedBy: "user_123",
       hsUomCompatibilityReady: true,
@@ -54,6 +56,7 @@ describe("FBR production compliance gate", () => {
     expect(validateFbrProductionCompliance({
       provider: "PRAL",
       integratorName: "PRAL",
+      softwareRegistrationNo: "SW-REG-001",
       taxMappingReady: true,
       hsUomCompatibilityReady: true,
     })).toEqual(expect.arrayContaining([
@@ -61,10 +64,24 @@ describe("FBR production compliance gate", () => {
     ]));
   });
 
+  it("requires the FBR-verifiable software registration number", () => {
+    expect(validateFbrProductionCompliance({
+      provider: "PRAL",
+      integratorName: "PRAL",
+      productionApprovedAt: new Date("2026-09-19T00:00:00.000Z"),
+      productionApprovedBy: "user_123",
+      taxMappingReady: true,
+      hsUomCompatibilityReady: true,
+    })).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "FBR_SOFTWARE_REGISTRATION_REQUIRED" }),
+    ]));
+  });
+
   it("blocks production while HS-code and UOM compatibility remains unverified", () => {
     expect(validateFbrProductionCompliance({
       provider: "PRAL",
       integratorName: "PRAL",
+      softwareRegistrationNo: "SW-REG-001",
       productionApprovedAt: new Date("2026-09-19T00:00:00.000Z"),
       productionApprovedBy: "user_123",
       taxMappingReady: true,
@@ -78,6 +95,7 @@ describe("FBR production compliance gate", () => {
       provider: "THIRD_PARTY",
       integratorName: "Licensed Integrator Pvt Ltd",
       integratorLicenseNo: "LI-REFERENCE-001",
+      softwareRegistrationNo: "SW-REG-001",
       productionApprovedAt: new Date("2026-09-19T00:00:00.000Z"),
       productionApprovedBy: "user_123",
       taxMappingReady: true,
