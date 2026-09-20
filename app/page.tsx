@@ -299,7 +299,7 @@ export default function Home() {
               {[
                 ["01", "Set up your records", "Add products, customers, suppliers and opening balances."],
                 ["02", "Run side by side", "Keep Excel or your current software while your team tests MunshiOS."],
-                ["03", "Move when ready", "Use real workflows before deciding whether to continue monthly."],
+                ["03", "Move when ready", "Use real workflows before deciding whether to continue on a paid plan."],
               ].map(([number, title, text]) => (
                 <div key={number} className="rounded-[24px] border border-slate-200 bg-[#fbfcfa] p-5">
                   <p className="text-xs font-bold text-emerald-700">{number}</p>
@@ -357,6 +357,7 @@ export default function Home() {
                 <div className="mt-5 flex flex-wrap gap-2">
                   {items.map((item) => <span key={item} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">{item}</span>)}
                 </div>
+                <Link href={title === "Manufacturing" ? "/industries/manufacturing" : "/industries/wholesale"} className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-emerald-700">Explore {title.toLowerCase()} <ArrowRight className="size-4" /></Link>
               </div>
             ))}
           </div>
