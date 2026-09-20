@@ -4,6 +4,7 @@ import { MemberManager } from "@/components/settings/member-manager";
 import { BusinessProfileForm } from "@/components/settings/business-profile-form";
 import { FbrIntegrationForm } from "@/components/settings/fbr-integration-form";
 import { FbrHsUomAnnexureForm } from "@/components/settings/fbr-hs-uom-annexure-form";
+import { FbrSetupReadiness } from "@/components/settings/fbr-setup-readiness";
 import { db } from "@/lib/server/db";
 import { resolveFbrBearerToken } from "@/lib/server/fbr-credentials";
 import { readFileSync } from "node:fs";
@@ -35,7 +36,7 @@ export default async function SettingsPage() {
   }
 
   const canManageMembers = canPerformAction(context.role, "members.manage");
-  const [members, invitations, workspace, fbrConfig] = await Promise.all([
+  const [members, invitations, workspace, fbrConfig, referenceVerifiedProducts, hsUomVerifiedProducts] = await Promise.all([
     canManageMembers ? listMembers(context.workspaceId) : Promise.resolve([]),
     canManageMembers ? listInvitations(context.workspaceId) : Promise.resolve([]),
     db.workspace.findUniqueOrThrow({
@@ -57,6 +58,12 @@ export default async function SettingsPage() {
         hsUomAnnexureReference: true,
       },
     }),
+    db.product.count({
+      where: { workspaceId: context.workspaceId, fbrReferenceVerifiedAt: { not: null } },
+    }),
+    db.product.count({
+      where: { workspaceId: context.workspaceId, fbrHsUomVerifiedAt: { not: null } },
+    }),
   ]);
 
   let sandboxCredentialReady = false;
@@ -77,6 +84,26 @@ export default async function SettingsPage() {
         <p className="mt-1 text-neutral-500">Manage your business identity, location and team access.</p>
       </header>
       <BusinessProfileForm workspace={workspace} />
+      <FbrSetupReadiness
+        sellerIdentityReady={Boolean(
+          workspace.ntn?.trim()
+          && workspace.province?.trim()
+          && (workspace.address?.trim() || workspace.city?.trim())
+        )}
+        sandboxCredentialReady={sandboxCredentialReady}
+        sandboxConfigReady={Boolean(
+          fbrConfig?.enabled
+          && fbrConfig.environment === "SANDBOX"
+          && fbrConfig.defaultScenarioId?.trim()
+        )}
+        referenceVerifiedProducts={referenceVerifiedProducts}
+        annexureConfirmed={Boolean(
+          fbrConfig?.hsUomAnnexureId
+          && fbrConfig.hsUomAnnexureConfirmedAt
+          && fbrConfig.hsUomAnnexureConfirmedBy?.trim()
+        )}
+        hsUomVerifiedProducts={hsUomVerifiedProducts}
+      />
       <FbrIntegrationForm config={fbrConfig} sandboxCredentialReady={sandboxCredentialReady} />
       <FbrHsUomAnnexureForm config={fbrConfig ? {
         annexureId: fbrConfig.hsUomAnnexureId,

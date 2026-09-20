@@ -17,6 +17,7 @@ import { requirePermission } from "@/lib/server/authorization";
 import { transferWarehouseStock, IndustryDomainError } from "@/lib/server/industry-modules";
 import { productEditSchema, productSchema } from "@/lib/validation/product";
 import { FbrProductMappingError, verifyProductFbrReferenceMapping } from "@/lib/server/fbr-product-mapping";
+import { FbrReferenceOptionsError, getFbrReferenceOptions } from "@/lib/server/fbr-reference-options";
 
 export type ProductActionState = { error?: string };
 
@@ -25,6 +26,67 @@ export type FbrProductMappingState = {
   message?: string;
   successToken?: number;
 };
+
+
+const fbrReferenceOptionsSchema = z.object({
+  transactionTypeId: z.preprocess(
+    (value) => value === "" || value == null ? undefined : value,
+    z.coerce.number().int().positive().optional(),
+  ),
+});
+
+export type FbrReferenceOptionsState = {
+  status?: "success" | "error";
+  message?: string;
+  transactionTypes?: Array<{ id: number; description: string }>;
+  uoms?: Array<{ id: number; description: string }>;
+  rates?: Array<{ id: number; description: string; value: number; plainPercentage: boolean }>;
+  province?: { code: number; description: string };
+  effectiveDate?: string;
+  rateTransactionTypeId?: number | null;
+  successToken?: number;
+};
+
+export async function loadFbrReferenceOptionsAction(
+  _previousState: FbrReferenceOptionsState,
+  formData: FormData,
+): Promise<FbrReferenceOptionsState> {
+  const context = await requirePermission("products.write");
+  const parsed = fbrReferenceOptionsSchema.safeParse({
+    transactionTypeId: formData.get("transactionTypeId"),
+  });
+  if (!parsed.success) {
+    return { status: "error", message: "Choose a valid FBR transaction type before loading rates." };
+  }
+
+  try {
+    const result = await getFbrReferenceOptions(
+      { workspaceId: context.workspaceId, role: context.role },
+      parsed.data.transactionTypeId,
+    );
+    return {
+      status: "success",
+      message: parsed.data.transactionTypeId
+        ? "Current FBR transaction types, UOMs and rates loaded from the sandbox reference APIs."
+        : "Current FBR transaction types and UOMs loaded. Choose a transaction type and refresh to load its current rates.",
+      transactionTypes: result.transactionTypes,
+      uoms: result.uoms,
+      rates: result.rates,
+      province: result.province,
+      effectiveDate: result.effectiveDate,
+      rateTransactionTypeId: result.rateTransactionTypeId,
+      successToken: Date.now(),
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof FbrReferenceOptionsError || error instanceof Error
+        ? error.message
+        : "FBR reference options could not be loaded.",
+      successToken: Date.now(),
+    };
+  }
+}
 
 export async function verifyFbrProductMappingAction(
   id: string,

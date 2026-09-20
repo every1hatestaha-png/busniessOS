@@ -2,11 +2,16 @@
 
 import Link from "next/link";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, RefreshCw } from "lucide-react";
 import { startTransition, useEffect, useRef, useActionState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
-import { createProductAction, updateProductAction } from "@/app/(dashboard)/inventory/actions";
+import {
+  createProductAction,
+  loadFbrReferenceOptionsAction,
+  type FbrReferenceOptionsState,
+  updateProductAction,
+} from "@/app/(dashboard)/inventory/actions";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -28,11 +33,16 @@ type ProductFormProps = {
 export function ProductForm({ product }: ProductFormProps) {
   const action = product ? updateProductAction.bind(null, product.id) : createProductAction;
   const [actionState, formAction, isPending] = useActionState(action, {});
+  const [referenceState, loadReferenceAction, referencePending] = useActionState(
+    loadFbrReferenceOptionsAction,
+    {} as FbrReferenceOptionsState,
+  );
   const { control, register, handleSubmit, reset, formState: { errors, isSubmitSuccessful } } = useForm<ProductFormInput, unknown, ProductFormValues>({
     resolver: zodResolver(productSchema),
     defaultValues: product ? { ...product, stockQuantity: 0 } : { unit: "PIECE", stockQuantity: 0, reorderLevel: 10 },
   });
   const selectedUnit = useWatch({ control, name: "unit" });
+  const selectedFbrTransactionTypeId = useWatch({ control, name: "fbrTransactionTypeId" });
   const isKgMode = selectedUnit === "KG";
   const qtyStep = isKgMode ? "0.01" : "1";
   const allValues = useWatch({ control });
@@ -72,6 +82,20 @@ export function ProductForm({ product }: ProductFormProps) {
     startTransition(() => formAction(formData));
   }
 
+
+  function loadFbrReferences() {
+    const formData = new FormData();
+    const transactionTypeId = Number(selectedFbrTransactionTypeId);
+    if (Number.isInteger(transactionTypeId) && transactionTypeId > 0) {
+      formData.set("transactionTypeId", String(transactionTypeId));
+    }
+    startTransition(() => loadReferenceAction(formData));
+  }
+
+  const currentRateOptions = referenceState.rateTransactionTypeId === Number(selectedFbrTransactionTypeId)
+    ? (referenceState.rates ?? [])
+    : [];
+
   return (
     <form onSubmit={handleSubmit(submit)} noValidate>
       <Card className="gap-0 py-0 shadow-none">
@@ -103,7 +127,31 @@ export function ProductForm({ product }: ProductFormProps) {
             </select>
           </div>
           {product && <div className={fieldClass}><label className={labelClass} htmlFor="status">Status</label><select id="status" className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm" {...register("status")}><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option><option value="ARCHIVED">Archived</option></select></div>}
-          <div className="border-t pt-4 md:col-span-2"><p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">FBR Digital Invoicing mapping</p><p className="mt-1 text-xs text-neutral-500">Optional for inventory use. Required before this product can be submitted on an FBR invoice.</p></div>
+          <div className="border-t pt-4 md:col-span-2">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">FBR Digital Invoicing mapping</p>
+                <p className="mt-1 text-xs text-neutral-500">Optional for inventory use. Load official sandbox references instead of guessing transaction, UOM, or rate IDs.</p>
+              </div>
+              <Button type="button" size="sm" variant="outline" onClick={loadFbrReferences} disabled={referencePending}>
+                <RefreshCw className={referencePending ? "animate-spin" : ""} />
+                {referencePending ? "Loading FBR..." : selectedFbrTransactionTypeId ? "Refresh FBR refs & rates" : "Load FBR references"}
+              </Button>
+            </div>
+            {referenceState.message && (
+              <div
+                role={referenceState.status === "error" ? "alert" : "status"}
+                className={"mt-3 rounded-lg border p-3 text-xs leading-5 " + (referenceState.status === "error"
+                  ? "border-red-200 bg-red-50 text-red-700"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-800")}
+              >
+                <p>{referenceState.message}</p>
+                {referenceState.status === "success" && referenceState.province && (
+                  <p className="mt-1 font-medium">Seller province: {referenceState.province.description} (#{referenceState.province.code}) · effective {referenceState.effectiveDate}</p>
+                )}
+              </div>
+            )}
+          </div>
           <div className={fieldClass}>
             <label className={labelClass} htmlFor="fbrHsCode">HS code</label>
             <Input id="fbrHsCode" placeholder="e.g. 0101.2100" aria-invalid={!!errors.fbrHsCode} {...register("fbrHsCode")} />
@@ -111,21 +159,38 @@ export function ProductForm({ product }: ProductFormProps) {
           </div>
           <div className={fieldClass}>
             <label className={labelClass} htmlFor="fbrUom">FBR unit of measurement</label>
-            <Input id="fbrUom" placeholder="e.g. Numbers, pieces, units" aria-invalid={!!errors.fbrUom} {...register("fbrUom")} />
+            <Input id="fbrUom" list="fbr-uom-options" placeholder="e.g. Numbers, pieces, units" aria-invalid={!!errors.fbrUom} {...register("fbrUom")} />
             <p className="text-[11px] text-neutral-500">Use the description returned by the FBR UOM reference API.</p>
             {errors.fbrUom && <p className={errorClass}>{errors.fbrUom.message}</p>}
           </div>
           <div className={fieldClass}>
             <label className={labelClass} htmlFor="fbrTransactionTypeId">FBR transaction type ID</label>
-            <Input id="fbrTransactionTypeId" type="number" min="1" step="1" placeholder="Reference API transaction type ID" aria-invalid={!!errors.fbrTransactionTypeId} {...register("fbrTransactionTypeId", { setValueAs: (value) => value === "" ? undefined : Number(value) })} />
+            <Input id="fbrTransactionTypeId" list="fbr-transaction-type-options" type="number" min="1" step="1" placeholder="Choose from loaded FBR transaction types" aria-invalid={!!errors.fbrTransactionTypeId} {...register("fbrTransactionTypeId", { setValueAs: (value) => value === "" ? undefined : Number(value) })} />
             <p className="text-[11px] text-neutral-500">The official sale type description is fetched by MunshiOS during verification; it is not trusted from browser text.</p>
             {errors.fbrTransactionTypeId && <p className={errorClass}>{errors.fbrTransactionTypeId.message}</p>}
           </div>
           <div className={fieldClass}>
             <label className={labelClass} htmlFor="fbrRateId">FBR rate ID</label>
-            <Input id="fbrRateId" type="number" min="1" step="1" placeholder="Reference API rate ID" aria-invalid={!!errors.fbrRateId} {...register("fbrRateId", { setValueAs: (value) => value === "" ? undefined : Number(value) })} />
+            <Input id="fbrRateId" list="fbr-rate-options" type="number" min="1" step="1" placeholder={selectedFbrTransactionTypeId ? "Choose from current FBR rates" : "Select a transaction type, then refresh"} aria-invalid={!!errors.fbrRateId} {...register("fbrRateId", { setValueAs: (value) => value === "" ? undefined : Number(value) })} />
             <p className="text-[11px] text-neutral-500">Validated against invoice-date rate rules for the seller province before production use.</p>
             {errors.fbrRateId && <p className={errorClass}>{errors.fbrRateId.message}</p>}
+          </div>
+          <div className="md:col-span-2">
+            <datalist id="fbr-uom-options">
+              {(referenceState.uoms ?? []).map((entry) => <option key={entry.id} value={entry.description} label={`#${entry.id}`} />)}
+            </datalist>
+            <datalist id="fbr-transaction-type-options">
+              {(referenceState.transactionTypes ?? []).map((entry) => <option key={entry.id} value={String(entry.id)} label={entry.description} />)}
+            </datalist>
+            <datalist id="fbr-rate-options">
+              {currentRateOptions.map((entry) => <option key={entry.id} value={String(entry.id)} label={`${entry.description}${entry.plainPercentage ? "" : " · compound/unsupported"}`} />)}
+            </datalist>
+            {Number(selectedFbrTransactionTypeId) > 0 && referenceState.status === "success" && referenceState.rateTransactionTypeId !== Number(selectedFbrTransactionTypeId) && (
+              <p className="text-[11px] text-amber-700">Transaction type changed after the last reference load. Refresh FBR references before choosing a rate.</p>
+            )}
+            {currentRateOptions.some((entry) => !entry.plainPercentage) && (
+              <p className="mt-1 text-[11px] text-amber-700">Compound rates may appear in the official list but remain blocked from production submission until their calculation rules are implemented.</p>
+            )}
           </div>
           {product && (
             <div className="md:col-span-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
