@@ -38,11 +38,10 @@ jobs:
       - name: Generate Workers configuration
         if: steps.configured.outputs.exists == 'false'
         run: npx --yes wrangler@latest setup --yes
-      - name: Validate generated vinext build
+      - name: Validate generated OpenNext build
         if: steps.configured.outputs.exists == 'false'
         run: |
-          npm run build:vinext
-          npx --yes vinext@latest check
+          npx opennextjs-cloudflare build
       - name: Show generated changes
         if: steps.configured.outputs.exists == 'false'
         run: git status --short && git diff -- package.json next.config.ts .gitignore .assetsignore wrangler.jsonc vite.config.ts
