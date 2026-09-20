@@ -12,7 +12,7 @@ export const GET = apiHandler(async (_request: Request, { params }: { params: Pr
 });
 
 export const PATCH = apiHandler(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
-  const context = await requireApiContext("financial.manage");
+  const context = await requireApiContext("purchases.create");
   const { id } = z.object({ id: z.uuid() }).parse(await params);
   const body = await parseApiBody(request, updatePurchaseSchema);
 
@@ -30,7 +30,7 @@ export const PATCH = apiHandler(async (request: Request, { params }: { params: P
 });
 
 export const DELETE = apiHandler(async (_request: Request, { params }: { params: Promise<{ id: string }> }) => {
-  const context = await requireApiContext("financial.manage");
+  const context = await requireApiContext("purchases.create");
   const { id } = z.object({ id: z.uuid() }).parse(await params);
 
   try {
