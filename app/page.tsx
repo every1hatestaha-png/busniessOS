@@ -168,6 +168,15 @@ function DashboardPreview() {
 }
 
 export default function Home() {
+  const faqStructuredData = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqs.map(([question, answer]) => ({
+      "@type": "Question",
+      name: question,
+      acceptedAnswer: { "@type": "Answer", text: answer },
+    })),
+  };
   const whatsappNumber = process.env.NEXT_PUBLIC_MUNSHIOS_WHATSAPP?.replace(/\D/g, "");
   const whatsappHref = whatsappNumber
     ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent("Salam, I want to know more about MunshiOS and the free first month.")}`
@@ -176,7 +185,7 @@ export default function Home() {
   const laptopShareHref = `https://wa.me/?text=${encodeURIComponent(`Open MunshiOS on your laptop: ${siteUrl}`)}`;
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#fbfcfa] pb-20 text-[#0b1720] selection:bg-emerald-200 lg:pb-0">
+    <main className="min-h-screen overflow-x-hidden bg-[#fbfcfa] pb-20 text-[#0b1720] selection:bg-emerald-200 lg:pb-0">\n      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqStructuredData) }} />
       <header className="sticky top-0 z-50 border-b border-slate-200/70 bg-white/90 backdrop-blur-2xl">
         <div className="mx-auto flex h-[68px] max-w-[1400px] items-center justify-between px-4 sm:px-6 lg:px-10">
           <Link href="/" className="flex items-center gap-2.5" aria-label="MunshiOS home">
