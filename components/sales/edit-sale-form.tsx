@@ -42,15 +42,19 @@ export function EditSaleForm({ initialSale, customers, products }: { initialSale
     const lineDiscount = items.reduce((sum, item) => sum + item.quantity * item.discountPerUnit, 0);
     const bases = items.map((item) => Math.max(0, item.quantity * (effectiveUnitPrice(item) - item.discountPerUnit)));
     const base = bases.reduce((sum, amount) => sum + amount, 0);
-    let allocatedDiscount = 0;
+    const proportionalDiscounts = bases.map((amount, index) => (
+      index === bases.length - 1 || base <= 0
+        ? 0
+        : Math.floor((amount * orderDiscount / base) * 100) / 100
+    ));
+    const allocatedBeforeLast = money(proportionalDiscounts.reduce((sum, amount) => sum + amount, 0));
+    const discountAllocations = proportionalDiscounts.map((amount, index) => (
+      index === proportionalDiscounts.length - 1
+        ? money(Math.max(0, orderDiscount - allocatedBeforeLast))
+        : amount
+    ));
     const taxLines = bases.map((amount, index) => {
-      const last = index === bases.length - 1;
-      const allocated = last
-        ? money(Math.max(0, orderDiscount - allocatedDiscount))
-        : base > 0
-          ? Math.floor((amount * orderDiscount / base) * 100) / 100
-          : 0;
-      allocatedDiscount = money(allocatedDiscount + allocated);
+      const allocated = discountAllocations[index] ?? 0;
       const taxable = money(Math.max(0, amount - allocated));
       const rate = Number(items[index]?.taxRate ?? initialSale.gstRate);
       return { taxable, rate, tax: money(taxable * rate / 100) };
@@ -110,7 +114,7 @@ export function EditSaleForm({ initialSale, customers, products }: { initialSale
           {items.map((item, index) => {
             const product = products.find((entry) => entry.id === item.productId);
             const lineAmount = Math.max(0, item.quantity * (effectiveUnitPrice(item) - item.discountPerUnit));
-            return <div key={`${item.productId}-${index}`} className="grid grid-cols-[minmax(220px,1fr)_90px_120px_110px_110px_110px_44px] items-start gap-2 border-b px-4 py-3 last:border-0">
+            return <div key={`${item.productId}-${index}`} className="grid grid-cols-[minmax(220px,1fr)_90px_120px_110px_110px_85px_110px_44px] items-start gap-2 border-b px-4 py-3 last:border-0">
               <div><select className={fieldClass} value={item.productId} onChange={(event) => selectProduct(index, event.target.value)}>{products.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}{entry.sku ? ` · ${entry.sku}` : ""}</option>)}</select>{product && <><p className="mt-1 text-[10px] text-slate-500">Available after original sale is restored: current {product.stockQuantity} + original quantity</p>{product.verifiedTaxRate !== null && <p className="mt-1 text-[10px] font-medium text-emerald-700">Verified FBR rate: {product.verifiedTaxRate}%</p>}</>}</div>
               <Input type="number" min="0.0001" step="0.0001" value={item.quantity} onChange={(event) => patchLine(index, { quantity: Number(event.target.value) })} />
               <select className={fieldClass} value={item.pricingMode} onChange={(event) => patchLine(index, { pricingMode: event.target.value as "UNIT" | "WEIGHT" })}><option value="UNIT">Per unit</option><option value="WEIGHT">By weight</option></select>

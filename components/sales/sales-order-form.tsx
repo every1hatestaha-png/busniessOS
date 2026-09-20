@@ -40,15 +40,19 @@ function money(value: number) {
 function mixedTaxPreview(items: Array<{ quantity?: number; unitPrice?: number; discountPerUnit?: number; taxRate?: number }>, orderDiscount: number, fallbackRate: number) {
   const bases = items.map((item) => Math.max(0, Number(item.quantity || 0) * (Number(item.unitPrice || 0) - Number(item.discountPerUnit || 0))));
   const base = bases.reduce((sum, amount) => sum + amount, 0);
-  let allocatedDiscount = 0;
+  const proportionalDiscounts = bases.map((amount, index) => (
+    index === bases.length - 1 || base <= 0
+      ? 0
+      : Math.floor((amount * orderDiscount / base) * 100) / 100
+  ));
+  const allocatedBeforeLast = money(proportionalDiscounts.reduce((sum, amount) => sum + amount, 0));
+  const discountAllocations = proportionalDiscounts.map((amount, index) => (
+    index === proportionalDiscounts.length - 1
+      ? money(Math.max(0, orderDiscount - allocatedBeforeLast))
+      : amount
+  ));
   const lines = bases.map((amount, index) => {
-    const last = index === bases.length - 1;
-    const allocated = last
-      ? money(Math.max(0, orderDiscount - allocatedDiscount))
-      : base > 0
-        ? Math.floor((amount * orderDiscount / base) * 100) / 100
-        : 0;
-    allocatedDiscount = money(allocatedDiscount + allocated);
+    const allocated = discountAllocations[index] ?? 0;
     const taxable = money(Math.max(0, amount - allocated));
     const rate = Number(items[index]?.taxRate ?? fallbackRate);
     const tax = money(taxable * rate / 100);
