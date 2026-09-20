@@ -371,11 +371,9 @@ export async function createExpense(context: ServiceContext, input: ExpenseInput
       const existing = await tx.expense.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true } });
       if (existing) return existing;
     }
-    const [expenseAccount, paymentAccount, cashBank] = await Promise.all([
-      tx.account.findFirst({ where: { id: data.expenseAccountId, workspaceId: context.workspaceId, category: "EXPENSE", isActive: true } }),
-      tx.account.findFirst({ where: { id: data.paymentAccountId, workspaceId: context.workspaceId, category: "ASSET", isActive: true } }),
-      tx.cashBankAccount.findUnique({ where: { workspaceId_accountId: { workspaceId: context.workspaceId, accountId: data.paymentAccountId } } }),
-    ]);
+    const expenseAccount = await tx.account.findFirst({ where: { id: data.expenseAccountId, workspaceId: context.workspaceId, category: "EXPENSE", isActive: true } });
+    const paymentAccount = await tx.account.findFirst({ where: { id: data.paymentAccountId, workspaceId: context.workspaceId, category: "ASSET", isActive: true } });
+    const cashBank = await tx.cashBankAccount.findUnique({ where: { workspaceId_accountId: { workspaceId: context.workspaceId, accountId: data.paymentAccountId } } });
     if (!expenseAccount) throw new AccountingDomainError("Expense account is unavailable.");
     if (!paymentAccount || !cashBank) throw new AccountingDomainError("Payment account must be an active cash/bank account.");
     const voucherNumber = await nextDocumentNumber(tx, context.workspaceId, "EXPENSE_VOUCHER");
