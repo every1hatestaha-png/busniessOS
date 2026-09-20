@@ -3,6 +3,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 
 import { postInvoiceToFbr, type FbrRemoteResult } from "@/lib/fbr/client";
+import { redactSensitiveFbrData, sanitizeFbrErrorMessage } from "@/lib/fbr/redaction";
 import { assertFbrExpectedEnvironment, type FbrEnvironment, type FbrInvoicePayload } from "@/lib/fbr/digital-invoicing";
 import { writeAudit } from "@/lib/server/audit";
 import { requirePermission } from "@/lib/server/authorization";
@@ -135,7 +136,13 @@ export async function runFbrInvoiceSubmission(submissionId: string, expectedEnvi
     token,
     payload,
   });
-  const disposition = interpretFbrPostResult(remote);
+  const safeRemoteBody = redactSensitiveFbrData(remote.body);
+  const safeRemote = {
+    ...remote,
+    body: safeRemoteBody,
+    errorMessage: sanitizeFbrErrorMessage(remote.errorMessage, token),
+  } satisfies FbrRemoteResult;
+  const disposition = interpretFbrPostResult(safeRemote);
 
   const updated = await db.$transaction(async (tx) => {
     await tx.fbrInvoiceAttempt.create({
@@ -143,8 +150,8 @@ export async function runFbrInvoiceSubmission(submissionId: string, expectedEnvi
         submissionId: submission.id,
         kind: "POST",
         requestBody: payload as unknown as Prisma.InputJsonValue,
-        responseBody: (remote.body ?? Prisma.JsonNull) as Prisma.InputJsonValue,
-        httpStatus: remote.httpStatus || null,
+        responseBody: (safeRemote.body ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+        httpStatus: safeRemote.httpStatus || null,
         succeeded: disposition.state === "SUBMITTED",
         errorCode: disposition.state === "SUBMITTED" ? null : disposition.code,
         errorMessage: disposition.state === "SUBMITTED" ? null : disposition.message,
@@ -156,7 +163,7 @@ export async function runFbrInvoiceSubmission(submissionId: string, expectedEnvi
       data: disposition.state === "SUBMITTED"
         ? {
             status: "SUBMITTED",
-            submissionResponse: (remote.body ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+            submissionResponse: (safeRemote.body ?? Prisma.JsonNull) as Prisma.InputJsonValue,
             fbrInvoiceNumber: disposition.invoiceNumber,
             attemptCount: { increment: 1 },
             submittedAt: new Date(),
@@ -166,7 +173,7 @@ export async function runFbrInvoiceSubmission(submissionId: string, expectedEnvi
           }
         : {
             status: disposition.state,
-            submissionResponse: (remote.body ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+            submissionResponse: (safeRemote.body ?? Prisma.JsonNull) as Prisma.InputJsonValue,
             attemptCount: { increment: 1 },
             lastAttemptAt: new Date(),
             lastErrorCode: disposition.code,
@@ -183,7 +190,7 @@ export async function runFbrInvoiceSubmission(submissionId: string, expectedEnvi
       metadata: {
         submissionId: submission.id,
         environment: submission.environment,
-        httpStatus: remote.httpStatus,
+        httpStatus: safeRemote.httpStatus,
         disposition: disposition.state,
         errorCode: disposition.state === "SUBMITTED" ? null : disposition.code,
         fbrInvoiceNumber: disposition.state === "SUBMITTED" ? disposition.invoiceNumber : null,
@@ -193,5 +200,5 @@ export async function runFbrInvoiceSubmission(submissionId: string, expectedEnvi
     return saved;
   });
 
-  return { status: disposition.state, submission: updated, remote };
+  return { status: disposition.state, submission: updated, remote: safeRemote };
 }
