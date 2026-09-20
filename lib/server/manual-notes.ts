@@ -94,10 +94,8 @@ export async function createManualCustomerCreditNote(context: ServiceContext, in
       data: { currentBalance: { decrement: amount } },
     });
 
-    const [salesRevenue, receivable] = await Promise.all([
-      systemAccount(tx, context.workspaceId, "SALES_REVENUE"),
-      systemAccount(tx, context.workspaceId, "ACCOUNTS_RECEIVABLE"),
-    ]);
+    const salesRevenue = await systemAccount(tx, context.workspaceId, "SALES_REVENUE");
+    const receivable = await systemAccount(tx, context.workspaceId, "ACCOUNTS_RECEIVABLE");
     await tx.generalLedgerEntry.createMany({
       data: [
         {
@@ -217,10 +215,8 @@ export async function createManualSupplierDebitNote(context: ServiceContext, inp
       });
     }
 
-    const [payable, otherIncome] = await Promise.all([
-      systemAccount(tx, context.workspaceId, "ACCOUNTS_PAYABLE"),
-      systemAccount(tx, context.workspaceId, "OTHER_INCOME"),
-    ]);
+    const payable = await systemAccount(tx, context.workspaceId, "ACCOUNTS_PAYABLE");
+    const otherIncome = await systemAccount(tx, context.workspaceId, "OTHER_INCOME");
     await tx.generalLedgerEntry.createMany({
       data: [
         {
