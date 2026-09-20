@@ -178,7 +178,7 @@ export async function recordPaymentAction(
   if (!parsed.success) return { error: "Check the payment, allocation, and withholding tax details and try again." };
 
   try {
-    await recordPayment(context, parsed.data);
+    await recordPayment({ ...context, userId: context.user.id }, parsed.data);
   } catch (error) {
     return { error: error instanceof Error && error.message ? error.message : "The payment could not be recorded. Check the amount and try again." };
   }
