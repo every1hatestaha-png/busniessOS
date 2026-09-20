@@ -47,10 +47,8 @@ export async function saveCustomerPriceRule(
   const discountPerUnit = new Prisma.Decimal(data.discountPerUnit);
 
   return db.$transaction(async (tx) => {
-    const [customer, product] = await Promise.all([
-      tx.customer.findFirst({ where: { id: customerId, workspaceId: context.workspaceId }, select: { id: true } }),
-      tx.product.findFirst({ where: { id: data.productId, workspaceId: context.workspaceId, status: { not: "ARCHIVED" } }, select: { id: true } }),
-    ]);
+    const customer = await tx.customer.findFirst({ where: { id: customerId, workspaceId: context.workspaceId }, select: { id: true } });
+    const product = await tx.product.findFirst({ where: { id: data.productId, workspaceId: context.workspaceId, status: { not: "ARCHIVED" } }, select: { id: true } });
     if (!customer) throw new CustomerPriceRuleError("Customer not found.");
     if (!product) throw new CustomerPriceRuleError("Product not found.");
     if (discountPerUnit.greaterThan(unitPrice)) throw new CustomerPriceRuleError("Discount per unit cannot exceed the tier unit price.");
