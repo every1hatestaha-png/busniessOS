@@ -120,7 +120,7 @@ describe("reports center integration", () => {
   }, 60_000);
 
   it("bounds large general-ledger views while keeping the full closing balance", async () => {
-    const account = await db.account.findUniqueOrThrow({ where: { workspaceId_systemCode: { workspaceId, systemCode: "OTHER_INCOME" } } });
+    const account = await db.account.findUniqueOrThrow({ where: { workspaceId_systemCode: { workspaceId, systemCode: "BANK" } } });
     const bulkDate = date("2026-08-20");
     await db.generalLedgerEntry.createMany({
       data: Array.from({ length: 2002 }, (_, index) => ({
@@ -131,8 +131,8 @@ describe("reports center integration", () => {
         documentNo: `BULK-${runId}-${index}`,
         date: bulkDate,
         narration: "Bulk ledger scalability test",
-        debit: 0,
-        credit: 1,
+        debit: 1,
+        credit: 0,
       })),
     });
 
