@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { startTransition, useActionState } from "react";
+import { startTransition, useActionState, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AlertCircle, ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { calculateBalance, formatPKR } from "@/lib/utils";
+import { findProductByScanCode } from "@/lib/product-scan";
 import { quantityInputConstraints } from "@/lib/inventory/quantity-input";
 import { saleSchema, type SaleInput } from "@/lib/validation/sale";
 
@@ -66,6 +67,8 @@ function mixedTaxPreview(items: Array<{ quantity?: number; unitPrice?: number; d
 
 export function SalesOrderForm({ customers, products, cashBankAccounts = [], canRecordPayments = true, warehouseMode = "LEGACY", warehouses = [], warehouseStocks = [] }: { customers: CustomerOption[]; products: ProductOption[]; cashBankAccounts?: CashBankOption[]; canRecordPayments?: boolean; warehouseMode?: "LEGACY" | "MANAGED"; warehouses?: WarehouseOption[]; warehouseStocks?: WarehouseStockOption[] }) {
   const [actionState, submitAction, isPending] = useActionState(createSaleAction, {} as CreateSaleState);
+  const [scanCode, setScanCode] = useState("");
+  const [scanMessage, setScanMessage] = useState("");
   const { control, register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<OrderFormInput, unknown, OrderFormValues>({
     resolver: zodResolver(orderSchema),
     defaultValues: { customerId: "", warehouseId: warehouseMode === "MANAGED" ? (warehouses.find((warehouse) => warehouse.isDefault)?.id ?? "") : undefined, items: [{ productId: "", quantity: 1, pricingMode: "UNIT", unitWeight: undefined, perKgRate: undefined, unitPrice: 0, discountPerUnit: 0, taxRate: 18 }], orderDiscount: 0, gstRate: 18, paidAmount: 0, cashBankAccountId: "", notes: "", idempotencyKey: "00000000-0000-0000-0000-000000000000" },
@@ -102,6 +105,38 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
       setValue(`items.${index}.unitPrice`, weighted ? product.defaultWeightKg! * product.sellingPrice : product.sellingPrice, { shouldValidate: true, shouldDirty: true });
       setValue(`items.${index}.taxRate`, product.verifiedTaxRate ?? gstRate, { shouldValidate: true, shouldDirty: true });
     }
+  }
+
+  function addScannedProduct() {
+    const product = findProductByScanCode(products.filter((entry) => entry.status === "ACTIVE"), scanCode);
+    if (!product) {
+      setScanMessage("No active product found for that SKU.");
+      return;
+    }
+
+    const existingIndex = items.findIndex((item) => item?.productId === product.id);
+    if (existingIndex >= 0) {
+      setValue(`items.${existingIndex}.quantity`, Number(items[existingIndex]?.quantity || 0) + 1, { shouldValidate: true, shouldDirty: true });
+    } else {
+      const emptyIndex = items.findIndex((item) => !item?.productId);
+      if (emptyIndex >= 0) {
+        selectProduct(emptyIndex, product.id);
+      } else {
+        const weighted = Boolean(product.defaultWeightKg && product.defaultWeightKg > 0);
+        append({
+          productId: product.id,
+          quantity: 1,
+          pricingMode: weighted ? "WEIGHT" : "UNIT",
+          unitWeight: weighted ? product.defaultWeightKg! : undefined,
+          perKgRate: weighted ? product.sellingPrice : undefined,
+          unitPrice: weighted ? product.defaultWeightKg! * product.sellingPrice : product.sellingPrice,
+          discountPerUnit: 0,
+          taxRate: product.verifiedTaxRate ?? gstRate,
+        });
+      }
+    }
+    setScanCode("");
+    setScanMessage(`${product.name} added.`);
   }
 
   function setPricing(index: number, mode: "UNIT" | "WEIGHT") {
@@ -152,7 +187,7 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
         </Card>
 
         <Card className="gap-0 overflow-hidden rounded-lg border py-0 shadow-sm ring-0">
-          <CardHeader className="flex-row items-center justify-between border-b bg-slate-50/60 px-5 py-4"><div><CardTitle className="text-sm font-semibold">Line Items</CardTitle><p className="mt-0.5 text-xs text-slate-500">Add products, quantities, unit or weight pricing, and per-unit discounts.</p></div><Button type="button" variant="outline" size="sm" onClick={() => append({ productId: "", quantity: 1, pricingMode: "UNIT", unitWeight: undefined, perKgRate: undefined, unitPrice: 0, discountPerUnit: 0, taxRate: gstRate })}><Plus />Add line</Button></CardHeader>
+          <CardHeader className="flex-row items-center justify-between gap-3 border-b bg-slate-50/60 px-5 py-4"><div><CardTitle className="text-sm font-semibold">Line Items</CardTitle><p className="mt-0.5 text-xs text-slate-500">Add products, quantities, unit or weight pricing, and per-unit discounts.</p>{scanMessage && <p className="mt-1 text-[11px] text-slate-500">{scanMessage}</p>}</div><div className="flex flex-wrap items-center justify-end gap-2"><Input aria-label="Scan or enter SKU" value={scanCode} onChange={(event) => { setScanCode(event.target.value); setScanMessage(""); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addScannedProduct(); } }} placeholder="Scan / enter SKU" className="h-8 w-44 text-xs" /><Button type="button" variant="outline" size="sm" onClick={addScannedProduct}>Quick add</Button><Button type="button" variant="outline" size="sm" onClick={() => append({ productId: "", quantity: 1, pricingMode: "UNIT", unitWeight: undefined, perKgRate: undefined, unitPrice: 0, discountPerUnit: 0, taxRate: gstRate })}><Plus />Add line</Button></div></CardHeader>
           <CardContent className="overflow-x-auto p-0">
             <div className="min-w-[720px]"><div className="grid grid-cols-[minmax(210px,1fr)_80px_110px_105px_85px_120px_36px] gap-2 border-b bg-slate-50 px-5 py-2.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500"><span>Product</span><span className="text-right">Qty</span><span className="text-right">Unit price</span><span className="text-right">Disc/unit</span><span className="text-right">Tax %</span><span className="text-right">Line total</span><span /></div>
             {fields.map((field, index) => {
