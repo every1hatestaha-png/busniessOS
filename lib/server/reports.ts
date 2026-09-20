@@ -156,7 +156,7 @@ export async function getCurrentStockReport(workspaceId: string, search?: string
     totalValue,
     inventoryGlBalance,
     reconciliationDifference: inventoryGlBalance === null ? null : new Prisma.Decimal(totalValue).minus(inventoryGlBalance).toNumber(),
-    valuationBasis: "Current Product.costPrice (existing BusinessOS current-cost basis)",
+    valuationBasis: "Current product cost (current-cost valuation basis)",
   };
 }
 
