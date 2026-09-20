@@ -136,7 +136,7 @@ export async function runFbrInvoiceSubmission(submissionId: string, expectedEnvi
     token,
     payload,
   });
-  const safeRemoteBody = redactSensitiveFbrData(remote.body);
+  const safeRemoteBody = redactSensitiveFbrData(remote.body, [token]);
   const safeRemote = {
     ...remote,
     body: safeRemoteBody,
