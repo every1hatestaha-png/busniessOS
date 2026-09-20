@@ -47,7 +47,8 @@ async function accountBalance(systemCode: string, normal: "DEBIT" | "CREDIT") {
   const totals = await db.generalLedgerEntry.aggregate({ where: { workspaceId, accountId: account.id }, _sum: { debit: true, credit: true } });
   const debit = Number(totals._sum.debit ?? 0);
   const credit = Number(totals._sum.credit ?? 0);
-  return normal === "DEBIT" ? debit - credit : credit - debit;
+  const balance = normal === "DEBIT" ? debit - credit : credit - debit;
+  return Number(balance.toFixed(2));
 }
 
 describe("accounting GL integration", () => {
