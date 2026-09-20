@@ -14,6 +14,7 @@ import { requireWorkspace } from "@/lib/server/auth";
 import { getCashBankAccounts } from "@/lib/server/accounting";
 import { buildFbrInvoiceDraft, fingerprintFbrPayload, getFbrSubmissionForInvoice } from "@/lib/server/fbr-digital-invoicing";
 import { getInvoice } from "@/lib/server/invoices";
+import { db } from "@/lib/server/db";
 import { canPerformAction } from "@/lib/server/authorization";
 import { formatDate, formatPKR } from "@/lib/utils";
 import { Prisma } from "@prisma/client";
