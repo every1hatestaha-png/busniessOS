@@ -135,7 +135,7 @@ export async function createProductAction(
 
   let productId: string;
   try {
-    productId = await createProduct(context.workspaceId, parsed.data);
+    productId = await createProduct({ ...context, userId: context.user.id }, parsed.data);
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return { error: "That SKU is already used in this workspace." };
