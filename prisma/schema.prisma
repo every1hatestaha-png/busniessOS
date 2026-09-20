@@ -340,6 +340,7 @@ model Customer {
   ledgerEntries LedgerEntry[]
   creditNotes   CreditNote[]
   returns       CustomerReturn[]
+  priceRules    CustomerPriceRule[]
 
   @@index([workspaceId])
   @@index([workspaceId, updatedAt])
@@ -409,11 +410,34 @@ model Product {
   purchaseOrderItems    PurchaseOrderItem[]
   goodReceivedNoteItems GoodReceivedNoteItem[]
   supplierReturnItems   SupplierReturnItem[]
+  customerPriceRules    CustomerPriceRule[]
 
   @@unique([workspaceId, sku])
   @@index([workspaceId])
   @@index([workspaceId, status])
   @@map("products")
+}
+
+model CustomerPriceRule {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  customerId      String
+  productId       String
+  minQuantity     Decimal  @default(1) @db.Decimal(15, 4)
+  unitPrice       Decimal  @db.Decimal(15, 2)
+  discountPerUnit Decimal  @default(0) @db.Decimal(15, 2)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer  Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, customerId, productId, minQuantity])
+  @@index([workspaceId, customerId, isActive])
+  @@index([workspaceId, productId])
+  @@map("customer_price_rules")
 }
 
 // ----------------------------------------
