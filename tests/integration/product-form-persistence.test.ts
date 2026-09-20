@@ -85,6 +85,19 @@ describe("Product decimal quantity and form integration", () => {
     expect(saved.stockQuantity.toNumber()).toBe(0);
   });
 
+  it("records the authenticated actor when a product is created", async () => {
+    const productId = await createProduct(context(), {
+      name: "Audited Part", sku: `audit-${runId}`, category: "Hardware",
+      costPrice: 10, sellingPrice: 20, stockQuantity: 0,
+      reorderLevel: 1, unit: "PIECE", status: "ACTIVE", description: "Audit test",
+    });
+
+    const audit = await db.auditLog.findFirstOrThrow({
+      where: { workspaceId, entityId: productId, action: "product.created" },
+    });
+    expect(audit.actorId).toBe(userId);
+  });
+
   it("creates a Piece product with integer reorder level", async () => {
     const productId = await createProduct(workspaceId, {
       name: "Bolt", sku: `bolt-${runId}`, category: "Hardware",
