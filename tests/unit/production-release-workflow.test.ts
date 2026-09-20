@@ -19,13 +19,19 @@ describe("production release workflow", () => {
     expect(targetAssertion).toContain("classification !== \"production\"");
   });
 
-  it("does not deploy application code until production migrations succeed", () => {
-    expect(workflow).toContain("needs:\n      - build\n      - migrate-production");
+  it("uses Vercel as the only production application host", () => {
+    expect(workflow).toContain("verify-vercel-production:");
+    expect(workflow).toContain("https://business-os-one-gules.vercel.app/api/readiness");
+    expect(workflow).not.toContain("azure/webapps-deploy");
+    expect(workflow).not.toContain("azurewebsites.net");
   });
 
-  it("verifies the deployed runtime database after release", () => {
+  it("verifies the exact Vercel revision and runtime database after release", () => {
+    expect(workflow).toContain("needs:\n      - build\n      - migrate-production");
     expect(workflow).toContain("/api/readiness");
-    expect(workflow).toContain("MunshiOS runtime database readiness verified.");
+    expect(workflow).toContain('expected_revision="${GITHUB_SHA:0:12}"');
+    expect(workflow).toContain('body.revision === process.env.EXPECTED_REVISION');
+    expect(workflow).toContain("MunshiOS Vercel revision and production database readiness verified.");
     expect(runtimeReadiness).toContain("assertApprovedProductionDatabaseTarget(process.env.DATABASE_URL)");
   });
 });
