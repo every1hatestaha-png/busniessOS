@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { Plus } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -7,8 +9,6 @@ export function WorkspaceSwitcher({ activeId, workspaces }: { activeId: string; 
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-
-  if (workspaces.length < 2) return null;
 
   async function switchWorkspace(workspaceId: string) {
     if (busy || workspaceId === activeId) return;
@@ -45,7 +45,7 @@ export function WorkspaceSwitcher({ activeId, workspaces }: { activeId: string; 
 
   return (
     <div className="flex min-w-0 items-center gap-2">
-      <select
+      {workspaces.length > 1 && <select
         aria-label="Active workspace"
         aria-busy={busy}
         aria-describedby={message ? "workspace-switch-error" : undefined}
@@ -58,7 +58,10 @@ export function WorkspaceSwitcher({ activeId, workspaces }: { activeId: string; 
         {workspaces.map((item) => (
           <option key={item.workspaceId} value={item.workspaceId}>{item.workspace.name}</option>
         ))}
-      </select>
+      </select>}
+      <Link href="/onboarding?mode=new" className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border bg-white px-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50" aria-label="Add another business">
+        <Plus className="h-3.5 w-3.5" /> Add business
+      </Link>
       {message && <span id="workspace-switch-error" role="alert" className="max-w-56 text-[10px] text-red-600">{message}</span>}
     </div>
   );
