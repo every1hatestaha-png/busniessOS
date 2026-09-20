@@ -11,8 +11,8 @@ import { formatPKR } from "@/lib/utils";
 import type { SaleEditInput } from "@/lib/validation/sale-edit";
 
 type CustomerOption = { id: string; name: string; companyName: string };
-type ProductOption = { id: string; name: string; sku: string; sellingPrice: number; stockQuantity: number; defaultWeightKg: number | null };
-type EditLine = { productId: string; quantity: number; pricingMode: "UNIT" | "WEIGHT"; unitWeight?: number; perKgRate?: number; unitPrice: number; discountPerUnit: number };
+type ProductOption = { id: string; name: string; sku: string; sellingPrice: number; stockQuantity: number; defaultWeightKg: number | null; verifiedTaxRate: number | null };
+type EditLine = { productId: string; quantity: number; pricingMode: "UNIT" | "WEIGHT"; unitWeight?: number; perKgRate?: number; unitPrice: number; discountPerUnit: number; taxRate?: number };
 type InitialSale = {
   id: string;
   invoiceId: string;
@@ -33,7 +33,6 @@ export function EditSaleForm({ initialSale, customers, products }: { initialSale
   const [customerId, setCustomerId] = useState(initialSale.customerId);
   const [issuedAt, setIssuedAt] = useState(initialSale.issuedAt);
   const [dueDate, setDueDate] = useState(initialSale.dueDate);
-  const [gstRate, setGstRate] = useState(initialSale.gstRate);
   const [orderDiscount, setOrderDiscount] = useState(initialSale.orderDiscount);
   const [notes, setNotes] = useState(initialSale.notes);
   const [items, setItems] = useState<EditLine[]>(initialSale.items);
@@ -41,10 +40,30 @@ export function EditSaleForm({ initialSale, customers, products }: { initialSale
   const totals = useMemo(() => {
     const subtotal = items.reduce((sum, item) => sum + item.quantity * effectiveUnitPrice(item), 0);
     const lineDiscount = items.reduce((sum, item) => sum + item.quantity * item.discountPerUnit, 0);
-    const taxable = Math.max(0, subtotal - lineDiscount - orderDiscount);
-    const gst = Number((taxable * gstRate / 100).toFixed(2));
-    return { subtotal, lineDiscount, taxable, gst, total: taxable + gst };
-  }, [items, orderDiscount, gstRate]);
+    const bases = items.map((item) => Math.max(0, item.quantity * (effectiveUnitPrice(item) - item.discountPerUnit)));
+    const base = bases.reduce((sum, amount) => sum + amount, 0);
+    const proportionalDiscounts = bases.map((amount, index) => (
+      index === bases.length - 1 || base <= 0
+        ? 0
+        : Math.floor((amount * orderDiscount / base) * 100) / 100
+    ));
+    const allocatedBeforeLast = money(proportionalDiscounts.reduce((sum, amount) => sum + amount, 0));
+    const discountAllocations = proportionalDiscounts.map((amount, index) => (
+      index === proportionalDiscounts.length - 1
+        ? money(Math.max(0, orderDiscount - allocatedBeforeLast))
+        : amount
+    ));
+    const taxLines = bases.map((amount, index) => {
+      const allocated = discountAllocations[index] ?? 0;
+      const taxable = money(Math.max(0, amount - allocated));
+      const rate = Number(items[index]?.taxRate ?? initialSale.gstRate);
+      return { taxable, rate, tax: money(taxable * rate / 100) };
+    });
+    const taxable = money(taxLines.reduce((sum, line) => sum + line.taxable, 0));
+    const gst = money(taxLines.reduce((sum, line) => sum + line.tax, 0));
+    const rates = [...new Set(taxLines.map((line) => line.rate))];
+    return { subtotal, lineDiscount, taxable, gst, total: money(taxable + gst), taxLabel: rates.length === 1 ? `${rates[0]}%` : "Mixed" };
+  }, [items, orderDiscount, initialSale.gstRate]);
 
   function patchLine(index: number, patch: Partial<EditLine>) {
     setItems((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
@@ -53,7 +72,7 @@ export function EditSaleForm({ initialSale, customers, products }: { initialSale
   function selectProduct(index: number, productId: string) {
     const product = products.find((entry) => entry.id === productId);
     if (!product) return patchLine(index, { productId });
-    patchLine(index, { productId, unitPrice: product.sellingPrice, pricingMode: "UNIT", unitWeight: undefined, perKgRate: undefined });
+    patchLine(index, { productId, unitPrice: product.sellingPrice, pricingMode: "UNIT", unitWeight: undefined, perKgRate: undefined, taxRate: product.verifiedTaxRate ?? initialSale.gstRate });
   }
 
   function submit() {
@@ -64,7 +83,7 @@ export function EditSaleForm({ initialSale, customers, products }: { initialSale
       dueDate: dueDate || null,
       items,
       orderDiscount,
-      gstRate,
+      gstRate: initialSale.gstRate,
       notes,
     };
     startTransition(() => action(payload));
@@ -84,24 +103,24 @@ export function EditSaleForm({ initialSale, customers, products }: { initialSale
         <Field label="Customer"><select className={fieldClass} value={customerId} onChange={(event) => setCustomerId(event.target.value)}>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.companyName} · {customer.name}</option>)}</select></Field>
         <Field label="Issue date"><Input type="date" value={issuedAt} onChange={(event) => setIssuedAt(event.target.value)} /></Field>
         <Field label="Due date"><Input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} /></Field>
-        <Field label="GST %"><Input type="number" min="0" max="100" step="0.01" value={gstRate} onChange={(event) => setGstRate(Number(event.target.value))} /></Field>
       </div>
     </section>
 
     <section className="overflow-hidden rounded-xl border bg-white">
-      <div className="flex items-center justify-between border-b p-4"><div><h2 className="text-sm font-semibold">Line items</h2><p className="text-xs text-slate-500">Edit product, quantity, rate, pricing mode and per-piece discount.</p></div><Button type="button" variant="outline" size="sm" onClick={() => setItems((current) => [...current, { productId: products[0]?.id ?? "", quantity: 1, pricingMode: "UNIT", unitPrice: products[0]?.sellingPrice ?? 0, discountPerUnit: 0 }])}><Plus />Add line</Button></div>
+      <div className="flex items-center justify-between border-b p-4"><div><h2 className="text-sm font-semibold">Line items</h2><p className="text-xs text-slate-500">Edit product, quantity, rate, pricing mode and per-piece discount.</p></div><Button type="button" variant="outline" size="sm" onClick={() => setItems((current) => [...current, { productId: products[0]?.id ?? "", quantity: 1, pricingMode: "UNIT", unitPrice: products[0]?.sellingPrice ?? 0, discountPerUnit: 0, taxRate: products[0]?.verifiedTaxRate ?? initialSale.gstRate }])}><Plus />Add line</Button></div>
       <div className="overflow-x-auto">
         <div className="min-w-[950px]">
-          <div className="grid grid-cols-[minmax(220px,1fr)_90px_120px_110px_110px_110px_44px] gap-2 border-b bg-slate-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500"><span>Product</span><span>Qty</span><span>Pricing</span><span>Rate</span><span>Disc/unit</span><span className="text-right">Amount</span><span /></div>
+          <div className="grid grid-cols-[minmax(220px,1fr)_90px_120px_110px_110px_85px_110px_44px] gap-2 border-b bg-slate-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500"><span>Product</span><span>Qty</span><span>Pricing</span><span>Rate</span><span>Disc/unit</span><span>Tax %</span><span className="text-right">Amount</span><span /></div>
           {items.map((item, index) => {
             const product = products.find((entry) => entry.id === item.productId);
             const lineAmount = Math.max(0, item.quantity * (effectiveUnitPrice(item) - item.discountPerUnit));
-            return <div key={`${item.productId}-${index}`} className="grid grid-cols-[minmax(220px,1fr)_90px_120px_110px_110px_110px_44px] items-start gap-2 border-b px-4 py-3 last:border-0">
-              <div><select className={fieldClass} value={item.productId} onChange={(event) => selectProduct(index, event.target.value)}>{products.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}{entry.sku ? ` · ${entry.sku}` : ""}</option>)}</select>{product && <p className="mt-1 text-[10px] text-slate-500">Available after original sale is restored: current {product.stockQuantity} + original quantity</p>}</div>
+            return <div key={`${item.productId}-${index}`} className="grid grid-cols-[minmax(220px,1fr)_90px_120px_110px_110px_85px_110px_44px] items-start gap-2 border-b px-4 py-3 last:border-0">
+              <div><select className={fieldClass} value={item.productId} onChange={(event) => selectProduct(index, event.target.value)}>{products.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}{entry.sku ? ` · ${entry.sku}` : ""}</option>)}</select>{product && <><p className="mt-1 text-[10px] text-slate-500">Available after original sale is restored: current {product.stockQuantity} + original quantity</p>{product.verifiedTaxRate !== null && <p className="mt-1 text-[10px] font-medium text-emerald-700">Verified FBR rate: {product.verifiedTaxRate}%</p>}</>}</div>
               <Input type="number" min="0.0001" step="0.0001" value={item.quantity} onChange={(event) => patchLine(index, { quantity: Number(event.target.value) })} />
               <select className={fieldClass} value={item.pricingMode} onChange={(event) => patchLine(index, { pricingMode: event.target.value as "UNIT" | "WEIGHT" })}><option value="UNIT">Per unit</option><option value="WEIGHT">By weight</option></select>
               {item.pricingMode === "WEIGHT" ? <div className="space-y-1"><Input aria-label="kg per unit" type="number" min="0.001" step="0.001" placeholder="kg/unit" value={item.unitWeight ?? ""} onChange={(event) => patchLine(index, { unitWeight: Number(event.target.value) })} /><Input aria-label="rate per kg" type="number" min="0.01" step="0.01" placeholder="Rs/kg" value={item.perKgRate ?? ""} onChange={(event) => patchLine(index, { perKgRate: Number(event.target.value) })} /></div> : <Input type="number" min="0.01" step="0.01" value={item.unitPrice} onChange={(event) => patchLine(index, { unitPrice: Number(event.target.value) })} />}
               <Input type="number" min="0" step="0.01" value={item.discountPerUnit} onChange={(event) => patchLine(index, { discountPerUnit: Number(event.target.value) })} />
+              <Input type="number" min="0" max="100" step="0.01" value={item.taxRate ?? initialSale.gstRate} onChange={(event) => patchLine(index, { taxRate: Number(event.target.value) })} />
               <div className="flex h-9 items-center justify-end text-sm font-semibold tabular-nums">{formatPKR(lineAmount)}</div>
               <Button type="button" variant="ghost" size="icon" disabled={items.length === 1} onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}><Trash2 /></Button>
             </div>;
@@ -112,11 +131,12 @@ export function EditSaleForm({ initialSale, customers, products }: { initialSale
 
     <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
       <section className="rounded-xl border bg-white p-5"><Field label="Notes"><textarea className="min-h-28 w-full rounded-md border border-input bg-white p-3 text-sm outline-none focus:ring-2 focus:ring-primary/15" value={notes} onChange={(event) => setNotes(event.target.value)} /></Field></section>
-      <section className="space-y-3 rounded-xl border bg-white p-5 text-sm"><Summary label="Subtotal" value={formatPKR(totals.subtotal)} /><Summary label="Line discount" value={`- ${formatPKR(totals.lineDiscount)}`} /><Field label="Order discount"><Input type="number" min="0" step="0.01" value={orderDiscount} onChange={(event) => setOrderDiscount(Number(event.target.value))} /></Field><Summary label="Taxable" value={formatPKR(totals.taxable)} /><Summary label={`GST (${gstRate}%)`} value={formatPKR(totals.gst)} /><div className="flex justify-between border-t pt-3 text-base font-bold"><span>Total</span><span>{formatPKR(totals.total)}</span></div></section>
+      <section className="space-y-3 rounded-xl border bg-white p-5 text-sm"><Summary label="Subtotal" value={formatPKR(totals.subtotal)} /><Summary label="Line discount" value={`- ${formatPKR(totals.lineDiscount)}`} /><Field label="Order discount"><Input type="number" min="0" step="0.01" value={orderDiscount} onChange={(event) => setOrderDiscount(Number(event.target.value))} /></Field><Summary label="Taxable" value={formatPKR(totals.taxable)} /><Summary label={`Sales tax (${totals.taxLabel})`} value={formatPKR(totals.gst)} /><div className="flex justify-between border-t pt-3 text-base font-bold"><span>Total</span><span>{formatPKR(totals.total)}</span></div></section>
     </div>
   </div>;
 }
 
+function money(value: number) { return Math.round((value + Number.EPSILON) * 100) / 100; }
 function effectiveUnitPrice(item: EditLine) {
   return item.pricingMode === "WEIGHT" && item.unitWeight && item.perKgRate ? item.unitWeight * item.perKgRate : item.unitPrice;
 }

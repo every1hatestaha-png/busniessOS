@@ -34,6 +34,7 @@ describe("getInvoice", () => {
         expect(sql).toContain('soi."unitWeight"');
         expect(sql).toContain('soi."totalWeight"');
         expect(sql).toContain('soi."perKgRate"');
+        expect(sql).toContain('soi."taxRate"');
         expect(sql).not.toContain('soi."discount"');
         expect(values).toEqual(["sale_1"]);
         return [{
@@ -41,7 +42,7 @@ describe("getInvoice", () => {
           productSku: "SAVED-SKU", fallbackSku: "CURRENT-SKU", unit: "PIECE", quantity: new Prisma.Decimal(50),
           unitPrice: new Prisma.Decimal(1000), discountPerUnit: new Prisma.Decimal(50),
           totalPrice: new Prisma.Decimal(47500), pricingMode: "UNIT",
-          unitWeight: null, totalWeight: null, perKgRate: null,
+          unitWeight: null, totalWeight: null, perKgRate: null, taxRate: null,
         }];
       }
       if (sql.includes('FROM "payment_allocations" pa')) return [];
@@ -59,7 +60,7 @@ describe("getInvoice", () => {
       items: [{
         id: "item_1", name: "Saved product", sku: "SAVED-SKU", unit: "PIECE", quantity: 50,
         unitPrice: 1000, discountPerUnit: 50, total: 47500, pricingMode: "UNIT",
-        unitWeight: null, totalWeight: null, perKgRate: null,
+        unitWeight: null, totalWeight: null, perKgRate: null, taxRate: null,
       }],
     });
     const item = invoice!.order!.items[0];

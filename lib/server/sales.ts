@@ -5,7 +5,7 @@ import { db } from "@/lib/server/db";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";
 import { postCustomerReturnToGeneralLedger, postSaleToGeneralLedger, reverseGeneralLedgerEntries } from "@/lib/server/accounting";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
-import { allocateUniformSalesTax } from "@/lib/sales-tax";
+import { allocateSalesTaxByLine } from "@/lib/sales-tax";
 import { saleSchema, type SaleInput } from "@/lib/validation/sale";
 import { writeAudit } from "@/lib/server/audit";
 import { customerReturnSchema, type CustomerReturnInput } from "@/lib/validation/returns";
@@ -84,10 +84,10 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
     const subtotal = lines.reduce((sum, line) => sum.plus(new Prisma.Decimal(line.unitPrice).mul(line.quantity)), new Prisma.Decimal(0));
     const lineDiscount = lines.reduce((sum, line) => sum.plus(new Prisma.Decimal(line.discountPerUnit).mul(line.quantity)), new Prisma.Decimal(0));
     const discount = lineDiscount.plus(data.orderDiscount);
-    const taxAllocation = allocateUniformSalesTax(
+    const taxAllocation = allocateSalesTaxByLine(
       lines.map((line) => line.total),
       new Prisma.Decimal(data.orderDiscount),
-      new Prisma.Decimal(data.gstRate),
+      lines.map((line) => new Prisma.Decimal(line.taxRate ?? data.gstRate)),
     );
     const taxableAmount = taxAllocation.totalTaxable;
     const gstAmount = taxAllocation.totalTax;
@@ -202,7 +202,14 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
       await tx.customer.update({ where: { id: customer.id, workspaceId: context.workspaceId }, data: { currentBalance: { decrement: paid } } });
     }
     await postSaleToGeneralLedger(tx, { workspaceId: context.workspaceId, saleId: order.id, orderNumber, date: order.orderDate, revenue: taxableAmount, salesTax: gstAmount, costOfGoodsSold, cashReceived: paid, cashBankAccountId });
-    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "sale.created", entityType: "SalesOrder", entityId: order.id, metadata: { orderNumber, taxableAmount: taxableAmount.toString(), gstRate: data.gstRate, gstAmount: gstAmount.toString(), total: total.toString() } });
+    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "sale.created", entityType: "SalesOrder", entityId: order.id, metadata: {
+        orderNumber,
+        taxableAmount: taxableAmount.toString(),
+        legacyGstRate: data.gstRate,
+        taxRates: taxAllocation.lines.map((line) => line.taxRate.toString()),
+        gstAmount: gstAmount.toString(),
+        total: total.toString(),
+      } });
     return { id: order.id };
   });
 }
@@ -379,7 +386,12 @@ export async function getSale(workspaceId: string, id: string) {
     : null;
   const taxableAmount = Math.max(0, Number(row.subtotal) - Number(row.discount));
   const gstAmount = Math.max(0, Number(row.total) - taxableAmount);
-  const gstRate = taxableAmount > 0 ? Number(((gstAmount / taxableAmount) * 100).toFixed(4)) : 0;
+  const aggregateGstRate = taxableAmount > 0 ? Number(((gstAmount / taxableAmount) * 100).toFixed(4)) : 0;
+  const hasCompleteTaxRates = row.items.length > 0 && row.items.every((item) => item.taxRate !== null);
+  const storedTaxRates = hasCompleteTaxRates
+    ? [...new Set(row.items.map((item) => Number(item.taxRate)))]
+    : [];
+  const gstRate = storedTaxRates.length > 1 ? null : (storedTaxRates[0] ?? aggregateGstRate);
   return {
     id: row.id,
     orderNumber: row.orderNumber,
@@ -396,7 +408,7 @@ export async function getSale(workspaceId: string, id: string) {
     notes: row.notes ?? "",
     warehouse,
     customer: { id: row.customer.id, name: row.customer.name, companyName: row.customer.companyName ?? row.customer.name, phone: row.customer.phone ?? "", address: row.customer.address ?? "", currentBalance: Number(row.customer.currentBalance), creditDays: row.customer.creditDays, creditLimit: Number(row.customer.creditLimit) },
-    items: row.items.map((item) => ({ id: item.id, productName: item.productName ?? item.product.name, sku: item.productSku ?? item.product.sku ?? "", quantity: item.quantity, unitPrice: Number(item.unitPrice), discountPerUnit: Number(item.discountPerUnit), total: Number(item.totalPrice), pricingMode: item.pricingMode, unitWeight: item.unitWeight ? Number(item.unitWeight) : null, totalWeight: item.totalWeight ? Number(item.totalWeight) : null, perKgRate: item.perKgRate ? Number(item.perKgRate) : null })),
+    items: row.items.map((item) => ({ id: item.id, productName: item.productName ?? item.product.name, sku: item.productSku ?? item.product.sku ?? "", quantity: item.quantity, unitPrice: Number(item.unitPrice), discountPerUnit: Number(item.discountPerUnit), total: Number(item.totalPrice), pricingMode: item.pricingMode, taxRate: item.taxRate ? Number(item.taxRate) : null, unitWeight: item.unitWeight ? Number(item.unitWeight) : null, totalWeight: item.totalWeight ? Number(item.totalWeight) : null, perKgRate: item.perKgRate ? Number(item.perKgRate) : null })),
     invoice: row.invoices[0] ? { id: row.invoices[0].id, number: row.invoices[0].invoiceNumber } : null,
     returns: row.returns.map((entry) => ({
       id: entry.id,

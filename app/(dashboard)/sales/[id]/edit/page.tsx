@@ -29,7 +29,17 @@ export default async function EditSalePage({ params }: { params: Promise<{ id: s
     db.product.findMany({
       where: { workspaceId, OR: [{ status: "ACTIVE" }, { id: { in: selectedProductIds } }] },
       orderBy: [{ name: "asc" }, { createdAt: "desc" }],
-      select: { id: true, name: true, sku: true, sellingPrice: true, stockQuantity: true, defaultWeightKg: true },
+      select: {
+        id: true,
+        name: true,
+        sku: true,
+        sellingPrice: true,
+        stockQuantity: true,
+        defaultWeightKg: true,
+        fbrRateDesc: true,
+        fbrRateValue: true,
+        fbrReferenceVerifiedAt: true,
+      },
     }),
   ]);
 
@@ -58,9 +68,25 @@ export default async function EditSalePage({ params }: { params: Promise<{ id: s
         perKgRate: item.perKgRate ? Number(item.perKgRate) : undefined,
         unitPrice: Number(item.unitPrice),
         discountPerUnit: Number(item.discountPerUnit),
+        taxRate: item.taxRate ? Number(item.taxRate) : gstRate,
       })),
     }}
     customers={customerRows.map((customer) => ({ id: customer.id, name: customer.name, companyName: customer.companyName ?? customer.name }))}
-    products={productRows.map((product) => ({ id: product.id, name: product.name, sku: product.sku ?? "", sellingPrice: Number(product.sellingPrice), stockQuantity: Number(product.stockQuantity), defaultWeightKg: product.defaultWeightKg ? Number(product.defaultWeightKg) : null }))}
+    products={productRows.map((product) => {
+      const rateValue = product.fbrRateValue ? Number(product.fbrRateValue) : null;
+      const rateMatch = product.fbrRateDesc?.trim().match(/^(\d+(?:\.\d+)?)%$/);
+      return {
+        id: product.id,
+        name: product.name,
+        sku: product.sku ?? "",
+        sellingPrice: Number(product.sellingPrice),
+        stockQuantity: Number(product.stockQuantity),
+        defaultWeightKg: product.defaultWeightKg ? Number(product.defaultWeightKg) : null,
+        verifiedTaxRate: product.fbrReferenceVerifiedAt && rateValue !== null && rateMatch
+          && Math.abs(Number(rateMatch[1]) - rateValue) < 0.0001
+          ? rateValue
+          : null,
+      };
+    })}
   />;
 }

@@ -8,6 +8,7 @@ const saleEditItemSchema = z.object({
   perKgRate: z.coerce.number().positive().max(100000000).optional(),
   unitPrice: z.coerce.number().positive().max(100000000),
   discountPerUnit: z.coerce.number().nonnegative().max(100000000).default(0),
+  taxRate: z.coerce.number().min(0).max(100).optional(),
 });
 
 export const saleEditSchema = z.object({

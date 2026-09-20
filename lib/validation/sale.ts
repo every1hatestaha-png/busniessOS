@@ -11,6 +11,7 @@ export const saleSchema = z.object({
     perKgRate: z.number().positive().max(100000000).optional(),
     unitPrice: z.number().positive("Invalid selling price.").max(100000000, "Invalid selling price."),
     discountPerUnit: z.number().nonnegative().max(100000000),
+    taxRate: z.number().min(0).max(100).optional(),
   })).min(1).max(100),
   orderDiscount: z.number().nonnegative().max(100000000),
   gstRate: z.number().min(0).max(100).default(0),
