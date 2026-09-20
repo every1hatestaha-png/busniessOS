@@ -950,6 +950,7 @@ model CreditNote {
   status           CreditNoteStatus @default(OPEN)
   reference        String?
   notes            String?
+  idempotencyKey   String?
   date             DateTime         @default(now())
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
@@ -962,6 +963,7 @@ model CreditNote {
 
   @@unique([workspaceId, number])
   @@unique([workspaceId, customerReturnId])
+  @@unique([workspaceId, idempotencyKey])
   @@index([workspaceId, customerId])
   @@index([workspaceId, customerId, date])
   @@index([workspaceId, status])
@@ -998,6 +1000,8 @@ model DebitNote {
   amount          Decimal  @db.Decimal(15, 2)
   reference       String?
   notes           String?
+  idempotencyKey  String?
+  status          CreditNoteStatus @default(OPEN)
   date            DateTime @default(now())
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -1007,6 +1011,7 @@ model DebitNote {
   purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
 
   @@unique([workspaceId, number])
+  @@unique([workspaceId, idempotencyKey])
   @@index([workspaceId, supplierId])
   @@map("debit_notes")
 }
