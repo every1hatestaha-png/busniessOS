@@ -3,6 +3,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 
 import { validateInvoiceWithFbr } from "@/lib/fbr/client";
+import { redactSensitiveFbrData, sanitizeFbrErrorMessage } from "@/lib/fbr/redaction";
 import { assertFbrExpectedEnvironment, type FbrEnvironment, type FbrInvoicePayload } from "@/lib/fbr/digital-invoicing";
 import { writeAudit } from "@/lib/server/audit";
 import { requirePermission } from "@/lib/server/authorization";
@@ -102,12 +103,17 @@ export async function runFbrRemoteValidation(submissionId: string, expectedEnvir
     token,
     payload,
   });
-  const valid = remote.ok && acceptedByFbr(remote.body);
+  const safeRemote = {
+    ...remote,
+    body: redactSensitiveFbrData(remote.body, [token]),
+    errorMessage: sanitizeFbrErrorMessage(remote.errorMessage, token),
+  };
+  const valid = safeRemote.ok && acceptedByFbr(safeRemote.body);
   const nextStatus = valid
     ? "VALIDATED"
-    : remote.httpStatus === 401
+    : safeRemote.httpStatus === 401
       ? "BLOCKED"
-      : remote.ok
+      : safeRemote.ok
         ? "VALIDATION_FAILED"
         : "FAILED";
 
@@ -117,11 +123,11 @@ export async function runFbrRemoteValidation(submissionId: string, expectedEnvir
         submissionId: submission.id,
         kind: "VALIDATE",
         requestBody: payload as unknown as Prisma.InputJsonValue,
-        responseBody: (remote.body ?? Prisma.JsonNull) as Prisma.InputJsonValue,
-        httpStatus: remote.httpStatus || null,
+        responseBody: (safeRemote.body ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+        httpStatus: safeRemote.httpStatus || null,
         succeeded: valid,
-        errorCode: valid ? null : remote.errorCode ?? (remote.httpStatus === 401 ? "UNAUTHORIZED" : "FBR_VALIDATION_FAILED"),
-        errorMessage: valid ? null : remote.errorMessage ?? "FBR validation did not accept the invoice.",
+        errorCode: valid ? null : safeRemote.errorCode ?? (safeRemote.httpStatus === 401 ? "UNAUTHORIZED" : "FBR_VALIDATION_FAILED"),
+        errorMessage: valid ? null : safeRemote.errorMessage ?? "FBR validation did not accept the invoice.",
       },
     });
 
@@ -129,12 +135,12 @@ export async function runFbrRemoteValidation(submissionId: string, expectedEnvir
       where: { id: submission.id },
       data: {
         status: nextStatus,
-        validationResponse: (remote.body ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+        validationResponse: (safeRemote.body ?? Prisma.JsonNull) as Prisma.InputJsonValue,
         attemptCount: { increment: 1 },
         validatedAt: valid ? new Date() : null,
         lastAttemptAt: new Date(),
-        lastErrorCode: valid ? null : remote.errorCode ?? (remote.httpStatus === 401 ? "UNAUTHORIZED" : "FBR_VALIDATION_FAILED"),
-        lastErrorMessage: valid ? null : remote.errorMessage ?? "FBR validation did not accept the invoice.",
+        lastErrorCode: valid ? null : safeRemote.errorCode ?? (safeRemote.httpStatus === 401 ? "UNAUTHORIZED" : "FBR_VALIDATION_FAILED"),
+        lastErrorMessage: valid ? null : safeRemote.errorMessage ?? "FBR validation did not accept the invoice.",
       },
     });
 
@@ -147,14 +153,14 @@ export async function runFbrRemoteValidation(submissionId: string, expectedEnvir
       metadata: {
         submissionId: submission.id,
         environment: submission.environment,
-        httpStatus: remote.httpStatus,
-        retryable: remote.retryable,
-        errorCode: remote.errorCode ?? null,
+        httpStatus: safeRemote.httpStatus,
+        retryable: safeRemote.retryable,
+        errorCode: safeRemote.errorCode ?? null,
       },
     });
 
     return saved;
   });
 
-  return { status: nextStatus, submission: updated, remote };
+  return { status: nextStatus, submission: updated, remote: safeRemote };
 }
