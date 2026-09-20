@@ -158,15 +158,16 @@ export async function recordPayment(context: ServiceContext, input: PaymentInput
     }
 
     if (withholdingTaxAmount.greaterThan(0)) {
-      const [accountsReceivable, withholdingTaxReceivable] = await Promise.all([
-        tx.account.findUnique({ where: { workspaceId_systemCode: { workspaceId: context.workspaceId, systemCode: "ACCOUNTS_RECEIVABLE" } }, select: { id: true } }),
-        tx.account.upsert({
-          where: { workspaceId_code: { workspaceId: context.workspaceId, code: "1150" } },
-          create: { workspaceId: context.workspaceId, code: "1150", name: "Withholding Tax Receivable", category: "ASSET", normalBalance: "DEBIT", isActive: true },
-          update: {},
-          select: { id: true, category: true },
-        }),
-      ]);
+      const accountsReceivable = await tx.account.findUnique({
+        where: { workspaceId_systemCode: { workspaceId: context.workspaceId, systemCode: "ACCOUNTS_RECEIVABLE" } },
+        select: { id: true },
+      });
+      const withholdingTaxReceivable = await tx.account.upsert({
+        where: { workspaceId_code: { workspaceId: context.workspaceId, code: "1150" } },
+        create: { workspaceId: context.workspaceId, code: "1150", name: "Withholding Tax Receivable", category: "ASSET", normalBalance: "DEBIT", isActive: true },
+        update: {},
+        select: { id: true, category: true },
+      });
       if (!accountsReceivable) throw new PaymentDomainError("Accounts Receivable account is unavailable.");
       if (withholdingTaxReceivable.category !== "ASSET") throw new PaymentDomainError("Account code 1150 must be an asset account for Withholding Tax Receivable.");
       await tx.generalLedgerEntry.createMany({ data: [
