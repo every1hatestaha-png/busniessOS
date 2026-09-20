@@ -8,7 +8,6 @@ import {
   ChevronRight,
   CircleDollarSign,
   Factory,
-  Headphones,
   LayoutDashboard,
   LockKeyhole,
   MessageCircle,
@@ -173,7 +172,8 @@ export default function Home() {
   const whatsappHref = whatsappNumber
     ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent("Salam, I want to know more about MunshiOS and the free first month.")}`
     : "/get-your-munshi?intent=contact";
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://business-os-one-gules.vercel.app";\n  const laptopShareHref = `https://wa.me/?text=${encodeURIComponent(`Open MunshiOS on your laptop: ${siteUrl}`)}`;
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://business-os-one-gules.vercel.app";
+  const laptopShareHref = `https://wa.me/?text=${encodeURIComponent(`Open MunshiOS on your laptop: ${siteUrl}`)}`;
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#fbfcfa] pb-20 text-[#0b1720] selection:bg-emerald-200 lg:pb-0">
