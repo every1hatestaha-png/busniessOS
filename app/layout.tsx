@@ -6,11 +6,31 @@ import "./auth-visual.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://business-os-one-gules.vercel.app";
 
 export const metadata: Metadata = {
-  title: "MunshiOS",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "MunshiOS | Business software for Pakistan",
+    template: "%s | MunshiOS",
+  },
   applicationName: "MunshiOS",
-  description: "Har karobar ka digital system, modern operating system for Pakistani businesses",
+  description: "Sales, purchases, inventory, khata, accounting, manufacturing and business operations in one connected system for Pakistani businesses.",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    url: "/",
+    title: "MunshiOS | Business software for Pakistan",
+    description: "Sales, purchases, stock, khata and accounting in one connected system. First month free.",
+    siteName: "MunshiOS",
+  },
+  twitter: {
+    card: "summary",
+    title: "MunshiOS | Business software for Pakistan",
+    description: "Sales, purchases, stock, khata and accounting in one connected system. First month free.",
+  },
   icons: {
     icon: "/brand/munshios-mark.svg",
     shortcut: "/brand/munshios-mark.svg",
