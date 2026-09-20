@@ -3,7 +3,7 @@ import { createSupplierReturn, PurchaseDomainError } from "@/lib/server/purchase
 import { supplierReturnSchema } from "@/lib/validation/returns";
 
 export const POST = apiHandler(async (request: Request) => {
-  const context = await requireApiContext("financial.manage");
+  const context = await requireApiContext("returns.create");
   const body = await request.clone().json().catch(() => ({}));
   const key = requireIdempotencyKey(request);
   const input = await parseApiBody(new Request(request.url, { method: "POST", headers: request.headers, body: JSON.stringify({ ...body, idempotencyKey: key }) }), supplierReturnSchema);

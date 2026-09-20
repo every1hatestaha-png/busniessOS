@@ -13,7 +13,7 @@ export const GET = apiHandler(async (request: Request) => {
 });
 
 export const POST = apiHandler(async (request: Request) => {
-  const context = await requireApiContext("financial.manage");
+  const context = await requireApiContext("grn.create");
   const body = await request.clone().json().catch(() => ({}));
   const key = requireIdempotencyKey(request);
   const input = await parseApiBody(

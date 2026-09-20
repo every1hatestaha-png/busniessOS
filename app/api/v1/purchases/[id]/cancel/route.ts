@@ -3,7 +3,7 @@ import { ApiError, apiData, apiHandler, parseApiBody, requireApiContext } from "
 import { cancelPurchase, PurchaseDomainError } from "@/lib/server/purchases";
 
 export const POST = apiHandler(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
-  const context = await requireApiContext("financial.manage");
+  const context = await requireApiContext("purchases.create");
   const { id } = z.object({ id: z.uuid() }).parse(await params);
   const body = await parseApiBody(request, z.object({ reverseInitialPayment: z.boolean().default(false) }));
   try {

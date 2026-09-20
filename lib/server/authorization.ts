@@ -4,12 +4,12 @@ import type { Role } from "@prisma/client";
 import { requireWorkspace } from "@/lib/server/auth";
 import { getWorkspaceAccess } from "@/lib/server/subscriptions";
 
-export type Permission = "business.read" | "customers.write" | "products.write" | "inventory.adjust" | "sales.create" | "payments.record" | "financial.manage" | "workspace.manage" | "members.manage";
+export type Permission = "business.read" | "customers.write" | "products.write" | "inventory.adjust" | "sales.create" | "payments.record" | "financial.manage" | "purchases.create" | "grn.create" | "returns.create" | "suppliers.manage" | "expenses.create" | "workspace.manage" | "members.manage";
 
 const permissions: Record<Role, ReadonlySet<Permission>> = {
-  OWNER: new Set(["business.read", "customers.write", "products.write", "inventory.adjust", "sales.create", "payments.record", "financial.manage", "workspace.manage", "members.manage"]),
-  ADMIN: new Set(["business.read", "customers.write", "products.write", "inventory.adjust", "sales.create", "payments.record", "financial.manage", "workspace.manage"]),
-  MANAGER: new Set(["business.read", "customers.write", "products.write", "inventory.adjust", "sales.create", "payments.record", "financial.manage"]),
+  OWNER: new Set(["business.read", "customers.write", "products.write", "inventory.adjust", "sales.create", "payments.record", "financial.manage", "purchases.create", "grn.create", "returns.create", "suppliers.manage", "expenses.create", "workspace.manage", "members.manage"]),
+  ADMIN: new Set(["business.read", "customers.write", "products.write", "inventory.adjust", "sales.create", "payments.record", "financial.manage", "purchases.create", "grn.create", "returns.create", "suppliers.manage", "expenses.create", "workspace.manage"]),
+  MANAGER: new Set(["business.read", "customers.write", "products.write", "inventory.adjust", "sales.create", "payments.record", "financial.manage", "purchases.create", "grn.create", "returns.create", "suppliers.manage", "expenses.create"]),
   STAFF: new Set(["business.read", "sales.create"]),
 };
 

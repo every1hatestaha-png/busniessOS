@@ -293,7 +293,7 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
 }
 
 export async function createCustomerReturn(context: ServiceContext, input: CustomerReturnInput) {
-  if (!canPerformAction(context.role, "financial.manage")) throw new SaleDomainError("PERMISSION_DENIED", "Unauthorized");
+  if (!canPerformAction(context.role, "returns.create")) throw new SaleDomainError("PERMISSION_DENIED", "Unauthorized");
   const data = customerReturnSchema.parse(input);
   return withSerializableRetry(async (tx) => {
     if (data.idempotencyKey) {
