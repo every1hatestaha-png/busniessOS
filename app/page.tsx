@@ -70,7 +70,7 @@ const modules = [
 ];
 
 const faqs = [
-  ["Is there a free trial?", "Yes. Your first month is free, so you can use MunshiOS with your business before deciding whether to continue monthly."],
+  ["Is there a free trial?", "Yes. Your first month is free, so you can use MunshiOS with your business before deciding whether to continue on a paid plan."],
   ["Can I use it alongside Excel?", "Yes. During your first month you can keep your current process running while you test MunshiOS with real workflows."],
   ["Can you help move my existing data?", "We can help set up products, customers, suppliers and opening balances. The exact migration approach depends on the format and condition of your current data."],
   ["Is my company data separated from other companies?", "Yes. MunshiOS uses company-scoped workspaces with separate business records and user permissions."],
@@ -426,7 +426,7 @@ export default function Home() {
                 ["3", "Review your setup and price"],
                 ["4", "Create your account and workspace"],
                 ["5", "Use MunshiOS free for the first month"],
-                ["6", "Continue monthly if it fits your business"],
+                ["6", "Continue on your chosen plan if it fits your business"],
               ].map(([number, text]) => (
                 <div key={number} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4">
                   <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-emerald-50 text-xs font-bold text-emerald-700">{number}</span>
