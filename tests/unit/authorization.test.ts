@@ -22,6 +22,11 @@ const allPermissions: Permission[] = [
   "sales.create",
   "payments.record",
   "financial.manage",
+  "purchases.create",
+  "grn.create",
+  "returns.create",
+  "suppliers.manage",
+  "expenses.create",
   "workspace.manage",
   "members.manage",
 ];
