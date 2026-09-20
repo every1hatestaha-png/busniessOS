@@ -94,4 +94,53 @@ describe("FBR API client", () => {
     await expect(validateInvoiceWithFbr({ environment: "SANDBOX", token: "  ", payload, fetchImpl })).rejects.toThrow("FBR bearer token is not configured");
     expect(fetchImpl).not.toHaveBeenCalled();
   });
+
+  it("classifies request timeouts as retryable without exposing the bearer token", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      await new Promise<void>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          const error = new Error("aborted");
+          error.name = "AbortError";
+          reject(error);
+        }, { once: true });
+      });
+      throw new Error("unreachable");
+    }) as unknown as typeof fetch;
+
+    const result = await postInvoiceToFbr({
+      environment: "SANDBOX",
+      token: "super-secret-token",
+      payload,
+      fetchImpl,
+      timeoutMs: 1,
+    });
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      httpStatus: 0,
+      retryable: true,
+      errorCode: "TIMEOUT",
+      errorMessage: "FBR request timed out.",
+    }));
+    expect(JSON.stringify(result)).not.toContain("super-secret-token");
+  });
+
+  it("classifies network failures as retryable", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError("connection reset");
+    }) as unknown as typeof fetch;
+    const result = await validateInvoiceWithFbr({
+      environment: "SANDBOX",
+      token: "token",
+      payload,
+      fetchImpl,
+    });
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      httpStatus: 0,
+      retryable: true,
+      errorCode: "NETWORK_ERROR",
+      errorMessage: "connection reset",
+    }));
+  });
+
 });
