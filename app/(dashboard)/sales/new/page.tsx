@@ -20,7 +20,19 @@ export default async function NewSalePage() {
     db.product.findMany({
       where: { workspaceId, status: "ACTIVE" },
       orderBy: [{ name: "asc" }, { createdAt: "desc" }],
-      select: { id: true, name: true, sku: true, sellingPrice: true, stockQuantity: true, status: true, unit: true, defaultWeightKg: true },
+      select: {
+        id: true,
+        name: true,
+        sku: true,
+        sellingPrice: true,
+        stockQuantity: true,
+        status: true,
+        unit: true,
+        defaultWeightKg: true,
+        fbrRateDesc: true,
+        fbrRateValue: true,
+        fbrReferenceVerifiedAt: true,
+      },
     }),
     canRecordPayments ? getCashBankAccounts(workspaceId) : Promise.resolve([]),
     warehouseMode === "MANAGED" ? listActiveStockWarehouses(workspaceId) : Promise.resolve([]),
@@ -42,7 +54,14 @@ export default async function NewSalePage() {
     currentBalance: Number(customer.currentBalance),
     status: customer.status,
   }));
-  const products = productRows.map((product) => ({
+  const products = productRows.map((product) => {
+    const rateValue = product.fbrRateValue ? Number(product.fbrRateValue) : null;
+    const rateMatch = product.fbrRateDesc?.trim().match(/^(\d+(?:\.\d+)?)%$/);
+    const verifiedTaxRate = product.fbrReferenceVerifiedAt && rateValue !== null && rateMatch
+      && Math.abs(Number(rateMatch[1]) - rateValue) < 0.0001
+      ? rateValue
+      : null;
+    return {
     id: product.id,
     name: product.name,
     sku: product.sku ?? "",
@@ -51,7 +70,9 @@ export default async function NewSalePage() {
     status: product.status,
     unit: product.unit,
     defaultWeightKg: product.defaultWeightKg ? Number(product.defaultWeightKg) : null,
-  }));
+    verifiedTaxRate,
+  };
+  });
 
   return <SalesOrderForm
     customers={customers}

@@ -18,27 +18,52 @@ const orderSchema = saleSchema.superRefine((order, context) => {
   const gross = order.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
   const lineDiscounts = order.items.reduce((sum, item) => sum + item.quantity * item.discountPerUnit, 0);
   if (order.orderDiscount > Math.max(0, gross - lineDiscounts)) context.addIssue({ code: "custom", message: "Discount exceeds the remaining order value", path: ["orderDiscount"] });
-  const taxableAmount = Math.max(0, gross - lineDiscounts - order.orderDiscount);
-  const gstAmount = Number((taxableAmount * order.gstRate / 100).toFixed(2));
-  const total = taxableAmount + gstAmount;
+  const preview = mixedTaxPreview(order.items, order.orderDiscount, order.gstRate);
+  const total = preview.total;
   if (order.paidAmount > total) context.addIssue({ code: "custom", message: "Paid amount cannot exceed the total", path: ["paidAmount"] });
 });
 
 type OrderFormInput = z.input<typeof orderSchema>;
 type OrderFormValues = z.output<typeof orderSchema>;
 type CustomerOption = { id: string; name: string; companyName: string; phone: string; creditLimit: number; currentBalance: number; status: "ACTIVE" | "INACTIVE" | "BLACKLISTED" };
-type ProductOption = { id: string; name: string; sku: string; sellingPrice: number; stockQuantity: number; status: "ACTIVE" | "INACTIVE" | "ARCHIVED"; unit: string; defaultWeightKg: number | null };
+type ProductOption = { id: string; name: string; sku: string; sellingPrice: number; stockQuantity: number; status: "ACTIVE" | "INACTIVE" | "ARCHIVED"; unit: string; defaultWeightKg: number | null; verifiedTaxRate: number | null };
 type CashBankOption = { cashBankAccountId: string; name: string; currentBalance: number; isBank: boolean; bankName?: string | null };
 type WarehouseOption = { id: string; name: string; code: string; isDefault: boolean };
 type WarehouseStockOption = { warehouseId: string; productId: string; quantity: number };
 
 const fieldClass = "h-9 w-full rounded-md border border-input bg-white px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15";
 
+function money(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function mixedTaxPreview(items: Array<{ quantity?: number; unitPrice?: number; discountPerUnit?: number; taxRate?: number }>, orderDiscount: number, fallbackRate: number) {
+  const bases = items.map((item) => Math.max(0, Number(item.quantity || 0) * (Number(item.unitPrice || 0) - Number(item.discountPerUnit || 0))));
+  const base = bases.reduce((sum, amount) => sum + amount, 0);
+  let allocatedDiscount = 0;
+  const lines = bases.map((amount, index) => {
+    const last = index === bases.length - 1;
+    const allocated = last
+      ? money(Math.max(0, orderDiscount - allocatedDiscount))
+      : base > 0
+        ? Math.floor((amount * orderDiscount / base) * 100) / 100
+        : 0;
+    allocatedDiscount = money(allocatedDiscount + allocated);
+    const taxable = money(Math.max(0, amount - allocated));
+    const rate = Number(items[index]?.taxRate ?? fallbackRate);
+    const tax = money(taxable * rate / 100);
+    return { taxable, rate, tax };
+  });
+  const taxableAmount = money(lines.reduce((sum, line) => sum + line.taxable, 0));
+  const taxAmount = money(lines.reduce((sum, line) => sum + line.tax, 0));
+  return { lines, taxableAmount, taxAmount, total: money(taxableAmount + taxAmount) };
+}
+
 export function SalesOrderForm({ customers, products, cashBankAccounts = [], canRecordPayments = true, warehouseMode = "LEGACY", warehouses = [], warehouseStocks = [] }: { customers: CustomerOption[]; products: ProductOption[]; cashBankAccounts?: CashBankOption[]; canRecordPayments?: boolean; warehouseMode?: "LEGACY" | "MANAGED"; warehouses?: WarehouseOption[]; warehouseStocks?: WarehouseStockOption[] }) {
   const [actionState, submitAction, isPending] = useActionState(createSaleAction, {} as CreateSaleState);
   const { control, register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<OrderFormInput, unknown, OrderFormValues>({
     resolver: zodResolver(orderSchema),
-    defaultValues: { customerId: "", warehouseId: warehouseMode === "MANAGED" ? (warehouses.find((warehouse) => warehouse.isDefault)?.id ?? "") : undefined, items: [{ productId: "", quantity: 1, pricingMode: "UNIT", unitWeight: undefined, perKgRate: undefined, unitPrice: 0, discountPerUnit: 0 }], orderDiscount: 0, gstRate: 18, paidAmount: 0, cashBankAccountId: "", notes: "", idempotencyKey: "00000000-0000-0000-0000-000000000000" },
+    defaultValues: { customerId: "", warehouseId: warehouseMode === "MANAGED" ? (warehouses.find((warehouse) => warehouse.isDefault)?.id ?? "") : undefined, items: [{ productId: "", quantity: 1, pricingMode: "UNIT", unitWeight: undefined, perKgRate: undefined, unitPrice: 0, discountPerUnit: 0, taxRate: 18 }], orderDiscount: 0, gstRate: 18, paidAmount: 0, cashBankAccountId: "", notes: "", idempotencyKey: "00000000-0000-0000-0000-000000000000" },
   });
   const { fields, append, remove } = useFieldArray({ control, name: "items" });
   const items = useWatch({ control, name: "items" }) ?? [];
@@ -53,9 +78,12 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
     : (products.find((product) => product.id === productId)?.stockQuantity ?? 0);
   const subtotal = items.reduce((sum, item) => sum + (item?.quantity || 0) * (item?.unitPrice || 0), 0);
   const lineDiscounts = items.reduce((sum, item) => sum + (item?.quantity || 0) * (item?.discountPerUnit || 0), 0);
-  const taxableAmount = Math.max(0, subtotal - lineDiscounts - orderDiscount);
-  const gstAmount = Number((taxableAmount * gstRate / 100).toFixed(2));
-  const total = taxableAmount + gstAmount;
+  const preview = mixedTaxPreview(items, orderDiscount, gstRate);
+  const taxableAmount = preview.taxableAmount;
+  const gstAmount = preview.taxAmount;
+  const total = preview.total;
+  const taxRates = [...new Set(preview.lines.map((line) => line.rate))];
+  const taxLabel = taxRates.length === 1 ? `${taxRates[0]}%` : "Mixed";
   const balance = calculateBalance(total, paidAmount);
 
   function selectProduct(index: number, productId: string) {
@@ -67,6 +95,7 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
       setValue(`items.${index}.unitWeight`, weighted ? product.defaultWeightKg! : undefined, { shouldValidate: true, shouldDirty: true });
       setValue(`items.${index}.perKgRate`, weighted ? product.sellingPrice : undefined, { shouldValidate: true, shouldDirty: true });
       setValue(`items.${index}.unitPrice`, weighted ? product.defaultWeightKg! * product.sellingPrice : product.sellingPrice, { shouldValidate: true, shouldDirty: true });
+      setValue(`items.${index}.taxRate`, product.verifiedTaxRate ?? gstRate, { shouldValidate: true, shouldDirty: true });
     }
   }
 
@@ -97,6 +126,7 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
   }
 
   return <form onSubmit={handleSubmit(submitOrder)} className="mx-auto w-full max-w-[1500px] space-y-5 pb-10">
+    <input type="hidden" {...register("gstRate", { valueAsNumber: true })} />
     <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div><Link href="/sales" className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-900"><ArrowLeft className="size-3.5" />Sales</Link><h1 className="text-2xl font-semibold tracking-tight text-slate-950">New Sales Order</h1><p className="mt-1 text-sm text-slate-500">Create the sale, invoice, receivable, and stock movement in one step.</p></div>
       <div className="flex gap-2"><Button type="button" variant="outline" size="sm" render={<Link href="/sales" />}>Cancel</Button><Button type="submit" size="sm" disabled={isSubmitting || isPending}>{isPending ? "Creating..." : "Create Sale"}</Button></div>
@@ -117,18 +147,19 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
         </Card>
 
         <Card className="gap-0 overflow-hidden rounded-lg border py-0 shadow-sm ring-0">
-          <CardHeader className="flex-row items-center justify-between border-b bg-slate-50/60 px-5 py-4"><div><CardTitle className="text-sm font-semibold">Line Items</CardTitle><p className="mt-0.5 text-xs text-slate-500">Add products, quantities, unit or weight pricing, and per-unit discounts.</p></div><Button type="button" variant="outline" size="sm" onClick={() => append({ productId: "", quantity: 1, pricingMode: "UNIT", unitWeight: undefined, perKgRate: undefined, unitPrice: 0, discountPerUnit: 0 })}><Plus />Add line</Button></CardHeader>
+          <CardHeader className="flex-row items-center justify-between border-b bg-slate-50/60 px-5 py-4"><div><CardTitle className="text-sm font-semibold">Line Items</CardTitle><p className="mt-0.5 text-xs text-slate-500">Add products, quantities, unit or weight pricing, and per-unit discounts.</p></div><Button type="button" variant="outline" size="sm" onClick={() => append({ productId: "", quantity: 1, pricingMode: "UNIT", unitWeight: undefined, perKgRate: undefined, unitPrice: 0, discountPerUnit: 0, taxRate: gstRate })}><Plus />Add line</Button></CardHeader>
           <CardContent className="overflow-x-auto p-0">
-            <div className="min-w-[720px]"><div className="grid grid-cols-[minmax(210px,1fr)_80px_110px_105px_120px_36px] gap-2 border-b bg-slate-50 px-5 py-2.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500"><span>Product</span><span className="text-right">Qty</span><span className="text-right">Unit price</span><span className="text-right">Disc/unit</span><span className="text-right">Line total</span><span /></div>
+            <div className="min-w-[720px]"><div className="grid grid-cols-[minmax(210px,1fr)_80px_110px_105px_85px_120px_36px] gap-2 border-b bg-slate-50 px-5 py-2.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500"><span>Product</span><span className="text-right">Qty</span><span className="text-right">Unit price</span><span className="text-right">Disc/unit</span><span className="text-right">Tax %</span><span className="text-right">Line total</span><span /></div>
             {fields.map((field, index) => {
               const line = items[index];
               const lineTotal = Math.max(0, (line?.quantity || 0) * (line?.unitPrice || 0) - (line?.quantity || 0) * (line?.discountPerUnit || 0));
               const selectedProduct = products.find((product) => product.id === line?.productId);
               return <div key={field.id} className="grid grid-cols-[minmax(210px,1fr)_80px_110px_105px_120px_36px] items-start gap-2 border-b px-5 py-3 last:border-0">
-                <Field error={errors.items?.[index]?.productId?.message}><select value={line?.productId ?? ""} onChange={(event) => selectProduct(index, event.target.value)} className={fieldClass}><option value="">Select product</option>{products.filter((product) => product.status === "ACTIVE").map((product) => <option key={product.id} value={product.id}>{product.name} ({product.sku})</option>)}</select>{selectedProduct && <><span className="mt-1 block text-[10px] text-slate-500">Available {availableStock(selectedProduct.id)} {selectedProduct.unit.toLowerCase()}{warehouseMode === "MANAGED" ? " in selected warehouse" : ""}</span><div className="mt-2 grid grid-cols-[100px_1fr_1fr] gap-1.5"><select aria-label="Pricing mode" value={line?.pricingMode ?? "UNIT"} onChange={(event) => setPricing(index, event.target.value as "UNIT" | "WEIGHT")} className={fieldClass}><option value="UNIT">By unit</option><option value="WEIGHT">By weight</option></select>{line?.pricingMode === "WEIGHT" && <><Input aria-label="Actual weight per unit kg" type="number" min="0.001" step="0.001" value={line?.unitWeight ?? ""} onChange={(event) => setWeightValue(index, "unitWeight", Number(event.target.value))} placeholder="kg/unit" className="text-right text-xs" /><Input aria-label="Rate per kg" type="number" min="0.01" step="0.01" value={line?.perKgRate ?? ""} onChange={(event) => setWeightValue(index, "perKgRate", Number(event.target.value))} placeholder="Rs/kg" className="text-right text-xs" /></>}</div>{line?.pricingMode === "WEIGHT" && <span className="mt-1 block text-[10px] font-medium text-emerald-700">Actual {Number(line?.unitWeight || 0).toFixed(3)} kg/unit · {formatPKR(Number(line?.perKgRate || 0))}/kg · total {(Number(line?.unitWeight || 0) * Number(line?.quantity || 0)).toFixed(3)} kg</span>}{line?.pricingMode === "WEIGHT" && (errors.items?.[index]?.unitWeight?.message || errors.items?.[index]?.perKgRate?.message) && <span className="mt-1 block text-[10px] font-medium text-red-600">{errors.items?.[index]?.unitWeight?.message || errors.items?.[index]?.perKgRate?.message}</span>}</>}</Field>
+                <Field error={errors.items?.[index]?.productId?.message}><select value={line?.productId ?? ""} onChange={(event) => selectProduct(index, event.target.value)} className={fieldClass}><option value="">Select product</option>{products.filter((product) => product.status === "ACTIVE").map((product) => <option key={product.id} value={product.id}>{product.name} ({product.sku})</option>)}</select>{selectedProduct && <><span className="mt-1 block text-[10px] text-slate-500">Available {availableStock(selectedProduct.id)} {selectedProduct.unit.toLowerCase()}{warehouseMode === "MANAGED" ? " in selected warehouse" : ""}</span>{selectedProduct.verifiedTaxRate !== null && <span className="mt-1 block text-[10px] font-medium text-emerald-700">Verified FBR rate: {selectedProduct.verifiedTaxRate}%</span>}<div className="mt-2 grid grid-cols-[100px_1fr_1fr] gap-1.5"><select aria-label="Pricing mode" value={line?.pricingMode ?? "UNIT"} onChange={(event) => setPricing(index, event.target.value as "UNIT" | "WEIGHT")} className={fieldClass}><option value="UNIT">By unit</option><option value="WEIGHT">By weight</option></select>{line?.pricingMode === "WEIGHT" && <><Input aria-label="Actual weight per unit kg" type="number" min="0.001" step="0.001" value={line?.unitWeight ?? ""} onChange={(event) => setWeightValue(index, "unitWeight", Number(event.target.value))} placeholder="kg/unit" className="text-right text-xs" /><Input aria-label="Rate per kg" type="number" min="0.01" step="0.01" value={line?.perKgRate ?? ""} onChange={(event) => setWeightValue(index, "perKgRate", Number(event.target.value))} placeholder="Rs/kg" className="text-right text-xs" /></>}</div>{line?.pricingMode === "WEIGHT" && <span className="mt-1 block text-[10px] font-medium text-emerald-700">Actual {Number(line?.unitWeight || 0).toFixed(3)} kg/unit · {formatPKR(Number(line?.perKgRate || 0))}/kg · total {(Number(line?.unitWeight || 0) * Number(line?.quantity || 0)).toFixed(3)} kg</span>}{line?.pricingMode === "WEIGHT" && (errors.items?.[index]?.unitWeight?.message || errors.items?.[index]?.perKgRate?.message) && <span className="mt-1 block text-[10px] font-medium text-red-600">{errors.items?.[index]?.unitWeight?.message || errors.items?.[index]?.perKgRate?.message}</span>}</>}</Field>
                 <Field error={errors.items?.[index]?.quantity?.message}><Input type="number" min="1" step="1" className="text-right text-sm" {...register(`items.${index}.quantity`, { valueAsNumber: true })} /></Field>
                 <Field error={errors.items?.[index]?.unitPrice?.message}><Input type="number" min="0" step="0.01" readOnly={line?.pricingMode === "WEIGHT"} className="text-right text-sm read-only:bg-slate-50" {...register(`items.${index}.unitPrice`, { valueAsNumber: true })} /></Field>
                 <Field error={errors.items?.[index]?.discountPerUnit?.message}><Input type="number" min="0" step="1" className="text-right text-sm" {...register(`items.${index}.discountPerUnit`, { valueAsNumber: true })} /></Field>
+                <Field error={errors.items?.[index]?.taxRate?.message}><Input type="number" min="0" max="100" step="0.01" className="text-right text-sm" {...register(`items.${index}.taxRate`, { valueAsNumber: true })} /></Field>
                 <div className="flex h-9 items-center justify-end text-sm font-semibold tabular-nums">{formatPKR(lineTotal)}</div>
                 <Button type="button" variant="ghost" size="icon" disabled={fields.length === 1} onClick={() => remove(index)} aria-label={`Remove line ${index + 1}`}><Trash2 className="text-red-600" /></Button>
               </div>;
@@ -137,10 +168,10 @@ export function SalesOrderForm({ customers, products, cashBankAccounts = [], can
           </CardContent>
         </Card>
 
-        <Card className="gap-0 overflow-hidden rounded-lg border py-0 shadow-sm ring-0"><CardHeader className="border-b bg-slate-50/60 px-5 py-4"><CardTitle className="text-sm font-semibold">Payment & Notes</CardTitle></CardHeader><CardContent className="grid gap-4 p-5 md:grid-cols-2"><Field label="Order discount" hint="After line discounts" error={errors.orderDiscount?.message}><Input type="number" min="0" step="1" {...register("orderDiscount", { valueAsNumber: true })} /></Field><Field label="GST rate" hint="Default 18%" error={errors.gstRate?.message}><Input type="number" min="0" max="100" step="0.01" {...register("gstRate", { valueAsNumber: true })} /></Field>{canRecordPayments && <Field label="Paid now" hint="Optional initial receipt" error={errors.paidAmount?.message}><Input type="number" min="0" step="1" {...register("paidAmount", { valueAsNumber: true })} /></Field>}{canRecordPayments && paidAmount > 0 && <Field label="Receive into" hint="Required" error={errors.cashBankAccountId?.message}><select {...register("cashBankAccountId")} className={fieldClass} required><option value="">Select cash/bank account</option>{cashBankAccounts.map((account) => <option key={account.cashBankAccountId} value={account.cashBankAccountId}>{account.name}{account.isBank && account.bankName ? ` · ${account.bankName}` : ""} · {formatPKR(account.currentBalance)}</option>)}</select>{cashBankAccounts.length === 0 && <span className="mt-1 block text-[10px] font-medium text-red-600">Create an active cash/bank account before receiving payment.</span>}</Field>}<div className="md:col-span-2"><Field label="Notes" error={errors.notes?.message}><textarea {...register("notes")} rows={3} placeholder="Dispatch, delivery, or payment instructions" className={`${fieldClass} h-auto resize-y py-2`} /></Field></div></CardContent></Card>
+        <Card className="gap-0 overflow-hidden rounded-lg border py-0 shadow-sm ring-0"><CardHeader className="border-b bg-slate-50/60 px-5 py-4"><CardTitle className="text-sm font-semibold">Payment & Notes</CardTitle></CardHeader><CardContent className="grid gap-4 p-5 md:grid-cols-2"><Field label="Order discount" hint="After line discounts" error={errors.orderDiscount?.message}><Input type="number" min="0" step="1" {...register("orderDiscount", { valueAsNumber: true })} /></Field>{canRecordPayments && <Field label="Paid now" hint="Optional initial receipt" error={errors.paidAmount?.message}><Input type="number" min="0" step="1" {...register("paidAmount", { valueAsNumber: true })} /></Field>}{canRecordPayments && paidAmount > 0 && <Field label="Receive into" hint="Required" error={errors.cashBankAccountId?.message}><select {...register("cashBankAccountId")} className={fieldClass} required><option value="">Select cash/bank account</option>{cashBankAccounts.map((account) => <option key={account.cashBankAccountId} value={account.cashBankAccountId}>{account.name}{account.isBank && account.bankName ? ` · ${account.bankName}` : ""} · {formatPKR(account.currentBalance)}</option>)}</select>{cashBankAccounts.length === 0 && <span className="mt-1 block text-[10px] font-medium text-red-600">Create an active cash/bank account before receiving payment.</span>}</Field>}<div className="md:col-span-2"><Field label="Notes" error={errors.notes?.message}><textarea {...register("notes")} rows={3} placeholder="Dispatch, delivery, or payment instructions" className={`${fieldClass} h-auto resize-y py-2`} /></Field></div></CardContent></Card>
       </div>
 
-      <Card className="gap-0 overflow-hidden rounded-lg border py-0 shadow-sm ring-0 2xl:sticky 2xl:top-6"><CardHeader className="border-b bg-slate-50/60 px-5 py-4"><CardTitle className="text-sm font-semibold">Order Summary</CardTitle></CardHeader><CardContent className="space-y-3.5 p-5 text-sm"><SummaryRow label="Subtotal" value={formatPKR(subtotal)} /><SummaryRow label="Line discounts" value={`- ${formatPKR(lineDiscounts)}`} /><SummaryRow label="Order discount" value={`- ${formatPKR(orderDiscount)}`} /><SummaryRow label="Taxable amount" value={formatPKR(taxableAmount)} /><SummaryRow label={`GST (${gstRate}%)`} value={formatPKR(gstAmount)} /><div className="flex items-center justify-between border-t pt-4"><span className="font-semibold">Grand total</span><span className="text-xl font-semibold tabular-nums">{formatPKR(total)}</span></div><SummaryRow label="Paid now" value={formatPKR(paidAmount)} /><div className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 p-3.5 text-blue-950"><span className="font-medium">New receivable</span><span className="text-lg font-semibold tabular-nums">{formatPKR(balance)}</span></div>{selectedCustomer && <SummaryRow label="Available credit" value={selectedCustomer.creditLimit > 0 ? formatPKR(Math.max(0, selectedCustomer.creditLimit - selectedCustomer.currentBalance)) : "Not configured"} />}<p className="border-t pt-3 text-xs leading-relaxed text-slate-500">Creating this confirmed order updates stock and customer balance, creates the invoice, and records an initial receipt when paid now is used.</p><Button type="submit" size="lg" className="w-full" disabled={isSubmitting || isPending}>{isPending ? "Creating..." : "Create Confirmed Sale"}</Button></CardContent></Card>
+      <Card className="gap-0 overflow-hidden rounded-lg border py-0 shadow-sm ring-0 2xl:sticky 2xl:top-6"><CardHeader className="border-b bg-slate-50/60 px-5 py-4"><CardTitle className="text-sm font-semibold">Order Summary</CardTitle></CardHeader><CardContent className="space-y-3.5 p-5 text-sm"><SummaryRow label="Subtotal" value={formatPKR(subtotal)} /><SummaryRow label="Line discounts" value={`- ${formatPKR(lineDiscounts)}`} /><SummaryRow label="Order discount" value={`- ${formatPKR(orderDiscount)}`} /><SummaryRow label="Taxable amount" value={formatPKR(taxableAmount)} /><SummaryRow label={`Sales tax (${taxLabel})`} value={formatPKR(gstAmount)} /><div className="flex items-center justify-between border-t pt-4"><span className="font-semibold">Grand total</span><span className="text-xl font-semibold tabular-nums">{formatPKR(total)}</span></div><SummaryRow label="Paid now" value={formatPKR(paidAmount)} /><div className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 p-3.5 text-blue-950"><span className="font-medium">New receivable</span><span className="text-lg font-semibold tabular-nums">{formatPKR(balance)}</span></div>{selectedCustomer && <SummaryRow label="Available credit" value={selectedCustomer.creditLimit > 0 ? formatPKR(Math.max(0, selectedCustomer.creditLimit - selectedCustomer.currentBalance)) : "Not configured"} />}<p className="border-t pt-3 text-xs leading-relaxed text-slate-500">Creating this confirmed order updates stock and customer balance, creates the invoice, and records an initial receipt when paid now is used.</p><Button type="submit" size="lg" className="w-full" disabled={isSubmitting || isPending}>{isPending ? "Creating..." : "Create Confirmed Sale"}</Button></CardContent></Card>
     </div>
   </form>;
 }
