@@ -1,7 +1,4 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
-# More GitHub Actions for Azure: https://github.com/Azure/actions
-
-name: Build and deploy Node.js app to Azure Web App - munshiOS
+name: Verify Vercel production release - MunshiOS
 
 on:
   push:
@@ -32,12 +29,6 @@ jobs:
           npm run build --if-present
           npm run test --if-present
 
-      - name: Upload artifact for deployment job
-        uses: actions/upload-artifact@v4
-        with:
-          name: node-app
-          path: .
-
   migrate-production:
     runs-on: ubuntu-latest
     needs: build
@@ -67,39 +58,34 @@ jobs:
       - name: Verify no production migrations remain pending
         run: npx prisma migrate status
 
-  deploy:
+  verify-vercel-production:
     runs-on: ubuntu-latest
     needs:
       - build
       - migrate-production
 
     steps:
-      - name: Download artifact from build job
-        uses: actions/download-artifact@v4
-        with:
-          name: node-app
-
-      - name: Deploy to Azure Web App
-        id: deploy-to-webapp
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: 'munshiOS'
-          slot-name: 'Production'
-          package: .
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_C8EC360977AC410C96E8E917AD9E5458 }}
-
-      - name: Verify deployed runtime database readiness
+      - name: Verify Vercel deployment revision and database readiness
         shell: bash
+        env:
+          READINESS_URL: https://business-os-one-gules.vercel.app/api/readiness
         run: |
-          readiness_url="https://munshios-eaduhmhffefkbdgp.centralindia-01.azurewebsites.net/api/readiness"
-          for attempt in {1..36}; do
-            status="$(curl --silent --show-error --max-time 10 --output /tmp/munshios-readiness.json --write-out "%{http_code}" "$readiness_url" || true)"
-            if [ "$status" = "200" ] && grep -q '"ok":true' /tmp/munshios-readiness.json; then
-              echo "MunshiOS runtime database readiness verified."
+          expected_revision="${GITHUB_SHA:0:12}"
+          for attempt in {1..60}; do
+            status="$(curl --silent --show-error --max-time 10 --output /tmp/munshios-readiness.json --write-out "%{http_code}" "$READINESS_URL" || true)"
+            if [ "$status" = "200" ] && EXPECTED_REVISION="$expected_revision" node -e '
+              const fs = require("node:fs");
+              const body = JSON.parse(fs.readFileSync("/tmp/munshios-readiness.json", "utf8"));
+              const ready = body.ok === true
+                && body.database === "ready"
+                && body.revision === process.env.EXPECTED_REVISION;
+              process.exit(ready ? 0 : 1);
+            '; then
+              echo "MunshiOS Vercel revision and production database readiness verified."
               exit 0
             fi
             sleep 5
           done
-          echo "MunshiOS runtime did not report database readiness after deployment."
+          echo "MunshiOS Vercel production did not reach the expected revision and database readiness."
           if [ -f /tmp/munshios-readiness.json ]; then cat /tmp/munshios-readiness.json; fi
           exit 1
