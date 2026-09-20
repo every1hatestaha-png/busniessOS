@@ -389,15 +389,13 @@ export async function removeProduct(context: ProductMutationContext, id: string)
     const product = await tx.product.findFirst({ where: { id, workspaceId: context.workspaceId }, select: { id: true, name: true, stockQuantity: true } });
     if (!product) throw new ProductDomainError("PRODUCT_NOT_FOUND", "Product not found.");
 
-    const [inventoryTransactions, salesItems, purchaseItems, grnItems, customerReturnItems, supplierReturnItems, accountingEntries] = await Promise.all([
-      tx.inventoryTransaction.findMany({ where: { workspaceId: context.workspaceId, productId: id }, select: { id: true, type: true, quantityChanged: true, reference: true } }),
-      tx.salesOrderItem.count({ where: { productId: id, salesOrder: { workspaceId: context.workspaceId } } }),
-      tx.purchaseOrderItem.count({ where: { productId: id, purchaseOrder: { workspaceId: context.workspaceId } } }),
-      tx.goodReceivedNoteItem.count({ where: { productId: id, goodReceivedNote: { workspaceId: context.workspaceId } } }),
-      tx.customerReturnItem.count({ where: { productId: id, customerReturn: { workspaceId: context.workspaceId } } }),
-      tx.supplierReturnItem.count({ where: { productId: id, supplierReturn: { workspaceId: context.workspaceId } } }),
-      tx.generalLedgerEntry.count({ where: { workspaceId: context.workspaceId, sourceType: "ADJUSTMENT", sourceId: id } }),
-    ]);
+    const inventoryTransactions = await tx.inventoryTransaction.findMany({ where: { workspaceId: context.workspaceId, productId: id }, select: { id: true, type: true, quantityChanged: true, reference: true } });
+    const salesItems = await tx.salesOrderItem.count({ where: { productId: id, salesOrder: { workspaceId: context.workspaceId } } });
+    const purchaseItems = await tx.purchaseOrderItem.count({ where: { productId: id, purchaseOrder: { workspaceId: context.workspaceId } } });
+    const grnItems = await tx.goodReceivedNoteItem.count({ where: { productId: id, goodReceivedNote: { workspaceId: context.workspaceId } } });
+    const customerReturnItems = await tx.customerReturnItem.count({ where: { productId: id, customerReturn: { workspaceId: context.workspaceId } } });
+    const supplierReturnItems = await tx.supplierReturnItem.count({ where: { productId: id, supplierReturn: { workspaceId: context.workspaceId } } });
+    const accountingEntries = await tx.generalLedgerEntry.count({ where: { workspaceId: context.workspaceId, sourceType: "ADJUSTMENT", sourceId: id } });
     const removableOpening = inventoryTransactions.length === 1
       && inventoryTransactions[0].type === "OPENING_STOCK"
       && inventoryTransactions[0].quantityChanged.isZero()
