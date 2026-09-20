@@ -11,7 +11,7 @@ export default async function NewPurchasePage() {
     db.supplier.findMany({ where: { workspaceId }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     db.product.findMany({
       where: { workspaceId, status: "ACTIVE" },
-      select: { id: true, name: true, unit: true, defaultWeightKg: true },
+      select: { id: true, name: true, sku: true, unit: true, defaultWeightKg: true },
       orderBy: { name: "asc" },
     }),
   ]);
