@@ -1,5 +1,6 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import {
@@ -42,13 +43,23 @@ export async function createWorkspace(
     builderBusiness,
   );
   const billing = sanitizeBilling(String(formData.get("billing") ?? "monthly"));
+  const createAdditional = formData.get("creationMode") === "additional";
 
   const user = await getCurrentUser();
   try {
-    await createInitialWorkspace(user.id, parsed.data, {
+    const result = await createInitialWorkspace(user.id, parsed.data, {
       modules,
       billing,
       builderBusiness,
+    }, {
+      allowAdditional: createAdditional,
+    });
+    (await cookies()).set("businessos_workspace", result.workspaceId, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
     });
   } catch {
     return { error: "We could not create your workspace. Please try again." };

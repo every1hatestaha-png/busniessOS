@@ -37,8 +37,10 @@ const moduleLabels: Record<ProvisioningModuleKey, string> = {
 export function OnboardingForm({
   initialValues,
   provisioning,
+  createAdditional = false,
 }: {
   initialValues: { email: string; ownerName: string };
+  createAdditional?: boolean;
   provisioning: {
     builderBusiness: BuilderBusinessType | null;
     modules: ProvisioningModuleKey[];
@@ -72,8 +74,8 @@ export function OnboardingForm({
             </div>
 
             <div className="mt-12">
-              <p className="text-xs font-bold uppercase tracking-[0.22em] text-emerald-300">Workspace setup</p>
-              <h1 className="mt-4 text-4xl font-semibold leading-tight tracking-[-0.04em]">Your business. Your Munshi.</h1>
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-emerald-300">{createAdditional ? "Add business" : "Workspace setup"}</p>
+              <h1 className="mt-4 text-4xl font-semibold leading-tight tracking-[-0.04em]">{createAdditional ? "Add another business." : "Your business. Your Munshi."}</h1>
               <p className="mt-4 max-w-sm text-sm leading-6 text-slate-300">Add the details that will appear across your dashboard, invoices, reports and business documents.</p>
             </div>
 
@@ -132,6 +134,7 @@ export function OnboardingForm({
               <input type="hidden" name="selectedModules" value={provisioning.modules.join(",")} />
               <input type="hidden" name="billing" value={provisioning.billing} />
               <input type="hidden" name="builderBusiness" value={provisioning.builderBusiness ?? ""} />
+              <input type="hidden" name="creationMode" value={createAdditional ? "additional" : "initial"} />
               {step === 2 && (
                 <>
                   <input type="hidden" name="businessName" value={businessName} />

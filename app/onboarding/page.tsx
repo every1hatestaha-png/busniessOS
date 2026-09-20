@@ -16,10 +16,11 @@ export default async function OnboardingPage({
 }) {
   const user = await getCurrentUser();
   const context = await getCurrentWorkspace();
-
-  if (context) redirect("/dashboard");
-
   const params = await searchParams;
+  const rawMode = Array.isArray(params.mode) ? params.mode[0] : params.mode;
+  const createAdditional = rawMode === "new";
+
+  if (context && !createAdditional) redirect("/dashboard");
   const rawBusiness = Array.isArray(params.business) ? params.business[0] : params.business;
   const builderBusiness = isBuilderBusinessType(rawBusiness) ? rawBusiness : null;
   const modules = sanitizeProvisioningModules(params.modules);
@@ -27,6 +28,7 @@ export default async function OnboardingPage({
 
   return (
     <OnboardingForm
+      createAdditional={createAdditional}
       initialValues={{
         email: user.email,
         ownerName: [user.firstName, user.lastName].filter(Boolean).join(" "),

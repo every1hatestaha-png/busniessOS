@@ -16,6 +16,10 @@ type ProvisioningInput = {
   builderBusiness: string | null;
 };
 
+type WorkspaceCreationOptions = {
+  allowAdditional?: boolean;
+};
+
 function defaultModulesForBusinessType(businessType: BusinessType): ProvisioningModuleKey[] {
   switch (businessType) {
     case "RETAILER":
@@ -102,6 +106,7 @@ export async function createInitialWorkspace(
   userId: string,
   input: OnboardingInput,
   provisioning?: ProvisioningInput,
+  options: WorkspaceCreationOptions = {},
 ) {
   const data = onboardingSchema.parse(input);
   const nameParts = data.ownerName.split(/\s+/);
@@ -111,7 +116,29 @@ export async function createInitialWorkspace(
   try {
     const result = await withSerializableRetry(async (tx) => {
       const existing = await tx.workspaceMember.findFirst({ where: { userId }, select: { workspaceId: true } });
-      if (existing) return existing;
+      if (existing && !options.allowAdditional) return existing;
+
+      if (options.allowAdditional) {
+        const recentMatch = await tx.workspaceMember.findFirst({
+          where: {
+            userId,
+            role: "OWNER",
+            workspace: {
+              name: data.businessName,
+              phone: data.phone,
+              email: data.email,
+              address: data.address,
+              city: data.city,
+              country: data.country,
+              createdAt: { gte: new Date(Date.now() - 5 * 60_000) },
+            },
+          },
+          select: { workspaceId: true },
+          orderBy: { workspace: { createdAt: "desc" } },
+        });
+        if (recentMatch) return recentMatch;
+      }
+
       const workspace = await tx.workspace.create({
         data: {
           name: data.businessName,
@@ -136,15 +163,17 @@ export async function createInitialWorkspace(
     await recordCheckoutPreference(result.workspaceId, userId, provisioning);
     return result;
   } catch (error) {
-    const existing = await db.workspaceMember.findFirst({ where: { userId }, select: { workspaceId: true } });
-    if (existing) {
-      const workspace = await db.workspace.findUnique({
-        where: { id: existing.workspaceId },
-        select: { businessType: true },
-      });
-      await ensureWorkspaceSubscription(existing.workspaceId);
-      if (workspace) await ensureWorkspaceModules(existing.workspaceId, workspace.businessType, provisioning);
-      return existing;
+    if (!options.allowAdditional) {
+      const existing = await db.workspaceMember.findFirst({ where: { userId }, select: { workspaceId: true } });
+      if (existing) {
+        const workspace = await db.workspace.findUnique({
+          where: { id: existing.workspaceId },
+          select: { businessType: true },
+        });
+        await ensureWorkspaceSubscription(existing.workspaceId);
+        if (workspace) await ensureWorkspaceModules(existing.workspaceId, workspace.businessType, provisioning);
+        return existing;
+      }
     }
     throw error;
   }
