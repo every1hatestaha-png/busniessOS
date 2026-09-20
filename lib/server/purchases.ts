@@ -37,7 +37,8 @@ export class PurchaseDomainError extends Error {
       | "INVALID_GRN_STATUS"
       | "WAREHOUSE_REQUIRED"
       | "WAREHOUSE_NOT_FOUND"
-      | "WAREHOUSE_STOCK_ERROR",
+      | "WAREHOUSE_STOCK_ERROR"
+      | "IDEMPOTENCY_CONFLICT",
     message: string,
   ) {
     super(message);
@@ -79,9 +80,55 @@ export async function createPurchase(context: ServiceContext, input: PurchaseInp
   return withSerializableRetry(async (tx) => {
     const existing = await tx.purchaseOrder.findFirst({
       where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey },
-      select: { id: true, orderNumber: true },
+      select: {
+        id: true,
+        orderNumber: true,
+        supplierId: true,
+        notes: true,
+        expectedDeliveryDate: true,
+        department: true,
+        pricingMode: true,
+        items: {
+          select: {
+            productId: true,
+            quantity: true,
+            unitCost: true,
+            unitWeight: true,
+            perKgRate: true,
+          },
+        },
+      },
     });
-    if (existing) return existing;
+    if (existing) {
+      const requestedMode = data.pricingMode ?? "UNIT";
+      const itemByProduct = new Map(existing.items.map((item) => [item.productId, item]));
+      const sameItems = existing.items.length === data.items.length && data.items.every((requested) => {
+        const stored = itemByProduct.get(requested.productId);
+        if (!stored) return false;
+        const requestedUnitCost = requestedMode === "WEIGHT"
+          ? new Prisma.Decimal(requested.unitWeight!).mul(requested.perKgRate!)
+          : new Prisma.Decimal(requested.unitCost);
+        return stored.quantity.equals(requested.quantity)
+          && stored.unitCost.equals(requestedUnitCost)
+          && (
+            requestedMode !== "WEIGHT"
+            || (
+              new Prisma.Decimal(stored.unitWeight ?? 0).equals(requested.unitWeight!)
+              && new Prisma.Decimal(stored.perKgRate ?? 0).equals(requested.perKgRate!)
+            )
+          );
+      });
+      const sameRequest = existing.supplierId === data.supplierId
+        && existing.pricingMode === requestedMode
+        && (existing.notes ?? "") === (data.notes ?? "")
+        && (existing.department ?? "") === (data.department ?? "")
+        && (existing.expectedDeliveryDate?.getTime() ?? null) === (data.expectedDeliveryDate?.getTime() ?? null)
+        && sameItems;
+      if (!sameRequest) {
+        throw new PurchaseDomainError("IDEMPOTENCY_CONFLICT", "This idempotency key was already used for a different purchase request.");
+      }
+      return { id: existing.id, orderNumber: existing.orderNumber };
+    }
 
     const supplier = await tx.supplier.findFirst({
       where: { id: data.supplierId, workspaceId: context.workspaceId },
