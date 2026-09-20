@@ -14,6 +14,7 @@ const sections = [
     { href: "/sales", title: "Sales Register", description: "Persisted customer sales orders and settlement status.", icon: ShoppingCart },
     { href: "/invoices", title: "Invoice Register", description: "Persisted invoices, balances, and payment status.", icon: FileText },
     { href: "/purchases", title: "Purchase Order Register", description: "Purchase commitments and goods-receipt progress.", icon: Truck },
+    { href: "/reports/purchase-price-history", title: "Purchase Price History", description: "Compare accepted supplier costs by product, GRN, and date.", icon: PackageSearch },
   ] },
   { title: "Accounts", reports: [
     { href: "/reports/customer-statement", title: "Customer Statement", description: "Customer Khata transactions and running balance.", icon: UsersRound },
