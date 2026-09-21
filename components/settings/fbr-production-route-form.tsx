@@ -63,7 +63,7 @@ export function FbrProductionRouteForm({
             <p className="mt-1">
               {config?.integratorName} · {config?.productionApprovalReference}
             </p>
-            <p className="mt-1">Confirmed {config?.productionApprovedAt ? new Date(config.productionApprovedAt).toLocaleString() : ""}</p>
+            <p className="mt-1">Confirmed {config?.productionApprovedAt ? new Date(config.productionApprovedAt).toISOString().replace("T", " ").slice(0, 16) + " UTC" : ""}</p>
           </div>
         )}
 
@@ -72,7 +72,7 @@ export function FbrProductionRouteForm({
             <span className="mb-1.5 block text-xs font-semibold text-slate-700">Integration route</span>
             <select
               name="provider"
-              defaultValue={config?.provider === "PRAL" ? "PRAL" : "LICENSED_INTEGRATOR"}
+              defaultValue={config?.provider && config.provider !== "PRAL" ? "LICENSED_INTEGRATOR" : "PRAL"}
               disabled={!canConfirm}
               className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -84,7 +84,7 @@ export function FbrProductionRouteForm({
             <span className="mb-1.5 block text-xs font-semibold text-slate-700">Integrator name</span>
             <Input
               name="integratorName"
-              defaultValue={config?.integratorName ?? (config?.provider === "PRAL" ? "PRAL" : "")}
+              defaultValue={config?.integratorName ?? (!config || config.provider === "PRAL" ? "PRAL" : "")}
               placeholder="PRAL or licensed integrator"
               maxLength={120}
               disabled={!canConfirm}
