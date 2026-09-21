@@ -9,6 +9,7 @@ describe("FBR production compliance gate", () => {
       softwareRegistrationNo: "SW-REG-001",
       productionApprovedAt: new Date("2026-09-19T00:00:00.000Z"),
       productionApprovedBy: "user_123",
+      productionApprovalReference: "PRAL-ONBOARDING-001",
       taxMappingReady: true,
       hsUomCompatibilityReady: true,
     })).toEqual([]);
@@ -21,6 +22,7 @@ describe("FBR production compliance gate", () => {
       softwareRegistrationNo: "SW-REG-001",
       productionApprovedAt: new Date("2026-09-19T00:00:00.000Z"),
       productionApprovedBy: "user_123",
+      productionApprovalReference: "PRAL-ONBOARDING-001",
       hsUomCompatibilityReady: true,
     })).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: "PRODUCTION_TAX_MAPPING_NOT_READY" }),
@@ -32,6 +34,7 @@ describe("FBR production compliance gate", () => {
       provider: "PRAL",
       productionApprovedAt: new Date("2026-09-19T00:00:00.000Z"),
       productionApprovedBy: "user_123",
+      productionApprovalReference: "PRAL-ONBOARDING-001",
       taxMappingReady: true,
       hsUomCompatibilityReady: true,
     })).toEqual(expect.arrayContaining([
@@ -45,6 +48,7 @@ describe("FBR production compliance gate", () => {
       integratorName: "Example Integrator",
       productionApprovedAt: new Date("2026-09-19T00:00:00.000Z"),
       productionApprovedBy: "user_123",
+      productionApprovalReference: "PRAL-ONBOARDING-001",
       taxMappingReady: true,
       hsUomCompatibilityReady: true,
     })).toEqual(expect.arrayContaining([
@@ -70,10 +74,25 @@ describe("FBR production compliance gate", () => {
       integratorName: "PRAL",
       productionApprovedAt: new Date("2026-09-19T00:00:00.000Z"),
       productionApprovedBy: "user_123",
+      productionApprovalReference: "PRAL-ONBOARDING-001",
       taxMappingReady: true,
       hsUomCompatibilityReady: true,
     })).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: "FBR_SOFTWARE_REGISTRATION_REQUIRED" }),
+    ]));
+  });
+
+  it("requires an auditable production onboarding or approval reference", () => {
+    expect(validateFbrProductionCompliance({
+      provider: "PRAL",
+      integratorName: "PRAL",
+      softwareRegistrationNo: "SW-REG-001",
+      productionApprovedAt: new Date("2026-09-19T00:00:00.000Z"),
+      productionApprovedBy: "user_123",
+      taxMappingReady: true,
+      hsUomCompatibilityReady: true,
+    })).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "PRODUCTION_APPROVAL_REFERENCE_REQUIRED" }),
     ]));
   });
 
@@ -84,6 +103,7 @@ describe("FBR production compliance gate", () => {
       softwareRegistrationNo: "SW-REG-001",
       productionApprovedAt: new Date("2026-09-19T00:00:00.000Z"),
       productionApprovedBy: "user_123",
+      productionApprovalReference: "PRAL-ONBOARDING-001",
       taxMappingReady: true,
     })).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: "PRODUCTION_HS_UOM_COMPATIBILITY_NOT_READY" }),
@@ -98,6 +118,7 @@ describe("FBR production compliance gate", () => {
       softwareRegistrationNo: "SW-REG-001",
       productionApprovedAt: new Date("2026-09-19T00:00:00.000Z"),
       productionApprovedBy: "user_123",
+      productionApprovalReference: "PRAL-ONBOARDING-001",
       taxMappingReady: true,
       hsUomCompatibilityReady: true,
     })).toEqual([]);
