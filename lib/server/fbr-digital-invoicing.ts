@@ -237,6 +237,7 @@ export async function buildFbrInvoiceDraft(workspaceId: string, invoiceId: strin
       softwareRegistrationNo: config?.softwareRegistrationNo,
       productionApprovedAt: config?.productionApprovedAt,
       productionApprovedBy: config?.productionApprovedBy,
+      productionApprovalReference: config?.productionApprovalReference,
       taxMappingReady,
       hsUomCompatibilityReady,
     }));

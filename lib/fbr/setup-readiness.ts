@@ -5,6 +5,7 @@ export type FbrSetupReadinessInput = {
   referenceVerifiedProducts: number;
   annexureConfirmed: boolean;
   hsUomVerifiedProducts: number;
+  productionRouteConfirmed: boolean;
 };
 
 export type FbrSetupStep = {
@@ -56,6 +57,10 @@ export function buildFbrSetupReadiness(input: FbrSetupReadinessInput) {
     completed,
     total: steps.length,
     sandboxReady: completed === steps.length,
+    productionRouteReady: input.productionRouteConfirmed,
+    productionRouteDetail: input.productionRouteConfirmed
+      ? "A production integration route, software registration number, owner approval, and traceable onboarding reference are recorded."
+      : "Production integration evidence is incomplete. Record the PRAL or licensed-integrator route, software registration number, owner approval, and traceable reference.",
     productionHsUomReady: input.annexureConfirmed && input.hsUomVerifiedProducts > 0,
     productionHsUomDetail: input.annexureConfirmed
       ? input.hsUomVerifiedProducts > 0

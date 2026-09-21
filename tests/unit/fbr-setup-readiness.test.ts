@@ -11,10 +11,12 @@ describe("FBR setup readiness", () => {
       referenceVerifiedProducts: 2,
       annexureConfirmed: false,
       hsUomVerifiedProducts: 0,
+      productionRouteConfirmed: false,
     });
     expect(readiness.sandboxReady).toBe(true);
     expect(readiness.completed).toBe(4);
     expect(readiness.productionHsUomReady).toBe(false);
+    expect(readiness.productionRouteReady).toBe(false);
   });
 
   it("identifies missing sandbox setup and accepts production HS/UOM only with both confirmation and verified products", () => {
@@ -25,6 +27,7 @@ describe("FBR setup readiness", () => {
       referenceVerifiedProducts: 0,
       annexureConfirmed: true,
       hsUomVerifiedProducts: 0,
+      productionRouteConfirmed: false,
     });
     expect(incomplete.sandboxReady).toBe(false);
     expect(incomplete.completed).toBe(0);
@@ -38,7 +41,9 @@ describe("FBR setup readiness", () => {
       referenceVerifiedProducts: 0,
       annexureConfirmed: true,
       hsUomVerifiedProducts: 1,
+      productionRouteConfirmed: true,
     });
     expect(productionReady.productionHsUomReady).toBe(true);
+    expect(productionReady.productionRouteReady).toBe(true);
   });
 });

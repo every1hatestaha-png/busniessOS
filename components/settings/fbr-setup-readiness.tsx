@@ -39,6 +39,17 @@ export function FbrSetupReadiness(props: FbrSetupReadinessInput) {
           ))}
         </div>
 
+        <div className={"flex gap-2 rounded-xl border p-4 text-xs leading-5 " + (readiness.productionRouteReady ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-slate-50 text-slate-700")}>
+          {readiness.productionRouteReady
+            ? <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
+            : <AlertTriangle className="mt-0.5 size-4 shrink-0" />}
+          <div>
+            <p className="font-semibold">Production integration route</p>
+            <p className="mt-1">{readiness.productionRouteDetail}</p>
+            <p className="mt-1">This records release evidence only. It does not enable production network transmission.</p>
+          </div>
+        </div>
+
         <div className={"flex gap-2 rounded-xl border p-4 text-xs leading-5 " + (readiness.productionHsUomReady ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-slate-50 text-slate-700")}>
           {readiness.productionHsUomReady
             ? <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
