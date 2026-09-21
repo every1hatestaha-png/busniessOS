@@ -1155,6 +1155,7 @@ model FbrIntegrationConfig {
   defaultScenarioId    String?
   productionApprovedAt       DateTime?
   productionApprovedBy       String?
+  productionApprovalReference String?
   hsUomAnnexureId            Int?
   hsUomAnnexureConfirmedAt   DateTime?
   hsUomAnnexureConfirmedBy   String?
