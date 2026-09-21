@@ -91,11 +91,11 @@ export function FbrProductionRouteForm({
             />
           </label>
           <label className="block">
-            <span className="mb-1.5 block text-xs font-semibold text-slate-700">Integrator licence or FBR reference</span>
+            <span className="mb-1.5 block text-xs font-semibold text-slate-700">Licensed-integrator reference</span>
             <Input
               name="integratorLicenseNo"
               defaultValue={config?.integratorLicenseNo ?? ""}
-              placeholder="Required for non-PRAL routes"
+              placeholder="Required for licensed-integrator routes"
               maxLength={120}
               disabled={!canConfirm}
             />
