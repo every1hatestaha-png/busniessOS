@@ -404,7 +404,6 @@ export async function confirmFbrProductionRouteAction(
             integratorLicenseNo: parsed.data.integratorLicenseNo || null,
             softwareRegistrationNo: parsed.data.softwareRegistrationNo,
             productionApprovalReference: parsed.data.reference,
-            productionTransmissionEnabled: false,
           },
         },
       });
