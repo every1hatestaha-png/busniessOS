@@ -5,6 +5,7 @@ export type FbrProductionComplianceInput = {
   softwareRegistrationNo?: string | null;
   productionApprovedAt?: Date | null;
   productionApprovedBy?: string | null;
+  productionApprovalReference?: string | null;
   taxMappingReady?: boolean;
   hsUomCompatibilityReady?: boolean;
 };
@@ -48,6 +49,14 @@ export function validateFbrProductionCompliance(input: FbrProductionComplianceIn
       path: "integration.productionApproval",
       code: "PRODUCTION_APPROVAL_REQUIRED",
       message: "Production transmission is blocked until an authorized workspace user confirms the licensed-integrator setup.",
+    });
+  }
+
+  if (!input.productionApprovalReference?.trim()) {
+    issues.push({
+      path: "integration.productionApprovalReference",
+      code: "PRODUCTION_APPROVAL_REFERENCE_REQUIRED",
+      message: "Production transmission is blocked until the FBR, PRAL, or licensed-integrator onboarding or approval reference is recorded.",
     });
   }
 
