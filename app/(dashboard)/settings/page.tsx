@@ -3,6 +3,7 @@ import { listInvitations, listMembers } from "@/lib/server/members";
 import { MemberManager } from "@/components/settings/member-manager";
 import { BusinessProfileForm } from "@/components/settings/business-profile-form";
 import { FbrIntegrationForm } from "@/components/settings/fbr-integration-form";
+import { FbrProductionRouteForm } from "@/components/settings/fbr-production-route-form";
 import { FbrHsUomAnnexureForm } from "@/components/settings/fbr-hs-uom-annexure-form";
 import { FbrSetupReadiness } from "@/components/settings/fbr-setup-readiness";
 import { db } from "@/lib/server/db";
@@ -52,6 +53,10 @@ export default async function SettingsPage() {
         provider: true,
         integratorName: true,
         integratorLicenseNo: true,
+        softwareRegistrationNo: true,
+        productionApprovedAt: true,
+        productionApprovedBy: true,
+        productionApprovalReference: true,
         hsUomAnnexureId: true,
         hsUomAnnexureConfirmedAt: true,
         hsUomAnnexureConfirmedBy: true,
@@ -105,6 +110,18 @@ export default async function SettingsPage() {
         hsUomVerifiedProducts={hsUomVerifiedProducts}
       />
       <FbrIntegrationForm config={fbrConfig} sandboxCredentialReady={sandboxCredentialReady} />
+      <FbrProductionRouteForm
+        canConfirm={context.role === "OWNER"}
+        config={fbrConfig ? {
+          provider: fbrConfig.provider,
+          integratorName: fbrConfig.integratorName,
+          integratorLicenseNo: fbrConfig.integratorLicenseNo,
+          softwareRegistrationNo: fbrConfig.softwareRegistrationNo,
+          productionApprovedAt: fbrConfig.productionApprovedAt?.toISOString() ?? null,
+          productionApprovedBy: fbrConfig.productionApprovedBy,
+          productionApprovalReference: fbrConfig.productionApprovalReference,
+        } : null}
+      />
       <FbrHsUomAnnexureForm config={fbrConfig ? {
         annexureId: fbrConfig.hsUomAnnexureId,
         confirmedAt: fbrConfig.hsUomAnnexureConfirmedAt?.toISOString() ?? null,
