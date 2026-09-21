@@ -108,6 +108,14 @@ export default async function SettingsPage() {
           && fbrConfig.hsUomAnnexureConfirmedBy?.trim()
         )}
         hsUomVerifiedProducts={hsUomVerifiedProducts}
+        productionRouteConfirmed={Boolean(
+          fbrConfig?.integratorName?.trim()
+          && fbrConfig.softwareRegistrationNo?.trim()
+          && fbrConfig.productionApprovedAt
+          && fbrConfig.productionApprovedBy?.trim()
+          && fbrConfig.productionApprovalReference?.trim()
+          && (fbrConfig.provider === "PRAL" || fbrConfig.integratorLicenseNo?.trim())
+        )}
       />
       <FbrIntegrationForm config={fbrConfig} sandboxCredentialReady={sandboxCredentialReady} />
       <FbrProductionRouteForm
