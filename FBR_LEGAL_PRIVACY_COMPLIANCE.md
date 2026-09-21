@@ -1,6 +1,6 @@
 # MunshiOS FBR Legal & Privacy Compliance Baseline
 
-Last reviewed: 2026-09-20
+Last reviewed: 2026-09-21
 
 This document records implementation decisions for engineering and release review. It is not a substitute for advice from a qualified Pakistani tax or legal professional.
 
@@ -10,9 +10,10 @@ This document records implementation decisions for engineering and release revie
 - FBR states that notified registered persons must integrate their ERP/POS/invoicing system through an FBR-licensed integrator.
 - FBR identifies PRAL as a licensed integration route that may provide integration services to registered persons.
 - FBR's current list of licensed integrators is authoritative for determining whether a third-party integrator is presently licensed.
-- Current 2026 Sales Tax Rules material requires production electronic invoices to carry the unique FBR invoice number, a unique verifiable QR code, the electronic invoicing/POS software registration number, and the FBR Digital Invoicing logo.
-- S.R.O. 288(I)/2026 states that the QR code is generated on the basis of the unique FBR invoice or bill number.
-- The current DI API v1.12 technical document specifies QR Version 2.0 (25x25) at 1.0 x 1.0 inch, while current rules material states 7x7mm. MunshiOS therefore treats production QR rendering as unresolved and blocks production-compliant printing until the controlling requirement is confirmed through the selected FBR/PRAL/licensed-integrator route.
+- The Sales Tax Rules, 2006, as published by FBR with updates through 6 August 2025, require production electronic invoices to carry the unique FBR invoice number, a unique verifiable QR code, the electronic invoicing/POS software registration number, and the FBR Digital Invoicing logo.
+- The Sales Tax Rules text states that the QR code is generated on the basis of the unique FBR invoice number and lists a 7x7mm QR dimension.
+- The current DI API v1.12 technical document specifies QR Version 2.0 (25x25) at 1.0 x 1.0 inch, while the Sales Tax Rules text published by FBR states 7x7mm. MunshiOS therefore treats production QR rendering as unresolved and blocks production-compliant printing until the controlling requirement is confirmed through the selected FBR/PRAL/licensed-integrator route.
+- S.R.O. 288(I)/2026 was reviewed during the 2026-09-21 audit and is a draft Income Tax Rules amendment, so MunshiOS does not use it as the controlling Sales Tax Digital Invoicing source.
 - The Sales Tax Act, Sales Tax Rules and current FBR notifications prevail over FAQ summaries.
 - Pakistan's MoITT public legislation page currently lists the Personal Data Protection Bill as draft rather than an enacted comprehensive data-protection statute. MunshiOS therefore follows privacy-by-design controls in addition to applicable constitutional, electronic-transactions, cybercrime, tax, contractual and sectoral obligations.
 
@@ -25,8 +26,8 @@ This document records implementation decisions for engineering and release revie
 - https://www.moitt.gov.pk/Legislations
 - https://pakistancode.gov.pk/
 - https://download1.fbr.gov.pk/Docs/20257301172130815TechnicalDocumentationforDIAPIV1.12.pdf
-- https://download1.fbr.gov.pk/Docs/2026331133557466STGO01of2026.pdf
-- https://download1.fbr.gov.pk/SROs/2026218112270512SRO288dated18.02.2026.pdf
+- https://download1.fbr.gov.pk/Docs/2025881385446623STR-2006-UpdatedUpto06-08-2025%28ver-iv%29.pdf
+- https://download1.fbr.gov.pk/Docs/202541712407495sro69%28I%292025.pdf
 
 ## Product rules
 
@@ -58,6 +59,7 @@ This document records implementation decisions for engineering and release revie
 
 - Confirm current FBR technical documentation and endpoint schema.
 - Confirm integrator appears on FBR's current licensed-integrator list, or use PRAL.
+- Record an auditable FBR, PRAL, or licensed-integrator onboarding or approval reference.
 - Complete sandbox/certification steps required by the selected integration route.
 - Implement and validate per-item FBR sale type and rate mapping before removing the production tax-mapping hold.
 - Verify workspace NTN/STRN/province and buyer/product master data.
