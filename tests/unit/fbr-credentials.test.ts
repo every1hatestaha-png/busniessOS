@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { FbrCredentialError, resolveFbrBearerToken } from "@/lib/server/fbr-credentials";
+import { decryptFbrBearerToken, encryptFbrBearerToken, FbrCredentialError, resolveFbrBearerToken } from "@/lib/server/fbr-credentials";
 
 const touched = [
   "FBR_DI_ALLOW_SHARED_TOKEN",
@@ -9,6 +9,7 @@ const touched = [
   "FBR_DI_PRODUCTION_BEARER_TOKEN",
   "FBR_DI_SANDBOX_TOKEN_ABC_123",
   "FBR_DI_PRODUCTION_TOKEN_ABC_123",
+  "FBR_DI_CREDENTIAL_ENCRYPTION_KEY",
 ] as const;
 const original = new Map(touched.map((key) => [key, process.env[key]]));
 
@@ -86,6 +87,22 @@ describe("FBR credential resolver", () => {
       token: "production-shared",
       source: "shared",
     });
+  });
+
+  it("encrypts workspace credentials with authenticated AES-256-GCM", () => {
+    process.env.FBR_DI_CREDENTIAL_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+    const encrypted = encryptFbrBearerToken("  test-secret-token  ");
+
+    expect(encrypted).not.toContain("test-secret-token");
+    expect(decryptFbrBearerToken(encrypted)).toBe("test-secret-token");
+  });
+
+  it("fails closed when the workspace credential encryption key is missing or invalid", () => {
+    delete process.env.FBR_DI_CREDENTIAL_ENCRYPTION_KEY;
+    expect(() => encryptFbrBearerToken("test-secret-token")).toThrow(FbrCredentialError);
+
+    process.env.FBR_DI_CREDENTIAL_ENCRYPTION_KEY = Buffer.alloc(16, 2).toString("base64");
+    expect(() => encryptFbrBearerToken("test-secret-token")).toThrow(FbrCredentialError);
   });
 
   it("never returns an empty configured token", () => {
