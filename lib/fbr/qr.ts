@@ -2,7 +2,6 @@ import qrcode from "qrcode-generator";
 
 export const FBR_QR_VERSION = 2;
 export const FBR_QR_MODULE_COUNT = 25;
-export const FBR_QR_PRINT_SIZE_MM = 7;
 
 export class FbrQrError extends Error {
   constructor(message: string) {
