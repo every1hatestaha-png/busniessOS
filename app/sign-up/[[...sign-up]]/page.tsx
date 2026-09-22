@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSignUp } from "@clerk/nextjs";
@@ -117,7 +118,7 @@ export default function SignUpPage() {
     <main className="min-h-dvh w-full overflow-x-hidden bg-[#06131a] text-white">
       <div className="grid min-h-dvh w-full lg:grid-cols-[52.7%_47.3%]">
         <section className="relative hidden min-h-dvh overflow-hidden lg:block" aria-hidden="true">
-          <img src={LOGIN_VISUAL} alt="" className="absolute inset-0 h-full w-full object-cover object-center" />
+          <Image src={LOGIN_VISUAL} alt="" fill sizes="53vw" priority className="object-cover object-center" />
           <div className="absolute inset-0 bg-gradient-to-r from-[#06131a]/10 via-transparent to-[#06131a]/55" />
         </section>
 

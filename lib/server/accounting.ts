@@ -1,7 +1,7 @@
 import "server-only";
 
 import { AccountCategory, AccountNormalBalance, AccountSystemCode, Prisma, type GeneralLedgerSourceType, type Role } from "@prisma/client";
-import { calculateProfitLossTotals, calculateRunningBalance } from "@/lib/accounting-math";
+import { calculateProfitLossTotals } from "@/lib/accounting-math";
 import { writeAudit } from "@/lib/server/audit";
 import { db } from "@/lib/server/db";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";

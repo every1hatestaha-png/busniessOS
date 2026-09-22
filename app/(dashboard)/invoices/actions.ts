@@ -22,6 +22,8 @@ export async function prepareFbrSandboxAction(
   _previousState: FbrInvoiceActionState,
   _formData: FormData,
 ): Promise<FbrInvoiceActionState> {
+  void _previousState;
+  void _formData;
   try {
     const prepared = await prepareFbrInvoiceSubmission(invoiceId, "SANDBOX");
     revalidatePath(`/invoices/${invoiceId}`);
@@ -58,6 +60,8 @@ export async function validateFbrSandboxAction(
   _previousState: FbrInvoiceActionState,
   _formData: FormData,
 ): Promise<FbrInvoiceActionState> {
+  void _previousState;
+  void _formData;
   try {
     const context = await requirePermission("financial.manage");
     const sandboxSubmission = await getFbrSubmissionForInvoice(context.workspaceId, invoiceId, "SANDBOX");
@@ -99,6 +103,8 @@ export async function submitFbrSandboxAction(
   _previousState: FbrInvoiceActionState,
   _formData: FormData,
 ): Promise<FbrInvoiceActionState> {
+  void _previousState;
+  void _formData;
   try {
     const context = await requirePermission("financial.manage");
     const sandboxSubmission = await getFbrSubmissionForInvoice(context.workspaceId, invoiceId, "SANDBOX");

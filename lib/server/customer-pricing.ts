@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import { writeAudit } from "@/lib/server/audit";
+import { canPerformAction } from "@/lib/server/authorization";
 import { db } from "@/lib/server/db";
 import type { ServiceContext } from "@/lib/server/sales";
 
@@ -41,6 +42,7 @@ export async function saveCustomerPriceRule(
   customerId: string,
   input: z.input<typeof customerPriceRuleSchema>,
 ) {
+  if (!canPerformAction(context.role, "customers.write")) throw new CustomerPriceRuleError("Unauthorized.");
   const data = customerPriceRuleSchema.parse(input);
   const minQuantity = new Prisma.Decimal(data.minQuantity);
   const unitPrice = new Prisma.Decimal(data.unitPrice);
@@ -92,6 +94,7 @@ export async function saveCustomerPriceRule(
 }
 
 export async function deleteCustomerPriceRule(context: ServiceContext, customerId: string, id: string) {
+  if (!canPerformAction(context.role, "customers.write")) throw new CustomerPriceRuleError("Unauthorized.");
   return db.$transaction(async (tx) => {
     const rule = await tx.customerPriceRule.findFirst({
       where: { id, workspaceId: context.workspaceId, customerId },

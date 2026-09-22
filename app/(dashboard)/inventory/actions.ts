@@ -93,6 +93,8 @@ export async function verifyFbrProductMappingAction(
   _previousState: FbrProductMappingState,
   _formData: FormData,
 ): Promise<FbrProductMappingState> {
+  void _previousState;
+  void _formData;
   const context = await requirePermission("products.write");
   try {
     const result = await verifyProductFbrReferenceMapping(
