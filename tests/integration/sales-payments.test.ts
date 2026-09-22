@@ -160,6 +160,44 @@ describe("sales and payments against Neon", () => {
     expect(invoice?.order?.items[0]).toMatchObject({ pricingMode: "WEIGHT", unitWeight: 4.72, totalWeight: 14.16, perKgRate: 285 });
   });
 
+  it("keeps issued invoice seller and buyer identity immutable after master-data edits", async () => {
+    await db.workspace.update({
+      where: { id: workspaceA },
+      data: { name: `Issued Seller ${runId}`, address: "Original seller address", city: "Lahore", phone: "03001234567" },
+    });
+    await db.customer.update({
+      where: { id: customerA },
+      data: { name: `Issued Buyer ${runId}`, companyName: `Issued Buyer Co ${runId}`, address: "Original buyer address", phone: "03111234567" },
+    });
+
+    const result = await createSale(context(workspaceA), saleInput(customerA, productA, { quantity: 1, paidAmount: 0 }));
+    const invoiceRow = await db.invoice.findUniqueOrThrow({ where: { salesOrderId: result.id }, select: { id: true, issuedSnapshot: true } });
+
+    await db.workspace.update({
+      where: { id: workspaceA },
+      data: { name: `Renamed Seller ${runId}`, address: "Changed seller address", phone: "03009999999" },
+    });
+    await db.customer.update({
+      where: { id: customerA },
+      data: { name: `Renamed Buyer ${runId}`, companyName: `Renamed Buyer Co ${runId}`, address: "Changed buyer address", phone: "03119999999" },
+    });
+
+    const invoice = await getInvoice(workspaceA, invoiceRow.id);
+
+    expect(invoiceRow.issuedSnapshot).not.toBeNull();
+    expect(invoice?.seller).toMatchObject({
+      name: `Issued Seller ${runId}`,
+      address: "Original seller address",
+      phone: "03001234567",
+    });
+    expect(invoice?.customer).toMatchObject({
+      name: `Issued Buyer ${runId}`,
+      companyName: `Issued Buyer Co ${runId}`,
+      address: "Original buyer address",
+      phone: "03111234567",
+    });
+  });
+
   it("rolls back the entire sale when stock is insufficient", async () => {
     const product = await db.product.create({
       data: { workspaceId: workspaceA, name: `Scarce ${runId}`, sku: `scarce-${runId}`, costPrice: 20, sellingPrice: 100, stockQuantity: 1 },
