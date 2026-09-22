@@ -10,6 +10,7 @@ import { requirePermission } from "@/lib/server/authorization";
 import { businessDateKey } from "@/lib/server/business-time";
 import { db } from "@/lib/server/db";
 import { writeAudit } from "@/lib/server/audit";
+import { parseInvoiceIssuedSnapshot } from "@/lib/server/invoice-snapshot";
 
 function money(value: number) {
   return Number(value.toFixed(2));
@@ -65,6 +66,9 @@ export async function buildFbrInvoiceDraft(workspaceId: string, invoiceId: strin
   if (invoice.status === "CANCELLED") throw new Error("Cancelled invoices cannot be prepared for FBR.");
   if (!invoice.salesOrder) throw new Error("FBR submission requires a linked sales order.");
   if (!invoice.salesOrder.items.length) throw new Error("FBR submission requires at least one invoice item.");
+  const issuedSnapshot = parseInvoiceIssuedSnapshot(invoice.issuedSnapshot);
+  const sellerIdentity = issuedSnapshot?.seller ?? invoice.workspace;
+  const buyerIdentity = issuedSnapshot?.buyer ?? invoice.customer;
 
   const config = await db.fbrIntegrationConfig.findUnique({ where: { workspaceId } });
   const environment = config?.environment ?? "SANDBOX";
@@ -77,14 +81,14 @@ export async function buildFbrInvoiceDraft(workspaceId: string, invoiceId: strin
       message: "FBR Digital Invoicing is not enabled for this workspace.",
     });
   }
-  if (!invoice.workspace.province?.trim()) {
+  if (!sellerIdentity.province?.trim()) {
     preflight.push({
       path: "sellerProvince",
       code: "MISSING_MASTER_DATA",
       message: "Add the seller province in business settings.",
     });
   }
-  if (!invoice.customer.registrationType || !["Registered", "Unregistered"].includes(invoice.customer.registrationType)) {
+  if (!buyerIdentity.registrationType || !["Registered", "Unregistered"].includes(buyerIdentity.registrationType)) {
     preflight.push({
       path: "buyerRegistrationType",
       code: "MISSING_MASTER_DATA",
@@ -104,7 +108,7 @@ export async function buildFbrInvoiceDraft(workspaceId: string, invoiceId: strin
   const taxableAmount = Math.max(0, subtotal - discount);
   const invoiceTotal = Number(invoice.amount);
   const gstAmount = Math.max(0, invoiceTotal - taxableAmount);
-  const invoiceDate = businessDateKey(invoice.issuedAt, invoice.workspace.timezone || "Asia/Karachi");
+  const invoiceDate = businessDateKey(invoice.issuedAt, sellerIdentity.timezone || "Asia/Karachi");
   let taxMappingReady = true;
   let hsUomCompatibilityReady = true;
 
@@ -120,7 +124,7 @@ export async function buildFbrInvoiceDraft(workspaceId: string, invoiceId: strin
 
     const mappingIssues = validateFbrLineMapping({
       invoiceDate,
-      sellerProvince: invoice.workspace.province ?? "",
+      sellerProvince: sellerIdentity.province ?? "",
       hsCode: item.fbrHsCode,
       uom: item.fbrUom,
       uomId: item.fbrUomId,
@@ -246,15 +250,15 @@ export async function buildFbrInvoiceDraft(workspaceId: string, invoiceId: strin
   const payload: FbrInvoicePayload = {
     invoiceType: "Sale Invoice",
     invoiceDate,
-    sellerNTNCNIC: normalizeTaxId(invoice.workspace.ntn) ?? "",
-    sellerBusinessName: invoice.workspace.name,
-    sellerProvince: invoice.workspace.province ?? "",
-    sellerAddress: invoice.workspace.address ?? invoice.workspace.city ?? "",
-    buyerNTNCNIC: normalizeTaxId(invoice.customer.taxId),
-    buyerBusinessName: invoice.customer.companyName ?? invoice.customer.name,
-    buyerProvince: invoice.customer.province ?? "",
-    buyerAddress: invoice.customer.address ?? invoice.customer.city ?? "",
-    buyerRegistrationType: normalizeRegistrationType(invoice.customer.registrationType),
+    sellerNTNCNIC: normalizeTaxId(sellerIdentity.ntn) ?? "",
+    sellerBusinessName: sellerIdentity.name,
+    sellerProvince: sellerIdentity.province ?? "",
+    sellerAddress: sellerIdentity.address ?? sellerIdentity.city ?? "",
+    buyerNTNCNIC: normalizeTaxId(buyerIdentity.taxId),
+    buyerBusinessName: buyerIdentity.companyName ?? buyerIdentity.name,
+    buyerProvince: buyerIdentity.province ?? "",
+    buyerAddress: buyerIdentity.address ?? buyerIdentity.city ?? "",
+    buyerRegistrationType: normalizeRegistrationType(buyerIdentity.registrationType),
     invoiceRefNo: "",
     ...(environment === "SANDBOX" ? { scenarioId: config?.defaultScenarioId ?? "" } : {}),
     items,
