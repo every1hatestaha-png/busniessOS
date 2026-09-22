@@ -117,6 +117,7 @@ describe("cash/bank + payment voucher + WHT integration", () => {
     await db.customerReturn.deleteMany({ where: { workspaceId: { in: ids } } });
     await db.debitNote.deleteMany({ where: { workspaceId: { in: ids } } });
     await db.creditNote.deleteMany({ where: { workspaceId: { in: ids } } });
+    await db.invoiceDocumentVersion.deleteMany({ where: { workspaceId: { in: ids } } });
     await db.invoice.deleteMany({ where: { workspaceId: { in: ids } } });
     await db.purchaseOrderItem.deleteMany({ where: { purchaseOrder: { workspaceId: { in: ids } } } });
     await db.salesOrderItem.deleteMany({ where: { salesOrder: { workspaceId: { in: ids } } } });
