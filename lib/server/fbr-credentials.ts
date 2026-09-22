@@ -60,23 +60,37 @@ function credentialEncryptionKey() {
   return key;
 }
 
-export function encryptFbrBearerToken(token: string) {
+function credentialBinding(workspaceId: string, environment: FbrEnvironment) {
+  return Buffer.from(`munshios:fbr:v1:${workspaceId}:${environment}`, "utf8");
+}
+
+export function encryptFbrBearerToken(
+  token: string,
+  workspaceId: string,
+  environment: FbrEnvironment,
+) {
   const plain = token.trim();
   if (!plain) {
     throw new FbrCredentialError("CREDENTIAL_MISSING", "FBR bearer token is empty.");
   }
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", credentialEncryptionKey(), iv);
+  cipher.setAAD(credentialBinding(workspaceId, environment));
   const encrypted = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
   return ["v1", iv.toString("base64"), tag.toString("base64"), encrypted.toString("base64")].join(".");
 }
 
-export function decryptFbrBearerToken(envelope: string) {
+export function decryptFbrBearerToken(
+  envelope: string,
+  workspaceId: string,
+  environment: FbrEnvironment,
+) {
   try {
     const [version, iv64, tag64, body64, extra] = envelope.split(".");
     if (version !== "v1" || !iv64 || !tag64 || !body64 || extra) throw new Error("Invalid envelope.");
     const decipher = createDecipheriv("aes-256-gcm", credentialEncryptionKey(), Buffer.from(iv64, "base64"));
+    decipher.setAAD(credentialBinding(workspaceId, environment));
     decipher.setAuthTag(Buffer.from(tag64, "base64"));
     return Buffer.concat([
       decipher.update(Buffer.from(body64, "base64")),
@@ -86,7 +100,7 @@ export function decryptFbrBearerToken(envelope: string) {
     if (error instanceof FbrCredentialError) throw error;
     throw new FbrCredentialError(
       "CREDENTIAL_DECRYPTION_FAILED",
-      "The stored FBR credential could not be decrypted. Replace the credential before retrying.",
+      "The stored FBR credential could not be decrypted for this workspace and environment. Replace the credential before retrying.",
     );
   }
 }
@@ -121,7 +135,7 @@ export async function resolveFbrBearerTokenForRequest(
   });
   if (stored?.verifiedAt) {
     return {
-      token: decryptFbrBearerToken(stored.tokenEncrypted),
+      token: decryptFbrBearerToken(stored.tokenEncrypted, workspaceId, environment),
       source: "workspace_database" as const,
     };
   }
