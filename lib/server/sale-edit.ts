@@ -8,6 +8,7 @@ import { withSerializableRetry } from "@/lib/server/tx-retry";
 import { allocateSalesTaxByLine } from "@/lib/sales-tax";
 import { applyManagedWarehouseStockDelta, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
 import { saleEditSchema, type SaleEditInput } from "@/lib/validation/sale-edit";
+import type { InvoiceIssuedSnapshot } from "@/lib/server/invoice-snapshot";
 
 export class SaleEditDomainError extends Error {}
 
@@ -46,7 +47,7 @@ export async function updateSaleAndInvoice(context: EditContext, input: SaleEdit
 
     const newCustomer = await tx.customer.findFirst({
       where: { id: data.customerId, workspaceId: context.workspaceId, status: "ACTIVE" },
-      select: { id: true, currentBalance: true, creditLimit: true },
+      select: { id: true, name: true, companyName: true, phone: true, address: true, city: true, taxId: true, province: true, registrationType: true, currentBalance: true, creditLimit: true },
     });
     if (!newCustomer) throw new SaleEditDomainError("The selected customer is unavailable.");
 
@@ -100,6 +101,7 @@ export async function updateSaleAndInvoice(context: EditContext, input: SaleEdit
       id: true,
       name: true,
       sku: true,
+      unit: true,
       stockQuantity: true,
       costPrice: true,
       fbrHsCode: true,
@@ -254,6 +256,80 @@ export async function updateSaleAndInvoice(context: EditContext, input: SaleEdit
         orderDate: data.issuedAt,
       },
     });
+    const [seller, warehouse, latestDocumentVersion] = await Promise.all([
+      tx.workspace.findUniqueOrThrow({
+        where: { id: context.workspaceId },
+        select: { name: true, phone: true, email: true, address: true, city: true, country: true, currency: true, timezone: true, ntn: true, strn: true, province: true },
+      }),
+      order.warehouseId
+        ? tx.$queryRaw<Array<{ id: string; name: string; code: string | null }>>`
+            SELECT "id"::text AS "id", "name", "code"
+            FROM "warehouses"
+            WHERE "id"=${order.warehouseId}::uuid
+              AND "workspaceId"=${context.workspaceId}::uuid
+            LIMIT 1
+          `.then((rows) => rows[0] ?? null)
+        : Promise.resolve(null),
+      tx.invoiceDocumentVersion.findFirst({
+        where: { invoiceId: invoice.id, workspaceId: context.workspaceId },
+        orderBy: { version: "desc" },
+        select: { version: true },
+      }),
+    ]);
+    const distinctTaxRates = [...new Set(taxAllocation.lines.map((line) => Number(line.taxRate)))];
+    const issuedSnapshot = {
+      version: 1,
+      seller,
+      buyer: {
+        id: newCustomer.id,
+        name: newCustomer.name,
+        companyName: newCustomer.companyName,
+        phone: newCustomer.phone,
+        address: newCustomer.address,
+        city: newCustomer.city,
+        taxId: newCustomer.taxId,
+        province: newCustomer.province,
+        registrationType: newCustomer.registrationType,
+      },
+      order: {
+        number: order.orderNumber,
+        warehouse,
+        items: lines.map((line, index) => ({
+          key: `${line.product.id}:${index}`,
+          name: line.product.name,
+          sku: line.product.sku,
+          unit: line.product.unit,
+          quantity: Number(line.quantity),
+          unitPrice: Number(line.unitPrice),
+          discountPerUnit: Number(line.discountPerUnit),
+          total: Number(line.total),
+          pricingMode: line.item.pricingMode,
+          taxRate: Number(taxAllocation.lines[index]!.taxRate),
+          unitWeight: line.item.pricingMode === "WEIGHT" ? Number(line.item.unitWeight) : null,
+          totalWeight: line.totalWeight ? Number(line.totalWeight) : null,
+          perKgRate: line.item.pricingMode === "WEIGHT" ? Number(line.item.perKgRate) : null,
+        })),
+      },
+      totals: {
+        subtotal: Number(subtotal),
+        discount: Number(discount),
+        taxableAmount: Number(taxableAmount),
+        gstRate: distinctTaxRates.length === 1 ? distinctTaxRates[0]! : null,
+        gstAmount: Number(gstAmount),
+        total: Number(total),
+      },
+    } satisfies InvoiceIssuedSnapshot;
+    const nextDocumentVersion = (latestDocumentVersion?.version ?? 0) + 1;
+
+    await tx.invoiceDocumentVersion.create({
+      data: {
+        workspaceId: context.workspaceId,
+        invoiceId: invoice.id,
+        version: nextDocumentVersion,
+        snapshot: issuedSnapshot as unknown as Prisma.InputJsonValue,
+        issuedAt: data.issuedAt,
+      },
+    });
     await tx.invoice.update({
       where: { id: invoice.id, workspaceId: context.workspaceId },
       data: {
@@ -263,6 +339,7 @@ export async function updateSaleAndInvoice(context: EditContext, input: SaleEdit
         status: "UNPAID",
         issuedAt: data.issuedAt,
         dueDate: data.dueDate,
+        issuedSnapshot: issuedSnapshot as unknown as Prisma.InputJsonValue,
       },
     });
 
