@@ -96,11 +96,11 @@ export function resolveFbrBearerToken(workspaceId: string, environment: FbrEnvir
 
   const scopedKey = workspaceTokenKey(workspaceId, environment);
   const scopedToken = process.env[scopedKey]?.trim();
-  if (scopedToken) return { token: scopedToken, source: "workspace_env" as const };
+  if (scopedToken) return { token: scopedToken, source: "workspace" as const };
 
   if (process.env.FBR_DI_ALLOW_SHARED_TOKEN === "1") {
     const sharedToken = process.env[sharedTokenKey(environment)]?.trim();
-    if (sharedToken) return { token: sharedToken, source: "shared_env" as const };
+    if (sharedToken) return { token: sharedToken, source: "shared" as const };
   }
 
   throw new FbrCredentialError(
