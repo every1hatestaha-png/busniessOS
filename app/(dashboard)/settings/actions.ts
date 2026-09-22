@@ -281,17 +281,11 @@ export async function updateFbrSandboxConfigAction(
     return { status: "error", message: parsed.error.issues[0]?.message ?? "Check the FBR sandbox setup." };
   }
 
-  const enabled = formData.get("enabled") === "on";
-  if (enabled && !parsed.data.defaultScenarioId) {
-    return { status: "error", message: "Choose an FBR sandbox scenario before enabling Digital Invoicing." };
-  }
-
   let config;
   if (existing) {
     const updated = await db.fbrIntegrationConfig.updateMany({
       where: { workspaceId: context.workspaceId, environment: "SANDBOX" },
       data: {
-        enabled,
         defaultScenarioId: parsed.data.defaultScenarioId || null,
       },
     });
@@ -309,7 +303,7 @@ export async function updateFbrSandboxConfigAction(
       config = await db.fbrIntegrationConfig.create({
         data: {
           workspaceId: context.workspaceId,
-          enabled,
+          enabled: false,
           environment: "SANDBOX",
           provider: "PRAL",
           defaultScenarioId: parsed.data.defaultScenarioId || null,
@@ -331,7 +325,6 @@ export async function updateFbrSandboxConfigAction(
       entityType: "FbrIntegrationConfig",
       entityId: config.id,
       metadata: {
-        enabled,
         environment: "SANDBOX",
         defaultScenarioId: parsed.data.defaultScenarioId || null,
       },
@@ -342,10 +335,9 @@ export async function updateFbrSandboxConfigAction(
   revalidatePath("/invoices");
   return {
     status: "success",
-    message: enabled ? "FBR sandbox setup saved." : "FBR Digital Invoicing disabled for this workspace.",
+    message: "FBR sandbox scenario saved.",
   };
 }
-
 
 const fbrHsUomAnnexureSchema = z.object({
   annexureId: z.coerce.number().int().positive().max(1_000_000),
