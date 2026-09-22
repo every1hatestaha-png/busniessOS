@@ -11,7 +11,7 @@ export default async function NewSalePage() {
   // Keep this high-frequency screen lean: fetch only active records and only the
   // columns the form renders instead of serializing full customer/product DTOs.
   const warehouseMode = await getWarehouseStockMode(workspaceId);
-  const [customerRows, productRows, cashBankAccounts, warehouses, warehouseStocks, priceRuleRows] = await Promise.all([
+  const [customerRows, productRows, cashBankAccounts, warehouses, warehouseStocks] = await Promise.all([
     db.customer.findMany({
       where: { workspaceId, status: "ACTIVE" },
       orderBy: [{ companyName: "asc" }, { name: "asc" }],
@@ -44,10 +44,6 @@ export default async function NewSalePage() {
           WHERE "workspaceId"=${workspaceId}::uuid
         `
       : Promise.resolve([]),
-    db.customerPriceRule.findMany({
-      where: { workspaceId, isActive: true },
-      select: { customerId: true, productId: true, minQuantity: true, unitPrice: true, discountPerUnit: true, isActive: true },
-    }),
   ]);
 
   const customers = customerRows.map((customer) => ({
@@ -88,13 +84,5 @@ export default async function NewSalePage() {
     warehouseMode={warehouseMode}
     warehouses={warehouses}
     warehouseStocks={warehouseStocks.map((stock) => ({ ...stock, quantity: Number(stock.quantity) }))}
-    priceRules={priceRuleRows.map((rule) => ({
-      customerId: rule.customerId,
-      productId: rule.productId,
-      minQuantity: Number(rule.minQuantity),
-      unitPrice: Number(rule.unitPrice),
-      discountPerUnit: Number(rule.discountPerUnit),
-      isActive: rule.isActive,
-    }))}
   />;
 }

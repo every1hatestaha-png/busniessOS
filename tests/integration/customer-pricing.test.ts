@@ -72,6 +72,27 @@ describe("customer price tier persistence", () => {
     expect(await db.auditLog.count({ where: { workspaceId, entityId: saved.id, action: "customer_price_rule.deleted" } })).toBe(1);
   });
 
+  it("rejects callers without customer-write permission", async () => {
+    await expect(saveCustomerPriceRule({ workspaceId, role: "STAFF", userId }, customerId, {
+      productId,
+      minQuantity: 1,
+      unitPrice: 80,
+      discountPerUnit: 0,
+    })).rejects.toThrow("Unauthorized");
+
+    const saved = await saveCustomerPriceRule(context(), customerId, {
+      productId,
+      minQuantity: 2,
+      unitPrice: 80,
+      discountPerUnit: 0,
+    });
+    await expect(deleteCustomerPriceRule(
+      { workspaceId, role: "STAFF", userId },
+      customerId,
+      saved.id,
+    )).rejects.toThrow("Unauthorized");
+  });
+
   it("rejects cross-workspace products", async () => {
     const otherProduct = await db.product.create({ data: { workspaceId: otherWorkspaceId, name: "Other Product", sku: `OTHER-${runId}`, sellingPrice: 1 } });
     await expect(saveCustomerPriceRule(context(), customerId, {

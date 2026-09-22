@@ -42,6 +42,13 @@ const eslintConfig = defineConfig([
       ],
     },
   },
+  {
+    files: ["app/sign-in/[[...sign-in]]/login-visual*.ts"],
+    rules: {
+      // Generated image chunks intentionally export a single string literal.
+      "import/no-anonymous-default-export": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;
