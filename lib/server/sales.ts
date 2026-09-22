@@ -279,10 +279,13 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
         select: { name: true, phone: true, email: true, address: true, city: true, country: true, currency: true, timezone: true, ntn: true, strn: true, province: true },
       }),
       data.warehouseId
-        ? tx.warehouse.findFirst({
-            where: { id: data.warehouseId, workspaceId: context.workspaceId },
-            select: { id: true, name: true, code: true },
-          })
+        ? tx.$queryRaw<Array<{ id: string; name: string; code: string | null }>>`
+            SELECT "id"::text AS "id", "name", "code"
+            FROM "warehouses"
+            WHERE "id"=${data.warehouseId}::uuid
+              AND "workspaceId"=${context.workspaceId}::uuid
+            LIMIT 1
+          `.then((rows) => rows[0] ?? null)
         : Promise.resolve(null),
     ]);
 
