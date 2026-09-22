@@ -66,17 +66,52 @@ async function buildSupplierSettlementSnapshot(tx: Prisma.TransactionClient, wor
       createdAt: true,
       purchaseOrderId: true,
       totalAmount: true,
-      purchaseOrder: { select: { orderNumber: true, balanceAmount: true } },
-      paymentAllocations: {
-        where: { payment: { supplierId, isReversed: false, reversalOfId: null } },
-        select: { amount: true },
-      },
-      supplierReturns: {
-        where: { status: "POSTED" },
-        select: { totalAmount: true },
-      },
     },
   });
+
+  // Prisma can expand nested relation selects into overlapping driver queries.
+  // Load each relation explicitly and sequentially so the interactive
+  // transaction remains compatible with pg@9's single-query client contract.
+  const purchaseOrderIds = [...new Set(grns.map((grn) => grn.purchaseOrderId))];
+  const grnIds = grns.map((grn) => grn.id);
+  const purchaseOrders = purchaseOrderIds.length
+    ? await tx.purchaseOrder.findMany({
+      where: { workspaceId, supplierId, id: { in: purchaseOrderIds } },
+      select: { id: true, orderNumber: true, balanceAmount: true },
+    })
+    : [];
+  const paymentAllocations = grnIds.length
+    ? await tx.paymentAllocation.findMany({
+      where: {
+        workspaceId,
+        goodReceivedNoteId: { in: grnIds },
+        payment: { supplierId, isReversed: false, reversalOfId: null },
+      },
+      select: { goodReceivedNoteId: true, amount: true },
+    })
+    : [];
+  const supplierReturns = grnIds.length
+    ? await tx.supplierReturn.findMany({
+      where: { workspaceId, supplierId, goodReceivedNoteId: { in: grnIds }, status: "POSTED" },
+      select: { goodReceivedNoteId: true, totalAmount: true },
+    })
+    : [];
+
+  const purchaseOrdersById = new Map(purchaseOrders.map((order) => [order.id, order]));
+  const allocationsByGrn = new Map<string, typeof paymentAllocations>();
+  for (const allocation of paymentAllocations) {
+    if (!allocation.goodReceivedNoteId) continue;
+    const rows = allocationsByGrn.get(allocation.goodReceivedNoteId) ?? [];
+    rows.push(allocation);
+    allocationsByGrn.set(allocation.goodReceivedNoteId, rows);
+  }
+  const returnsByGrn = new Map<string, typeof supplierReturns>();
+  for (const supplierReturn of supplierReturns) {
+    if (!supplierReturn.goodReceivedNoteId) continue;
+    const rows = returnsByGrn.get(supplierReturn.goodReceivedNoteId) ?? [];
+    rows.push(supplierReturn);
+    returnsByGrn.set(supplierReturn.goodReceivedNoteId, rows);
+  }
 
   const originalOpening = new Prisma.Decimal(openingLedger._sum.credit ?? 0).minus(openingLedger._sum.debit ?? 0);
   const openingSettled = new Prisma.Decimal(openingPayments._sum.amount ?? 0);
@@ -90,13 +125,15 @@ async function buildSupplierSettlementSnapshot(tx: Prisma.TransactionClient, wor
 
   const targets: SupplierSettlementTarget[] = [];
   for (const purchaseGrns of grouped.values()) {
+    const purchaseOrder = purchaseOrdersById.get(purchaseGrns[0].purchaseOrderId);
+    if (!purchaseOrder) throw new SupplierDomainError("Purchase order not found for an active GRN.");
     const totalLiability = purchaseGrns.reduce((sum, grn) => sum.plus(grn.totalAmount), new Prisma.Decimal(0));
-    const purchaseOutstanding = Prisma.Decimal.max(0, Prisma.Decimal.min(totalLiability, purchaseGrns[0].purchaseOrder.balanceAmount));
+    const purchaseOutstanding = Prisma.Decimal.max(0, Prisma.Decimal.min(totalLiability, purchaseOrder.balanceAmount));
     const aggregateReduction = Prisma.Decimal.max(0, totalLiability.minus(purchaseOutstanding));
 
     const rows = purchaseGrns.map((grn) => {
-      const directPayments = grn.paymentAllocations.reduce((sum, allocation) => sum.plus(allocation.amount), new Prisma.Decimal(0));
-      const linkedReturns = grn.supplierReturns.reduce((sum, supplierReturn) => sum.plus(supplierReturn.totalAmount), new Prisma.Decimal(0));
+      const directPayments = (allocationsByGrn.get(grn.id) ?? []).reduce((sum, allocation) => sum.plus(allocation.amount), new Prisma.Decimal(0));
+      const linkedReturns = (returnsByGrn.get(grn.id) ?? []).reduce((sum, supplierReturn) => sum.plus(supplierReturn.totalAmount), new Prisma.Decimal(0));
       const directReduction = Prisma.Decimal.min(grn.totalAmount, directPayments.plus(linkedReturns));
       return {
         grn,
@@ -126,7 +163,7 @@ async function buildSupplierSettlementSnapshot(tx: Prisma.TransactionClient, wor
         grnNumber: row.grn.grnNumber,
         receiptDate: row.grn.receiptDate.toISOString(),
         purchaseOrderId: row.grn.purchaseOrderId,
-        orderNumber: row.grn.purchaseOrder.orderNumber,
+        orderNumber: purchaseOrder.orderNumber,
         totalAmount: total.toNumber(),
         settledAmount: total.minus(outstanding).toNumber(),
         outstandingAmount: outstanding.toNumber(),
