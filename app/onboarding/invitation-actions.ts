@@ -2,6 +2,7 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 
 import { getCurrentUser } from "@/lib/server/auth";
 import {
@@ -47,6 +48,7 @@ export async function declineWorkspaceInvitation(
   const user = await getCurrentUser();
   try {
     await declineInvitationForUser(user.id, user.email, invitationId);
+    revalidatePath("/onboarding");
     return { error: null };
   } catch (error) {
     if (error instanceof MemberDomainError) return { error: error.message };
