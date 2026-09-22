@@ -77,7 +77,7 @@ export async function updateWorkspaceProfileAction(
 
 const fbrWorkspaceCredentialSchema = z.object({
   environment: z.enum(["SANDBOX", "PRODUCTION"]),
-  token: z.string().trim().min(12, "Enter the FBR bearer token.").max(4096, "The FBR bearer token is too long."),
+  token: z.string().trim().max(4096, "The FBR bearer token is too long."),
 });
 
 export type FbrWorkspaceCredentialState = { status?: "success" | "error"; message?: string };
@@ -88,7 +88,7 @@ export async function saveFbrWorkspaceCredentialAction(
 ): Promise<FbrWorkspaceCredentialState> {
   const context = await requirePermission("workspace.manage");
   if (context.role !== "OWNER") {
-    return { status: "error", message: "Only the workspace owner can replace FBR credentials." };
+    return { status: "error", message: "Only the workspace owner can change the FBR connection." };
   }
 
   const parsed = fbrWorkspaceCredentialSchema.safeParse({
@@ -96,45 +96,67 @@ export async function saveFbrWorkspaceCredentialAction(
     token: String(formData.get("token") ?? ""),
   });
   if (!parsed.success) {
-    return { status: "error", message: parsed.error.issues[0]?.message ?? "Check the FBR credential." };
+    return { status: "error", message: parsed.error.issues[0]?.message ?? "Check the FBR connection settings." };
   }
 
   const enabled = formData.get("enabled") === "on";
   const token = parsed.data.token;
+  let tokenEncrypted: string | null = null;
+  let verifiedAt: Date | null = null;
+
   try {
-    const provinces = await fetchFbrProvinces(token);
-    if (!provinces.length) {
-      return { status: "error", message: "FBR accepted the request but returned no province reference data. The credential was not saved." };
-    }
-
-    const tokenEncrypted = encryptFbrBearerToken(token);
-    const verifiedAt = new Date();
-
-    await db.$transaction(async (tx) => {
-      await tx.fbrIntegrationCredential.upsert({
+    if (token) {
+      if (token.length < 12) {
+        return { status: "error", message: "Enter a valid FBR bearer token or leave the field blank to keep the verified credential already stored." };
+      }
+      const provinces = await fetchFbrProvinces(token);
+      if (!provinces.length) {
+        return { status: "error", message: "FBR accepted the request but returned no province reference data. The credential was not saved." };
+      }
+      tokenEncrypted = encryptFbrBearerToken(token);
+      verifiedAt = new Date();
+    } else if (enabled) {
+      const stored = await db.fbrIntegrationCredential.findUnique({
         where: {
           workspaceId_environment: {
             workspaceId: context.workspaceId,
             environment: parsed.data.environment,
           },
         },
-        create: {
-          workspaceId: context.workspaceId,
-          environment: parsed.data.environment,
-          tokenEncrypted,
-          verifiedAt,
-          verifiedBy: context.user.id,
-        },
-        update: {
-          tokenEncrypted,
-          verifiedAt,
-          verifiedBy: context.user.id,
-        },
+        select: { verifiedAt: true },
       });
+      if (!stored?.verifiedAt) {
+        return { status: "error", message: "Enter and verify the FBR credential before enabling this environment." };
+      }
+    }
+
+    await db.$transaction(async (tx) => {
+      if (tokenEncrypted && verifiedAt) {
+        await tx.fbrIntegrationCredential.upsert({
+          where: {
+            workspaceId_environment: {
+              workspaceId: context.workspaceId,
+              environment: parsed.data.environment,
+            },
+          },
+          create: {
+            workspaceId: context.workspaceId,
+            environment: parsed.data.environment,
+            tokenEncrypted,
+            verifiedAt,
+            verifiedBy: context.user.id,
+          },
+          update: {
+            tokenEncrypted,
+            verifiedAt,
+            verifiedBy: context.user.id,
+          },
+        });
+      }
 
       const existing = await tx.fbrIntegrationConfig.findUnique({
         where: { workspaceId: context.workspaceId },
-        select: { id: true, updatedAt: true, environment: true },
+        select: { id: true, updatedAt: true, environment: true, enabled: true },
       });
 
       let configId: string;
@@ -150,7 +172,7 @@ export async function saveFbrWorkspaceCredentialAction(
             environment: parsed.data.environment,
           },
         });
-        if (updated.count !== 1) throw new Error("FBR configuration changed while the credential was being saved.");
+        if (updated.count !== 1) throw new Error("FBR configuration changed while the connection was being saved.");
         configId = existing.id;
       } else {
         const config = await tx.fbrIntegrationConfig.create({
@@ -165,7 +187,10 @@ export async function saveFbrWorkspaceCredentialAction(
         configId = config.id;
       }
 
-      if (parsed.data.environment === "PRODUCTION" || existing?.environment !== parsed.data.environment) {
+      const connectionChanged = Boolean(tokenEncrypted)
+        || existing?.environment !== parsed.data.environment
+        || existing?.enabled !== enabled;
+      if (connectionChanged) {
         await tx.fbrInvoiceSubmission.updateMany({
           where: {
             workspaceId: context.workspaceId,
@@ -173,8 +198,10 @@ export async function saveFbrWorkspaceCredentialAction(
           },
           data: {
             status: "BLOCKED",
-            lastErrorCode: "CREDENTIAL_OR_ENVIRONMENT_CHANGED",
-            lastErrorMessage: "FBR credential or environment changed. Prepare and validate a fresh submission before remote transmission.",
+            lastErrorCode: "FBR_CONNECTION_CHANGED",
+            lastErrorMessage: enabled
+              ? "FBR connection changed. Prepare and validate a fresh submission before remote transmission."
+              : "FBR is disabled for this workspace. Re-enable it and prepare a fresh submission before remote transmission.",
             validatedAt: null,
           },
         });
@@ -184,13 +211,14 @@ export async function saveFbrWorkspaceCredentialAction(
         data: {
           workspaceId: context.workspaceId,
           actorId: context.user.id,
-          action: "fbr.workspace_credential_replaced",
+          action: tokenEncrypted ? "fbr.workspace_credential_replaced" : "fbr.workspace_connection_updated",
           entityType: "FbrIntegrationConfig",
           entityId: configId,
           metadata: {
             environment: parsed.data.environment,
             enabled,
-            verifiedAt: verifiedAt.toISOString(),
+            credentialReplaced: Boolean(tokenEncrypted),
+            verifiedAt: verifiedAt?.toISOString() ?? null,
           },
         },
       });
@@ -198,21 +226,28 @@ export async function saveFbrWorkspaceCredentialAction(
   } catch (error) {
     const message = error instanceof FbrCredentialError
       ? error.message
-      : error instanceof Error
+      : error instanceof Error && /^FBR\b/.test(error.message)
         ? error.message.replace(/Bearer\s+[^\s]+/gi, "Bearer [REDACTED]")
-        : "The FBR credential could not be verified or saved.";
+        : "The FBR connection could not be saved. No unsafe transmission was attempted.";
     return { status: "error", message };
   }
 
   revalidatePath("/settings");
   revalidatePath("/invoices");
+  if (!enabled) {
+    return { status: "success", message: "FBR disabled for this workspace." };
+  }
+  if (!tokenEncrypted) {
+    return { status: "success", message: "FBR connection enabled using the verified credential already stored for this environment." };
+  }
   return {
     status: "success",
     message: parsed.data.environment === "PRODUCTION"
       ? "Production credential verified and encrypted. Live transmission remains blocked until every production safety gate passes."
-      : "Sandbox credential verified and encrypted for this workspace.",
+      : "Sandbox credential verified, encrypted, and enabled for this workspace.",
   };
 }
+
 
 const fbrSandboxConfigSchema = z.object({
   defaultScenarioId: z.string().trim().toUpperCase().max(12).refine(
