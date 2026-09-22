@@ -14,7 +14,7 @@ import {
 import { canPerformAction } from "@/lib/server/authorization";
 import { writeAudit } from "@/lib/server/audit";
 import { db } from "@/lib/server/db";
-import { resolveFbrBearerToken } from "@/lib/server/fbr-credentials";
+import { resolveFbrBearerTokenForRequest } from "@/lib/server/fbr-credentials";
 
 type MappingContext = { workspaceId: string; role: Role; userId?: string };
 
@@ -78,7 +78,7 @@ export async function verifyProductFbrReferenceMapping(
   if (!product.fbrRateId) throw new FbrProductMappingError("Add the FBR rate ID before verification.");
   if (!workspace.province?.trim()) throw new FbrProductMappingError("Add the seller province in business settings before verification.");
 
-  const { token } = resolveFbrBearerToken(context.workspaceId, "SANDBOX");
+  const { token } = await resolveFbrBearerTokenForRequest(context.workspaceId, "SANDBOX");
   const [provinces, transactionTypes, uoms] = await Promise.all([
     fetchFbrProvinces(token),
     fetchFbrTransactionTypes(token),
