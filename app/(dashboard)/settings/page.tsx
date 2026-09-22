@@ -8,7 +8,7 @@ import { FbrProductionRouteForm } from "@/components/settings/fbr-production-rou
 import { FbrHsUomAnnexureForm } from "@/components/settings/fbr-hs-uom-annexure-form";
 import { FbrSetupReadiness } from "@/components/settings/fbr-setup-readiness";
 import { db } from "@/lib/server/db";
-import { resolveFbrBearerToken } from "@/lib/server/fbr-credentials";
+import { resolveFbrBearerTokenForRequest } from "@/lib/server/fbr-credentials";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -78,7 +78,7 @@ export default async function SettingsPage() {
 
   let sandboxCredentialReady = false;
   try {
-    resolveFbrBearerToken(context.workspaceId, "SANDBOX");
+    await resolveFbrBearerTokenForRequest(context.workspaceId, "SANDBOX");
     sandboxCredentialReady = true;
   } catch {
     sandboxCredentialReady = false;
