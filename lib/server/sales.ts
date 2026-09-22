@@ -346,9 +346,19 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
         paidAmount: paid,
         status: paid.isZero() ? "UNPAID" : paid.equals(total) ? "PAID" : "PARTIALLY_PAID",
         dueDate,
+        issuedAt: order.orderDate,
         issuedSnapshot: issuedSnapshot as unknown as Prisma.InputJsonValue,
       },
       select: { id: true },
+    });
+    await tx.invoiceDocumentVersion.create({
+      data: {
+        workspaceId: context.workspaceId,
+        invoiceId: invoice.id,
+        version: 1,
+        snapshot: issuedSnapshot as unknown as Prisma.InputJsonValue,
+        issuedAt: order.orderDate,
+      },
     });
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, type: "SALE", debit: total, description: `Sale ${orderNumber}`, referenceId: order.id } });
     await tx.customer.update({ where: { id: customer.id, workspaceId: context.workspaceId }, data: { currentBalance: { increment: total } } });
