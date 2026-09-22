@@ -12,15 +12,15 @@ describe("FBR production print gate", () => {
     })).toEqual([]);
   });
 
-  it("fails closed for production until authoritative submission metadata and QR rendering are ready", () => {
+  it("allows production printing only when authoritative submission, QR, and official logo are ready", () => {
     expect(validateFbrProductionPrintReadiness({
       environment: "PRODUCTION",
       submissionStatus: "SUBMITTED",
       fbrInvoiceNumber: "123456-200926143000-0001",
       softwareRegistrationNo: "SW-REG-001",
-    })).toEqual([
-      expect.objectContaining({ code: "FBR_QR_RENDERING_NOT_VERIFIED" }),
-    ]);
+      qrReady: true,
+      officialDigitalInvoicingLogoReady: true,
+    })).toEqual([]);
   });
 
   it("reports missing authoritative production invoice metadata", () => {
@@ -29,12 +29,28 @@ describe("FBR production print gate", () => {
       submissionStatus: "VALIDATED",
       fbrInvoiceNumber: null,
       softwareRegistrationNo: null,
+      qrReady: false,
+      officialDigitalInvoicingLogoReady: false,
     });
     expect(issues).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: "FBR_PRODUCTION_INVOICE_NOT_SUBMITTED" }),
       expect.objectContaining({ code: "FBR_INVOICE_NUMBER_REQUIRED" }),
       expect.objectContaining({ code: "FBR_SOFTWARE_REGISTRATION_REQUIRED" }),
-      expect.objectContaining({ code: "FBR_QR_RENDERING_NOT_VERIFIED" }),
+      expect.objectContaining({ code: "FBR_QR_REQUIRED" }),
+      expect.objectContaining({ code: "FBR_DI_LOGO_REQUIRED" }),
     ]));
+  });
+
+  it("keeps production printing blocked when the official FBR DI logo is not verified", () => {
+    expect(validateFbrProductionPrintReadiness({
+      environment: "PRODUCTION",
+      submissionStatus: "SUBMITTED",
+      fbrInvoiceNumber: "123456-200926143000-0001",
+      softwareRegistrationNo: "SW-REG-001",
+      qrReady: true,
+      officialDigitalInvoicingLogoReady: false,
+    })).toEqual([
+      expect.objectContaining({ code: "FBR_DI_LOGO_REQUIRED" }),
+    ]);
   });
 });

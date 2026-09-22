@@ -3,6 +3,8 @@ export type FbrProductionPrintInput = {
   submissionStatus: string | null | undefined;
   fbrInvoiceNumber: string | null | undefined;
   softwareRegistrationNo: string | null | undefined;
+  qrReady?: boolean;
+  officialDigitalInvoicingLogoReady?: boolean;
 };
 
 export type FbrPrintIssue = {
@@ -32,11 +34,18 @@ export function validateFbrProductionPrintReadiness(input: FbrProductionPrintInp
       message: "Production FBR printing is blocked until the FBR-verifiable software registration number is recorded.",
     });
   }
-
-  issues.push({
-    code: "FBR_QR_RENDERING_NOT_VERIFIED",
-    message: "Production FBR printing remains blocked until the controlling QR specification and encoded payload are verified and the QR renderer passes scan tests.",
-  });
+  if (!input.qrReady) {
+    issues.push({
+      code: "FBR_QR_REQUIRED",
+      message: "Production FBR printing is blocked until a Version 2 QR code is generated from the authoritative FBR invoice number.",
+    });
+  }
+  if (!input.officialDigitalInvoicingLogoReady) {
+    issues.push({
+      code: "FBR_DI_LOGO_REQUIRED",
+      message: "Production FBR printing is blocked until the official FBR Digital Invoicing System logo asset is installed and verified.",
+    });
+  }
 
   return issues;
 }
