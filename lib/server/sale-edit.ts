@@ -2,7 +2,7 @@ import "server-only";
 
 import { Prisma, type Role } from "@prisma/client";
 
-import { postSaleToGeneralLedger } from "@/lib/server/accounting";
+import { postSaleToGeneralLedger, reverseGeneralLedgerEntries } from "@/lib/server/accounting";
 import { writeAudit } from "@/lib/server/audit";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 import { allocateSalesTaxByLine } from "@/lib/sales-tax";
@@ -353,22 +353,20 @@ export async function updateSaleAndInvoice(context: EditContext, input: SaleEdit
       });
     }
 
-    const originalGl = await tx.generalLedgerEntry.findMany({
-      where: { workspaceId: context.workspaceId, sourceType: "SALE", sourceId: order.id, reversalOfId: null },
-      select: { id: true },
+    const correctionDate = new Date();
+    await reverseGeneralLedgerEntries(tx, {
+      workspaceId: context.workspaceId,
+      sources: [{ sourceType: "SALE", sourceId: order.id }],
+      documentNo: `REV-${order.orderNumber}`,
+      date: correctionDate,
+      reason: `Invoice ${invoice.invoiceNumber} superseded by edit`,
+      reversedById: context.userId,
     });
-    const reversedGlCount = originalGl.length
-      ? await tx.generalLedgerEntry.count({ where: { workspaceId: context.workspaceId, reversalOfId: { in: originalGl.map((entry) => entry.id) } } })
-      : 0;
-    if (reversedGlCount) throw new SaleEditDomainError("This invoice already has accounting reversals and cannot be edited in place.");
-    if (originalGl.length) {
-      await tx.generalLedgerEntry.deleteMany({ where: { workspaceId: context.workspaceId, id: { in: originalGl.map((entry) => entry.id) } } });
-    }
     await postSaleToGeneralLedger(tx, {
       workspaceId: context.workspaceId,
       saleId: order.id,
       orderNumber: order.orderNumber,
-      date: data.issuedAt,
+      date: correctionDate,
       revenue: taxableAmount,
       salesTax: gstAmount,
       costOfGoodsSold,
@@ -381,7 +379,7 @@ export async function updateSaleAndInvoice(context: EditContext, input: SaleEdit
       action: "sale.edited",
       entityType: "SalesOrder",
       entityId: order.id,
-      metadata: { invoiceId: invoice.id, oldTotal: oldTotal.toString(), newTotal: total.toString(), customerId: newCustomer.id },
+      metadata: { invoiceId: invoice.id, oldTotal: oldTotal.toString(), newTotal: total.toString(), customerId: newCustomer.id, accountingCorrectionDate: correctionDate.toISOString(), documentVersion: nextDocumentVersion },
     });
 
     return { saleId: order.id, invoiceId: invoice.id };
