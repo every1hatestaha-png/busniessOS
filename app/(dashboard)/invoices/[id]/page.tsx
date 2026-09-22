@@ -10,6 +10,7 @@ import { CancelSaleButton } from "@/components/sales/cancel-sale-button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { deliveryChallanNumber } from "@/lib/document-references";
 import { validateFbrProductionPrintReadiness } from "@/lib/fbr/print-compliance";
+import { buildFbrInvoiceQrSvg, FBR_QR_PRINT_SIZE_MM } from "@/lib/fbr/qr";
 import { requireWorkspace } from "@/lib/server/auth";
 import { getCashBankAccounts } from "@/lib/server/accounting";
 import { buildFbrInvoiceDraft, fingerprintFbrPayload, getFbrSubmissionForInvoice } from "@/lib/server/fbr-digital-invoicing";
@@ -57,12 +58,23 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     }),
     getFbrSubmissionForInvoice(workspaceId, id, "PRODUCTION"),
   ]);
+  let fbrQrSvg: string | null = null;
+  if (fbrProductionSubmission?.status === "SUBMITTED" && fbrProductionSubmission.fbrInvoiceNumber) {
+    try {
+      fbrQrSvg = buildFbrInvoiceQrSvg(fbrProductionSubmission.fbrInvoiceNumber).svg;
+    } catch {
+      fbrQrSvg = null;
+    }
+  }
+  const officialDigitalInvoicingLogoReady = false;
   const fbrPrintIssues = fbrPrintConfig?.enabled && fbrPrintConfig.environment === "PRODUCTION"
     ? validateFbrProductionPrintReadiness({
         environment: "PRODUCTION",
         submissionStatus: fbrProductionSubmission?.status,
         fbrInvoiceNumber: fbrProductionSubmission?.fbrInvoiceNumber,
         softwareRegistrationNo: fbrPrintConfig.softwareRegistrationNo,
+        qrReady: Boolean(fbrQrSvg),
+        officialDigitalInvoicingLogoReady,
       })
     : [];
   const fbrPrintBlocked = fbrPrintIssues.length > 0;
@@ -156,6 +168,22 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             {invoice.order?.items.length ? <Table className="min-w-[700px] table-fixed print:min-w-0"><TableHeader><TableRow><TableHead className="w-[30%] pl-6 sm:pl-8">Description</TableHead><TableHead className="w-[14%]">SKU</TableHead><TableHead className="w-[8%] text-right">Qty</TableHead><TableHead className="w-[8%]">Unit</TableHead><TableHead className="w-[12%] text-right">Rate</TableHead><TableHead className="w-[11%] text-right">Disc/unit</TableHead><TableHead className="w-[8%] text-right">Tax</TableHead><TableHead className="w-[14%] pr-6 text-right sm:pr-8">Amount</TableHead></TableRow></TableHeader><TableBody>{invoice.order.items.map((item) => { const { total } = calculateSaleLine(item); return <TableRow key={item.id}><TableCell className="whitespace-normal break-words pl-6 font-medium sm:pl-8"><span>{item.name}</span>{item.pricingMode === "WEIGHT" && <span className="mt-0.5 block text-[10px] font-medium text-emerald-700">{item.unitWeight?.toFixed(3)} kg/unit · total {item.totalWeight?.toFixed(3)} kg</span>}</TableCell><TableCell className="whitespace-normal break-all text-neutral-500">{item.sku || "-"}</TableCell><TableCell className="text-right">{item.quantity}</TableCell><TableCell className="text-neutral-500">{formatUnit(item.unit)}</TableCell><TableCell className="text-right tabular-nums">{item.pricingMode === "WEIGHT" ? <><span>{formatPKR(item.perKgRate ?? 0)}/kg</span><span className="block text-[10px] text-neutral-500">{formatPKR(item.unitPrice)}/unit</span></> : formatPKR(item.unitPrice)}</TableCell><TableCell className="text-right tabular-nums">{formatPKR(item.discountPerUnit)}</TableCell><TableCell className="text-right tabular-nums">{item.taxRate === null ? "-" : `${item.taxRate}%`}</TableCell><TableCell className="pr-6 text-right font-semibold tabular-nums sm:pr-8">{formatPKR(total)}</TableCell></TableRow>; })}</TableBody></Table> : <p className="p-8 text-sm text-neutral-500">No sales order line items are linked to this invoice.</p>}
           </section>
 
+          {fbrPrintConfig?.enabled && fbrPrintConfig.environment === "PRODUCTION" && !fbrPrintBlocked && fbrQrSvg && (
+            <section className="border-t border-neutral-200 p-6 sm:p-8">
+              <div className="flex items-end justify-between gap-6">
+                <div className="space-y-1 text-xs">
+                  <p className="font-bold uppercase tracking-wide">FBR Digital Invoicing</p>
+                  <p><span className="text-neutral-500">FBR Invoice:</span> <span className="font-mono font-semibold">{fbrProductionSubmission?.fbrInvoiceNumber}</span></p>
+                  <p><span className="text-neutral-500">Software Registration:</span> <span className="font-mono font-semibold">{fbrPrintConfig.softwareRegistrationNo}</span></p>
+                </div>
+                <div
+                  aria-label={`FBR QR code for ${fbrProductionSubmission?.fbrInvoiceNumber ?? ""}`}
+                  style={{ width: `${FBR_QR_PRINT_SIZE_MM}mm`, height: `${FBR_QR_PRINT_SIZE_MM}mm` }}
+                  dangerouslySetInnerHTML={{ __html: fbrQrSvg }}
+                />
+              </div>
+            </section>
+          )}
           {invoice.status === "CANCELLED" && <div className="border-y-4 border-black p-3 text-center text-xl font-black tracking-[0.25em]">CANCELLED</div>}
           <section data-document-totals className="flex justify-end border-t border-neutral-200 p-6 print:p-3 sm:p-8"><div className="w-full max-w-sm space-y-3 print:space-y-1 text-sm"><p className="hidden text-[9px] uppercase tracking-wide text-neutral-500 print:block">Invoice {invoice.invoiceNumber} · DC {dcNumber}</p>{invoice.order && <><div className="flex justify-between"><span className="text-neutral-500">Subtotal</span><span>{formatPKR(invoice.order.subtotal)}</span></div><div className="flex justify-between"><span className="text-neutral-500">Discount</span><span>- {formatPKR(invoice.order.discount)}</span></div><div className="flex justify-between"><span className="text-neutral-500">Taxable amount</span><span>{formatPKR(invoice.order.taxableAmount)}</span></div><div className="flex justify-between"><span className="text-neutral-500">{invoice.order.gstRate === null ? "Sales tax (Mixed)" : `Sales tax (${invoice.order.gstRate}%)`}</span><span>{formatPKR(invoice.order.gstAmount)}</span></div></>}<div className="flex justify-between border-t pt-3 print:pt-1 text-base font-bold"><span>Invoice total</span><span>{formatPKR(invoice.total)}</span></div><div className="flex justify-between"><span className="text-neutral-500">Payments received</span><span className="text-emerald-700">{formatPKR(invoice.paid)}</span></div>{invoice.creditApplied > 0 && <div className="flex justify-between"><span className="text-neutral-500">Customer credit applied</span><span>{formatPKR(invoice.creditApplied)}</span></div>}<div className="flex justify-between rounded-lg bg-neutral-950 p-4 print:p-2 text-base font-bold text-white print:border print:border-neutral-300 print:bg-white print:text-black"><span>Balance due</span><span>{formatPKR(invoice.balance)}</span></div></div></section>
 
