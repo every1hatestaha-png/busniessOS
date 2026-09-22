@@ -58,7 +58,10 @@ describe("database tenant parent guards", () => {
         customerId: customerB,
         orderNumber: `TG-CROSS-SALE-${runId}`,
       },
-    })).rejects.toThrow(/Cross-workspace reference rejected/);
+    })).rejects.toThrow();
+    expect(await db.salesOrder.count({
+      where: { workspaceId: workspaceA, orderNumber: `TG-CROSS-SALE-${runId}` },
+    })).toBe(0);
   });
 
   it("rejects a payment linked to a customer from another workspace", async () => {
@@ -68,6 +71,9 @@ describe("database tenant parent guards", () => {
         customerId: customerB,
         amount: 10,
       },
-    })).rejects.toThrow(/Cross-workspace reference rejected/);
+    })).rejects.toThrow();
+    expect(await db.payment.count({
+      where: { workspaceId: workspaceA, customerId: customerB },
+    })).toBe(0);
   });
 });
