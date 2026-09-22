@@ -55,16 +55,75 @@ export async function removeMember(context: ServiceContext, memberId: string) {
   });
 }
 
-export async function acceptPendingInvitations(userId: string, email: string) {
+export function listPendingInvitationsForEmail(email: string) {
+  const normalized = email.trim().toLowerCase();
+  return db.workspaceInvitation.findMany({
+    where: { email: normalized, status: "PENDING", expiresAt: { gt: new Date() } },
+    select: {
+      id: true,
+      email: true,
+      role: true,
+      expiresAt: true,
+      workspace: { select: { name: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+export async function acceptInvitationForUser(userId: string, email: string, invitationId: string) {
   const normalized = email.trim().toLowerCase();
   const now = new Date();
-  const pending = await db.workspaceInvitation.findMany({ where: { email: normalized, status: "PENDING", expiresAt: { gt: now } } });
-  for (const invitation of pending) {
-    await db.$transaction(async (tx) => {
-      const claimed = await tx.workspaceInvitation.updateMany({ where: { id: invitation.id, email: normalized, status: "PENDING", expiresAt: { gt: now } }, data: { status: "ACCEPTED", acceptedAt: now } });
-      if (claimed.count !== 1) return;
-      await tx.workspaceMember.upsert({ where: { workspaceId_userId: { workspaceId: invitation.workspaceId, userId } }, create: { workspaceId: invitation.workspaceId, userId, role: invitation.role }, update: {} });
-      await writeAudit(tx, { workspaceId: invitation.workspaceId, action: "member.joined", entityType: "User", entityId: userId });
+  return db.$transaction(async (tx) => {
+    const invitation = await tx.workspaceInvitation.findFirst({
+      where: { id: invitationId, email: normalized, status: "PENDING", expiresAt: { gt: now } },
+      select: { id: true, workspaceId: true, role: true },
     });
-  }
+    if (!invitation) throw new MemberDomainError("Invitation was not found, does not match your verified email, or is no longer pending.");
+
+    const claimed = await tx.workspaceInvitation.updateMany({
+      where: { id: invitation.id, email: normalized, status: "PENDING", expiresAt: { gt: now } },
+      data: { status: "ACCEPTED", acceptedAt: now },
+    });
+    if (claimed.count !== 1) throw new MemberDomainError("Invitation is no longer pending.");
+
+    await tx.workspaceMember.upsert({
+      where: { workspaceId_userId: { workspaceId: invitation.workspaceId, userId } },
+      create: { workspaceId: invitation.workspaceId, userId, role: invitation.role },
+      update: {},
+    });
+    await writeAudit(tx, {
+      workspaceId: invitation.workspaceId,
+      actorId: userId,
+      action: "member.joined",
+      entityType: "WorkspaceInvitation",
+      entityId: invitation.id,
+      metadata: { acceptedByVerifiedEmail: normalized },
+    });
+    return { workspaceId: invitation.workspaceId };
+  });
+}
+
+export async function declineInvitationForUser(userId: string, email: string, invitationId: string) {
+  const normalized = email.trim().toLowerCase();
+  return db.$transaction(async (tx) => {
+    const invitation = await tx.workspaceInvitation.findFirst({
+      where: { id: invitationId, email: normalized, status: "PENDING", expiresAt: { gt: new Date() } },
+      select: { id: true, workspaceId: true },
+    });
+    if (!invitation) throw new MemberDomainError("Invitation was not found, does not match your verified email, or is no longer pending.");
+
+    const declined = await tx.workspaceInvitation.updateMany({
+      where: { id: invitation.id, email: normalized, status: "PENDING" },
+      data: { status: "REVOKED" },
+    });
+    if (declined.count !== 1) throw new MemberDomainError("Invitation is no longer pending.");
+
+    await writeAudit(tx, {
+      workspaceId: invitation.workspaceId,
+      actorId: userId,
+      action: "member.invitation_declined",
+      entityType: "WorkspaceInvitation",
+      entityId: invitation.id,
+    });
+  });
 }
