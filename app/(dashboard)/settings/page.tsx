@@ -126,6 +126,8 @@ export default async function SettingsPage() {
         canManage={context.role === "OWNER"}
         sandboxReady={fbrCredentials.some((credential) => credential.environment === "SANDBOX" && Boolean(credential.verifiedAt))}
         productionReady={fbrCredentials.some((credential) => credential.environment === "PRODUCTION" && Boolean(credential.verifiedAt))}
+        enabled={fbrConfig?.enabled ?? false}
+        environment={fbrConfig?.environment ?? "SANDBOX"}
       />
       <FbrIntegrationForm config={fbrConfig} sandboxCredentialReady={sandboxCredentialReady} />
       <FbrProductionRouteForm
