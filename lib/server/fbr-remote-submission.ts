@@ -8,7 +8,7 @@ import { assertFbrExpectedEnvironment, type FbrEnvironment, type FbrInvoicePaylo
 import { writeAudit } from "@/lib/server/audit";
 import { requirePermission } from "@/lib/server/authorization";
 import { db } from "@/lib/server/db";
-import { FbrCredentialError, resolveFbrBearerToken } from "@/lib/server/fbr-credentials";
+import { FbrCredentialError, resolveFbrBearerTokenForRequest } from "@/lib/server/fbr-credentials";
 import { checkFbrSubmissionFreshness } from "@/lib/server/fbr-digital-invoicing";
 
 type PostBody = {
@@ -116,7 +116,7 @@ export async function runFbrInvoiceSubmission(submissionId: string, expectedEnvi
 
   let token: string;
   try {
-    token = resolveFbrBearerToken(context.workspaceId, submission.environment).token;
+    token = (await resolveFbrBearerTokenForRequest(context.workspaceId, submission.environment)).token;
   } catch (error) {
     if (!(error instanceof FbrCredentialError)) throw error;
     const blocked = await db.fbrInvoiceSubmission.update({
