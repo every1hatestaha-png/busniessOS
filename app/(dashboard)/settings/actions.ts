@@ -113,7 +113,7 @@ export async function saveFbrWorkspaceCredentialAction(
       if (!provinces.length) {
         return { status: "error", message: "FBR accepted the request but returned no province reference data. The credential was not saved." };
       }
-      tokenEncrypted = encryptFbrBearerToken(token);
+      tokenEncrypted = encryptFbrBearerToken(token, context.workspaceId, parsed.data.environment);
       verifiedAt = new Date();
     } else if (enabled) {
       const stored = await db.fbrIntegrationCredential.findUnique({
