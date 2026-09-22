@@ -6,7 +6,7 @@ WITH ranked_pending AS (
   SELECT
     "id",
     ROW_NUMBER() OVER (
-      PARTITION BY "workspaceId", "email"
+      PARTITION BY "workspaceId", LOWER("email")
       ORDER BY "createdAt" DESC, "id" DESC
     ) AS rn
   FROM "workspace_invitations"
@@ -20,5 +20,5 @@ WHERE invitation."id" = ranked_pending."id"
   AND ranked_pending.rn > 1;
 
 CREATE UNIQUE INDEX "workspace_invitations_one_pending_per_email"
-ON "workspace_invitations" ("workspaceId", "email")
+ON "workspace_invitations" ("workspaceId", LOWER("email"))
 WHERE "status" = 'PENDING';
