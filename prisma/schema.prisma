@@ -785,6 +785,7 @@ model Invoice {
   issuedAt      DateTime      @default(now())
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+  issuedSnapshot Json?
 
   workspace         Workspace                  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   customer          Customer                   @relation(fields: [customerId], references: [id], onDelete: Restrict)
