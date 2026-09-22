@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { fetchFbrProvinces } from "@/lib/fbr/reference";
 import { requirePermission } from "@/lib/server/authorization";
+import { encryptFbrBearerToken, FbrCredentialError } from "@/lib/server/fbr-credentials";
 import { db } from "@/lib/server/db";
 
 const workspaceProfileSchema = z.object({
@@ -71,6 +73,146 @@ export async function updateWorkspaceProfileAction(
   return { status: "success", message: "Business profile updated." };
 }
 
+
+
+const fbrWorkspaceCredentialSchema = z.object({
+  environment: z.enum(["SANDBOX", "PRODUCTION"]),
+  token: z.string().trim().min(12, "Enter the FBR bearer token.").max(4096, "The FBR bearer token is too long."),
+});
+
+export type FbrWorkspaceCredentialState = { status?: "success" | "error"; message?: string };
+
+export async function saveFbrWorkspaceCredentialAction(
+  _previousState: FbrWorkspaceCredentialState,
+  formData: FormData,
+): Promise<FbrWorkspaceCredentialState> {
+  const context = await requirePermission("workspace.manage");
+  if (context.role !== "OWNER") {
+    return { status: "error", message: "Only the workspace owner can replace FBR credentials." };
+  }
+
+  const parsed = fbrWorkspaceCredentialSchema.safeParse({
+    environment: String(formData.get("environment") ?? ""),
+    token: String(formData.get("token") ?? ""),
+  });
+  if (!parsed.success) {
+    return { status: "error", message: parsed.error.issues[0]?.message ?? "Check the FBR credential." };
+  }
+
+  const enabled = formData.get("enabled") === "on";
+  const token = parsed.data.token;
+  try {
+    const provinces = await fetchFbrProvinces(token);
+    if (!provinces.length) {
+      return { status: "error", message: "FBR accepted the request but returned no province reference data. The credential was not saved." };
+    }
+
+    const tokenEncrypted = encryptFbrBearerToken(token);
+    const verifiedAt = new Date();
+
+    await db.$transaction(async (tx) => {
+      await tx.fbrIntegrationCredential.upsert({
+        where: {
+          workspaceId_environment: {
+            workspaceId: context.workspaceId,
+            environment: parsed.data.environment,
+          },
+        },
+        create: {
+          workspaceId: context.workspaceId,
+          environment: parsed.data.environment,
+          tokenEncrypted,
+          verifiedAt,
+          verifiedBy: context.user.id,
+        },
+        update: {
+          tokenEncrypted,
+          verifiedAt,
+          verifiedBy: context.user.id,
+        },
+      });
+
+      const existing = await tx.fbrIntegrationConfig.findUnique({
+        where: { workspaceId: context.workspaceId },
+        select: { id: true, updatedAt: true, environment: true },
+      });
+
+      let configId: string;
+      if (existing) {
+        const updated = await tx.fbrIntegrationConfig.updateMany({
+          where: {
+            id: existing.id,
+            workspaceId: context.workspaceId,
+            updatedAt: existing.updatedAt,
+          },
+          data: {
+            enabled,
+            environment: parsed.data.environment,
+          },
+        });
+        if (updated.count !== 1) throw new Error("FBR configuration changed while the credential was being saved.");
+        configId = existing.id;
+      } else {
+        const config = await tx.fbrIntegrationConfig.create({
+          data: {
+            workspaceId: context.workspaceId,
+            enabled,
+            environment: parsed.data.environment,
+            provider: "PRAL",
+          },
+          select: { id: true },
+        });
+        configId = config.id;
+      }
+
+      if (parsed.data.environment === "PRODUCTION" || existing?.environment !== parsed.data.environment) {
+        await tx.fbrInvoiceSubmission.updateMany({
+          where: {
+            workspaceId: context.workspaceId,
+            status: { not: "SUBMITTED" },
+          },
+          data: {
+            status: "BLOCKED",
+            lastErrorCode: "CREDENTIAL_OR_ENVIRONMENT_CHANGED",
+            lastErrorMessage: "FBR credential or environment changed. Prepare and validate a fresh submission before remote transmission.",
+            validatedAt: null,
+          },
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          workspaceId: context.workspaceId,
+          actorId: context.user.id,
+          action: "fbr.workspace_credential_replaced",
+          entityType: "FbrIntegrationConfig",
+          entityId: configId,
+          metadata: {
+            environment: parsed.data.environment,
+            enabled,
+            verifiedAt: verifiedAt.toISOString(),
+          },
+        },
+      });
+    });
+  } catch (error) {
+    const message = error instanceof FbrCredentialError
+      ? error.message
+      : error instanceof Error
+        ? error.message.replace(/Bearer\s+[^\s]+/gi, "Bearer [REDACTED]")
+        : "The FBR credential could not be verified or saved.";
+    return { status: "error", message };
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/invoices");
+  return {
+    status: "success",
+    message: parsed.data.environment === "PRODUCTION"
+      ? "Production credential verified and encrypted. Live transmission remains blocked until every production safety gate passes."
+      : "Sandbox credential verified and encrypted for this workspace.",
+  };
+}
 
 const fbrSandboxConfigSchema = z.object({
   defaultScenarioId: z.string().trim().toUpperCase().max(12).refine(
