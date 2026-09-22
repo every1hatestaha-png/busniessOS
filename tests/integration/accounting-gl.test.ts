@@ -97,6 +97,7 @@ describe("accounting GL integration", () => {
     await db.customerReturn.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
     await db.debitNote.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
     await db.creditNote.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
+    await db.invoiceDocumentVersion.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
     await db.invoice.deleteMany({ where: { workspaceId: { in: workspaceIds } } });
     await db.purchaseOrderItem.deleteMany({ where: { purchaseOrder: { workspaceId: { in: workspaceIds } } } });
     await db.salesOrderItem.deleteMany({ where: { salesOrder: { workspaceId: { in: workspaceIds } } } });
