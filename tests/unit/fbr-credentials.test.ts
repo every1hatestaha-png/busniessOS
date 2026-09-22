@@ -91,18 +91,26 @@ describe("FBR credential resolver", () => {
 
   it("encrypts workspace credentials with authenticated AES-256-GCM", () => {
     process.env.FBR_DI_CREDENTIAL_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
-    const encrypted = encryptFbrBearerToken("  test-secret-token  ");
+    const encrypted = encryptFbrBearerToken("  test-secret-token  ", "abc-123", "SANDBOX");
 
     expect(encrypted).not.toContain("test-secret-token");
-    expect(decryptFbrBearerToken(encrypted)).toBe("test-secret-token");
+    expect(decryptFbrBearerToken(encrypted, "abc-123", "SANDBOX")).toBe("test-secret-token");
+  });
+
+  it("rejects a credential moved to another workspace or environment", () => {
+    process.env.FBR_DI_CREDENTIAL_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+    const encrypted = encryptFbrBearerToken("test-secret-token", "abc-123", "SANDBOX");
+
+    expect(() => decryptFbrBearerToken(encrypted, "other-workspace", "SANDBOX")).toThrow(FbrCredentialError);
+    expect(() => decryptFbrBearerToken(encrypted, "abc-123", "PRODUCTION")).toThrow(FbrCredentialError);
   });
 
   it("fails closed when the workspace credential encryption key is missing or invalid", () => {
     delete process.env.FBR_DI_CREDENTIAL_ENCRYPTION_KEY;
-    expect(() => encryptFbrBearerToken("test-secret-token")).toThrow(FbrCredentialError);
+    expect(() => encryptFbrBearerToken("test-secret-token", "abc-123", "SANDBOX")).toThrow(FbrCredentialError);
 
     process.env.FBR_DI_CREDENTIAL_ENCRYPTION_KEY = Buffer.alloc(16, 2).toString("base64");
-    expect(() => encryptFbrBearerToken("test-secret-token")).toThrow(FbrCredentialError);
+    expect(() => encryptFbrBearerToken("test-secret-token", "abc-123", "SANDBOX")).toThrow(FbrCredentialError);
   });
 
   it("never returns an empty configured token", () => {
