@@ -16,10 +16,14 @@ export function FbrWorkspaceCredentialForm({
   canManage,
   sandboxReady,
   productionReady,
+  enabled,
+  environment,
 }: {
   canManage: boolean;
   sandboxReady: boolean;
   productionReady: boolean;
+  enabled: boolean;
+  environment: "SANDBOX" | "PRODUCTION";
 }) {
   const [state, formAction, pending] = useActionState(saveFbrWorkspaceCredentialAction, initialState);
 
@@ -48,7 +52,7 @@ export function FbrWorkspaceCredentialForm({
             <span className="mb-1.5 block text-xs font-semibold text-slate-700">Credential environment</span>
             <select
               name="environment"
-              defaultValue="PRODUCTION"
+              defaultValue={environment}
               disabled={!canManage}
               className="h-9 w-full rounded-md border bg-white px-3 text-sm"
             >
@@ -65,9 +69,8 @@ export function FbrWorkspaceCredentialForm({
               spellCheck={false}
               minLength={12}
               maxLength={4096}
-              placeholder="Paste credential"
+              placeholder="Paste a new credential, or leave blank to keep the verified one"
               disabled={!canManage}
-              required
             />
           </label>
         </div>
@@ -76,14 +79,14 @@ export function FbrWorkspaceCredentialForm({
           <input
             name="enabled"
             type="checkbox"
-            defaultChecked
+            defaultChecked={enabled}
             disabled={!canManage}
             className="mt-0.5 size-4 accent-emerald-600"
           />
           <span>
             <span className="block text-sm font-semibold text-neutral-900">Enable FBR for this workspace</span>
             <span className="mt-0.5 block text-xs leading-5 text-neutral-500">
-              This selects the credential environment for invoice preparation. Production POST still requires all compliance checks and the deployment safety switch.
+              Turn this off at any time without re-entering the credential. Turning it on requires a verified credential for the selected environment. Production POST still requires all compliance checks and the deployment safety switch.
             </span>
           </span>
         </label>
@@ -103,7 +106,7 @@ export function FbrWorkspaceCredentialForm({
             {state.status === "error" && <span className="text-red-600" role="alert">{state.message}</span>}
           </div>
           <Button type="submit" disabled={pending || !canManage}>
-            {pending ? "Verifying..." : "Verify and save credential"}
+            {pending ? "Saving..." : "Save FBR connection"}
           </Button>
         </div>
       </form>
