@@ -57,6 +57,7 @@ export async function teardownTestWorkspace(workspaceId: string, userId: string)
   await db.payment.deleteMany({ where: { workspaceId } });
   await db.goodReceivedNoteItem.deleteMany({ where: { goodReceivedNote: { workspaceId } } });
   await db.goodReceivedNote.deleteMany({ where: { workspaceId } });
+  await db.invoiceDocumentVersion.deleteMany({ where: { workspaceId } });
   await db.invoice.deleteMany({ where: { workspaceId } });
   await db.salesOrderItem.deleteMany({ where: { salesOrder: { workspaceId } } });
   await db.salesOrder.deleteMany({ where: { workspaceId } });
