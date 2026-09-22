@@ -2,6 +2,7 @@ import "server-only";
 
 import { Prisma, type PaymentMethod } from "@prisma/client";
 import { db } from "@/lib/server/db";
+import { parseInvoiceIssuedSnapshot } from "@/lib/server/invoice-snapshot";
 
 export async function listInvoices(workspaceId: string) {
   const rows = await db.invoice.findMany({ where: { workspaceId }, orderBy: { issuedAt: "desc" }, include: { customer: { select: { companyName: true, name: true } }, salesOrder: { select: { orderNumber: true } } } });
@@ -18,6 +19,7 @@ export async function getInvoice(workspaceId: string, id: string) {
     paidAmount: Prisma.Decimal;
     creditApplied: Prisma.Decimal;
     status: "DRAFT" | "UNPAID" | "PARTIALLY_PAID" | "PAID" | "OVERDUE" | "CANCELLED";
+    issuedSnapshot: Prisma.JsonValue | null;
     customerId: string;
     customerName: string;
     customerCompanyName: string | null;
@@ -31,7 +33,7 @@ export async function getInvoice(workspaceId: string, id: string) {
     warehouseName: string | null;
     warehouseCode: string | null;
   }>>`
-    SELECT i."id", i."invoiceNumber", i."issuedAt", i."dueDate", i."amount", i."paidAmount", i."creditApplied", i."status",
+    SELECT i."id", i."invoiceNumber", i."issuedAt", i."dueDate", i."amount", i."paidAmount", i."creditApplied", i."status", i."issuedSnapshot",
       c."id" AS "customerId", c."name" AS "customerName", c."companyName" AS "customerCompanyName", c."phone" AS "customerPhone", c."address" AS "customerAddress",
       so."id" AS "salesOrderId", so."orderNumber", so."subtotal", so."discount",
       so."warehouseId"::text AS "warehouseId", w."name" AS "warehouseName", w."code" AS "warehouseCode"
@@ -44,6 +46,7 @@ export async function getInvoice(workspaceId: string, id: string) {
   `;
   const invoice = row[0];
   if (!invoice) return null;
+  const issuedSnapshot = parseInvoiceIssuedSnapshot(invoice.issuedSnapshot);
   const [items, directPayments, allocations] = await Promise.all([
     invoice.salesOrderId ? db.$queryRaw<Array<{ id: string; productName: string | null; fallbackProductName: string; productSku: string | null; fallbackSku: string | null; unit: string; quantity: number; unitPrice: Prisma.Decimal; discountPerUnit: Prisma.Decimal; totalPrice: Prisma.Decimal; pricingMode: "UNIT" | "WEIGHT"; unitWeight: Prisma.Decimal | null; totalWeight: Prisma.Decimal | null; perKgRate: Prisma.Decimal | null; taxRate: Prisma.Decimal | null }>>`
       SELECT soi."id", soi."productName", p."name" AS "fallbackProductName", soi."productSku", p."sku" AS "fallbackSku", p."unit"::text AS "unit", soi."quantity", soi."unitPrice", soi."discountPerUnit", soi."totalPrice", soi."pricingMode", soi."unitWeight", soi."totalWeight", soi."perKgRate", soi."taxRate"
@@ -67,15 +70,106 @@ export async function getInvoice(workspaceId: string, id: string) {
     ...allocations.map((allocation) => ({ id: allocation.paymentId, date: allocation.paymentDate.toISOString(), amount: allocation.reversalOfId ? -Number(allocation.amount) : Number(allocation.amount), method: allocation.method, reference: allocation.documentNumber ?? allocation.reference ?? "-", isReversed: allocation.isReversed, isReversal: Boolean(allocation.reversalOfId) })),
     ...directPayments.filter((payment) => !allocatedPaymentIds.has(payment.id)).map((payment) => ({ id: payment.id, date: payment.paymentDate.toISOString(), amount: payment.reversalOfId ? -Number(payment.amount) : Number(payment.amount), method: payment.method, reference: payment.documentNumber ?? payment.reference ?? "-", isReversed: payment.isReversed, isReversal: Boolean(payment.reversalOfId) })),
   ].sort((a, b) => b.date.localeCompare(a.date));
-  const subtotal = Number(invoice.subtotal ?? 0);
-  const discount = Number(invoice.discount ?? 0);
-  const taxableAmount = Math.max(0, subtotal - discount);
-  const gstAmount = Math.max(0, Number(invoice.amount) - taxableAmount);
-  const aggregateGstRate = taxableAmount > 0 ? Number(((gstAmount / taxableAmount) * 100).toFixed(4)) : 0;
+  const liveSubtotal = Number(invoice.subtotal ?? 0);
+  const liveDiscount = Number(invoice.discount ?? 0);
+  const liveTaxableAmount = Math.max(0, liveSubtotal - liveDiscount);
+  const liveGstAmount = Math.max(0, Number(invoice.amount) - liveTaxableAmount);
+  const aggregateGstRate = liveTaxableAmount > 0 ? Number(((liveGstAmount / liveTaxableAmount) * 100).toFixed(4)) : 0;
   const hasCompleteTaxRates = items.length > 0 && items.every((item) => item.taxRate !== null);
   const storedTaxRates = hasCompleteTaxRates
     ? [...new Set(items.map((item) => Number(item.taxRate)))]
     : [];
-  const gstRate = storedTaxRates.length > 1 ? null : (storedTaxRates[0] ?? aggregateGstRate);
-  return { id: invoice.id, invoiceNumber: invoice.invoiceNumber, date: invoice.issuedAt.toISOString(), dueDate: invoice.dueDate?.toISOString() ?? null, total: Number(invoice.amount), paid: Number(invoice.paidAmount), creditApplied: Number(invoice.creditApplied), balance: status === "CANCELLED" ? 0 : Number(invoice.amount.minus(invoice.paidAmount).minus(invoice.creditApplied)), status, customer: { id: invoice.customerId, name: invoice.customerName, companyName: invoice.customerCompanyName ?? invoice.customerName, phone: invoice.customerPhone ?? "", address: invoice.customerAddress ?? "" }, order: invoice.salesOrderId ? { id: invoice.salesOrderId, number: invoice.orderNumber ?? "-", subtotal, discount, taxableAmount, gstRate, gstAmount, warehouse: invoice.warehouseId ? { id: invoice.warehouseId, name: invoice.warehouseName ?? "Warehouse", code: invoice.warehouseCode ?? "" } : null, items: items.map((item) => ({ id: item.id, name: item.productName ?? item.fallbackProductName, sku: item.productSku ?? item.fallbackSku ?? "", unit: item.unit, quantity: Number(item.quantity), unitPrice: Number(item.unitPrice), discountPerUnit: Number(item.discountPerUnit), total: Number(item.totalPrice), pricingMode: item.pricingMode, taxRate: item.taxRate ? Number(item.taxRate) : null, unitWeight: item.unitWeight ? Number(item.unitWeight) : null, totalWeight: item.totalWeight ? Number(item.totalWeight) : null, perKgRate: item.perKgRate ? Number(item.perKgRate) : null })) } : null, payments };
+  const liveGstRate = storedTaxRates.length > 1 ? null : (storedTaxRates[0] ?? aggregateGstRate);
+
+  const customer = issuedSnapshot
+    ? {
+        id: issuedSnapshot.buyer.id,
+        name: issuedSnapshot.buyer.name,
+        companyName: issuedSnapshot.buyer.companyName ?? issuedSnapshot.buyer.name,
+        phone: issuedSnapshot.buyer.phone ?? "",
+        address: issuedSnapshot.buyer.address ?? "",
+      }
+    : {
+        id: invoice.customerId,
+        name: invoice.customerName,
+        companyName: invoice.customerCompanyName ?? invoice.customerName,
+        phone: invoice.customerPhone ?? "",
+        address: invoice.customerAddress ?? "",
+      };
+
+  const order = invoice.salesOrderId
+    ? issuedSnapshot
+      ? {
+          id: invoice.salesOrderId,
+          number: issuedSnapshot.order.number,
+          subtotal: issuedSnapshot.totals.subtotal,
+          discount: issuedSnapshot.totals.discount,
+          taxableAmount: issuedSnapshot.totals.taxableAmount,
+          gstRate: issuedSnapshot.totals.gstRate,
+          gstAmount: issuedSnapshot.totals.gstAmount,
+          warehouse: issuedSnapshot.order.warehouse
+            ? {
+                id: issuedSnapshot.order.warehouse.id,
+                name: issuedSnapshot.order.warehouse.name,
+                code: issuedSnapshot.order.warehouse.code ?? "",
+              }
+            : null,
+          items: issuedSnapshot.order.items.map((item) => ({
+            id: item.key,
+            name: item.name,
+            sku: item.sku ?? "",
+            unit: item.unit,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            discountPerUnit: item.discountPerUnit,
+            total: item.total,
+            pricingMode: item.pricingMode,
+            taxRate: item.taxRate,
+            unitWeight: item.unitWeight,
+            totalWeight: item.totalWeight,
+            perKgRate: item.perKgRate,
+          })),
+        }
+      : {
+          id: invoice.salesOrderId,
+          number: invoice.orderNumber ?? "-",
+          subtotal: liveSubtotal,
+          discount: liveDiscount,
+          taxableAmount: liveTaxableAmount,
+          gstRate: liveGstRate,
+          gstAmount: liveGstAmount,
+          warehouse: invoice.warehouseId ? { id: invoice.warehouseId, name: invoice.warehouseName ?? "Warehouse", code: invoice.warehouseCode ?? "" } : null,
+          items: items.map((item) => ({
+            id: item.id,
+            name: item.productName ?? item.fallbackProductName,
+            sku: item.productSku ?? item.fallbackSku ?? "",
+            unit: item.unit,
+            quantity: Number(item.quantity),
+            unitPrice: Number(item.unitPrice),
+            discountPerUnit: Number(item.discountPerUnit),
+            total: Number(item.totalPrice),
+            pricingMode: item.pricingMode,
+            taxRate: item.taxRate ? Number(item.taxRate) : null,
+            unitWeight: item.unitWeight ? Number(item.unitWeight) : null,
+            totalWeight: item.totalWeight ? Number(item.totalWeight) : null,
+            perKgRate: item.perKgRate ? Number(item.perKgRate) : null,
+          })),
+        }
+    : null;
+
+  return {
+    id: invoice.id,
+    invoiceNumber: invoice.invoiceNumber,
+    date: invoice.issuedAt.toISOString(),
+    dueDate: invoice.dueDate?.toISOString() ?? null,
+    total: issuedSnapshot?.totals.total ?? Number(invoice.amount),
+    paid: Number(invoice.paidAmount),
+    creditApplied: Number(invoice.creditApplied),
+    balance: status === "CANCELLED" ? 0 : Number(invoice.amount.minus(invoice.paidAmount).minus(invoice.creditApplied)),
+    status,
+    seller: issuedSnapshot?.seller ?? null,
+    customer,
+    order,
+    payments,
+  };
 }

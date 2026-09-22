@@ -145,6 +145,12 @@ describe("managed warehouse sales lifecycle", () => {
     });
     expect(storedSale.warehouseId).toBe(warehouseId);
     expect(storedSale.invoices[0]).toBeTruthy();
+    const invoiceId = storedSale.invoices[0]!.id;
+    expect(await db.invoiceDocumentVersion.findMany({
+      where: { invoiceId },
+      orderBy: { version: "asc" },
+      select: { version: true },
+    })).toEqual([{ version: 1 }]);
 
     const detail = await createSaleDetail(sale.id);
     expect(detail?.warehouse?.id).toBe(warehouseId);
@@ -161,6 +167,25 @@ describe("managed warehouse sales lifecycle", () => {
     });
 
     await expectQuantities(13);
+
+    const documentVersions = await db.invoiceDocumentVersion.findMany({
+      where: { invoiceId },
+      orderBy: { version: "asc" },
+      select: { version: true, snapshot: true },
+    });
+    expect(documentVersions.map((entry) => entry.version)).toEqual([1, 2]);
+    expect((documentVersions[0]!.snapshot as { totals?: { total?: number } }).totals?.total).toBe(750);
+    expect((documentVersions[1]!.snapshot as { totals?: { total?: number } }).totals?.total).toBe(1050);
+    const currentInvoice = await db.invoice.findUniqueOrThrow({ where: { id: invoiceId }, select: { issuedSnapshot: true } });
+    expect((currentInvoice.issuedSnapshot as { totals?: { total?: number } } | null)?.totals?.total).toBe(1050);
+
+    const glHistory = await db.generalLedgerEntry.findMany({
+      where: { workspaceId, sourceId: sale.id },
+      select: { sourceType: true, reversalOfId: true },
+    });
+    expect(glHistory.filter((entry) => entry.sourceType === "REVERSAL")).toHaveLength(4);
+    expect(glHistory.filter((entry) => entry.sourceType === "SALE")).toHaveLength(8);
+    expect(glHistory.filter((entry) => entry.sourceType === "SALE").every((entry) => entry.reversalOfId === null)).toBe(true);
 
     const saleItem = await db.salesOrderItem.findFirstOrThrow({
       where: { salesOrderId: sale.id, productId },

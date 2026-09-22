@@ -1,7 +1,6 @@
 import { headers } from "next/headers";
 import { Webhook } from "svix";
 import { db } from "@/lib/server/db";
-import { acceptPendingInvitations } from "@/lib/server/members";
 import { getClerkUserIdentity, isClerkUserLifecycleEvent, type ClerkWebhookEvent } from "@/lib/server/clerk-webhook";
 
 export async function POST(request: Request) {
@@ -18,7 +17,6 @@ export async function POST(request: Request) {
   if (!identity) return Response.json({ error: "Invalid Clerk user payload." }, { status: 422 });
   if (event.type === "user.deleted") { await db.user.deleteMany({ where: { clerkId: identity.id } }); return Response.json({ received: true }); }
   if (!identity.email) return Response.json({ error: "User has no email." }, { status: 422 });
-  const user = await db.user.upsert({ where: { clerkId: identity.id }, create: { clerkId: identity.id, email: identity.email, firstName: identity.firstName, lastName: identity.lastName }, update: { email: identity.email, firstName: identity.firstName, lastName: identity.lastName } });
-  if (identity.verifiedPrimaryEmail) await acceptPendingInvitations(user.id, identity.verifiedPrimaryEmail);
+  await db.user.upsert({ where: { clerkId: identity.id }, create: { clerkId: identity.id, email: identity.email, firstName: identity.firstName, lastName: identity.lastName }, update: { email: identity.email, firstName: identity.firstName, lastName: identity.lastName } });
   return Response.json({ received: true });
 }

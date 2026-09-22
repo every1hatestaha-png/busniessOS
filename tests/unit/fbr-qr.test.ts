@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildFbrInvoiceQrSvg,
   FBR_QR_MODULE_COUNT,
-  FBR_QR_PRINT_SIZE_MM,
   FBR_QR_VERSION,
   FbrQrError,
 } from "@/lib/fbr/qr";
@@ -17,7 +16,6 @@ describe("FBR production QR", () => {
     expect(result.moduleCount).toBe(25);
     expect(FBR_QR_VERSION).toBe(2);
     expect(FBR_QR_MODULE_COUNT).toBe(25);
-    expect(FBR_QR_PRINT_SIZE_MM).toBe(7);
     expect(result.svg).toContain("<svg");
   });
 

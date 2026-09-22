@@ -267,6 +267,28 @@ export async function postGoodsReceiptToGeneralLedger(tx: Prisma.TransactionClie
   ]);
 }
 
+export async function postGoodsReceiptAdjustmentToGeneralLedger(tx: Prisma.TransactionClient, params: { workspaceId: string; grnId: string; grnNumber: string; date: Date; delta: Prisma.Decimal }) {
+  if (params.delta.isZero()) return;
+  const accounts = await getSystemAccounts(tx, params.workspaceId, ["INVENTORY", "ACCOUNTS_PAYABLE"]);
+  const value = params.delta.abs();
+  const narration = `Goods receipt adjustment ${params.grnNumber}`;
+  const common = {
+    workspaceId: params.workspaceId,
+    sourceType: "PURCHASE_RECEIPT" as const,
+    sourceId: params.grnId,
+    documentNo: params.grnNumber,
+    date: params.date,
+    narration,
+  };
+  await postBalancedEntries(tx, params.delta.greaterThan(0) ? [
+    { ...common, accountId: accounts.INVENTORY.id, debit: value, credit: 0 },
+    { ...common, accountId: accounts.ACCOUNTS_PAYABLE.id, debit: 0, credit: value },
+  ] : [
+    { ...common, accountId: accounts.ACCOUNTS_PAYABLE.id, debit: value, credit: 0 },
+    { ...common, accountId: accounts.INVENTORY.id, debit: 0, credit: value },
+  ]);
+}
+
 export async function postOpeningAssetToGeneralLedger(tx: Prisma.TransactionClient, params: { workspaceId: string; sourceId: string; documentNo: string; date: Date; assetAccountId?: string; assetSystemCode?: "ACCOUNTS_RECEIVABLE" | "INVENTORY"; amount: Prisma.Decimal | number }) {
   const equity = await getSystemAccounts(tx, params.workspaceId, ["OWNER_EQUITY"]);
   const assetAccount = params.assetAccountId

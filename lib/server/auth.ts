@@ -17,11 +17,10 @@ export const getCurrentUser = cache(async () => {
     redirect(isElectron ? "/desktop-auth" : "/sign-in");
   }
 
-  const existing = await db.user.findUnique({ where: { clerkId: userId } });
-  if (existing) {
-    return existing;
-  }
-
+  // Always verify the current Clerk primary email before granting access.
+  // A local user row can be created by the lifecycle webhook before the user
+  // completes email verification, so an existing local row is not proof of
+  // current verified-email ownership.
   const clerkUser = await (await clerkClient()).users.getUser(userId);
 
   const primaryEmailAddress =
@@ -35,6 +34,29 @@ export const getCurrentUser = cache(async () => {
 
   if (primaryEmailAddress?.verification?.status !== "verified") {
     throw new Error("Verify your email address before using MunshiOS.");
+  }
+
+  const existing = await db.user.findUnique({ where: { clerkId: userId } });
+  if (existing) {
+    if (
+      existing.email === primaryEmail
+      && existing.firstName === clerkUser.firstName
+      && existing.lastName === clerkUser.lastName
+    ) {
+      return existing;
+    }
+    const conflictingEmailOwner = await db.user.findUnique({ where: { email: primaryEmail } });
+    if (conflictingEmailOwner && conflictingEmailOwner.id !== existing.id) {
+      throw new Error("This verified email is already linked to another MunshiOS user.");
+    }
+    return db.user.update({
+      where: { id: existing.id },
+      data: {
+        email: primaryEmail,
+        firstName: clerkUser.firstName,
+        lastName: clerkUser.lastName,
+      },
+    });
   }
 
   const existingByEmail = await db.user.findUnique({ where: { email: primaryEmail } });

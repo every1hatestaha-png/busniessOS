@@ -12,6 +12,7 @@ import { customerReturnSchema, type CustomerReturnInput } from "@/lib/validation
 import { canPerformAction } from "@/lib/server/authorization";
 import { formatPKR } from "@/lib/utils";
 import { applyManagedWarehouseStockDelta, assertManagedWarehouseSelection, getWarehouseStockModeInTransaction, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
+import type { InvoiceIssuedSnapshot } from "@/lib/server/invoice-snapshot";
 
 export type ServiceContext = { workspaceId: string; role: Role; userId?: string };
 export class SaleDomainError extends Error {
@@ -103,7 +104,7 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
       }
       return { id: existing.id };
     }
-    const customer = await tx.customer.findFirst({ where: { id: data.customerId, workspaceId: context.workspaceId, status: "ACTIVE" }, select: { id: true, currentBalance: true, creditLimit: true, creditDays: true } });
+    const customer = await tx.customer.findFirst({ where: { id: data.customerId, workspaceId: context.workspaceId, status: "ACTIVE" }, select: { id: true, name: true, companyName: true, phone: true, address: true, city: true, taxId: true, province: true, registrationType: true, currentBalance: true, creditLimit: true, creditDays: true } });
     if (!customer) throw new SaleDomainError("CUSTOMER_NOT_FOUND", "Customer is unavailable.");
 
     const warehouseMode = await getWarehouseStockModeInTransaction(tx, context.workspaceId);
@@ -132,6 +133,7 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
       id: true,
       name: true,
       sku: true,
+      unit: true,
       stockQuantity: true,
       costPrice: true,
       fbrHsCode: true,
@@ -270,7 +272,94 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
 
     const dueDate = new Date(order.orderDate);
     dueDate.setDate(dueDate.getDate() + customer.creditDays);
-    const invoice = await tx.invoice.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, salesOrderId: order.id, invoiceNumber, amount: total, paidAmount: paid, status: paid.isZero() ? "UNPAID" : paid.equals(total) ? "PAID" : "PARTIALLY_PAID", dueDate }, select: { id: true } });
+
+    const [seller, warehouse] = await Promise.all([
+      tx.workspace.findUniqueOrThrow({
+        where: { id: context.workspaceId },
+        select: { name: true, phone: true, email: true, address: true, city: true, country: true, currency: true, timezone: true, ntn: true, strn: true, province: true },
+      }),
+      data.warehouseId
+        ? tx.$queryRaw<Array<{ id: string; name: string; code: string | null }>>`
+            SELECT "id"::text AS "id", "name", "code"
+            FROM "warehouses"
+            WHERE "id"=${data.warehouseId}::uuid
+              AND "workspaceId"=${context.workspaceId}::uuid
+            LIMIT 1
+          `.then((rows) => rows[0] ?? null)
+        : Promise.resolve(null),
+    ]);
+
+    const distinctTaxRates = [...new Set(taxAllocation.lines.map((line) => Number(line.taxRate)))];
+    const issuedSnapshot = {
+      version: 1,
+      seller,
+      buyer: {
+        id: customer.id,
+        name: customer.name,
+        companyName: customer.companyName,
+        phone: customer.phone,
+        address: customer.address,
+        city: customer.city,
+        taxId: customer.taxId,
+        province: customer.province,
+        registrationType: customer.registrationType,
+      },
+      order: {
+        number: orderNumber,
+        warehouse,
+        items: lines.map((line, index) => {
+          const product = productById.get(line.productId)!;
+          return {
+            key: `${line.productId}:${index}`,
+            name: product.name,
+            sku: product.sku,
+            unit: product.unit,
+            quantity: Number(line.quantity),
+            unitPrice: Number(line.unitPrice),
+            discountPerUnit: Number(line.discountPerUnit),
+            total: Number(line.total),
+            pricingMode: line.pricingMode,
+            taxRate: Number(taxAllocation.lines[index]!.taxRate),
+            unitWeight: line.pricingMode === "WEIGHT" ? Number(line.unitWeight) : null,
+            totalWeight: line.totalWeight ? Number(line.totalWeight) : null,
+            perKgRate: line.pricingMode === "WEIGHT" ? Number(line.perKgRate) : null,
+          };
+        }),
+      },
+      totals: {
+        subtotal: Number(subtotal),
+        discount: Number(discount),
+        taxableAmount: Number(taxableAmount),
+        gstRate: distinctTaxRates.length === 1 ? distinctTaxRates[0]! : null,
+        gstAmount: Number(gstAmount),
+        total: Number(total),
+      },
+    } satisfies InvoiceIssuedSnapshot;
+
+    const invoice = await tx.invoice.create({
+      data: {
+        workspaceId: context.workspaceId,
+        customerId: customer.id,
+        salesOrderId: order.id,
+        invoiceNumber,
+        amount: total,
+        paidAmount: paid,
+        status: paid.isZero() ? "UNPAID" : paid.equals(total) ? "PAID" : "PARTIALLY_PAID",
+        dueDate,
+        issuedAt: order.orderDate,
+        issuedSnapshot: issuedSnapshot as unknown as Prisma.InputJsonValue,
+      },
+      select: { id: true },
+    });
+    await tx.invoiceDocumentVersion.create({
+      data: {
+        workspaceId: context.workspaceId,
+        invoiceId: invoice.id,
+        version: 1,
+        snapshot: issuedSnapshot as unknown as Prisma.InputJsonValue,
+        issuedAt: order.orderDate,
+      },
+    });
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, type: "SALE", debit: total, description: `Sale ${orderNumber}`, referenceId: order.id } });
     await tx.customer.update({ where: { id: customer.id, workspaceId: context.workspaceId }, data: { currentBalance: { increment: total } } });
     if (paid.greaterThan(0)) {

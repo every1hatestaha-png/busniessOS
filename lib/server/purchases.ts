@@ -2,7 +2,7 @@ import "server-only";
 
 import { Prisma } from "@prisma/client";
 import { writeAudit } from "@/lib/server/audit";
-import { postGoodsReceiptToGeneralLedger, postSupplierReturnToGeneralLedger, reverseGeneralLedgerEntries } from "@/lib/server/accounting";
+import { postGoodsReceiptAdjustmentToGeneralLedger, postGoodsReceiptToGeneralLedger, postSupplierReturnToGeneralLedger, reverseGeneralLedgerEntries } from "@/lib/server/accounting";
 import { db } from "@/lib/server/db";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";
 import type { ServiceContext } from "@/lib/server/sales";
@@ -1496,22 +1496,15 @@ if (!poItem) throw new PurchaseDomainError("INVALID_RECEIPT", "Purchase order it
         });
       }
 
-      // Reverse old GL entries and post new ones
-      await reverseGeneralLedgerEntries(tx, {
-        workspaceId: context.workspaceId,
-        sources: [{ sourceType: "PURCHASE_RECEIPT", sourceId: grn.id }],
-        documentNo: grn.grnNumber,
-        date: new Date(),
-        reason: `GRN ${grn.grnNumber} updated`,
-        reversedById: context.userId,
-      });
-
-      await postGoodsReceiptToGeneralLedger(tx, {
+      // Preserve the original posted receipt in its original accounting period.
+      // An edit posts only the monetary delta on the edit date so prior-period
+      // purchasing is not restated by an operational correction.
+      await postGoodsReceiptAdjustmentToGeneralLedger(tx, {
         workspaceId: context.workspaceId,
         grnId: grn.id,
         grnNumber: grn.grnNumber,
-        date: grn.receiptDate,
-        inventoryAmount: newGrnTotal,
+        date: new Date(),
+        delta: totalDelta,
       });
 
       // Update PO balanceAmount by delta

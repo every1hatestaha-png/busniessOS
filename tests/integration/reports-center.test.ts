@@ -59,6 +59,7 @@ describe("reports center integration", () => {
     await db.inventoryTransaction.deleteMany({ where: { workspaceId: { in: ids } } });
     await db.payment.deleteMany({ where: { workspaceId: { in: ids } } });
     await db.creditNote.deleteMany({ where: { workspaceId: { in: ids } } });
+    await db.invoiceDocumentVersion.deleteMany({ where: { workspaceId: { in: ids } } });
     await db.invoice.deleteMany({ where: { workspaceId: { in: ids } } });
     await db.goodReceivedNoteItem.deleteMany({ where: { goodReceivedNote: { workspaceId: { in: ids } } } });
     await db.goodReceivedNote.deleteMany({ where: { workspaceId: { in: ids } } });

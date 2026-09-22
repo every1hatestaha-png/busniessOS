@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { OnboardingForm } from "@/app/onboarding/onboarding-form";
+import { PendingWorkspaceInvitations } from "@/app/onboarding/pending-workspace-invitations";
 import {
   isBuilderBusinessType,
   onboardingBusinessTypeForBuilder,
@@ -8,6 +9,7 @@ import {
   sanitizeProvisioningModules,
 } from "@/lib/saas/provisioning-selection";
 import { getCurrentUser, getCurrentWorkspace } from "@/lib/server/auth";
+import { listPendingInvitationsForEmail } from "@/lib/server/members";
 
 export default async function OnboardingPage({
   searchParams,
@@ -21,13 +23,16 @@ export default async function OnboardingPage({
   const createAdditional = rawMode === "new";
 
   if (context && !createAdditional) redirect("/dashboard");
+  const pendingInvitations = createAdditional ? [] : await listPendingInvitationsForEmail(user.email);
   const rawBusiness = Array.isArray(params.business) ? params.business[0] : params.business;
   const builderBusiness = isBuilderBusinessType(rawBusiness) ? rawBusiness : null;
   const modules = sanitizeProvisioningModules(params.modules);
   const billing = sanitizeBilling(Array.isArray(params.billing) ? params.billing[0] : params.billing);
 
   return (
-    <OnboardingForm
+    <>
+      <PendingWorkspaceInvitations invitations={pendingInvitations} />
+      <OnboardingForm
       createAdditional={createAdditional}
       initialValues={{
         email: user.email,
@@ -39,6 +44,7 @@ export default async function OnboardingPage({
         billing,
         businessType: onboardingBusinessTypeForBuilder(builderBusiness),
       }}
-    />
+      />
+    </>
   );
 }

@@ -603,6 +603,57 @@ describe("P1: Purchase Order & GRN Lifecycle", () => {
     await db.purchaseOrder.delete({ where: { id: po.id } });
   });
 
+  it("23. GRN edit posts only the value delta in the edit period", async () => {
+    const po = await createPurchase(context(), {
+      supplierId,
+      items: [{ productId, quantity: 10, unitCost: 100 }],
+      pricingMode: "UNIT",
+      idempotencyKey: `po-grn-period-${runId}`,
+    });
+
+    const poItem = await db.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: po.id } });
+    const historicalDate = new Date("2026-08-15T12:00:00.000Z");
+    const grn = await createGoodsReceipt(context(), {
+      purchaseOrderId: po.id,
+      receiptDate: historicalDate,
+      items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 10, acceptedQuantity: 10, actualUnitCost: 100 }],
+    });
+
+    const editStartedAt = new Date();
+    await updateGoodsReceipt(context(), grn.id, {
+      items: [{ purchaseOrderItemId: poItem.id, receivedQuantity: 10, acceptedQuantity: 10, actualUnitCost: 120 }],
+    });
+
+    const entries = await db.generalLedgerEntry.findMany({
+      where: { workspaceId, sourceType: "PURCHASE_RECEIPT", sourceId: grn.id },
+      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+      select: { date: true, debit: true, credit: true, reversedAt: true },
+    });
+
+    const originalEntries = entries.filter((entry) => entry.date.getTime() === historicalDate.getTime());
+    const adjustmentEntries = entries.filter((entry) => entry.date.getTime() >= editStartedAt.getTime());
+
+    expect(originalEntries).toHaveLength(2);
+    expect(originalEntries.every((entry) => entry.reversedAt === null)).toBe(true);
+    expect(originalEntries.reduce((sum, entry) => sum.plus(entry.debit), new Prisma.Decimal(0)).toNumber()).toBe(1000);
+    expect(originalEntries.reduce((sum, entry) => sum.plus(entry.credit), new Prisma.Decimal(0)).toNumber()).toBe(1000);
+
+    expect(adjustmentEntries).toHaveLength(2);
+    expect(adjustmentEntries.reduce((sum, entry) => sum.plus(entry.debit), new Prisma.Decimal(0)).toNumber()).toBe(200);
+    expect(adjustmentEntries.reduce((sum, entry) => sum.plus(entry.credit), new Prisma.Decimal(0)).toNumber()).toBe(200);
+
+    const lifetimeDebit = entries.reduce((sum, entry) => sum.plus(entry.debit), new Prisma.Decimal(0));
+    const lifetimeCredit = entries.reduce((sum, entry) => sum.plus(entry.credit), new Prisma.Decimal(0));
+    expect(lifetimeDebit.toNumber()).toBe(1200);
+    expect(lifetimeCredit.toNumber()).toBe(1200);
+
+    await voidGoodsReceipt(context(), grn.id, { voidedReason: "Period test cleanup" });
+    await db.goodReceivedNoteItem.deleteMany({ where: { goodReceivedNoteId: grn.id } });
+    await db.goodReceivedNote.delete({ where: { id: grn.id } });
+    await db.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: po.id } });
+    await db.purchaseOrder.delete({ where: { id: po.id } });
+  });
+
   it("23. deleteGoodsReceipt: throws CANNOT_DELETE_POSTED_GRN (no GL impact)", async () => {
     const po = await createPurchase(context(), {
       supplierId,

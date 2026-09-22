@@ -254,6 +254,7 @@ model Workspace {
   salesOrders               SalesOrder[]
   purchaseOrders            PurchaseOrder[]
   invoices                  Invoice[]
+  invoiceDocumentVersions    InvoiceDocumentVersion[]
   payments                  Payment[]
   ledgerEntries             LedgerEntry[]
   documentSequences         DocumentSequence[]
@@ -785,6 +786,7 @@ model Invoice {
   issuedAt      DateTime      @default(now())
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+  issuedSnapshot Json?
 
   workspace         Workspace                  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   customer          Customer                   @relation(fields: [customerId], references: [id], onDelete: Restrict)
@@ -793,6 +795,7 @@ model Invoice {
   allocations       PaymentAllocation[]
   creditAllocations CustomerCreditAllocation[]
   fbrSubmissions   FbrInvoiceSubmission[]
+  documentVersions InvoiceDocumentVersion[]
 
   @@unique([workspaceId, invoiceNumber])
   @@unique([salesOrderId])
@@ -807,6 +810,23 @@ model Invoice {
 // ----------------------------------------
 // KHATA (LEDGER) & PAYMENTS
 // ----------------------------------------
+
+model InvoiceDocumentVersion {
+  id          String   @id @default(uuid())
+  workspaceId String
+  invoiceId   String
+  version     Int
+  snapshot    Json
+  issuedAt    DateTime
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invoice   Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  @@unique([invoiceId, version])
+  @@index([workspaceId, invoiceId])
+  @@map("invoice_document_versions")
+}
 
 model Payment {
   id                   String        @id @default(uuid())

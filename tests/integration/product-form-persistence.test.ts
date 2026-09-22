@@ -58,6 +58,7 @@ describe("Product decimal quantity and form integration", () => {
     await db.goodReceivedNote.deleteMany({ where: { workspaceId } });
     await db.purchaseOrderItem.deleteMany({ where: { purchaseOrder: { workspaceId } } });
     await db.purchaseOrder.deleteMany({ where: { workspaceId } });
+    await db.invoiceDocumentVersion.deleteMany({ where: { workspaceId } });
     await db.invoice.deleteMany({ where: { workspaceId } });
     await db.salesOrderItem.deleteMany({ where: { salesOrder: { workspaceId } } });
     await db.salesOrder.deleteMany({ where: { workspaceId } });
