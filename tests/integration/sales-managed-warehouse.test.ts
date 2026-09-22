@@ -179,6 +179,14 @@ describe("managed warehouse sales lifecycle", () => {
     const currentInvoice = await db.invoice.findUniqueOrThrow({ where: { id: invoiceId }, select: { issuedSnapshot: true } });
     expect((currentInvoice.issuedSnapshot as { totals?: { total?: number } } | null)?.totals?.total).toBe(1050);
 
+    const glHistory = await db.generalLedgerEntry.findMany({
+      where: { workspaceId, sourceId: sale.id },
+      select: { sourceType: true, reversalOfId: true },
+    });
+    expect(glHistory.filter((entry) => entry.sourceType === "REVERSAL")).toHaveLength(4);
+    expect(glHistory.filter((entry) => entry.sourceType === "SALE")).toHaveLength(8);
+    expect(glHistory.filter((entry) => entry.sourceType === "SALE").every((entry) => entry.reversalOfId === null)).toBe(true);
+
     const saleItem = await db.salesOrderItem.findFirstOrThrow({
       where: { salesOrderId: sale.id, productId },
     });
