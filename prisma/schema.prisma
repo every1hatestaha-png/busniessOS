@@ -272,6 +272,7 @@ model Workspace {
   customerCreditAllocations CustomerCreditAllocation[]
   customerPriceRules        CustomerPriceRule[]
   fbrIntegrationConfig       FbrIntegrationConfig?
+  fbrIntegrationCredentials  FbrIntegrationCredential[]
   fbrInvoiceSubmissions      FbrInvoiceSubmission[]
 
   @@map("workspaces")
@@ -1166,6 +1167,23 @@ model FbrIntegrationConfig {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@map("fbr_integration_configs")
+}
+
+model FbrIntegrationCredential {
+  id            String         @id @default(uuid())
+  workspaceId   String
+  environment   FbrEnvironment
+  tokenEncrypted String        @db.Text
+  verifiedAt    DateTime
+  verifiedBy    String
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, environment])
+  @@index([workspaceId, updatedAt])
+  @@map("fbr_integration_credentials")
 }
 
 model FbrInvoiceSubmission {

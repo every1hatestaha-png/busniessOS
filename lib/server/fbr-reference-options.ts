@@ -12,7 +12,7 @@ import {
 } from "@/lib/fbr/reference";
 import { canPerformAction } from "@/lib/server/authorization";
 import { db } from "@/lib/server/db";
-import { resolveFbrBearerToken } from "@/lib/server/fbr-credentials";
+import { resolveFbrBearerTokenForRequest } from "@/lib/server/fbr-credentials";
 
 type ReferenceContext = { workspaceId: string; role: Role };
 
@@ -40,7 +40,7 @@ export async function getFbrReferenceOptions(
     throw new FbrReferenceOptionsError("Add the seller province in business settings before loading FBR rates.");
   }
 
-  const { token } = resolveFbrBearerToken(context.workspaceId, "SANDBOX");
+  const { token } = await resolveFbrBearerTokenForRequest(context.workspaceId, "SANDBOX");
   const [provinces, transactionTypes, uoms] = await Promise.all([
     fetchFbrProvinces(token),
     fetchFbrTransactionTypes(token),

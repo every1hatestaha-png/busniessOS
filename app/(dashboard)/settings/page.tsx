@@ -3,11 +3,12 @@ import { listInvitations, listMembers } from "@/lib/server/members";
 import { MemberManager } from "@/components/settings/member-manager";
 import { BusinessProfileForm } from "@/components/settings/business-profile-form";
 import { FbrIntegrationForm } from "@/components/settings/fbr-integration-form";
+import { FbrWorkspaceCredentialForm } from "@/components/settings/fbr-workspace-credential-form";
 import { FbrProductionRouteForm } from "@/components/settings/fbr-production-route-form";
 import { FbrHsUomAnnexureForm } from "@/components/settings/fbr-hs-uom-annexure-form";
 import { FbrSetupReadiness } from "@/components/settings/fbr-setup-readiness";
 import { db } from "@/lib/server/db";
-import { resolveFbrBearerToken } from "@/lib/server/fbr-credentials";
+import { resolveFbrBearerTokenForRequest } from "@/lib/server/fbr-credentials";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -37,7 +38,7 @@ export default async function SettingsPage() {
   }
 
   const canManageMembers = canPerformAction(context.role, "members.manage");
-  const [members, invitations, workspace, fbrConfig, referenceVerifiedProducts, hsUomVerifiedProducts] = await Promise.all([
+  const [members, invitations, workspace, fbrConfig, referenceVerifiedProducts, hsUomVerifiedProducts, fbrCredentials] = await Promise.all([
     canManageMembers ? listMembers(context.workspaceId) : Promise.resolve([]),
     canManageMembers ? listInvitations(context.workspaceId) : Promise.resolve([]),
     db.workspace.findUniqueOrThrow({
@@ -69,11 +70,15 @@ export default async function SettingsPage() {
     db.product.count({
       where: { workspaceId: context.workspaceId, fbrHsUomVerifiedAt: { not: null } },
     }),
+    db.fbrIntegrationCredential.findMany({
+      where: { workspaceId: context.workspaceId },
+      select: { environment: true, verifiedAt: true },
+    }),
   ]);
 
   let sandboxCredentialReady = false;
   try {
-    resolveFbrBearerToken(context.workspaceId, "SANDBOX");
+    await resolveFbrBearerTokenForRequest(context.workspaceId, "SANDBOX");
     sandboxCredentialReady = true;
   } catch {
     sandboxCredentialReady = false;
@@ -116,6 +121,13 @@ export default async function SettingsPage() {
           && fbrConfig.productionApprovalReference?.trim()
           && (fbrConfig.provider === "PRAL" || fbrConfig.integratorLicenseNo?.trim())
         )}
+      />
+      <FbrWorkspaceCredentialForm
+        canManage={context.role === "OWNER"}
+        sandboxReady={fbrCredentials.some((credential) => credential.environment === "SANDBOX" && Boolean(credential.verifiedAt))}
+        productionReady={fbrCredentials.some((credential) => credential.environment === "PRODUCTION" && Boolean(credential.verifiedAt))}
+        enabled={fbrConfig?.enabled ?? false}
+        environment={fbrConfig?.environment ?? "SANDBOX"}
       />
       <FbrIntegrationForm config={fbrConfig} sandboxCredentialReady={sandboxCredentialReady} />
       <FbrProductionRouteForm

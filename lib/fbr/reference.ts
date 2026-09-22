@@ -85,7 +85,7 @@ async function callReference(input: {
   timeoutMs?: number;
 }) {
   const token = input.token.trim();
-  if (!token) throw new Error("FBR sandbox bearer token is not configured.");
+  if (!token) throw new Error("FBR bearer token is not configured.");
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), input.timeoutMs ?? 10_000);
   try {
@@ -103,7 +103,7 @@ async function callReference(input: {
     }
     if (!response.ok) {
       throw new Error(response.status === 401
-        ? "FBR rejected the sandbox credential for reference-data access."
+        ? "FBR rejected the credential for reference-data access."
         : `FBR reference API returned HTTP ${response.status}.`);
     }
     return body;

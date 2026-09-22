@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { fetchFbrProvinces } from "@/lib/fbr/reference";
 import { requirePermission } from "@/lib/server/authorization";
+import { encryptFbrBearerToken, FbrCredentialError } from "@/lib/server/fbr-credentials";
 import { db } from "@/lib/server/db";
 
 const workspaceProfileSchema = z.object({
@@ -72,6 +74,181 @@ export async function updateWorkspaceProfileAction(
 }
 
 
+
+const fbrWorkspaceCredentialSchema = z.object({
+  environment: z.enum(["SANDBOX", "PRODUCTION"]),
+  token: z.string().trim().max(4096, "The FBR bearer token is too long."),
+});
+
+export type FbrWorkspaceCredentialState = { status?: "success" | "error"; message?: string };
+
+export async function saveFbrWorkspaceCredentialAction(
+  _previousState: FbrWorkspaceCredentialState,
+  formData: FormData,
+): Promise<FbrWorkspaceCredentialState> {
+  const context = await requirePermission("workspace.manage");
+  if (context.role !== "OWNER") {
+    return { status: "error", message: "Only the workspace owner can change the FBR connection." };
+  }
+
+  const parsed = fbrWorkspaceCredentialSchema.safeParse({
+    environment: String(formData.get("environment") ?? ""),
+    token: String(formData.get("token") ?? ""),
+  });
+  if (!parsed.success) {
+    return { status: "error", message: parsed.error.issues[0]?.message ?? "Check the FBR connection settings." };
+  }
+
+  const enabled = formData.get("enabled") === "on";
+  const token = parsed.data.token;
+  let tokenEncrypted: string | null = null;
+  let verifiedAt: Date | null = null;
+
+  try {
+    if (token) {
+      if (token.length < 12) {
+        return { status: "error", message: "Enter a valid FBR bearer token or leave the field blank to keep the verified credential already stored." };
+      }
+      const provinces = await fetchFbrProvinces(token);
+      if (!provinces.length) {
+        return { status: "error", message: "FBR accepted the request but returned no province reference data. The credential was not saved." };
+      }
+      tokenEncrypted = encryptFbrBearerToken(token, context.workspaceId, parsed.data.environment);
+      verifiedAt = new Date();
+    } else if (enabled) {
+      const stored = await db.fbrIntegrationCredential.findUnique({
+        where: {
+          workspaceId_environment: {
+            workspaceId: context.workspaceId,
+            environment: parsed.data.environment,
+          },
+        },
+        select: { verifiedAt: true },
+      });
+      if (!stored?.verifiedAt) {
+        return { status: "error", message: "Enter and verify the FBR credential before enabling this environment." };
+      }
+    }
+
+    await db.$transaction(async (tx) => {
+      if (tokenEncrypted && verifiedAt) {
+        await tx.fbrIntegrationCredential.upsert({
+          where: {
+            workspaceId_environment: {
+              workspaceId: context.workspaceId,
+              environment: parsed.data.environment,
+            },
+          },
+          create: {
+            workspaceId: context.workspaceId,
+            environment: parsed.data.environment,
+            tokenEncrypted,
+            verifiedAt,
+            verifiedBy: context.user.id,
+          },
+          update: {
+            tokenEncrypted,
+            verifiedAt,
+            verifiedBy: context.user.id,
+          },
+        });
+      }
+
+      const existing = await tx.fbrIntegrationConfig.findUnique({
+        where: { workspaceId: context.workspaceId },
+        select: { id: true, updatedAt: true, environment: true, enabled: true },
+      });
+
+      let configId: string;
+      if (existing) {
+        const updated = await tx.fbrIntegrationConfig.updateMany({
+          where: {
+            id: existing.id,
+            workspaceId: context.workspaceId,
+            updatedAt: existing.updatedAt,
+          },
+          data: {
+            enabled,
+            environment: parsed.data.environment,
+          },
+        });
+        if (updated.count !== 1) throw new Error("FBR configuration changed while the connection was being saved.");
+        configId = existing.id;
+      } else {
+        const config = await tx.fbrIntegrationConfig.create({
+          data: {
+            workspaceId: context.workspaceId,
+            enabled,
+            environment: parsed.data.environment,
+            provider: "PRAL",
+          },
+          select: { id: true },
+        });
+        configId = config.id;
+      }
+
+      const connectionChanged = Boolean(tokenEncrypted)
+        || existing?.environment !== parsed.data.environment
+        || existing?.enabled !== enabled;
+      if (connectionChanged) {
+        await tx.fbrInvoiceSubmission.updateMany({
+          where: {
+            workspaceId: context.workspaceId,
+            status: { not: "SUBMITTED" },
+          },
+          data: {
+            status: "BLOCKED",
+            lastErrorCode: "FBR_CONNECTION_CHANGED",
+            lastErrorMessage: enabled
+              ? "FBR connection changed. Prepare and validate a fresh submission before remote transmission."
+              : "FBR is disabled for this workspace. Re-enable it and prepare a fresh submission before remote transmission.",
+            validatedAt: null,
+          },
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          workspaceId: context.workspaceId,
+          actorId: context.user.id,
+          action: tokenEncrypted ? "fbr.workspace_credential_replaced" : "fbr.workspace_connection_updated",
+          entityType: "FbrIntegrationConfig",
+          entityId: configId,
+          metadata: {
+            environment: parsed.data.environment,
+            enabled,
+            credentialReplaced: Boolean(tokenEncrypted),
+            verifiedAt: verifiedAt?.toISOString() ?? null,
+          },
+        },
+      });
+    });
+  } catch (error) {
+    const message = error instanceof FbrCredentialError
+      ? error.message
+      : error instanceof Error && /^FBR\b/.test(error.message)
+        ? error.message.replace(/Bearer\s+[^\s]+/gi, "Bearer [REDACTED]")
+        : "The FBR connection could not be saved. No unsafe transmission was attempted.";
+    return { status: "error", message };
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/invoices");
+  if (!enabled) {
+    return { status: "success", message: "FBR disabled for this workspace." };
+  }
+  if (!tokenEncrypted) {
+    return { status: "success", message: "FBR connection enabled using the verified credential already stored for this environment." };
+  }
+  return {
+    status: "success",
+    message: parsed.data.environment === "PRODUCTION"
+      ? "Production credential verified and encrypted. Live transmission remains blocked until every production safety gate passes."
+      : "Sandbox credential verified, encrypted, and enabled for this workspace.",
+  };
+}
+
+
 const fbrSandboxConfigSchema = z.object({
   defaultScenarioId: z.string().trim().toUpperCase().max(12).refine(
     (value) => value === "" || /^SN\d{3}$/.test(value),
@@ -104,17 +281,11 @@ export async function updateFbrSandboxConfigAction(
     return { status: "error", message: parsed.error.issues[0]?.message ?? "Check the FBR sandbox setup." };
   }
 
-  const enabled = formData.get("enabled") === "on";
-  if (enabled && !parsed.data.defaultScenarioId) {
-    return { status: "error", message: "Choose an FBR sandbox scenario before enabling Digital Invoicing." };
-  }
-
   let config;
   if (existing) {
     const updated = await db.fbrIntegrationConfig.updateMany({
       where: { workspaceId: context.workspaceId, environment: "SANDBOX" },
       data: {
-        enabled,
         defaultScenarioId: parsed.data.defaultScenarioId || null,
       },
     });
@@ -132,7 +303,7 @@ export async function updateFbrSandboxConfigAction(
       config = await db.fbrIntegrationConfig.create({
         data: {
           workspaceId: context.workspaceId,
-          enabled,
+          enabled: false,
           environment: "SANDBOX",
           provider: "PRAL",
           defaultScenarioId: parsed.data.defaultScenarioId || null,
@@ -154,7 +325,6 @@ export async function updateFbrSandboxConfigAction(
       entityType: "FbrIntegrationConfig",
       entityId: config.id,
       metadata: {
-        enabled,
         environment: "SANDBOX",
         defaultScenarioId: parsed.data.defaultScenarioId || null,
       },
@@ -165,10 +335,9 @@ export async function updateFbrSandboxConfigAction(
   revalidatePath("/invoices");
   return {
     status: "success",
-    message: enabled ? "FBR sandbox setup saved." : "FBR Digital Invoicing disabled for this workspace.",
+    message: "FBR sandbox scenario saved.",
   };
 }
-
 
 const fbrHsUomAnnexureSchema = z.object({
   annexureId: z.coerce.number().int().positive().max(1_000_000),

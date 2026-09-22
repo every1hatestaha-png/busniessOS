@@ -38,7 +38,7 @@ export function FbrIntegrationForm({
         <div>
           <h2 className="font-semibold text-slate-950">FBR Digital Invoicing</h2>
           <p className="mt-0.5 text-xs leading-5 text-slate-500">
-            Configure the safe sandbox workflow. Credentials stay server-side and are never entered in this browser form.
+            Configure the sandbox test scenario. Workspace connection and credentials are controlled separately above.
           </p>
         </div>
       </div>
@@ -51,21 +51,9 @@ export function FbrIntegrationForm({
           </div>
         )}
 
-        <label className="flex items-start gap-3 rounded-xl border border-neutral-200 p-4">
-          <input
-            name="enabled"
-            type="checkbox"
-            defaultChecked={config?.enabled ?? false}
-            disabled={production}
-            className="mt-0.5 size-4 accent-emerald-600"
-          />
-          <span>
-            <span className="block text-sm font-semibold text-neutral-900">Enable FBR sandbox workflow</span>
-            <span className="mt-0.5 block text-xs leading-5 text-neutral-500">
-              Enables controlled sandbox prepare, validate, and test-post actions. It does not enable production transmission.
-            </span>
-          </span>
-        </label>
+        <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-xs leading-5 text-neutral-600">
+          Enable or disable FBR only from the workspace connection panel above. This sandbox section configures the assigned test scenario only.
+        </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block">

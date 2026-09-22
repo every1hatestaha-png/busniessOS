@@ -69,6 +69,6 @@ describe("FBR reference contract", () => {
       transactionTypeId: 75,
       supplierProvinceCode: 7,
       fetchImpl,
-    })).rejects.toThrow("FBR rejected the sandbox credential");
+    })).rejects.toThrow("FBR rejected the credential for reference-data access.");
   });
 });
