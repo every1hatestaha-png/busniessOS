@@ -75,7 +75,8 @@ const TEST_SCENARIOS = [
   ...Object.entries(ids.invoices).filter(([name]) => !name.startsWith("aging-")).map(([name, id]) => ({ name: `invoice-${name}`, url: `/invoices/${id}`, waitFor: "[data-document]" })),
   ...Object.entries(ids.purchaseOrders).map(([name, id]) => ({ name: `po-${name}`, url: `/purchases/${id}/print?autoprint=0`, waitFor: "[data-document]" })),
   ...Object.entries(ids.grns).map(([name, id]) => ({ name: `grn-${name}`, url: `/goods-receipts/${id}/print?autoprint=0`, waitFor: "[data-document]" })),
-  { name: "supplier-return", url: `/supplier-returns/${ids.supplierReturn}`, waitFor: "h1" },
+  { name: "supplier-return", url: `/supplier-returns/${ids.supplierReturn}`, waitFor: "[data-document]" },
+  ...(ids.customerReturn ? [{ name: "customer-return", url: `/customer-returns/${ids.customerReturn}`, waitFor: "[data-document]" }] : []),
   { name: "payment-receipt", url: `/payments/${ids.paymentReceipt}`, waitFor: "[data-document]" },
   { name: "supplier-payment-voucher", url: `/accounting/payment-vouchers/${ids.supplierPaymentVoucher}`, waitFor: "[data-document]" },
   { name: "expense-voucher", url: `/accounting/expenses/${ids.expenseVoucher}`, waitFor: "[data-document]" },
@@ -86,6 +87,11 @@ const TEST_SCENARIOS = [
   { name: "profit-loss", url: `/reports/profit-loss?from=${from}&to=${today}`, waitFor: "article" },
   { name: "general-ledger", url: `/reports/general-ledger?accountId=${ids.reports.generalLedgerAccountId}&from=${from}&to=${today}`, waitFor: "article" },
   { name: "cash-bank-ledger", url: `/reports/cash-bank?accountId=${ids.reports.cashBankAccountId}&from=${from}&to=${today}`, waitFor: "article" },
+  { name: "current-stock", url: "/reports/current-stock", waitFor: "article" },
+  ...(ids.reports.productId ? [
+    { name: "stock-movement", url: `/reports/stock-movement?productId=${ids.reports.productId}&from=${from}&to=${today}`, waitFor: "article" },
+    { name: "purchase-price-history", url: `/reports/purchase-price-history?productId=${ids.reports.productId}&supplierId=${ids.reports.supplierId}&from=${from}&to=${today}`, waitFor: "article" },
+  ] : []),
 ];
 
 async function capturePage(url, name) {
