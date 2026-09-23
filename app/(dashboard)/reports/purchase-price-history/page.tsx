@@ -73,7 +73,6 @@ export default async function PurchasePriceHistoryPage({ searchParams }: { searc
       to={to}
       subtitle="Accepted GRN costs by supplier and product, with chronological price deltas."
       filters={filters}
-      orientation="landscape"
     >
       {report.truncated && <div className="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950 print:hidden">Showing the latest 2,000 matching accepted GRN lines. Narrow the filters to inspect older history.</div>}
       <FinancialTable className="min-w-[1100px]">
