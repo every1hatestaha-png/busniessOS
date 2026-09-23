@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, MessageCircleMore, Pencil, Truck } from "lucide-react";
 
 import { StatusBadge } from "@/components/business/status-badge";
+import { WorkspaceIdentity } from "@/components/documents/workspace-identity";
 import { FbrInvoiceStatusCard, type FbrInvoicePanelData } from "@/components/invoices/fbr-invoice-status-card";
 import { PrintButton } from "@/components/invoices/print-button";
 import { RecordPaymentForm } from "@/components/payments/record-payment-form";
@@ -160,7 +161,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         <article data-document className={"overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-none print:rounded-none print:border-0 " + (fbrPrintBlocked ? "print:hidden" : "")}>
           <header className="border-b border-neutral-200 p-6 sm:p-8">
             <div className="flex flex-col justify-between gap-6 sm:flex-row">
-              <div><p className="text-xs font-bold uppercase tracking-[0.2em] text-neutral-400">Invoice</p><h2 className="mt-2 text-2xl font-bold">{seller.name}</h2><div className="mt-2 space-y-0.5 text-sm text-neutral-500">{seller.address && <p>{seller.address}</p>}<p>{[seller.city, seller.country].filter(Boolean).join(", ")}</p>{seller.phone && <p>{seller.phone}</p>}{seller.email && <p>{seller.email}</p>}{(seller.ntn || seller.strn) && <p className="pt-1 font-medium">{[seller.ntn ? `NTN: ${seller.ntn}` : null, seller.strn ? `STRN: ${seller.strn}` : null].filter(Boolean).join(" · ")}</p>}</div></div>
+              <WorkspaceIdentity workspace={seller} eyebrow="Invoice" />
               <div className="sm:text-right"><p className="font-mono text-lg font-bold">{invoice.invoiceNumber}</p><div className="mt-3 space-y-1 text-sm"><p><span className="text-neutral-500">DC / Gate Pass:</span> <span className="font-mono font-semibold">{dcNumber}</span></p><p><span className="text-neutral-500">Issued:</span> {formatDate(invoice.date)}</p><p><span className="text-neutral-500">Due:</span> {invoice.dueDate ? formatDate(invoice.dueDate) : "On receipt"}</p>{invoice.order?.warehouse && <p><span className="text-neutral-500">Warehouse:</span> {invoice.order.warehouse.name}{invoice.order.warehouse.code ? ` · ${invoice.order.warehouse.code}` : ""}</p>}<div className="pt-1"><StatusBadge status={invoice.status} /></div></div></div>
             </div>
           </header>

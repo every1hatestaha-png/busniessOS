@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
+import { WorkspaceIdentity } from "@/components/documents/workspace-identity";
 import { PrintButton } from "@/components/invoices/print-button";
 import { deliveryChallanNumber } from "@/lib/document-references";
 import { requireWorkspace } from "@/lib/server/auth";
@@ -31,7 +32,7 @@ export default async function GatePassPage({ params }: { params: Promise<{ id: s
     <article data-document className="bg-white p-8 print:p-0">
       <header className="border-b-2 border-black pb-5">
         <div className="flex items-start justify-between gap-8">
-          <div><p className="text-xs font-bold uppercase tracking-[0.2em]">Delivery Challan / Gate Pass</p><h1 className="mt-2 text-2xl font-bold">{seller.name}</h1><div className="mt-2 text-sm text-neutral-600">{seller.address && <p>{seller.address}</p>}<p>{[seller.city, seller.country].filter(Boolean).join(", ")}</p>{seller.phone && <p>{seller.phone}</p>}{seller.email && <p>{seller.email}</p>}{(seller.ntn || seller.strn) && <p className="pt-1 font-medium">{[seller.ntn ? `NTN: ${seller.ntn}` : null, seller.strn ? `STRN: ${seller.strn}` : null].filter(Boolean).join(" · ")}</p>}</div></div>
+          <WorkspaceIdentity workspace={seller} eyebrow="Delivery Challan / Gate Pass" />
           <div className="text-right"><p className="font-mono text-xl font-black">{dcNumber}</p><p className="mt-2 text-sm"><span className="text-neutral-500">Date:</span> {formatDate(invoice.date)}</p><p className="text-sm"><span className="text-neutral-500">Invoice:</span> {invoice.invoiceNumber}</p>{invoice.order && <p className="text-sm"><span className="text-neutral-500">Sale:</span> {invoice.order.number}</p>}</div>
         </div>
       </header>

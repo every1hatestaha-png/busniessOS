@@ -63,4 +63,22 @@ describe("print UX regression contracts", () => {
     expect(electronMain).toContain('input.key.toLowerCase() !== "p"');
     expect(electronMain).toContain("webContents.print");
   });
+
+  it("uses one tenant-aware workspace identity across shared and manual print headers", () => {
+    const identity = source("components/documents/workspace-identity.tsx");
+    const documentHeader = source("components/documents/document-header.tsx");
+    const reportHeader = source("components/reports/report-company-header.tsx");
+    const invoice = source("app/(dashboard)/invoices/[id]/page.tsx");
+    const gatePass = source("app/(dashboard)/invoices/[id]/gate-pass/page.tsx");
+    const supplierVoucher = source("app/(dashboard)/accounting/payment-vouchers/[id]/page.tsx");
+
+    expect(identity).toContain("getWorkspaceBranding(workspace.name)");
+    for (const sharedHeader of [documentHeader, reportHeader]) {
+      expect(sharedHeader).toContain("<WorkspaceIdentity");
+      expect(sharedHeader).toContain("workspace={workspace}");
+    }
+    expect(invoice).toContain("<WorkspaceIdentity workspace={seller}");
+    expect(gatePass).toContain("<WorkspaceIdentity workspace={seller}");
+    expect(supplierVoucher).toContain("<WorkspaceIdentity workspace={voucher.workspace}");
+  });
 });
