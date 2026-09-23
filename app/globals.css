@@ -189,6 +189,13 @@
     margin: 4mm;
   }
 
+  /* Physical cheque stock is not an A4 document. Keep it isolated from the
+   * portrait-only A4 policy and print at real cheque dimensions. */
+  @page cheque {
+    size: 190mm 90mm;
+    margin: 0;
+  }
+
   html[data-print-format="thermal"] [data-document] {
     page: thermal;
     width: 72mm !important;
@@ -259,6 +266,23 @@
   [data-print-orientation="portrait"],
   [data-print-orientation="landscape"] {
     page: portrait-report;
+  }
+
+  [data-cheque-print] {
+    page: cheque !important;
+    width: 190mm !important;
+    max-width: 190mm !important;
+    height: 90mm !important;
+    min-height: 90mm !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  body:has([data-cheque-print]) {
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   [data-document] {
