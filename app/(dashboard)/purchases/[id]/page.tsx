@@ -25,36 +25,36 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
   const canDelete = canManageFinancials && purchase.status === "DRAFT";
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-6">
-      <div className="flex items-end justify-between gap-4">
-        <div>
+    <div className="mx-auto min-w-0 max-w-[1600px] space-y-6">
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
            <Link href="/purchases" className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
             <ArrowLeft className="size-3.5" /> Purchases
           </Link>
           <div className="flex flex-wrap items-center gap-3">
-             <h1 className="font-mono text-xl font-semibold tracking-tight text-foreground">{purchase.orderNumber}</h1>
+             <h1 className="break-all font-mono text-xl font-semibold tracking-tight text-foreground">{purchase.orderNumber}</h1>
             <StatusBadge status={purchase.status} />
           </div>
-          <p className="mt-0.5 text-xs text-slate-500">
+          <p className="mt-0.5 break-words text-xs text-slate-500">
             {purchase.status.replaceAll("_", " ")} · {formatDate(purchase.date)} · {purchase.supplier.companyName}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
           {canEdit && <EditPurchaseSheet purchase={purchase} />}
           {canDelete && <DeletePurchaseButton purchaseId={purchase.id} orderNumber={purchase.orderNumber} />}
           {canManageFinancials && purchase.status !== "CANCELLED" && <CancelPurchaseButton purchaseId={purchase.id} orderNumber={purchase.orderNumber} received={purchase.status === "RECEIVED" || purchase.status === "PARTIALLY_RECEIVED"} />}
           {canReceive && (
-            <Link href={`/purchases/${id}/receive`} className="inline-flex h-7 items-center justify-center rounded-md bg-primary px-2.5 text-xs font-medium text-white hover:bg-primary/90">
+            <Link href={`/purchases/${id}/receive`} className="inline-flex h-8 items-center justify-center rounded-md bg-primary px-2.5 text-xs font-medium text-white hover:bg-primary/90">
               <Truck className="mr-1 size-3.5" /> Receive Goods
             </Link>
           )}
-          <Link href={`/purchases/${id}/print`} className="inline-flex h-7 items-center justify-center rounded-md border px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
+          <Link href={`/purchases/${id}/print`} className="inline-flex h-8 items-center justify-center rounded-md border px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
             <Printer className="mr-1 size-3.5" /> Print PO
           </Link>
         </div>
       </div>
 
-      <div className="grid overflow-hidden rounded-md border bg-white sm:grid-cols-2 sm:divide-x lg:grid-cols-4">
+      <div className="grid overflow-hidden rounded-md border bg-white sm:grid-cols-2 lg:grid-cols-4">
         <InfoCard icon={CalendarDays} label="Order date" value={formatDate(purchase.date)} />
         <InfoCard icon={ReceiptText} label="Line items" value={`${purchase.items.length} product${purchase.items.length === 1 ? "" : "s"}`} />
         <InfoCard icon={Boxes} label="Goods received value" value={formatPKR(purchase.goodsReceivedValue)} />
@@ -63,10 +63,10 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
 
       {purchase.expectedDeliveryDate && (
         <Card className="gap-0 rounded-md border py-0 shadow-none ring-0">
-           <CardContent className="flex items-center gap-3 px-4 py-3">
-             <Truck className="h-4 w-4 text-neutral-400" />
+           <CardContent className="flex flex-wrap items-center gap-3 px-4 py-3">
+             <Truck className="h-4 w-4 shrink-0 text-neutral-400" />
              <span className="text-xs text-slate-600">Expected delivery: <strong>{formatDate(purchase.expectedDeliveryDate)}</strong></span>
-             {purchase.department && <span className="ml-4 text-xs text-slate-600">Department: <strong>{purchase.department}</strong></span>}
+             {purchase.department && <span className="text-xs text-slate-600 sm:ml-4">Department: <strong>{purchase.department}</strong></span>}
           </CardContent>
         </Card>
       )}
@@ -96,8 +96,8 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
         </Card>
       )}
 
-      <div className="grid items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="space-y-4">
+      <div className="grid min-w-0 items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="min-w-0 space-y-4">
           <Card className="gap-0 rounded-md border py-0 shadow-none ring-0">
             <CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm font-semibold">Purchase Order Lines</CardTitle></CardHeader>
             <CardContent className="px-0">
@@ -169,13 +169,13 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
              <CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm font-semibold">Supplier</CardTitle></CardHeader>
              <CardContent className="p-4">
               <div className="grid gap-5 sm:grid-cols-2">
-                <div>
-                   <p className="text-xs font-semibold text-foreground">{purchase.supplier.companyName}</p>
-                   <p className="mt-0.5 text-[11px] text-slate-500">{purchase.supplier.name}</p>
+                <div className="min-w-0">
+                   <p className="break-words text-xs font-semibold text-foreground">{purchase.supplier.companyName}</p>
+                   <p className="mt-0.5 break-words text-[11px] text-slate-500">{purchase.supplier.name}</p>
                 </div>
-                 <div className="space-y-2 text-xs text-slate-600">
-                  <p className="flex items-center gap-2"><Phone className="h-4 w-4 text-neutral-400" />{purchase.supplier.phone || "No phone provided"}</p>
-                  <p className="flex items-center gap-2"><PackageCheck className="h-4 w-4 text-neutral-400" />{purchase.status === "CANCELLED" ? "Reversed" : purchase.status === "RECEIVED" ? "Fully received" : "Pending receipt"}</p>
+                 <div className="min-w-0 space-y-2 text-xs text-slate-600">
+                  <p className="flex min-w-0 items-center gap-2"><Phone className="h-4 w-4 shrink-0 text-neutral-400" /><span className="min-w-0 break-all">{purchase.supplier.phone || "No phone provided"}</span></p>
+                  <p className="flex items-center gap-2"><PackageCheck className="h-4 w-4 shrink-0 text-neutral-400" />{purchase.status === "CANCELLED" ? "Reversed" : purchase.status === "RECEIVED" ? "Fully received" : "Pending receipt"}</p>
                 </div>
                 <div className="border-t pt-4 sm:col-span-2">
                   <p className="text-xs text-neutral-500">Supplier payable balance</p>
@@ -188,7 +188,7 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
            <Card className="gap-0 rounded-md border py-0 shadow-none ring-0">
              <CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm font-semibold">Notes</CardTitle></CardHeader>
              <CardContent className="p-4">
-               <p className="text-xs leading-relaxed text-slate-600">{purchase.notes || "No notes were added to this purchase."}</p>
+               <p className="break-words text-xs leading-relaxed text-slate-600">{purchase.notes || "No notes were added to this purchase."}</p>
             </CardContent>
           </Card>
         </div>
@@ -205,11 +205,11 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
 
 function InfoCard({ icon: Icon, label, value }: { icon: typeof CalendarDays; label: string; value: string }) {
   return (
-    <div className="flex items-center gap-2.5 px-4 py-3">
-        <span className="text-slate-400"><Icon className="size-3.5" /></span>
-        <div>
+    <div className="min-w-0 border-b px-4 py-3 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
+        <span className="text-slate-400"><Icon className="mb-1 size-3.5" /></span>
+        <div className="min-w-0">
           <p className="text-[10px] text-slate-500">{label}</p>
-          <p className="mt-0.5 text-xs font-semibold tabular-nums">{value}</p>
+          <p className="mt-0.5 break-words text-xs font-semibold tabular-nums">{value}</p>
         </div>
     </div>
   );
