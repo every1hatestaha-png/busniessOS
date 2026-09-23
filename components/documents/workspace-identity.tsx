@@ -17,10 +17,12 @@ export function WorkspaceIdentity({
   workspace,
   eyebrow,
   nameClassName = "text-2xl font-bold",
+  detailsClassName = "mt-2 space-y-0.5 text-sm text-neutral-600",
 }: {
   workspace: WorkspaceIdentityDetails;
   eyebrow?: string;
   nameClassName?: string;
+  detailsClassName?: string;
 }) {
   const branding = getWorkspaceBranding(workspace.name);
   const location = [workspace.address, workspace.city, workspace.country].filter(Boolean).join(", ");
@@ -45,7 +47,7 @@ export function WorkspaceIdentity({
       <div className="min-w-0">
         {eyebrow && <p className="text-xs font-bold uppercase tracking-[0.2em] text-neutral-500">{eyebrow}</p>}
         <p className={`${eyebrow ? "mt-2 " : ""}${nameClassName}`}>{workspace.name}</p>
-        <div className="mt-2 space-y-0.5 text-sm text-neutral-600">
+        <div className={detailsClassName}>
           {location && <p>{location}</p>}
           {contact && <p>{contact}</p>}
           {taxIdentity && <p className="pt-1 font-medium">{taxIdentity}</p>}
