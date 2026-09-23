@@ -96,7 +96,7 @@ describe("customer-specific sales BOM", () => {
     await teardownTestWorkspace(workspaceId, userId);
   }, 30_000);
 
-  it("keeps accessories internal while sale, edit, return and cancellation move exact stock", async () => {
+  it("keeps accessories internal while sale, edit, assembled return and cancellation move exact stock", async () => {
     const { createSale, createCustomerReturn, cancelSale } = await import("@/lib/server/sales");
     const { updateSaleAndInvoice } = await import("@/lib/server/sale-edit");
     const { cancelCustomerReturn } = await import("@/lib/server/customer-return-reversals");
@@ -158,10 +158,24 @@ describe("customer-specific sales BOM", () => {
       idempotencyKey: randomUUID(),
     });
 
+    // The physical returned hubs come back as assembled units. Their bearings,
+    // seals and studs remain embedded and must not become separately usable stock.
     await expectStock(hubId, 17);
-    await expectStock(bearingId, 94);
-    await expectStock(sealId, 48.5);
-    await expectStock(studId, 185);
+    await expectStock(bearingId, 90);
+    await expectStock(sealId, 47.5);
+    await expectStock(studId, 175);
+
+    const returnedHubMovement = await db.inventoryTransaction.findFirstOrThrow({
+      where: { workspaceId, productId: hubId, type: "RETURN_IN", reference: customerReturn.number },
+      orderBy: { createdAt: "desc" },
+      select: { unitCost: true },
+    });
+    // Base hub cost 1000 + embedded BOM cost (2*100 + 0.5*50 + 5*20) = 1325.
+    expect(Number(returnedHubMovement.unitCost)).toBeCloseTo(1325, 4);
+    const componentReturnMovements = await db.inventoryTransaction.count({
+      where: { workspaceId, type: "RETURN_IN", reference: `BOM:${customerReturn.number}` },
+    });
+    expect(componentReturnMovements).toBe(0);
 
     await cancelCustomerReturn(context(), customerReturn.id, "Return entered for test only");
     await expectStock(hubId, 15);
