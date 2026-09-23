@@ -35,21 +35,21 @@ export default async function ProductDetailsPage({ params }: { params: Promise<{
   const stockStatus = getStockStatus(product.stockQuantity, product.reorderLevel);
 
   return (
-    <main className="mx-auto max-w-[1600px] space-y-6">
-      <div>
+    <main className="mx-auto min-w-0 max-w-[1600px] space-y-6">
+      <div className="min-w-0">
          <Link href="/inventory" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2 mb-2")}><ArrowLeft className="h-3.5 w-3.5" />Inventory</Link>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-           <div><div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-semibold tracking-tight">{product.name}</h1><StatusBadge status={stockStatus} /><StatusBadge status={product.status} /></div><p className="mt-0.5 font-mono text-xs text-neutral-500">{product.sku}</p></div>
-           <div className="flex flex-wrap gap-2">{canPerformAction(role, "products.write") && <><Link href={`/inventory/${product.id}/edit`} className={buttonVariants({ variant: "outline", size: "sm" })}><Pencil className="h-3.5 w-3.5" />Edit</Link>{product.status !== "ARCHIVED" && <ArchiveProductButton productId={product.id} productName={product.name} />}<RemoveProductButton productId={product.id} productName={product.name} /></>}{canPerformAction(role, "inventory.adjust") && <StockAdjustment productId={product.id} initialStock={product.stockQuantity} unit={product.unit.toLowerCase()} warehouseMode={warehouseMode} warehouses={warehouses.map((warehouse) => ({ ...warehouse, quantity: stockByWarehouse.get(warehouse.id) ?? 0 }))} />}</div>
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+           <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h1 className="min-w-0 break-words text-xl font-semibold tracking-tight">{product.name}</h1><StatusBadge status={stockStatus} /><StatusBadge status={product.status} /></div><p className="mt-0.5 break-all font-mono text-xs text-neutral-500">{product.sku}</p></div>
+           <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">{canPerformAction(role, "products.write") && <><Link href={`/inventory/${product.id}/edit`} className={buttonVariants({ variant: "outline", size: "sm" })}><Pencil className="h-3.5 w-3.5" />Edit</Link>{product.status !== "ARCHIVED" && <ArchiveProductButton productId={product.id} productName={product.name} />}<RemoveProductButton productId={product.id} productName={product.name} /></>}{canPerformAction(role, "inventory.adjust") && <StockAdjustment productId={product.id} initialStock={product.stockQuantity} unit={product.unit.toLowerCase()} warehouseMode={warehouseMode} warehouses={warehouses.map((warehouse) => ({ ...warehouse, quantity: stockByWarehouse.get(warehouse.id) ?? 0 }))} />}</div>
         </div>
       </div>
-      <section className="grid gap-3 sm:grid-cols-3">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <MetricCard label="On hand" value={`${product.stockQuantity} ${product.unit.toLowerCase()}`} detail={`Reorder at ${product.reorderLevel}`} icon={PackageCheck} />
         <MetricCard label="Selling price" value={formatPKR(product.sellingPrice)} detail={`${formatPKR(product.costPrice)} cost per unit`} icon={CircleDollarSign} />
         <MetricCard label="Stock value" value={formatPKR(calculateInventoryValue(product.stockQuantity, product.costPrice))} detail="At current cost price" icon={Tags} />
       </section>
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
-        <Card className="gap-0 py-0 shadow-none">
+      <section className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+        <Card className="min-w-0 gap-0 py-0 shadow-none">
            <CardHeader className="border-b px-4 py-3"><CardTitle>Stock movement</CardTitle><p className="text-xs text-neutral-500">Recent quantity changes for this product.</p></CardHeader>
           <CardContent className="p-0">
             <Table>
@@ -61,13 +61,13 @@ export default async function ProductDetailsPage({ params }: { params: Promise<{
             </Table>
           </CardContent>
         </Card>
-         <div className="space-y-4">
+         <div className="min-w-0 space-y-4">
           <FbrProductMappingCard product={product} canManage={canPerformAction(role, "products.write")} />
                    <Card className="h-fit gap-0 py-0 shadow-none">
            <CardHeader className="border-b px-4 py-3"><CardTitle>Product details</CardTitle></CardHeader>
            <CardContent className="space-y-4 p-4">
-            <div><p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Description</p><p className="mt-1 leading-6 text-neutral-700">{product.description}</p></div>
-            <dl className="grid grid-cols-2 gap-4 border-t pt-4"><div><dt className="text-xs text-neutral-500">Category</dt><dd className="mt-1 font-medium">{product.category}</dd></div><div><dt className="text-xs text-neutral-500">Unit</dt><dd className="mt-1 capitalize">{product.unit.toLowerCase()}</dd></div><div><dt className="text-xs text-neutral-500">Catalog status</dt><dd className="mt-1"><StatusBadge status={product.status} /></dd></div><div><dt className="text-xs text-neutral-500">Gross margin</dt><dd className="mt-1 font-medium">{Math.round(((product.sellingPrice - product.costPrice) / product.sellingPrice) * 100)}%</dd></div></dl>
+            <div><p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Description</p><p className="mt-1 break-words leading-6 text-neutral-700">{product.description}</p></div>
+            <dl className="grid grid-cols-1 gap-4 border-t pt-4 sm:grid-cols-2"><div><dt className="text-xs text-neutral-500">Category</dt><dd className="mt-1 break-words font-medium">{product.category}</dd></div><div><dt className="text-xs text-neutral-500">Unit</dt><dd className="mt-1 capitalize">{product.unit.toLowerCase()}</dd></div><div><dt className="text-xs text-neutral-500">Catalog status</dt><dd className="mt-1"><StatusBadge status={product.status} /></dd></div><div><dt className="text-xs text-neutral-500">Gross margin</dt><dd className="mt-1 font-medium">{Math.round(((product.sellingPrice - product.costPrice) / product.sellingPrice) * 100)}%</dd></div></dl>
           </CardContent>
         </Card>
         </div>
