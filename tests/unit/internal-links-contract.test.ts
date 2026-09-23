@@ -18,7 +18,7 @@ function filesUnder(dir: string): string[] {
 }
 
 function routePatternFromPage(path: string): RegExp | null {
-  if (!path.startsWith("app/") || !path.endsWith("/page.tsx") && path !== "app/page.tsx") return null;
+  if (!path.startsWith("app/") || (!path.endsWith("/page.tsx") && path !== "app/page.tsx")) return null;
   const raw = path === "app/page.tsx" ? [] : path.slice(4, -9).split("/");
   const segments = raw.filter((segment) => {
     if (!segment) return false;
