@@ -45,7 +45,7 @@ export default async function ReceivablesPage({ searchParams }: { searchParams: 
     listCustomers(workspaceId),
   ]);
   return (
-    <div data-print-orientation="landscape" className="space-y-6 print:space-y-4">
+    <div data-print-orientation="portrait" className="space-y-6 print:space-y-4">
       <div className="flex items-start justify-between gap-4 print:hidden">
         <PageHeader title="Receivables" description={`Outstanding customer invoices as of ${report.asOfDate}.`} />
         <div className="print:hidden"><PrintButton label="Print aging" /></div>
