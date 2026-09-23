@@ -218,7 +218,7 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
 
     const orderNumber = await nextDocumentNumber(tx, context.workspaceId, "SALES_ORDER");
     const invoiceNumber = await nextDocumentNumber(tx, context.workspaceId, "INVOICE");
-    const order = await tx.salesOrder.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, orderNumber, status: "CONFIRMED", subtotal, discount, total, paidAmount: paid, balanceAmount: total.minus(paid), notes: data.notes || null, idempotencyKey: data.idempotencyKey, warehouseId: warehouseMode === "MANAGED" ? data.warehouseId! : null }, select: { id: true, orderDate: true } });
+    const order = await tx.salesOrder.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, orderNumber, status: "CONFIRMED", subtotal, discount, total, paidAmount: paid, balanceAmount: total.minus(paid), notes: data.notes || null, idempotencyKey: data.idempotencyKey, warehouseId: warehouseMode === "MANAGED" ? data.warehouseId! : null }, select: { id: true, orderDate: true, warehouseId: true } });
     let costOfGoodsSold = new Prisma.Decimal(0);
     const productById = new Map(products.map((product) => [product.id, product]));
 
