@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { reverseGeneralLedgerEntries } from "@/lib/server/accounting";
 import { canPerformAction } from "@/lib/server/authorization";
 import { writeAudit } from "@/lib/server/audit";
+import { CustomerSalesBomError, reverseReturnedBomComponents } from "@/lib/server/customer-sales-bom";
 import type { ServiceContext } from "@/lib/server/sales";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 import { applyManagedWarehouseStockDelta, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
@@ -22,7 +23,7 @@ export async function cancelCustomerReturn(context: ServiceContext, customerRetu
       include: {
         items: { select: { id: true, productId: true, quantity: true } },
         creditNote: { include: { allocations: { select: { id: true }, take: 1 } } },
-        salesOrder: { select: { warehouseId: true } },
+        salesOrder: { select: { id: true, warehouseId: true } },
       },
     });
     if (!customerReturn) throw new CustomerReturnReversalError("Customer return not found.");
@@ -82,6 +83,19 @@ export async function cancelCustomerReturn(context: ServiceContext, customerRetu
             reference: `REV-${customerReturn.number}`,
           },
         });
+      }
+
+      try {
+        await reverseReturnedBomComponents(tx, {
+          workspaceId: context.workspaceId,
+          salesOrderId: customerReturn.salesOrder.id,
+          warehouseId: customerReturn.salesOrder.warehouseId,
+          returnNumber: customerReturn.number,
+          lines: customerReturn.items.map((item) => ({ parentProductId: item.productId, quantity: item.quantity })),
+        });
+      } catch (error) {
+        if (error instanceof CustomerSalesBomError) throw new CustomerReturnReversalError(error.message);
+        throw error;
       }
     }
 
