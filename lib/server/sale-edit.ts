@@ -7,12 +7,18 @@ import { writeAudit } from "@/lib/server/audit";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 import { allocateSalesTaxByLine } from "@/lib/sales-tax";
 import { applyManagedWarehouseStockDelta, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
+import { consumeCustomerSalesBomComponents, CustomerSalesBomError, restoreSaleBomComponents } from "@/lib/server/customer-sales-bom";
 import { saleEditSchema, type SaleEditInput } from "@/lib/validation/sale-edit";
 import type { InvoiceIssuedSnapshot } from "@/lib/server/invoice-snapshot";
 
 export class SaleEditDomainError extends Error {}
 
 type EditContext = { workspaceId: string; role: Role; userId?: string };
+
+function throwBomAsEditError(error: unknown): never {
+  if (error instanceof CustomerSalesBomError) throw new SaleEditDomainError(error.message);
+  throw error;
+}
 
 export async function updateSaleAndInvoice(context: EditContext, input: SaleEditInput) {
   if (!(["OWNER", "ADMIN", "MANAGER"] as Role[]).includes(context.role)) {
@@ -60,7 +66,6 @@ export async function updateSaleAndInvoice(context: EditContext, input: SaleEdit
       select: { productId: true, unitCost: true },
     });
 
-    // Restore the original inventory first, including its historical cost basis.
     for (const item of order.items) {
       const historicalCost = oldSaleTransactions.find((entry) => entry.productId === item.productId)?.unitCost ?? new Prisma.Decimal(0);
       const product = await tx.product.findFirstOrThrow({
@@ -89,6 +94,18 @@ export async function updateSaleAndInvoice(context: EditContext, input: SaleEdit
         }
         throw error;
       }
+    }
+
+    try {
+      await restoreSaleBomComponents(tx, {
+        workspaceId: context.workspaceId,
+        salesOrderId: order.id,
+        orderNumber: order.orderNumber,
+        warehouseId: order.warehouseId,
+        mode: "EDIT",
+      });
+    } catch (error) {
+      throwBomAsEditError(error);
     }
 
     await tx.inventoryTransaction.deleteMany({
@@ -231,6 +248,20 @@ export async function updateSaleAndInvoice(context: EditContext, input: SaleEdit
         perKgRate: line.item.pricingMode === "WEIGHT" ? line.item.perKgRate : null,
       })),
     });
+
+    try {
+      const bomConsumption = await consumeCustomerSalesBomComponents(tx, {
+        workspaceId: context.workspaceId,
+        customerId: newCustomer.id,
+        salesOrderId: order.id,
+        orderNumber: order.orderNumber,
+        warehouseId: order.warehouseId,
+        lines: lines.map((line) => ({ productId: line.product.id, quantity: line.quantity })),
+      });
+      costOfGoodsSold = costOfGoodsSold.plus(bomConsumption.costOfGoodsSold);
+    } catch (error) {
+      throwBomAsEditError(error);
+    }
 
     const oldTotal = order.total;
     if (order.customerId === newCustomer.id) {

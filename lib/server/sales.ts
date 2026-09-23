@@ -12,6 +12,12 @@ import { customerReturnSchema, type CustomerReturnInput } from "@/lib/validation
 import { canPerformAction } from "@/lib/server/authorization";
 import { formatPKR } from "@/lib/utils";
 import { applyManagedWarehouseStockDelta, assertManagedWarehouseSelection, getWarehouseStockModeInTransaction, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
+import {
+  consumeCustomerSalesBomComponents,
+  CustomerSalesBomError,
+  restoreReturnedBomComponents,
+  restoreSaleBomComponents,
+} from "@/lib/server/customer-sales-bom";
 import type { InvoiceIssuedSnapshot } from "@/lib/server/invoice-snapshot";
 
 export type ServiceContext = { workspaceId: string; role: Role; userId?: string };
@@ -19,6 +25,17 @@ export class SaleDomainError extends Error {
   constructor(public code: "CUSTOMER_NOT_FOUND" | "PRODUCT_NOT_FOUND" | "INSUFFICIENT_STOCK" | "INVALID_TOTAL" | "CREDIT_LIMIT_EXCEEDED" | "PAYMENT_PERMISSION_DENIED" | "PAYMENT_ACCOUNT_UNAVAILABLE" | "SALE_NOT_FOUND" | "INVALID_RETURN" | "PERMISSION_DENIED" | "WAREHOUSE_REQUIRED" | "WAREHOUSE_NOT_FOUND" | "WAREHOUSE_STOCK_ERROR" | "IDEMPOTENCY_CONFLICT", message: string) {
     super(message);
   }
+}
+
+function throwBomAsSaleError(error: unknown): never {
+  if (error instanceof CustomerSalesBomError) {
+    if (error.code === "INSUFFICIENT_STOCK") throw new SaleDomainError("INSUFFICIENT_STOCK", error.message);
+    if (error.code === "WAREHOUSE_STOCK_ERROR") throw new SaleDomainError("WAREHOUSE_STOCK_ERROR", error.message);
+    if (error.code === "NOT_FOUND") throw new SaleDomainError("PRODUCT_NOT_FOUND", error.message);
+    if (error.code === "PERMISSION_DENIED") throw new SaleDomainError("PERMISSION_DENIED", error.message);
+    throw new SaleDomainError("INVALID_TOTAL", error.message);
+  }
+  throw error;
 }
 
 export async function createSale(context: ServiceContext, input: SaleInput) {
@@ -201,7 +218,7 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
 
     const orderNumber = await nextDocumentNumber(tx, context.workspaceId, "SALES_ORDER");
     const invoiceNumber = await nextDocumentNumber(tx, context.workspaceId, "INVOICE");
-    const order = await tx.salesOrder.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, orderNumber, status: "CONFIRMED", subtotal, discount, total, paidAmount: paid, balanceAmount: total.minus(paid), notes: data.notes || null, idempotencyKey: data.idempotencyKey, warehouseId: warehouseMode === "MANAGED" ? data.warehouseId! : null }, select: { id: true, orderDate: true } });
+    const order = await tx.salesOrder.create({ data: { workspaceId: context.workspaceId, customerId: customer.id, orderNumber, status: "CONFIRMED", subtotal, discount, total, paidAmount: paid, balanceAmount: total.minus(paid), notes: data.notes || null, idempotencyKey: data.idempotencyKey, warehouseId: warehouseMode === "MANAGED" ? data.warehouseId! : null }, select: { id: true, orderDate: true, warehouseId: true } });
     let costOfGoodsSold = new Prisma.Decimal(0);
     const productById = new Map(products.map((product) => [product.id, product]));
 
@@ -269,6 +286,20 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
       const product = productById.get(line.productId)!;
       return { workspaceId: context.workspaceId, productId: line.productId, type: "SALE" as const, quantityChanged: -line.quantity, unitCost: product.costPrice, reference: orderNumber };
     }) });
+
+    try {
+      const bomConsumption = await consumeCustomerSalesBomComponents(tx, {
+        workspaceId: context.workspaceId,
+        customerId: customer.id,
+        salesOrderId: order.id,
+        orderNumber,
+        warehouseId: order.warehouseId,
+        lines: lines.map((line) => ({ productId: line.productId, quantity: line.quantity })),
+      });
+      costOfGoodsSold = costOfGoodsSold.plus(bomConsumption.costOfGoodsSold);
+    } catch (error) {
+      throwBomAsSaleError(error);
+    }
 
     const dueDate = new Date(order.orderDate);
     dueDate.setDate(dueDate.getDate() + customer.creditDays);
@@ -421,7 +452,7 @@ export async function createCustomerReturn(context: ServiceContext, input: Custo
         ? total.mul(orderSalesTax).div(order.total).toDecimalPlaces(2)
         : new Prisma.Decimal(0);
     const saleCosts = data.restock ? await tx.inventoryTransaction.findMany({ where: { workspaceId: context.workspaceId, reference: order.orderNumber, type: "SALE", productId: { in: lines.map((line) => line.source.productId) } }, select: { productId: true, unitCost: true } }) : [];
-    const inventoryCost = lines.reduce((sum, line) => {
+    let inventoryCost = lines.reduce((sum, line) => {
       const cost = saleCosts.find((entry) => entry.productId === line.source.productId)?.unitCost ?? new Prisma.Decimal(0);
       return sum.plus(cost.mul(line.quantity));
     }, new Prisma.Decimal(0));
@@ -451,6 +482,20 @@ export async function createCustomerReturn(context: ServiceContext, input: Custo
           throw error;
         }
         await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: line.source.productId, type: "RETURN_IN", quantityChanged: line.quantity, unitCost: historicalCost, reference: number } });
+      }
+    }
+    if (data.restock) {
+      try {
+        const componentInventoryCost = await restoreReturnedBomComponents(tx, {
+          workspaceId: context.workspaceId,
+          salesOrderId: order.id,
+          warehouseId: order.warehouseId,
+          returnNumber: number,
+          lines: lines.map((line) => ({ parentProductId: line.source.productId, quantity: line.quantity })),
+        });
+        inventoryCost = inventoryCost.plus(componentInventoryCost);
+      } catch (error) {
+        throwBomAsSaleError(error);
       }
     }
     await tx.creditNote.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, salesOrderId: order.id, customerReturnId: customerReturn.id, number: noteNumber, reason: data.reason || "Customer return", amount: total, appliedAmount: 0, remainingAmount: total, status: "OPEN", reference: number, notes: data.notes || null } });
@@ -502,6 +547,17 @@ export async function cancelSale(context: ServiceContext, id: string, reverseIni
         throw error;
       }
       await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: item.productId, type: "SALE_CANCELLATION", quantityChanged: itemQty, unitCost: historicalCost, reference: order.orderNumber } });
+    }
+    try {
+      await restoreSaleBomComponents(tx, {
+        workspaceId: context.workspaceId,
+        salesOrderId: order.id,
+        orderNumber: order.orderNumber,
+        warehouseId: order.warehouseId,
+        mode: "CANCEL",
+      });
+    } catch (error) {
+      throwBomAsSaleError(error);
     }
     await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: order.customerId, type: "REVERSAL", credit: order.total, description: `Cancelled sale ${order.orderNumber}`, referenceId: order.id } });
     await tx.customer.update({ where: { id: order.customerId, workspaceId: context.workspaceId }, data: { currentBalance: { decrement: order.total } } });
