@@ -18,7 +18,9 @@
     "desktop:dev": "node desktop/dev.cjs",
     "desktop:build": "npm run build && npm run desktop:package",
     "desktop:package": "electron-builder --win nsis",
-    "desktop:test": "node tests/desktop/run.cjs"
+    "desktop:test": "node tests/desktop/run.cjs",
+    "visualqa:fixtures": "node tests/visual-qa/generate-documents.js && node tests/visual-qa/generate-print-completeness.js",
+    "visualqa": "node tests/visual-qa/visual-qa.cjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
