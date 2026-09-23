@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { CustomerForm } from "@/components/customers/customer-form";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { requirePermission } from "@/lib/server/authorization";
 import { getCustomer } from "@/lib/server/customers";
 
@@ -21,7 +21,7 @@ export default async function EditCustomerPage({ params }: { params: Promise<{ i
           <p className="text-sm font-semibold">Customer products & components</p>
           <p className="mt-0.5 text-xs text-neutral-500">Choose which accessories should leave inventory automatically when this customer buys a configured product.</p>
         </div>
-        <Button asChild variant="outline"><Link href={`/customers/${id}/products`}><Boxes className="mr-2 h-4 w-4" />Configure products</Link></Button>
+        <Link href={`/customers/${id}/products`} className={buttonVariants({ variant: "outline" })}><Boxes className="mr-2 h-4 w-4" />Configure products</Link>
       </div>
       <CustomerForm customer={{ ...customer, creditLimit: String(customer.creditLimit) }} />
     </div>
