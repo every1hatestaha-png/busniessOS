@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState, useSyncExternalStore } from "react";
 import { UserButton } from "@clerk/nextjs";
 import type { Role } from "@prisma/client";
@@ -10,10 +11,12 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { GlobalSearch } from "@/components/search/global-search";
 import { DesktopAccountMenu } from "@/components/layout/desktop-logout-button";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
+import { getWorkspaceBranding } from "@/lib/workspace-branding";
 
 export function TopNav({ workspaceName, workspaceId, workspaces, role, enabledModules }: { workspaceName: string; workspaceId: string; workspaces: Array<{ workspaceId: string; workspace: { name: string } }>; role: Role; enabledModules: string[] }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const branding = getWorkspaceBranding(workspaceName);
   const isDesktop = useSyncExternalStore(
     () => () => {},
     () => Boolean(window.businessOSDesktop?.signOut && window.businessOSDesktop.switchAccount),
@@ -35,6 +38,16 @@ export function TopNav({ workspaceName, workspaceId, workspaces, role, enabledMo
           </SheetContent>
         </Sheet>
 
+        {branding && (
+          <Image
+            src={branding.logoPath}
+            alt={branding.logoAlt}
+            width={54}
+            height={36}
+            unoptimized
+            className="h-7 w-auto max-w-12 rounded-sm object-contain lg:hidden"
+          />
+        )}
         <span className="max-w-40 truncate text-base font-bold tracking-tight lg:hidden" title={workspaceName}>{workspaceName}</span>
         <GlobalSearch className="hidden min-w-0 max-w-[520px] flex-1 lg:block" />
 

@@ -27,6 +27,7 @@ import {
   BriefcaseBusiness,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getWorkspaceBranding } from "@/lib/workspace-branding";
 
 type SidebarRoute = {
   href: string;
@@ -87,12 +88,24 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const enabled = new Set(enabledModules);
+  const branding = getWorkspaceBranding(workspaceName);
 
   return (
     <aside className="flex h-full w-[260px] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <div className="flex h-16 shrink-0 items-center gap-3 border-b border-sidebar-border px-4">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] p-1.5 shadow-sm">
-          <Image src="/brand/munshios-mark.svg" alt="MunshiOS" width={40} height={40} priority className="size-full" />
+        <div className={cn(
+          "flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] shadow-sm",
+          branding ? "h-10 w-16 p-0.5" : "size-10 p-1.5",
+        )}>
+          <Image
+            src={branding?.logoPath ?? "/brand/munshios-mark.svg"}
+            alt={branding?.logoAlt ?? "MunshiOS"}
+            width={branding ? 64 : 40}
+            height={branding ? 43 : 40}
+            unoptimized={Boolean(branding)}
+            priority
+            className="size-full object-contain"
+          />
         </div>
         <div className="min-w-0 leading-tight">
           <p className="text-base font-semibold tracking-[-0.02em] text-white">MunshiOS</p>
