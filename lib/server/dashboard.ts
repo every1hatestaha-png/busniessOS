@@ -32,7 +32,7 @@ export async function getDashboardActivity(workspaceId: string) {
       },
     }),
     db.customer.count({ where: { workspaceId, status: "ACTIVE" } }),
-    db.supplier.count({ where: { workspaceId, status: "ACTIVE" } }),
+    db.supplier.count({ where: { workspaceId } }),
     db.product.count({ where: { workspaceId, status: "ACTIVE" } }),
     db.salesOrder.count({ where: { workspaceId, status: { not: "CANCELLED" } } }),
   ]);
