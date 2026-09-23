@@ -119,7 +119,7 @@ Signature slots are protected from page splitting. Labels describe the business 
 ### Page
 
 - Default: A4 portrait, 12 mm print margin
-- Wide reports: A4 landscape through an explicit page/orientation class
+- All A4 documents and reports: portrait. Wide tables must compact, wrap, or paginate without switching the physical page to landscape.
 - Screen sheet maximum width: 210 mm equivalent, centered
 - Screen background: neutral application canvas; paper remains white
 - Print background: white; text: black
@@ -305,7 +305,7 @@ Every direct URL receives an integration test for allowed roles and cross-worksp
 - Avoid breaking ordinary rows where possible; permit safe row fragmentation for exceptionally long descriptions rather than clipping content.
 - Set `widows` and `orphans` for prose.
 - Do not use fixed-height paper containers; long documents must flow naturally.
-- Portrait and landscape are explicit variants, not inferred from viewport width.
+- A4 orientation is always portrait; dense reports must adapt their table layout instead of rotating the page.
 - Avoid fixed headers/footers until Chromium print behavior is validated across one-page and multi-page fixtures.
 
 ## Accessibility
@@ -347,7 +347,7 @@ Every document family requires fixtures for:
 - Cancelled, voided, reversed, and superseded states
 - Missing optional party/contact fields
 - Mixed Latin and Urdu text once supported fonts are selected
-- A4 portrait and applicable landscape output
+- A4 portrait output, including dense reports that previously required landscape
 
 Automated checks:
 
