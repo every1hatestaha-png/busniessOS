@@ -44,7 +44,7 @@ export default async function PayablesPage({ searchParams }: { searchParams: Sea
     listSuppliers(workspaceId),
   ]);
   return (
-    <div data-print-orientation="landscape" className="space-y-6 print:space-y-4">
+    <div data-print-orientation="portrait" className="space-y-6 print:space-y-4">
       <div className="flex items-start justify-between gap-4 print:hidden">
         <PageHeader title="Payables" description={`Outstanding supplier bills as of ${report.asOfDate}.`} />
         <div className="print:hidden"><PrintButton label="Print aging" /></div>
