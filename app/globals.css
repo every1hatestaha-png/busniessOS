@@ -174,9 +174,14 @@
     margin: 12mm;
   }
 
-  @page landscape {
-    size: A4 landscape;
-    margin: 10mm;
+  /*
+   * MunshiOS prints every A4 document in portrait. Keep a named portrait page
+   * for report surfaces so a stale/legacy "landscape" attribute can never
+   * rotate the physical output.
+   */
+  @page portrait-report {
+    size: A4 portrait;
+    margin: 12mm;
   }
 
   @page thermal {
@@ -251,8 +256,9 @@
     box-shadow: none !important;
   }
 
+  [data-print-orientation="portrait"],
   [data-print-orientation="landscape"] {
-    page: landscape;
+    page: portrait-report;
   }
 
   [data-document] {
