@@ -149,13 +149,17 @@ describe("customer-specific sales BOM", () => {
     await expectStock(studId, 175);
 
     const saleItem = await db.salesOrderItem.findFirstOrThrow({ where: { salesOrderId: sale.id, productId: hubId } });
-    const customerReturn = await createCustomerReturn(context(), {
+    const createdReturn = await createCustomerReturn(context(), {
       salesOrderId: sale.id,
       items: [{ itemId: saleItem.id, quantity: 2 }],
       reason: "Test return",
       restock: true,
       notes: "BOM return",
       idempotencyKey: randomUUID(),
+    });
+    const customerReturn = await db.customerReturn.findFirstOrThrow({
+      where: { id: createdReturn.id, workspaceId },
+      select: { id: true, number: true },
     });
 
     // The physical returned hubs come back as assembled units. Their bearings,
