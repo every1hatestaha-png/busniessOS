@@ -5,12 +5,15 @@ import {
   ArrowRight,
   Banknote,
   Boxes,
+  Check,
   Landmark,
   PackageCheck,
+  PackagePlus,
   Plus,
   ReceiptText,
   ShoppingCart,
   Truck,
+  UserPlus,
   Users,
 } from "lucide-react";
 
@@ -23,6 +26,7 @@ import { canPerformAction } from "@/lib/server/authorization";
 import { requireWorkspace } from "@/lib/server/auth";
 import { getDailyActionCenter } from "@/lib/server/daily-action-center";
 import { getDashboardActivity } from "@/lib/server/dashboard";
+import { getWorkspaceAccess } from "@/lib/server/subscriptions";
 import { formatDate, formatPKR, getStockStatus } from "@/lib/utils";
 
 function KpiCard({ href, label, value, detail, icon: Icon }: { href: string; label: string; value: string; detail: string; icon: LucideIcon }) {
@@ -65,15 +69,28 @@ function QuickAction({ href, label, detail, icon: Icon, primary = false }: { hre
   );
 }
 
+function SetupStep({ complete, href, title, detail, icon: Icon }: { complete: boolean; href: string; title: string; detail: string; icon: LucideIcon }) {
+  return (
+    <Link href={href} className="flex min-w-0 items-center gap-3 rounded-lg border bg-white p-3 transition hover:border-emerald-300 hover:bg-emerald-50/40">
+      <span className={complete ? "grid size-9 shrink-0 place-items-center rounded-lg bg-emerald-100 text-emerald-700" : "grid size-9 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-600"}>{complete ? <Check className="size-4" /> : <Icon className="size-4" />}</span>
+      <span className="min-w-0 flex-1"><span className="block text-xs font-semibold text-slate-900">{title}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{detail}</span></span>
+      <ArrowRight className="size-3.5 shrink-0 text-slate-400" />
+    </Link>
+  );
+}
+
 export default async function DashboardPage() {
   const { user, workspace, role } = await requireWorkspace();
   const canViewFinancials = canPerformAction(role, "financial.manage");
-  const [financials, activity, dailyActions] = await Promise.all([
+  const [financials, activity, dailyActions, subscription] = await Promise.all([
     canViewFinancials ? getFinancialDashboard(workspace.id) : Promise.resolve(null),
     getDashboardActivity(workspace.id),
     getDailyActionCenter(workspace.id, { canViewFinancials, timeZone: workspace.timezone || "Asia/Karachi" }),
+    getWorkspaceAccess(workspace.id),
   ]);
   const currentDate = new Intl.DateTimeFormat("en-PK", { timeZone: workspace.timezone || "Asia/Karachi", weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date());
+  const setupSteps = [activity.setup.customerCount > 0, activity.setup.productCount > 0, activity.setup.saleCount > 0];
+  const setupDone = setupSteps.filter(Boolean).length;
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">
@@ -87,6 +104,28 @@ export default async function DashboardPage() {
           <Plus className="size-3.5" />New sales order
         </Link>
       </header>
+
+      {subscription.reason === "trial" && (
+        <section className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0"><p className="text-xs font-semibold text-emerald-950">Your MunshiOS trial is active</p><p className="mt-0.5 text-[11px] text-emerald-800">{subscription.daysRemaining ?? 0} day{subscription.daysRemaining === 1 ? "" : "s"} remaining. Your business data stays saved if access expires.</p></div>
+          <Link href="/subscription" className="inline-flex h-8 shrink-0 items-center justify-center rounded-md border border-emerald-300 bg-white px-3 text-xs font-semibold text-emerald-800 hover:bg-emerald-100">View plan</Link>
+        </section>
+      )}
+
+      {!activity.setup.complete && (
+        <section className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">Getting started</p><h2 className="mt-1 text-lg font-semibold text-slate-950">Set up your first working flow</h2><p className="mt-1 max-w-2xl text-xs leading-5 text-slate-600">Complete these three steps and MunshiOS will have enough data for sales, balances, inventory and reports to become useful.</p></div>
+            <span className="rounded-full border bg-white px-3 py-1 text-xs font-semibold text-slate-700">{setupDone} of 3 complete</span>
+          </div>
+          <div className="mt-4 grid gap-2 lg:grid-cols-3">
+            <SetupStep complete={activity.setup.customerCount > 0} href="/customers/new" title="Add your first customer" detail="Creates the account used by sales and receivables." icon={UserPlus} />
+            <SetupStep complete={activity.setup.productCount > 0} href="/inventory/new" title="Add your first product" detail="Set the SKU, unit, prices and opening stock." icon={PackagePlus} />
+            <SetupStep complete={activity.setup.saleCount > 0} href="/sales/new" title="Create your first sale" detail="Generate the first invoice and customer balance." icon={ShoppingCart} />
+          </div>
+          {canViewFinancials && activity.setup.supplierCount === 0 && <p className="mt-3 text-[11px] text-slate-500">Buying stock too? <Link href="/suppliers/new" className="font-semibold text-emerald-700 hover:underline">Add your first supplier</Link>.</p>}
+        </section>
+      )}
 
       <DailyActionCenter data={dailyActions} canViewFinancials={canViewFinancials} />
 
