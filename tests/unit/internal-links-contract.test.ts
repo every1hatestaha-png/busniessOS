@@ -17,6 +17,10 @@ function filesUnder(dir: string): string[] {
   return out;
 }
 
+function escapeRouteSegment(segment: string) {
+  return segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function routePatternFromPage(path: string): RegExp | null {
   if (!path.startsWith("app/") || (!path.endsWith("/page.tsx") && path !== "app/page.tsx")) return null;
   const raw = path === "app/page.tsx" ? [] : path.slice(4, -9).split("/");
@@ -27,14 +31,20 @@ function routePatternFromPage(path: string): RegExp | null {
     return true;
   });
 
-  const pattern = segments.map((segment) => {
-    if (/^\[\[\.\.\..+\]\]$/.test(segment)) return ".*";
-    if (/^\[\.\.\..+\]$/.test(segment)) return ".+";
-    if (/^\[.+\]$/.test(segment)) return "[^/]+";
-    return segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  }).join("/");
+  let pattern = "";
+  for (const segment of segments) {
+    if (/^\[\[\.\.\..+\]\]$/.test(segment)) {
+      pattern += "(?:/.*)?";
+    } else if (/^\[\.\.\..+\]$/.test(segment)) {
+      pattern += "/.+";
+    } else if (/^\[.+\]$/.test(segment)) {
+      pattern += "/[^/]+";
+    } else {
+      pattern += `/${escapeRouteSegment(segment)}`;
+    }
+  }
 
-  return new RegExp(`^/${pattern}${pattern ? "/?" : ""}$`);
+  return new RegExp(`^${pattern || "/"}${pattern ? "/?" : ""}$`);
 }
 
 function normalizeInternalHref(value: string) {
