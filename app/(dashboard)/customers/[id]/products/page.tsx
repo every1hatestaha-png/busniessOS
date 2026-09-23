@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 
 import { deleteCustomerSalesBomAction } from "@/app/(dashboard)/customers/[id]/products/actions";
 import { CustomerSalesBomForm } from "@/components/customers/customer-sales-bom-form";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { requirePermission } from "@/lib/server/authorization";
 import { listCustomerSalesBoms } from "@/lib/server/customer-sales-bom";
 import { db } from "@/lib/server/db";
@@ -71,7 +71,7 @@ export default async function CustomerProductsPage({ params, searchParams }: { p
                   <td className="px-4 py-3"><p className="font-medium">{configuration.productName}</p><p className="text-[11px] text-neutral-500">{configuration.productSku || "No SKU"}</p></td>
                   <td className="px-4 py-3 font-mono text-xs">{configuration.productCode}</td>
                   <td className="px-4 py-3"><div className="flex max-w-xl flex-wrap gap-1.5">{configuration.components.map((component) => <span key={component.componentProductId} className="rounded-full border bg-neutral-50 px-2 py-1 text-xs">{component.componentName} × {component.quantityPerUnit}</span>)}</div></td>
-                  <td className="px-4 py-3"><div className="flex justify-end gap-1"><Button asChild size="sm" variant="ghost"><Link href={`/customers/${id}/products?productId=${configuration.productId}`}><Pencil className="mr-1 h-4 w-4" />Edit</Link></Button><form action={deleteCustomerSalesBomAction.bind(null, id, configuration.id)}><Button type="submit" size="sm" variant="ghost" aria-label={`Archive ${configuration.productName} components`}><Trash2 className="h-4 w-4 text-red-600" /></Button></form></div></td>
+                  <td className="px-4 py-3"><div className="flex justify-end gap-1"><Link className={buttonVariants({ size: "sm", variant: "ghost" })} href={`/customers/${id}/products?productId=${configuration.productId}`}><Pencil className="mr-1 h-4 w-4" />Edit</Link><form action={deleteCustomerSalesBomAction.bind(null, id, configuration.id)}><Button type="submit" size="sm" variant="ghost" aria-label={`Archive ${configuration.productName} components`}><Trash2 className="h-4 w-4 text-red-600" /></Button></form></div></td>
                 </tr>
               ))}
               {!configurations.length && <tr><td colSpan={4} className="h-28 text-center text-neutral-500">No customer-specific component rules yet.</td></tr>}
