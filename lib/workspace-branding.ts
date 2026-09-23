@@ -3,7 +3,10 @@ export type WorkspaceBranding = {
   logoAlt: string;
 };
 
-const ARSHAD_SONS_WORKSPACE_NAME = "arshad sons engineering solutions";
+const ARSHAD_SONS_WORKSPACE_NAMES = new Set([
+  "arshad sons and engineering solution",
+  "arshad sons engineering solutions",
+]);
 
 function normalizeWorkspaceName(value: string) {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
@@ -17,7 +20,7 @@ function normalizeWorkspaceName(value: string) {
  * with an exact, reviewed workspace identity.
  */
 export function getWorkspaceBranding(workspaceName: string): WorkspaceBranding | null {
-  if (normalizeWorkspaceName(workspaceName) !== ARSHAD_SONS_WORKSPACE_NAME) return null;
+  if (!ARSHAD_SONS_WORKSPACE_NAMES.has(normalizeWorkspaceName(workspaceName))) return null;
 
   return {
     logoPath: "/brand/arshad-sons-engineering-solutions.webp",
