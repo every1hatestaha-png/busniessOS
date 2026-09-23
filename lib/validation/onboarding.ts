@@ -8,7 +8,7 @@ export const onboardingSchema = z.object({
   address: z.string().trim().min(5).max(300),
   city: z.string().trim().min(2).max(80),
   country: z.string().trim().min(2).max(80).default("Pakistan"),
-  currency: z.string().trim().length(3).default("PKR"),
+  currency: z.literal("PKR").default("PKR"),
   timezone: z.string().trim().min(3).max(80).default("Asia/Karachi"),
   businessType: z.enum(["WHOLESALER", "DISTRIBUTOR", "MANUFACTURER", "RETAILER", "OTHER"]),
 });

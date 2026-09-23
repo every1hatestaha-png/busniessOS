@@ -42,6 +42,28 @@ function assertTransmissionAllowed(environment: FbrEnvironment) {
   }
 }
 
+export function getFbrCredentialDeploymentReadiness() {
+  const encoded = process.env.FBR_DI_CREDENTIAL_ENCRYPTION_KEY?.trim();
+  if (!encoded) {
+    return {
+      credentialEncryption: "missing" as const,
+      productionTransmission: process.env.FBR_DI_PRODUCTION_TRANSMISSION_ENABLED === "1" ? "enabled" as const : "disabled" as const,
+    };
+  }
+
+  let valid = false;
+  try {
+    valid = Buffer.from(encoded, "base64").length === 32;
+  } catch {
+    valid = false;
+  }
+
+  return {
+    credentialEncryption: valid ? "configured" as const : "invalid" as const,
+    productionTransmission: process.env.FBR_DI_PRODUCTION_TRANSMISSION_ENABLED === "1" ? "enabled" as const : "disabled" as const,
+  };
+}
+
 function credentialEncryptionKey() {
   const encoded = process.env.FBR_DI_CREDENTIAL_ENCRYPTION_KEY?.trim();
   if (!encoded) {

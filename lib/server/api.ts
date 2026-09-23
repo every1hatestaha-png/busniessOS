@@ -53,15 +53,68 @@ export async function requireApiUser() {
     throw new ApiError(401, "UNAUTHENTICATED", "Authentication is required.");
   }
 
-  let localUser = await db.user.findUnique({ where: { clerkId: userId } });
-  if (!localUser) {
-    const clerkUser = await (await clerkClient()).users.getUser(userId);
-    const email = clerkUser.emailAddresses.find((entry) => entry.id === clerkUser.primaryEmailAddressId)?.emailAddress ?? clerkUser.emailAddresses[0]?.emailAddress;
-    if (!email) throw new ApiError(403, "USER_NOT_PROVISIONED", "The authenticated user cannot be provisioned.");
-    localUser = await db.user.upsert({ where: { clerkId: userId }, create: { clerkId: userId, email, firstName: clerkUser.firstName, lastName: clerkUser.lastName }, update: { email, firstName: clerkUser.firstName, lastName: clerkUser.lastName } });
+  // API access must prove current verified primary-email ownership on every
+  // authenticated request, exactly like the server-rendered application path.
+  // A lifecycle webhook-created local row is not sufficient authorization.
+  const clerkUser = await (await clerkClient()).users.getUser(userId);
+  const primaryEmailAddress =
+    clerkUser.emailAddresses.find((entry) => entry.id === clerkUser.primaryEmailAddressId)
+    ?? clerkUser.emailAddresses[0];
+  const primaryEmail = primaryEmailAddress?.emailAddress?.trim().toLowerCase();
+
+  if (!primaryEmail) {
+    throw new ApiError(403, "USER_EMAIL_REQUIRED", "A verified primary email address is required.");
+  }
+  if (primaryEmailAddress?.verification?.status !== "verified") {
+    throw new ApiError(403, "EMAIL_NOT_VERIFIED", "Verify your primary email address before using the MunshiOS API.");
   }
 
-  return localUser;
+  const existing = await db.user.findUnique({ where: { clerkId: userId } });
+  if (existing) {
+    if (
+      existing.email === primaryEmail
+      && existing.firstName === clerkUser.firstName
+      && existing.lastName === clerkUser.lastName
+    ) {
+      return existing;
+    }
+
+    const conflictingEmailOwner = await db.user.findUnique({ where: { email: primaryEmail } });
+    if (conflictingEmailOwner && conflictingEmailOwner.id !== existing.id) {
+      throw new ApiError(409, "EMAIL_ALREADY_LINKED", "This verified email is already linked to another MunshiOS user.");
+    }
+
+    return db.user.update({
+      where: { id: existing.id },
+      data: {
+        email: primaryEmail,
+        firstName: clerkUser.firstName,
+        lastName: clerkUser.lastName,
+      },
+    });
+  }
+
+  const existingByEmail = await db.user.findUnique({ where: { email: primaryEmail } });
+  if (existingByEmail) {
+    return db.user.update({
+      where: { id: existingByEmail.id },
+      data: {
+        clerkId: userId,
+        email: primaryEmail,
+        firstName: clerkUser.firstName,
+        lastName: clerkUser.lastName,
+      },
+    });
+  }
+
+  return db.user.create({
+    data: {
+      clerkId: userId,
+      email: primaryEmail,
+      firstName: clerkUser.firstName,
+      lastName: clerkUser.lastName,
+    },
+  });
 }
 
 export async function requireApiContext(permission?: Permission): Promise<ApiContext> {

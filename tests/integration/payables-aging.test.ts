@@ -16,6 +16,7 @@ let workspaceId = "";
 let otherWorkspaceId = "";
 let supplierA = "";
 let supplierB = "";
+let otherSupplierId = "";
 let productId = "";
 let cashBankAccountId = "";
 
@@ -57,6 +58,7 @@ describe("payable aging service", () => {
       db.product.create({ data: { workspaceId, name: "Aging product", sku: `aging-${runId}`, stockQuantity: 500, costPrice: 10, sellingPrice: 50 } }),
     ]);
     supplierA = a.id; supplierB = b.id; productId = product.id;
+    otherSupplierId = (await db.supplier.create({ data: { workspaceId: otherWorkspaceId, name: "Other workspace supplier" } })).id;
     await ensureDefaultAccounts(workspaceId);
     cashBankAccountId = (await db.cashBankAccount.findFirstOrThrow({ where: { workspaceId, isActive: true }, select: { id: true } })).id;
   }, 30_000);
@@ -147,7 +149,7 @@ describe("payable aging service", () => {
   });
 
   it("does not leak data across workspaces", async () => {
-    const other = await db.purchaseOrder.create({ data: { workspaceId: otherWorkspaceId, supplierId: supplierA, orderNumber: `LEAK-${runId}`, status: "RECEIVED", totalAmount: 9999, paidAmount: 0, balanceAmount: 9999, orderDate: asOfPlusDays(0) } });
+    const other = await db.purchaseOrder.create({ data: { workspaceId: otherWorkspaceId, supplierId: otherSupplierId, orderNumber: `LEAK-${runId}`, status: "RECEIVED", totalAmount: 9999, paidAmount: 0, balanceAmount: 9999, orderDate: asOfPlusDays(0) } });
     const report = await getPayablesAging(workspaceId, { asOf: AS_OF, timeZone: TZ });
     for (const supplier of report.suppliers) {
       expect(supplier.totalOutstanding).not.toBe(9999);

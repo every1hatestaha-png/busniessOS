@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { decryptFbrBearerToken, encryptFbrBearerToken, FbrCredentialError, resolveFbrBearerToken } from "@/lib/server/fbr-credentials";
+import { decryptFbrBearerToken, encryptFbrBearerToken, FbrCredentialError, getFbrCredentialDeploymentReadiness, resolveFbrBearerToken } from "@/lib/server/fbr-credentials";
 
 const touched = [
   "FBR_DI_ALLOW_SHARED_TOKEN",
@@ -22,6 +22,26 @@ afterEach(() => {
 });
 
 describe("FBR credential resolver", () => {
+
+  it("reports only non-secret credential encryption and production-switch readiness", () => {
+    delete process.env.FBR_DI_CREDENTIAL_ENCRYPTION_KEY;
+    delete process.env.FBR_DI_PRODUCTION_TRANSMISSION_ENABLED;
+    expect(getFbrCredentialDeploymentReadiness()).toEqual({
+      credentialEncryption: "missing",
+      productionTransmission: "disabled",
+    });
+
+    process.env.FBR_DI_CREDENTIAL_ENCRYPTION_KEY = Buffer.alloc(16, 3).toString("base64");
+    expect(getFbrCredentialDeploymentReadiness().credentialEncryption).toBe("invalid");
+
+    process.env.FBR_DI_CREDENTIAL_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+    process.env.FBR_DI_PRODUCTION_TRANSMISSION_ENABLED = "1";
+    expect(getFbrCredentialDeploymentReadiness()).toEqual({
+      credentialEncryption: "configured",
+      productionTransmission: "enabled",
+    });
+  });
+
   it("keeps production transmission default-deny even when a production token exists", () => {
     process.env.FBR_DI_PRODUCTION_TOKEN_ABC_123 = "production-secret";
     delete process.env.FBR_DI_PRODUCTION_TRANSMISSION_ENABLED;

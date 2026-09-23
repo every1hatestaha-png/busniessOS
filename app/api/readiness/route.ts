@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { checkDatabaseReadiness } from "@/lib/server/database-readiness";
+import { getFbrCredentialDeploymentReadiness } from "@/lib/server/fbr-credentials";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ export async function GET() {
       );
     }
     return NextResponse.json(
-      { ok: true, database: "ready", revision: deploymentRevision() },
+      { ok: true, database: "ready", revision: deploymentRevision(), fbr: getFbrCredentialDeploymentReadiness() },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch {

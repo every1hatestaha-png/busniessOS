@@ -9,6 +9,7 @@ type WorkspaceDetails = {
   country?: string | null;
   ntn?: string | null;
   strn?: string | null;
+  timezone?: string | null;
 };
 
 export function ReportCompanyHeader({
@@ -47,7 +48,7 @@ export function ReportCompanyHeader({
       </div>
       <div className="mt-4 flex items-end justify-between border-t border-neutral-200 pt-3 text-xs text-neutral-600">
         <p>{from && to ? `Period: ${formatDate(from)} to ${formatDate(to)}` : "As at report generation"}</p>
-        <p>Generated: {new Intl.DateTimeFormat("en-PK", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Karachi" }).format(new Date(generatedAt))}</p>
+        <p>Generated: {new Intl.DateTimeFormat("en-PK", { dateStyle: "medium", timeStyle: "short", timeZone: workspace.timezone || "Asia/Karachi" }).format(new Date(generatedAt))}</p>
       </div>
     </header>
   );
