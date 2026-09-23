@@ -25,6 +25,29 @@ describe("print UX regression contracts", () => {
     expect(voucherPage).toContain("data-document");
   });
 
+  it("covers customer return credit-note documents end to end", () => {
+    const fixtureGenerator = source("tests/visual-qa/generate-print-completeness.js");
+    const harness = source("tests/visual-qa/visual-qa.cjs");
+    const returnPage = source("app/(dashboard)/customer-returns/[id]/page.tsx");
+    const salePage = source("app/(dashboard)/sales/[id]/page.tsx");
+
+    expect(fixtureGenerator).toContain("documentIds.customerReturn");
+    expect(harness).toContain('name: "customer-return"');
+    expect(harness).toContain("/customer-returns/");
+    expect(returnPage).toContain("data-document");
+    expect(salePage).toContain("/customer-returns/${entry.id}");
+  });
+
+  it("captures all dedicated inventory and purchasing report print surfaces", () => {
+    const harness = source("tests/visual-qa/visual-qa.cjs");
+    expect(harness).toContain('name: "current-stock"');
+    expect(harness).toContain('name: "stock-movement"');
+    expect(harness).toContain('name: "purchase-price-history"');
+    expect(harness).toContain("/reports/current-stock");
+    expect(harness).toContain("/reports/stock-movement");
+    expect(harness).toContain("/reports/purchase-price-history");
+  });
+
   it("keeps statements non-printable until a party is selected", () => {
     expect(source("app/(dashboard)/reports/customer-statement/page.tsx")).toContain("printable={Boolean(statement)}");
     expect(source("app/(dashboard)/reports/supplier-statement/page.tsx")).toContain("printable={Boolean(statement)}");
