@@ -421,6 +421,12 @@ export async function restoreSaleBomComponents(
   return snapshots;
 }
 
+/**
+ * A physical customer return brings the assembled parent item back. Its linked
+ * bearings/seals/etc remain embedded in that returned unit and must not become
+ * separately usable component stock. Preserve the original component value by
+ * folding it into the returned parent's WAC and historical RETURN_IN unit cost.
+ */
 export async function restoreReturnedBomComponents(
   tx: Prisma.TransactionClient,
   input: {
@@ -433,31 +439,58 @@ export async function restoreReturnedBomComponents(
 ) {
   const snapshots = await getSnapshots(tx, input.workspaceId, input.salesOrderId);
   let inventoryCost = new Prisma.Decimal(0);
+
   for (const line of input.lines) {
     const returnedQuantity = new Prisma.Decimal(line.quantity);
-    for (const snapshot of snapshots.filter((entry) => entry.parentProductId === line.parentProductId)) {
-      const quantity = snapshot.quantityPerUnit.mul(returnedQuantity);
-      if (quantity.lte(0)) continue;
-      await restoreComponentStock(tx, {
+    if (returnedQuantity.lte(0)) continue;
+    const parentSnapshots = snapshots.filter((entry) => entry.parentProductId === line.parentProductId);
+    if (!parentSnapshots.length) continue;
+
+    const embeddedUnitCost = parentSnapshots.reduce(
+      (sum, snapshot) => sum.plus(snapshot.unitCost.mul(snapshot.quantityPerUnit)),
+      new Prisma.Decimal(0),
+    );
+    if (embeddedUnitCost.lte(0)) continue;
+    const embeddedValue = embeddedUnitCost.mul(returnedQuantity);
+
+    // createCustomerReturn has already restored the parent quantity at its
+    // historical base cost. Revalue that stock to include the components that
+    // physically remain inside the returned assembled unit.
+    const parent = await tx.product.findFirst({
+      where: { id: line.parentProductId, workspaceId: input.workspaceId },
+      select: { id: true, stockQuantity: true, costPrice: true },
+    });
+    if (!parent) throw new CustomerSalesBomError("NOT_FOUND", "A returned BOM parent product no longer exists.");
+    if (parent.stockQuantity.lte(0)) throw new CustomerSalesBomError("INVALID_INPUT", "Returned BOM stock could not be valued safely.");
+
+    const resultingCost = parent.costPrice.mul(parent.stockQuantity).plus(embeddedValue).div(parent.stockQuantity);
+    const changed = await tx.product.updateMany({
+      where: { id: parent.id, workspaceId: input.workspaceId, stockQuantity: parent.stockQuantity },
+      data: { costPrice: resultingCost },
+    });
+    if (changed.count !== 1) throw new CustomerSalesBomError("INVALID_INPUT", "Returned BOM inventory changed while valuing embedded components. Retry the return.");
+
+    const returnMovement = await tx.inventoryTransaction.findFirst({
+      where: {
         workspaceId: input.workspaceId,
-        warehouseId: input.warehouseId,
-        productId: snapshot.componentProductId,
-        quantity,
-        unitCost: snapshot.unitCost,
-      });
-      await tx.inventoryTransaction.create({
-        data: {
-          workspaceId: input.workspaceId,
-          productId: snapshot.componentProductId,
-          type: "RETURN_IN",
-          quantityChanged: quantity,
-          unitCost: snapshot.unitCost,
-          reference: `BOM:${input.returnNumber}`,
-        },
-      });
-      inventoryCost = inventoryCost.plus(snapshot.unitCost.mul(quantity));
+        productId: parent.id,
+        type: "RETURN_IN",
+        reference: input.returnNumber,
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, unitCost: true },
+    });
+    if (!returnMovement?.unitCost) {
+      throw new CustomerSalesBomError("INVALID_INPUT", "Historical returned-product cost is unavailable; BOM return valuation is unsafe.");
     }
+    await tx.inventoryTransaction.update({
+      where: { id: returnMovement.id },
+      data: { unitCost: returnMovement.unitCost.plus(embeddedUnitCost) },
+    });
+
+    inventoryCost = inventoryCost.plus(embeddedValue);
   }
+
   return inventoryCost;
 }
 
@@ -486,6 +519,12 @@ async function removeRestoredComponentStock(
   await applyWarehouseDelta(tx, { workspaceId: input.workspaceId, warehouseId: input.warehouseId, productId: product.id, delta: input.quantity.negated() });
 }
 
+/**
+ * New BOM returns restore only the assembled parent, so their normal parent
+ * reversal fully removes the composite value. Keep legacy compatibility for
+ * returns created before this fix by reversing only historical BOM:RETURN_IN
+ * component movements that actually exist.
+ */
 export async function reverseReturnedBomComponents(
   tx: Prisma.TransactionClient,
   input: {
@@ -496,29 +535,33 @@ export async function reverseReturnedBomComponents(
     lines: Array<{ parentProductId: string; quantity: number | Prisma.Decimal }>;
   },
 ) {
-  const snapshots = await getSnapshots(tx, input.workspaceId, input.salesOrderId);
-  for (const line of input.lines) {
-    const returnedQuantity = new Prisma.Decimal(line.quantity);
-    for (const snapshot of snapshots.filter((entry) => entry.parentProductId === line.parentProductId)) {
-      const quantity = snapshot.quantityPerUnit.mul(returnedQuantity);
-      if (quantity.lte(0)) continue;
-      await removeRestoredComponentStock(tx, {
+  const legacyMovements = await tx.inventoryTransaction.findMany({
+    where: {
+      workspaceId: input.workspaceId,
+      type: "RETURN_IN",
+      reference: `BOM:${input.returnNumber}`,
+    },
+    select: { productId: true, quantityChanged: true, unitCost: true },
+  });
+
+  for (const movement of legacyMovements) {
+    if (movement.quantityChanged.lte(0) || !movement.unitCost) continue;
+    await removeRestoredComponentStock(tx, {
+      workspaceId: input.workspaceId,
+      warehouseId: input.warehouseId,
+      productId: movement.productId,
+      quantity: movement.quantityChanged,
+      unitCost: movement.unitCost,
+    });
+    await tx.inventoryTransaction.create({
+      data: {
         workspaceId: input.workspaceId,
-        warehouseId: input.warehouseId,
-        productId: snapshot.componentProductId,
-        quantity,
-        unitCost: snapshot.unitCost,
-      });
-      await tx.inventoryTransaction.create({
-        data: {
-          workspaceId: input.workspaceId,
-          productId: snapshot.componentProductId,
-          type: "ADJUSTMENT",
-          quantityChanged: quantity.negated(),
-          unitCost: snapshot.unitCost,
-          reference: `REV-BOM:${input.returnNumber}`,
-        },
-      });
-    }
+        productId: movement.productId,
+        type: "ADJUSTMENT",
+        quantityChanged: movement.quantityChanged.negated(),
+        unitCost: movement.unitCost,
+        reference: `REV-BOM:${input.returnNumber}`,
+      },
+    });
   }
 }
