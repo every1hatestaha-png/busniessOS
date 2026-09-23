@@ -426,6 +426,10 @@ export async function restoreSaleBomComponents(
  * bearings/seals/etc remain embedded in that returned unit and must not become
  * separately usable component stock. Preserve the original component value by
  * folding it into the returned parent's WAC and historical RETURN_IN unit cost.
+ *
+ * This deliberately differs from sale cancellation/edit: those reverse the
+ * original transaction before the goods are treated as physically returned,
+ * so their component stock can be restored from the immutable sale snapshot.
  */
 export async function restoreReturnedBomComponents(
   tx: Prisma.TransactionClient,
@@ -453,9 +457,6 @@ export async function restoreReturnedBomComponents(
     if (embeddedUnitCost.lte(0)) continue;
     const embeddedValue = embeddedUnitCost.mul(returnedQuantity);
 
-    // createCustomerReturn has already restored the parent quantity at its
-    // historical base cost. Revalue that stock to include the components that
-    // physically remain inside the returned assembled unit.
     const parent = await tx.product.findFirst({
       where: { id: line.parentProductId, workspaceId: input.workspaceId },
       select: { id: true, stockQuantity: true, costPrice: true },
@@ -463,6 +464,8 @@ export async function restoreReturnedBomComponents(
     if (!parent) throw new CustomerSalesBomError("NOT_FOUND", "A returned BOM parent product no longer exists.");
     if (parent.stockQuantity.lte(0)) throw new CustomerSalesBomError("INVALID_INPUT", "Returned BOM stock could not be valued safely.");
 
+    // createCustomerReturn has already restored the parent quantity at its
+    // historical base cost. Add only the embedded component value here.
     const resultingCost = parent.costPrice.mul(parent.stockQuantity).plus(embeddedValue).div(parent.stockQuantity);
     const changed = await tx.product.updateMany({
       where: { id: parent.id, workspaceId: input.workspaceId, stockQuantity: parent.stockQuantity },
