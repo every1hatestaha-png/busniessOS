@@ -25,6 +25,18 @@ describe("print UX regression contracts", () => {
     expect(voucherPage).toContain("data-document");
   });
 
+  it("keeps tenant branding on every manual high-value print header", () => {
+    const invoicePage = source("app/(dashboard)/invoices/[id]/page.tsx");
+    const gatePassPage = source("app/(dashboard)/invoices/[id]/gate-pass/page.tsx");
+    const supplierVoucherPage = source("app/(dashboard)/accounting/payment-vouchers/[id]/page.tsx");
+    const identity = source("components/documents/workspace-identity.tsx");
+
+    expect(identity).toContain("getWorkspaceBranding(workspace.name)");
+    expect(invoicePage).toContain('<WorkspaceIdentity workspace={seller} eyebrow="Invoice" />');
+    expect(gatePassPage).toContain('<WorkspaceIdentity workspace={seller} eyebrow="Delivery Challan / Gate Pass" />');
+    expect(supplierVoucherPage).toContain("<WorkspaceIdentity workspace={voucher.workspace}");
+  });
+
   it("covers customer return credit-note documents end to end", () => {
     const fixtureGenerator = source("tests/visual-qa/generate-print-completeness.js");
     const harness = source("tests/visual-qa/visual-qa.cjs");
