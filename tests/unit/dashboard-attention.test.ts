@@ -28,11 +28,13 @@ describe("dashboard attention semantics", () => {
     expect(daily).not.toContain('id: "stock-more"');
   });
 
-  it("renders a cropped tenant mark instead of shrinking the full Arshad logo into a tiny box", () => {
+  it("renders the full tenant logo at a readable sidebar size without manual cropping", () => {
     const sidebar = source("components/layout/sidebar.tsx");
 
-    expect(sidebar).toContain("h-[72px] w-[108px]");
+    expect(sidebar).toContain('h-[64px] w-[96px]');
     expect(sidebar).toContain("branding.logoPath");
-    expect(sidebar).toContain("bg-black");
+    expect(sidebar).toContain("object-contain");
+    expect(sidebar).toContain("brightness-125");
+    expect(sidebar).not.toContain('h-[72px] w-[108px]');
   });
 });
