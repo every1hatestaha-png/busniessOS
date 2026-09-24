@@ -48,29 +48,17 @@ export function WorkspaceIdentity({
           />
           <Image
             src={branding.markPath}
-            alt=""
-            aria-hidden="true"
-            width={1}
-            height={1}
+            alt={`${branding.logoAlt} monogram`}
+            width={96}
+            height={96}
             loading="eager"
             fetchPriority="high"
             unoptimized
-            className="pointer-events-none absolute h-px w-px opacity-0"
-          />
-          <span
-            role="img"
-            aria-label={`${branding.logoAlt} monogram`}
-            className="hidden h-14 w-14 shrink-0 bg-neutral-900 print:block"
+            className="hidden h-14 w-14 shrink-0 bg-white object-contain print:block print:[filter:invert(1)_grayscale(1)_contrast(1.15)]"
             style={{
-              maskImage: `url(${branding.markPath})`,
-              maskMode: "luminance",
-              maskRepeat: "no-repeat",
-              maskPosition: "center",
-              maskSize: "contain",
-              WebkitMaskImage: `url(${branding.markPath})`,
-              WebkitMaskRepeat: "no-repeat",
-              WebkitMaskPosition: "center",
-              WebkitMaskSize: "contain",
+              backgroundColor: "#fff",
+              WebkitPrintColorAdjust: "exact",
+              printColorAdjust: "exact",
             }}
           />
         </>
