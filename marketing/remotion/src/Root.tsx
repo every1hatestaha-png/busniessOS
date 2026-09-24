@@ -1,12 +1,12 @@
 import {Composition} from 'remotion';
-import {MunshiOSReel} from './MunshiOSReel';
+import {MunshiOSReelV2} from './MunshiOSReelV2';
 
 export const RemotionRoot = () => {
   return (
     <Composition
       id="MunshiOSReel"
-      component={MunshiOSReel}
-      durationInFrames={900}
+      component={MunshiOSReelV2}
+      durationInFrames={1050}
       fps={30}
       width={1080}
       height={1920}
