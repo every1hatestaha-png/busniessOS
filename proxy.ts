@@ -32,13 +32,25 @@ function isPublicMarketingPath(path: string) {
   return PUBLIC_MARKETING_PATHS.has(path) || path.startsWith("/get-your-munshi");
 }
 
-function safeInternalDestination(value: string | null, fallback = "/dashboard") {
-  if (!value) return fallback;
-  if (!value.startsWith("/") || value.startsWith("//")) return fallback;
-  if (value.startsWith("/sign-in") || value.startsWith("/sign-up") || value.startsWith("/login") || value.startsWith("/signup")) {
+function safeInternalDestination(value: string | null, requestUrl: string, fallback = "/dashboard") {
+  if (!value || /[\\\r\n\0]/.test(value)) return fallback;
+  try {
+    const base = new URL(requestUrl);
+    const destination = new URL(value, base);
+    if (destination.origin !== base.origin) return fallback;
+    const normalized = `${destination.pathname}${destination.search}${destination.hash}`;
+    if (
+      normalized.startsWith("/sign-in") ||
+      normalized.startsWith("/sign-up") ||
+      normalized.startsWith("/login") ||
+      normalized.startsWith("/signup")
+    ) {
+      return fallback;
+    }
+    return normalized;
+  } catch {
     return fallback;
   }
-  return value;
 }
 
 const handleProxy = clerkMiddleware(
@@ -103,21 +115,40 @@ const handleProxy = clerkMiddleware(
       if (path === "/login" || path.startsWith("/login/")) {
         if (signedIn) return NextResponse.redirect(new URL("/dashboard", request.url));
         const signInUrl = new URL("/sign-in", request.url);
-        signInUrl.search = request.nextUrl.search;
+        const redirectUrl = request.nextUrl.searchParams.get("redirect_url");
+        const sanitizedRedirect = redirectUrl ? safeInternalDestination(redirectUrl, request.url, "") : "";
+        if (sanitizedRedirect) signInUrl.searchParams.set("redirect_url", sanitizedRedirect);
+        for (const key of ["business", "modules", "billing"]) {
+          const value = request.nextUrl.searchParams.get(key);
+          if (value) signInUrl.searchParams.set(key, value);
+        }
         return NextResponse.redirect(signInUrl);
       }
 
       if (path === "/signup" || path.startsWith("/signup/")) {
         if (signedIn) return NextResponse.redirect(new URL("/dashboard", request.url));
         const signUpUrl = new URL("/sign-up", request.url);
-        signUpUrl.search = request.nextUrl.search;
+        for (const key of ["business", "modules", "billing"]) {
+          const value = request.nextUrl.searchParams.get(key);
+          if (value) signUpUrl.searchParams.set(key, value);
+        }
         return NextResponse.redirect(signUpUrl);
       }
 
       if (isAuthEntryPath(path)) {
+        const redirectUrl = request.nextUrl.searchParams.get("redirect_url");
         if (signedIn) {
-          const requestedDestination = safeInternalDestination(request.nextUrl.searchParams.get("redirect_url"));
+          const requestedDestination = safeInternalDestination(redirectUrl, request.url);
           return NextResponse.redirect(new URL(requestedDestination, request.url));
+        }
+        if (redirectUrl) {
+          const sanitizedRedirect = safeInternalDestination(redirectUrl, request.url, "");
+          if (!sanitizedRedirect || sanitizedRedirect !== redirectUrl) {
+            const sanitizedUrl = request.nextUrl.clone();
+            if (sanitizedRedirect) sanitizedUrl.searchParams.set("redirect_url", sanitizedRedirect);
+            else sanitizedUrl.searchParams.delete("redirect_url");
+            return NextResponse.redirect(sanitizedUrl);
+          }
         }
         return NextResponse.next();
       }
