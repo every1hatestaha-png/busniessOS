@@ -28,13 +28,15 @@ describe("dashboard attention semantics", () => {
     expect(daily).not.toContain('id: "stock-more"');
   });
 
-  it("renders the full tenant logo at a readable sidebar size without manual cropping", () => {
+  it("uses the dedicated square tenant mark in sidebar app chrome", () => {
     const sidebar = source("components/layout/sidebar.tsx");
+    const topNav = source("components/layout/top-nav.tsx");
 
-    expect(sidebar).toContain('h-[64px] w-[96px]');
-    expect(sidebar).toContain("branding.logoPath");
+    expect(sidebar).toContain("branding.markPath");
+    expect(sidebar).toContain("size-12");
     expect(sidebar).toContain("object-contain");
-    expect(sidebar).toContain("brightness-125");
+    expect(topNav).toContain("branding.markPath");
     expect(sidebar).not.toContain('h-[72px] w-[108px]');
+    expect(sidebar).not.toContain("brightness-125");
   });
 });
