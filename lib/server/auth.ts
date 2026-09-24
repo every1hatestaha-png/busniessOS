@@ -23,17 +23,21 @@ export const getCurrentUser = cache(async () => {
   // current verified-email ownership.
   const clerkUser = await (await clerkClient()).users.getUser(userId);
 
-  const primaryEmailAddress =
-    clerkUser.emailAddresses.find((email) => email.id === clerkUser.primaryEmailAddressId) ??
-    clerkUser.emailAddresses[0];
+  // Authorization must be based only on Clerk's explicitly configured primary
+  // email. Never fall back to an arbitrary first address, because email order
+  // is not an authorization primitive and aliases may have different trust
+  // states.
+  const primaryEmailAddress = clerkUser.primaryEmailAddressId
+    ? clerkUser.emailAddresses.find((email) => email.id === clerkUser.primaryEmailAddressId)
+    : undefined;
 
   const primaryEmail = primaryEmailAddress?.emailAddress?.trim().toLowerCase();
   if (!primaryEmail) {
-    throw new Error("Your Clerk account needs an email address before using MunshiOS.");
+    throw new Error("Set a primary email address in Clerk before using MunshiOS.");
   }
 
-  if (primaryEmailAddress?.verification?.status !== "verified") {
-    throw new Error("Verify your email address before using MunshiOS.");
+  if (primaryEmailAddress.verification?.status !== "verified") {
+    throw new Error("Verify your primary email address before using MunshiOS.");
   }
 
   const existing = await db.user.findUnique({ where: { clerkId: userId } });
