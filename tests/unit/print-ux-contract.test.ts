@@ -57,6 +57,39 @@ describe("print UX regression contracts", () => {
     expect(source("app/(dashboard)/accounting/cash-bank/[id]/page.tsx")).toContain("/reports/cash-bank?accountId=");
   });
 
+  it("keeps long report surfaces pageable instead of clipping them", () => {
+    const reportFrame = source("components/reports/report-frame.tsx");
+    expect(reportFrame).toContain("print:overflow-visible");
+    expect(reportFrame).toContain("overflow-x-auto print:mt-3 print:overflow-visible");
+  });
+
+  it("waits for fonts and images before automatic ledger printing", () => {
+    const autoPrint = source("components/reports/auto-print-report.tsx");
+    expect(autoPrint).toContain("document.fonts?.ready");
+    expect(autoPrint).toContain("[data-print-surface] img, [data-document] img");
+    expect(autoPrint).toContain("await nextPaint()");
+    expect(autoPrint).not.toContain("setTimeout(() => window.print(), 250)");
+  });
+
+  it("uses fixed portrait-safe columns for statements and ledgers", () => {
+    const statement = source("components/reports/statement-table.tsx");
+    const generalLedger = source("app/(dashboard)/reports/general-ledger/page.tsx");
+    const cashBank = source("app/(dashboard)/reports/cash-bank/page.tsx");
+
+    for (const report of [statement, generalLedger, cashBank]) {
+      expect(report).toContain("<colgroup>");
+      expect(report).toContain("print:min-w-0");
+    }
+    expect(generalLedger).toContain("PARTIAL REPORT");
+    expect(cashBank).toContain("PARTIAL REPORT");
+    expect(cashBank).toContain("getGeneralLedger");
+  });
+
+  it("keeps ledger money columns unbroken in portrait print", () => {
+    const financialTable = source("components/reports/financial-table.tsx");
+    expect(financialTable).toContain("print:whitespace-nowrap print:break-normal");
+  });
+
   it("keeps the Electron Ctrl/Cmd+P print accelerator wired", () => {
     const electronMain = source("desktop/main.cjs");
     expect(electronMain).toContain("before-input-event");
