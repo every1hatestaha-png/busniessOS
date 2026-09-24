@@ -11,12 +11,29 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  release-gate:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_release_gate
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_release_gate"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_release_gate?sslmode=disable
+      NODE_ENV: test
+      RUN_INTEGRATION_TESTS: "true"
 
     steps:
       - uses: actions/checkout@v4
@@ -27,15 +44,87 @@ jobs:
           node-version: '22.x'
           cache: npm
 
-      - name: Install, build, and test
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
+      - name: Apply release-gate database migrations
+        run: npx prisma migrate deploy
+
+      - name: TypeScript gate
+        run: npx tsc --noEmit
+
+      - name: Production Next.js build gate
+        env:
+          NODE_ENV: production
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Zml4dHVyZS5jbGVyay5hY2NvdW50cy5kZXYk
+          CLERK_SECRET_KEY: sk_test_fixture
+          CLERK_OAUTH_CLIENT_ID: fixture-client
+        run: npm run build:web
+
+      - name: Visual QA harness syntax gate
         run: |
-          npm ci
-          npm run build --if-present
-          npm run test --if-present
+          node --check tests/visual-qa/generate-documents.js
+          node --check tests/visual-qa/visual-qa.cjs
+
+      - name: Full unit and integration suite
+        run: npm test
+
+      - name: Finance-grade scenario suite
+        run: npm run test:finance
+
+      - name: ESLint gate
+        run: npx eslint app components lib
+
+      - name: Production dependency audit
+        shell: bash
+        run: |
+          runtime_dir="$(mktemp -d)"
+          node - "$runtime_dir/package.json" <<'NODE'
+          const fs = require("node:fs");
+          const source = require("./package.json");
+          fs.writeFileSync(process.argv[2], JSON.stringify({
+            name: "munshios-runtime-audit",
+            version: source.version,
+            private: true,
+            dependencies: source.dependencies,
+          }, null, 2));
+          NODE
+          cd "$runtime_dir"
+          npx --yes npm@11.19.1 install --ignore-scripts --no-audit --no-fund --omit=peer
+          npx --yes npm@11.19.1 audit --omit=peer --audit-level=high
+
+  desktop-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/unused?sslmode=disable
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js version
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Desktop smoke tests
+        run: npm run desktop:test
 
   migrate-production:
     runs-on: ubuntu-latest
-    needs: build
+    needs:
+      - release-gate
+      - desktop-smoke
     permissions:
       contents: read
     env:
@@ -104,7 +193,6 @@ jobs:
   verify-vercel-production:
     runs-on: ubuntu-latest
     needs:
-      - build
       - migrate-production
 
     steps:
