@@ -1,5 +1,8 @@
 export type WorkspaceBranding = {
+  /** Full company logo used on documents and print surfaces. */
   logoPath: string;
+  /** Compact square mark used in sidebar/mobile app chrome. */
+  markPath: string;
   logoAlt: string;
 };
 
@@ -24,6 +27,7 @@ export function getWorkspaceBranding(workspaceName: string): WorkspaceBranding |
 
   return {
     logoPath: "/brand/arshad-sons-engineering-solutions.webp",
+    markPath: "/brand/arshad-sons-mark.webp",
     logoAlt: "Arshad Sons Engineering Solutions",
   };
 }
