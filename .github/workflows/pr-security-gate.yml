@@ -1,0 +1,53 @@
+name: PR security and auth gate
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_pr_gate
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_pr_gate"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_pr_gate?sslmode=disable
+      NODE_ENV: test
+      RUN_INTEGRATION_TESTS: "true"
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Zml4dHVyZS5jbGVyay5hY2NvdW50cy5kZXYk
+      CLERK_SECRET_KEY: sk_test_fixture
+      CLERK_OAUTH_CLIENT_ID: fixture-client
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci
+      - run: npx prisma validate
+      - run: npx prisma migrate deploy
+      - run: npx tsc --noEmit
+      - run: npx eslint app components lib proxy.ts next.config.ts
+      - run: npm test
+      - run: npm run test:finance
+      - name: Production build
+        env:
+          NODE_ENV: production
+        run: npm run build:web

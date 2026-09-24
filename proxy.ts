@@ -1,10 +1,15 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
+import { isAuthEntryPath, isPublicMarketingPath, safeInternalDestination } from "@/lib/auth-routing";
 import { checkAppRateLimit } from "@/lib/request-rate-limit";
-import { applyCorsHeaders, corsPreflightResponse, isApiV1Request } from "@/lib/server/cors";
+import { applyCorsHeaders, corsPreflightResponse, isApiV1Request, isTrustedMutationOrigin } from "@/lib/server/cors";
 
 function d4ProxyLog(message: string) {
+}
+
+function isMutationMethod(method: string) {
+  return !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase());
 }
 
 const handleProxy = clerkMiddleware(
@@ -35,23 +40,24 @@ const handleProxy = clerkMiddleware(
       path.startsWith("/forgot-password") ||
       path.startsWith("/account-recovery") ||
       path.startsWith("/recovery") ||
-      path.startsWith("/platform/sign-in") ||
-      path === "/privacy" ||
-      path === "/terms" ||
-      (!isElectron && (
-        path === "/" ||
-        path.startsWith("/get-your-munshi") ||
-        path === "/features" ||
-        path === "/industries" ||
-        path === "/pricing" ||
-        path === "/faq"
-      ))
+      path.startsWith("/platform/sign-in")
     ) {
       return NextResponse.next();
     }
 
     if (isApiV1Request(path) && request.method === "OPTIONS") {
       return corsPreflightResponse(request);
+    }
+
+    if (
+      isApiV1Request(path)
+      && isMutationMethod(request.method)
+      && !isTrustedMutationOrigin(request.headers.get("origin"), request.nextUrl.origin)
+    ) {
+      return NextResponse.json(
+        { error: { code: "UNTRUSTED_ORIGIN", message: "This request origin is not allowed." } },
+        { status: 403, headers: { "Cache-Control": "no-store" } },
+      );
     }
 
     if (isElectron) {
@@ -74,7 +80,58 @@ const handleProxy = clerkMiddleware(
 
     if (!isApiV1Request(path)) {
       const authState = await auth();
-      if (!authState.userId) {
+      const signedIn = Boolean(authState.userId);
+
+      if (path === "/login" || path.startsWith("/login/")) {
+        if (signedIn) return NextResponse.redirect(new URL("/dashboard", request.url));
+        const signInUrl = new URL("/sign-in", request.url);
+        const redirectUrl = request.nextUrl.searchParams.get("redirect_url");
+        const sanitizedRedirect = redirectUrl ? safeInternalDestination(redirectUrl, request.url, "") : "";
+        if (sanitizedRedirect) signInUrl.searchParams.set("redirect_url", sanitizedRedirect);
+        for (const key of ["business", "modules", "billing"]) {
+          const value = request.nextUrl.searchParams.get(key);
+          if (value) signInUrl.searchParams.set(key, value);
+        }
+        return NextResponse.redirect(signInUrl);
+      }
+
+      if (path === "/signup" || path.startsWith("/signup/")) {
+        if (signedIn) return NextResponse.redirect(new URL("/dashboard", request.url));
+        const signUpUrl = new URL("/sign-up", request.url);
+        for (const key of ["business", "modules", "billing"]) {
+          const value = request.nextUrl.searchParams.get(key);
+          if (value) signUpUrl.searchParams.set(key, value);
+        }
+        return NextResponse.redirect(signUpUrl);
+      }
+
+      if (isAuthEntryPath(path)) {
+        const redirectUrl = request.nextUrl.searchParams.get("redirect_url");
+        if (signedIn) {
+          const requestedDestination = safeInternalDestination(redirectUrl, request.url);
+          return NextResponse.redirect(new URL(requestedDestination, request.url));
+        }
+        if (redirectUrl) {
+          const sanitizedRedirect = safeInternalDestination(redirectUrl, request.url, "");
+          if (!sanitizedRedirect || sanitizedRedirect !== redirectUrl) {
+            const sanitizedUrl = request.nextUrl.clone();
+            if (sanitizedRedirect) sanitizedUrl.searchParams.set("redirect_url", sanitizedRedirect);
+            else sanitizedUrl.searchParams.delete("redirect_url");
+            return NextResponse.redirect(sanitizedUrl);
+          }
+        }
+        return NextResponse.next();
+      }
+
+      if (path === "/" && signedIn) {
+        return NextResponse.redirect(new URL("/dashboard", request.url));
+      }
+
+      if (isPublicMarketingPath(path)) {
+        return NextResponse.next();
+      }
+
+      if (!signedIn) {
         const signInUrl = new URL("/sign-in", request.url);
         signInUrl.searchParams.set("redirect_url", `${request.nextUrl.pathname}${request.nextUrl.search}`);
         return NextResponse.redirect(signInUrl);
@@ -94,7 +151,7 @@ export { handleProxy as proxy };
 
 export const config = {
   matcher: [
-    "/((?!_next|sign-in|sign-up|forgot-password|account-recovery|recovery|desktop-auth|api/webhooks|api/health|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/((?!_next|forgot-password|account-recovery|recovery|desktop-auth|api/webhooks|api/health|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
     "/(api|trpc)(.*)",
     "/__clerk/(.*)",
   ],
