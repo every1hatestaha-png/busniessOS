@@ -1,56 +1,11 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
+import { isAuthEntryPath, isPublicMarketingPath, safeInternalDestination } from "@/lib/auth-routing";
 import { checkAppRateLimit } from "@/lib/request-rate-limit";
 import { applyCorsHeaders, corsPreflightResponse, isApiV1Request } from "@/lib/server/cors";
 
 function d4ProxyLog(message: string) {
-}
-
-const PUBLIC_MARKETING_PATHS = new Set([
-  "/",
-  "/features",
-  "/industries",
-  "/pricing",
-  "/faq",
-  "/privacy",
-  "/terms",
-]);
-
-const AUTH_ENTRY_PATHS = new Set([
-  "/sign-in",
-  "/sign-up",
-  "/login",
-  "/signup",
-]);
-
-function isAuthEntryPath(path: string) {
-  return Array.from(AUTH_ENTRY_PATHS).some((entry) => path === entry || path.startsWith(`${entry}/`));
-}
-
-function isPublicMarketingPath(path: string) {
-  return PUBLIC_MARKETING_PATHS.has(path) || path.startsWith("/get-your-munshi");
-}
-
-function safeInternalDestination(value: string | null, requestUrl: string, fallback = "/dashboard") {
-  if (!value || /[\\\r\n\0]/.test(value)) return fallback;
-  try {
-    const base = new URL(requestUrl);
-    const destination = new URL(value, base);
-    if (destination.origin !== base.origin) return fallback;
-    const normalized = `${destination.pathname}${destination.search}${destination.hash}`;
-    if (
-      normalized.startsWith("/sign-in") ||
-      normalized.startsWith("/sign-up") ||
-      normalized.startsWith("/login") ||
-      normalized.startsWith("/signup")
-    ) {
-      return fallback;
-    }
-    return normalized;
-  } catch {
-    return fallback;
-  }
 }
 
 const handleProxy = clerkMiddleware(
