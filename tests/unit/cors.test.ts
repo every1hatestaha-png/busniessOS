@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyCorsHeaders, getAllowedCorsOrigin, isApiV1Request } from "@/lib/server/cors";
+import { applyCorsHeaders, getAllowedCorsOrigin, isApiV1Request, isTrustedMutationOrigin } from "@/lib/server/cors";
 
 describe("API CORS", () => {
   it("matches only /api/v1 requests", () => {
@@ -29,5 +29,22 @@ describe("API CORS", () => {
 
     const disallowed = applyCorsHeaders(new Response(null), "https://evil.example.com");
     expect(disallowed.headers.get("Access-Control-Allow-Origin")).toBeNull();
+  });
+
+  it("accepts same-origin and requests without an Origin header", () => {
+    expect(isTrustedMutationOrigin(null, "https://app.munshios.example")).toBe(true);
+    expect(isTrustedMutationOrigin("https://app.munshios.example", "https://app.munshios.example")).toBe(true);
+  });
+
+  it("accepts only explicitly allowed cross-origin development clients", () => {
+    expect(isTrustedMutationOrigin("http://localhost:8081", "https://app.munshios.example")).toBe(true);
+    expect(isTrustedMutationOrigin("http://127.0.0.1:19006", "https://app.munshios.example")).toBe(true);
+  });
+
+  it("rejects malicious, malformed, and unapproved mutation origins", () => {
+    expect(isTrustedMutationOrigin("https://evil.example.com", "https://app.munshios.example")).toBe(false);
+    expect(isTrustedMutationOrigin("http://localhost:3000", "https://app.munshios.example")).toBe(false);
+    expect(isTrustedMutationOrigin("not a url", "https://app.munshios.example")).toBe(false);
+    expect(isTrustedMutationOrigin("https://app.munshios.example", "not a url")).toBe(false);
   });
 });
