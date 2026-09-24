@@ -85,6 +85,25 @@ describe("print UX regression contracts", () => {
     expect(cashBank).toContain("getGeneralLedger");
   });
 
+  it("keeps inventory and aging reports portrait-safe and honest when truncated", () => {
+    const currentStock = source("app/(dashboard)/reports/current-stock/page.tsx");
+    const stockMovement = source("app/(dashboard)/reports/stock-movement/page.tsx");
+    const purchaseHistory = source("app/(dashboard)/reports/purchase-price-history/page.tsx");
+    const receivables = source("components/receivables/receivables-table.tsx");
+    const payables = source("components/payables/payables-table.tsx");
+
+    for (const report of [currentStock, stockMovement, purchaseHistory, receivables, payables]) {
+      expect(report).toContain("<colgroup>");
+      expect(report).toContain("print:min-w-0");
+    }
+    for (const report of [stockMovement, purchaseHistory]) {
+      expect(report).toContain("PARTIAL REPORT");
+      expect(report).not.toMatch(/PARTIAL REPORT[^\n]*print:hidden/);
+    }
+    expect(receivables).toContain("print:overflow-visible");
+    expect(payables).toContain("print:overflow-visible");
+  });
+
   it("keeps ledger money columns unbroken in portrait print", () => {
     const financialTable = source("components/reports/financial-table.tsx");
     expect(financialTable).toContain("print:whitespace-nowrap print:break-normal");
