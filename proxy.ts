@@ -7,6 +7,40 @@ import { applyCorsHeaders, corsPreflightResponse, isApiV1Request } from "@/lib/s
 function d4ProxyLog(message: string) {
 }
 
+const PUBLIC_MARKETING_PATHS = new Set([
+  "/",
+  "/features",
+  "/industries",
+  "/pricing",
+  "/faq",
+  "/privacy",
+  "/terms",
+]);
+
+const AUTH_ENTRY_PATHS = new Set([
+  "/sign-in",
+  "/sign-up",
+  "/login",
+  "/signup",
+]);
+
+function isAuthEntryPath(path: string) {
+  return Array.from(AUTH_ENTRY_PATHS).some((entry) => path === entry || path.startsWith(`${entry}/`));
+}
+
+function isPublicMarketingPath(path: string) {
+  return PUBLIC_MARKETING_PATHS.has(path) || path.startsWith("/get-your-munshi");
+}
+
+function safeInternalDestination(value: string | null, fallback = "/dashboard") {
+  if (!value) return fallback;
+  if (!value.startsWith("/") || value.startsWith("//")) return fallback;
+  if (value.startsWith("/sign-in") || value.startsWith("/sign-up") || value.startsWith("/login") || value.startsWith("/signup")) {
+    return fallback;
+  }
+  return value;
+}
+
 const handleProxy = clerkMiddleware(
   async (auth, request) => {
     const path = request.nextUrl.pathname;
@@ -35,17 +69,7 @@ const handleProxy = clerkMiddleware(
       path.startsWith("/forgot-password") ||
       path.startsWith("/account-recovery") ||
       path.startsWith("/recovery") ||
-      path.startsWith("/platform/sign-in") ||
-      path === "/privacy" ||
-      path === "/terms" ||
-      (!isElectron && (
-        path === "/" ||
-        path.startsWith("/get-your-munshi") ||
-        path === "/features" ||
-        path === "/industries" ||
-        path === "/pricing" ||
-        path === "/faq"
-      ))
+      path.startsWith("/platform/sign-in")
     ) {
       return NextResponse.next();
     }
@@ -74,7 +98,39 @@ const handleProxy = clerkMiddleware(
 
     if (!isApiV1Request(path)) {
       const authState = await auth();
-      if (!authState.userId) {
+      const signedIn = Boolean(authState.userId);
+
+      if (path === "/login" || path.startsWith("/login/")) {
+        if (signedIn) return NextResponse.redirect(new URL("/dashboard", request.url));
+        const signInUrl = new URL("/sign-in", request.url);
+        signInUrl.search = request.nextUrl.search;
+        return NextResponse.redirect(signInUrl);
+      }
+
+      if (path === "/signup" || path.startsWith("/signup/")) {
+        if (signedIn) return NextResponse.redirect(new URL("/dashboard", request.url));
+        const signUpUrl = new URL("/sign-up", request.url);
+        signUpUrl.search = request.nextUrl.search;
+        return NextResponse.redirect(signUpUrl);
+      }
+
+      if (isAuthEntryPath(path)) {
+        if (signedIn) {
+          const requestedDestination = safeInternalDestination(request.nextUrl.searchParams.get("redirect_url"));
+          return NextResponse.redirect(new URL(requestedDestination, request.url));
+        }
+        return NextResponse.next();
+      }
+
+      if (path === "/" && signedIn) {
+        return NextResponse.redirect(new URL("/dashboard", request.url));
+      }
+
+      if (isPublicMarketingPath(path)) {
+        return NextResponse.next();
+      }
+
+      if (!signedIn) {
         const signInUrl = new URL("/sign-in", request.url);
         signInUrl.searchParams.set("redirect_url", `${request.nextUrl.pathname}${request.nextUrl.search}`);
         return NextResponse.redirect(signInUrl);
@@ -94,7 +150,7 @@ export { handleProxy as proxy };
 
 export const config = {
   matcher: [
-    "/((?!_next|sign-in|sign-up|forgot-password|account-recovery|recovery|desktop-auth|api/webhooks|api/health|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/((?!_next|forgot-password|account-recovery|recovery|desktop-auth|api/webhooks|api/health|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
     "/(api|trpc)(.*)",
     "/__clerk/(.*)",
   ],
