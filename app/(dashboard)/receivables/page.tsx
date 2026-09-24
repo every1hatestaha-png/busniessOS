@@ -51,7 +51,7 @@ export default async function ReceivablesPage({ searchParams }: { searchParams: 
         <div className="print:hidden"><PrintButton label="Print aging" /></div>
       </div>
       <div className="hidden print:block"><ReportCompanyHeader workspace={workspace} title="Accounts Receivable Aging" from={report.asOfDate} to={report.asOfDate} subtitle="Outstanding customer invoices and applied settlements" /></div>
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 print:grid-cols-4 print:gap-1.5">
         <MetricCard label="Total Receivable" value={formatPKR(report.totalOutstanding)} detail={`${report.customers.length} ${report.customers.length === 1 ? "customer" : "customers"}`} icon={Banknote} />
         <MetricCard label="Unapplied Credit" value={formatPKR(report.totalUnappliedCredit)} detail="Held separately" icon={CreditCard} />
         <MetricCard label="On-account Receipts" value={formatPKR(report.totalUnappliedPayments)} detail="Not allocated to invoices" icon={CreditCard} />
