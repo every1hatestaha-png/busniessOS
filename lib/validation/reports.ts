@@ -1,27 +1,29 @@
 import { z } from "zod";
 
-const optionalDate = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional();
+const emptyStringToUndefined = (value: unknown) => value === "" ? undefined : value;
+const optionalDate = z.preprocess(emptyStringToUndefined, z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional());
+const optionalUuid = z.preprocess(emptyStringToUndefined, z.string().uuid().optional());
 
 export const periodQuerySchema = z.object({
   from: optionalDate,
   to: optionalDate,
-  search: z.string().trim().max(120).optional(),
+  search: z.preprocess(emptyStringToUndefined, z.string().trim().max(120).optional()),
 }).refine((period) => !period.from || !period.to || period.from <= period.to, { path: ["to"], message: "End date must be on or after start date." });
 
 export const agingQuerySchema = z.object({
   asOf: optionalDate,
-  search: z.string().trim().max(120).optional(),
-  partyId: z.string().uuid().optional(),
-  bucket: z.enum(["current", "1-30", "31-45", "46-60", "61+"]).optional(),
+  search: z.preprocess(emptyStringToUndefined, z.string().trim().max(120).optional()),
+  partyId: optionalUuid,
+  bucket: z.preprocess(emptyStringToUndefined, z.enum(["current", "1-30", "31-45", "46-60", "61+"]).optional()),
 });
 
 export const statementQuerySchema = periodQuerySchema.extend({
-  partyId: z.string().uuid().optional(),
+  partyId: optionalUuid,
 });
 
 export const inventoryMovementQuerySchema = periodQuerySchema.extend({
-  productId: z.string().uuid().optional(),
-  type: z.string().trim().max(40).optional(),
+  productId: optionalUuid,
+  type: z.preprocess(emptyStringToUndefined, z.string().trim().max(40).optional()),
 });
 
 export function parseDate(value: string | undefined, fallback: Date, endOfDay = false) {
