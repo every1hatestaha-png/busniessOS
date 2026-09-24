@@ -48,11 +48,13 @@ export default async function GeneralLedgerPage({ searchParams }: { searchParams
   const requestedAccountId = typeof raw.accountId === "string" ? raw.accountId : undefined;
   const accountId = accounts.some((account) => account.id === requestedAccountId) ? requestedAccountId! : accounts[0]?.id;
   const report = accountId ? await getGeneralLedger(workspaceId, { accountId, from, to, search: query.search }) : null;
+  const filtered = Boolean(query.search?.trim());
 
   const filters = <ReportFilterBar><ReportFilterField label="Account"><select className={reportSelectClassName} name="accountId" defaultValue={accountId}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.code} - {account.name}</option>)}</select></ReportFilterField><PeriodFilters from={dateInputValue(from)} to={dateInputValue(to)} /><SearchFilter value={query.search} /></ReportFilterBar>;
   return (
     <ReportFrame workspace={workspace} title="General Ledger" from={report?.from ?? from} to={report?.to ?? to} subtitle={report ? `${report.account.code} - ${report.account.name} (${report.account.normalBalance.toLowerCase()} normal balance)` : "No ledger account available"} filters={filters}>
       {report ? <>
+        {filtered && <div className="mb-3 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-950 print:border-2">FILTERED VIEW: only matching document/narration rows are shown. Opening, running, and closing balances retain all ledger activity in the selected period.</div>}
         {report.truncated && <div className="mb-4 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-950 print:mb-2 print:border-2">PARTIAL REPORT: only the first 2,000 matching ledger entries are shown. Opening and closing balances include the full selected period. Narrow the date range before relying on or printing the transaction detail.</div>}
         <div className="mb-4 grid grid-cols-2 gap-3 text-xs lg:grid-cols-4 print:grid-cols-3 print:gap-1.5">
           <div className="rounded border border-neutral-200 p-3 print:p-2"><p className="text-neutral-500">Opening balance</p><p className="mt-1 text-base font-bold tabular-nums print:text-sm"><Money value={report.openingBalance} /></p></div>
