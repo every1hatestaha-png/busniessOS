@@ -31,10 +31,6 @@ export async function syncClerkLifecycleIdentity(
     });
     if (!localUser) return { synced: false as const, reason: "not_found" as const };
 
-    // Preserve business ownership and the local identity anchor so a recreated,
-    // verified Clerk account with the same email can recover the workspace.
-    // Financial/business workspaces must never become ownerless merely because
-    // an external identity-provider account was deleted.
     if (localUser.memberships.some((membership) => membership.role === "OWNER")) {
       return { synced: false as const, reason: "owner_preserved" as const };
     }
@@ -45,15 +41,12 @@ export async function syncClerkLifecycleIdentity(
 
   const verifiedEmail = identity.verifiedPrimaryEmail?.trim().toLowerCase() ?? null;
   if (!verifiedEmail) {
-    // A later Clerk user.updated event after verification can perform the sync.
     return { synced: false as const, reason: "verified_email_required" as const };
   }
 
   return db.$transaction(async (tx) => {
-    const [byClerkId, byEmail] = await Promise.all([
-      tx.user.findUnique({ where: { clerkId: identity.id } }),
-      tx.user.findUnique({ where: { email: verifiedEmail } }),
-    ]);
+    const byClerkId = await tx.user.findUnique({ where: { clerkId: identity.id } });
+    const byEmail = await tx.user.findUnique({ where: { email: verifiedEmail } });
 
     if (byClerkId && byEmail && byClerkId.id !== byEmail.id) {
       throw new ClerkUserSyncConflictError(
