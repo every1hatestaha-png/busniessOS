@@ -40,8 +40,10 @@ export function WorkspaceIdentity({
           alt={branding.logoAlt}
           width={150}
           height={100}
+          loading="eager"
+          fetchPriority="high"
           unoptimized
-          className="h-16 w-auto max-w-[110px] shrink-0 rounded-sm object-contain print:h-14 print:max-w-[100px]"
+          className="h-16 w-auto max-w-[110px] shrink-0 rounded-sm object-contain print:block print:h-14 print:max-w-[100px]"
         />
       )}
       <div className="min-w-0">
