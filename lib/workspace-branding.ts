@@ -8,6 +8,8 @@ export type WorkspaceBranding = {
 
 const ARSHAD_SONS_WORKSPACE_NAMES = new Set([
   "arshad sons and engineering solution",
+  "arshad sons engineering solution",
+  "arshad sons and engineering solutions",
   "arshad sons engineering solutions",
 ]);
 
@@ -19,8 +21,8 @@ function normalizeWorkspaceName(value: string) {
  * Workspace-scoped visual branding.
  *
  * Keep this resolver deliberately strict: a custom brand must never leak into
- * another tenant just because its name is similar. Add future tenants here only
- * with an exact, reviewed workspace identity.
+ * another tenant just because its name is similar. The accepted values below
+ * are reviewed spelling variants of the same Arshad Sons company name.
  */
 export function getWorkspaceBranding(workspaceName: string): WorkspaceBranding | null {
   if (!ARSHAD_SONS_WORKSPACE_NAMES.has(normalizeWorkspaceName(workspaceName))) return null;
