@@ -7,15 +7,16 @@ type Statement = {
   entries: Array<{ id: string; date: string; documentNo: string; description: string; debit: number; credit: number; runningBalance: number; href: string | null }>;
 };
 
-export function StatementTable({ statement, balanceLabel }: { statement: Statement; balanceLabel: string }) {
+export function StatementTable({ statement, balanceLabel, filtered = false }: { statement: Statement; balanceLabel: string; filtered?: boolean }) {
   const debit = statement.entries.reduce((sum, entry) => sum + entry.debit, 0);
   const credit = statement.entries.reduce((sum, entry) => sum + entry.credit, 0);
   return (
     <>
+      {filtered && <div className="mb-3 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-950 print:border-2">FILTERED VIEW: the rows and shown debit/credit totals match your search, while opening, running, and closing balances retain all account activity in the selected period.</div>}
       <div className="mb-4 grid max-w-3xl grid-cols-1 gap-3 text-xs sm:grid-cols-2 lg:grid-cols-4 print:max-w-none print:grid-cols-4 print:gap-1.5">
         <div className="rounded border p-3 print:p-2"><p className="text-neutral-500">Opening balance</p><p className="mt-1 font-bold"><Money value={statement.openingBalance} /></p></div>
-        <div className="rounded border p-3 print:p-2"><p className="text-neutral-500">Period debit</p><p className="mt-1 font-bold"><Money value={debit} /></p></div>
-        <div className="rounded border p-3 print:p-2"><p className="text-neutral-500">Period credit</p><p className="mt-1 font-bold"><Money value={credit} /></p></div>
+        <div className="rounded border p-3 print:p-2"><p className="text-neutral-500">{filtered ? "Shown debit" : "Period debit"}</p><p className="mt-1 font-bold"><Money value={debit} /></p></div>
+        <div className="rounded border p-3 print:p-2"><p className="text-neutral-500">{filtered ? "Shown credit" : "Period credit"}</p><p className="mt-1 font-bold"><Money value={credit} /></p></div>
         <div className="rounded border border-neutral-900 bg-neutral-950 p-3 text-white print:p-2"><p className="text-neutral-300">{balanceLabel}</p><p className="mt-1 font-bold"><Money value={statement.closingBalance} /></p></div>
       </div>
       <FinancialTable className="min-w-[850px] print:min-w-0">
