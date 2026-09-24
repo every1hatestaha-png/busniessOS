@@ -92,21 +92,31 @@ export function Sidebar({
 
   return (
     <aside className="flex h-full w-[260px] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
-      <div className="flex h-16 shrink-0 items-center gap-3 border-b border-sidebar-border px-4">
-        <div className={cn(
-          "flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] shadow-sm",
-          branding ? "h-10 w-16 p-0.5" : "size-10 p-1.5",
-        )}>
-          <Image
-            src={branding?.logoPath ?? "/brand/munshios-mark.svg"}
-            alt={branding?.logoAlt ?? "MunshiOS"}
-            width={branding ? 64 : 40}
-            height={branding ? 43 : 40}
-            unoptimized={Boolean(branding)}
-            priority
-            className="size-full object-contain"
-          />
-        </div>
+      <div className="flex h-[72px] shrink-0 items-center gap-3 border-b border-sidebar-border px-4">
+        {branding ? (
+          <div className="relative h-12 w-14 shrink-0 overflow-hidden rounded-xl border border-white/15 bg-black shadow-sm" aria-label={branding.logoAlt}>
+            <Image
+              src={branding.logoPath}
+              alt={branding.logoAlt}
+              width={108}
+              height={72}
+              unoptimized
+              priority
+              className="absolute left-1/2 top-0 h-[72px] w-[108px] max-w-none -translate-x-1/2 object-cover"
+            />
+          </div>
+        ) : (
+          <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] p-1.5 shadow-sm">
+            <Image
+              src="/brand/munshios-mark.svg"
+              alt="MunshiOS"
+              width={40}
+              height={40}
+              priority
+              className="size-full object-contain"
+            />
+          </div>
+        )}
         <div className="min-w-0 leading-tight">
           <p className="text-base font-semibold tracking-[-0.02em] text-white">MunshiOS</p>
           <p className="mt-0.5 truncate text-[11px] text-slate-400" title={workspaceName}>{workspaceName}</p>

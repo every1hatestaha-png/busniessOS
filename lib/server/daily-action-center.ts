@@ -41,12 +41,24 @@ export async function getDailyActionCenter(
 
   const [lowStockRows, lowStockCount, todaySalesAggregate, todayReceiptAggregate] = await Promise.all([
     db.product.findMany({
-      where: { workspaceId, status: "ACTIVE", stockQuantity: { lte: db.product.fields.reorderLevel } },
+      where: {
+        workspaceId,
+        status: "ACTIVE",
+        reorderLevel: { gt: 0 },
+        stockQuantity: { lte: db.product.fields.reorderLevel },
+      },
       orderBy: [{ stockQuantity: "asc" }, { name: "asc" }],
       take: 3,
       select: { id: true, name: true, sku: true, stockQuantity: true, reorderLevel: true, unit: true },
     }),
-    db.product.count({ where: { workspaceId, status: "ACTIVE", stockQuantity: { lte: db.product.fields.reorderLevel } } }),
+    db.product.count({
+      where: {
+        workspaceId,
+        status: "ACTIVE",
+        reorderLevel: { gt: 0 },
+        stockQuantity: { lte: db.product.fields.reorderLevel },
+      },
+    }),
     db.salesOrder.aggregate({
       where: { workspaceId, status: { not: "CANCELLED" }, orderDate: { gte: dayStart, lte: dayEnd } },
       _sum: { total: true },
@@ -60,18 +72,23 @@ export async function getDailyActionCenter(
   ]);
 
   const items: DailyActionItem[] = [];
-  for (const product of lowStockRows) {
+  if (lowStockCount > 0) {
+    const sampleNames = lowStockRows.map((product) => product.name);
+    const visibleNames = sampleNames.slice(0, 2).join(", ");
+    const remaining = Math.max(0, lowStockCount - Math.min(2, sampleNames.length));
+    const hasOutOfStock = lowStockRows.some((product) => product.stockQuantity.lte(0));
+    const sampleDetail = visibleNames
+      ? `${visibleNames}${remaining > 0 ? ` + ${remaining} more` : ""}`
+      : `${lowStockCount} product${lowStockCount === 1 ? "" : "s"}`;
+
     items.push({
-      id: `stock-${product.id}`,
-      tone: product.stockQuantity.lte(0) ? "danger" : "warning",
-      title: `${product.name} needs stock attention`,
-      detail: `${product.stockQuantity.toString()} ${product.unit.toLowerCase()} available · reorder level ${product.reorderLevel.toString()}`,
-      href: `/inventory/${product.id}`,
+      id: "stock-summary",
+      tone: hasOutOfStock ? "danger" : "warning",
+      title: `${lowStockCount} product${lowStockCount === 1 ? "" : "s"} need restocking`,
+      detail: `${sampleDetail} ${lowStockCount === 1 ? "is" : "are"} at or below a configured reorder level.`,
+      href: "/inventory",
       actionLabel: "Review stock",
     });
-  }
-  if (lowStockCount > lowStockRows.length) {
-    items.push({ id: "stock-more", tone: "warning", title: `${lowStockCount - lowStockRows.length} more products need stock attention`, detail: "Open the low-stock report to review the remaining items.", href: "/reports/current-stock?lowStock=true", actionLabel: "Open stock report" });
   }
 
   let collectionAmount = 0;
