@@ -45,8 +45,20 @@ export function ReceivablesTable({ report, customers, filters }: { report: Recei
         </div>
       </form>
 
-      <div className="overflow-hidden rounded-xl border bg-white">
-        <Table className="min-w-[1180px] text-xs print:min-w-0 print:table-fixed print:text-[8px] print:[&_td]:whitespace-normal print:[&_td]:px-1 print:[&_th]:whitespace-normal print:[&_th]:px-1">
+      <div className="overflow-hidden rounded-xl border bg-white print:overflow-visible print:rounded-none print:border-0">
+        <Table className="min-w-[1180px] text-xs print:min-w-0 print:table-fixed print:text-[7.5pt] print:[&_td]:whitespace-normal print:[&_td]:px-1 print:[&_th]:whitespace-normal print:[&_th]:px-1">
+          <colgroup>
+            <col style={{ width: "18%" }} />
+            <col style={{ width: "13%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "12%" }} />
+            <col style={{ width: "11%" }} />
+            <col style={{ width: "11%" }} />
+            <col style={{ width: "13%" }} />
+            <col style={{ width: "5%" }} />
+            <col style={{ width: "7%" }} />
+            <col className="print:hidden" />
+          </colgroup>
           <TableHeader>
             <TableRow>
               <TableHead>Customer</TableHead>
@@ -65,12 +77,12 @@ export function ReceivablesTable({ report, customers, filters }: { report: Recei
             {items.map((item) => (
               <TableRow key={item.invoiceId}>
                 <TableCell className="font-medium"><Link prefetch={false} href={`/customers/${item.customerId}`} className="hover:underline">{item.customerName}</Link></TableCell>
-                <TableCell className="font-mono">{item.isOpeningBalance ? item.documentNumber : <Link prefetch={false} href={`/invoices/${item.invoiceId}`} className="hover:underline">{item.documentNumber}</Link>}</TableCell>
+                <TableCell className="font-mono break-all print:break-words">{item.isOpeningBalance ? item.documentNumber : <Link prefetch={false} href={`/invoices/${item.invoiceId}`} className="hover:underline">{item.documentNumber}</Link>}</TableCell>
                 <TableCell>{formatDate(item.invoiceDate)}</TableCell>
-                <TableCell className="text-right tabular-nums">{formatPKR(item.originalAmount)}</TableCell>
-                <TableCell className="text-right tabular-nums">{formatPKR(item.paymentsApplied)}</TableCell>
-                <TableCell className="text-right tabular-nums">{formatPKR(item.creditsApplied)}</TableCell>
-                <TableCell className="text-right font-semibold tabular-nums">{formatPKR(item.outstandingAmount)}</TableCell>
+                <TableCell className="whitespace-nowrap text-right tabular-nums">{formatPKR(item.originalAmount)}</TableCell>
+                <TableCell className="whitespace-nowrap text-right tabular-nums">{formatPKR(item.paymentsApplied)}</TableCell>
+                <TableCell className="whitespace-nowrap text-right tabular-nums">{formatPKR(item.creditsApplied)}</TableCell>
+                <TableCell className="whitespace-nowrap text-right font-semibold tabular-nums">{formatPKR(item.outstandingAmount)}</TableCell>
                 <TableCell className="text-right tabular-nums">{item.ageDays}</TableCell>
                 <TableCell>{item.bucket === "current" ? "Current" : item.bucket}</TableCell>
                 <TableCell className="text-right print:hidden"><Link prefetch={false} href={item.isOpeningBalance ? `/customers/${item.customerId}` : `/invoices/${item.invoiceId}`} className={cn(buttonVariants({ size: "xs" }), "whitespace-nowrap")}>Record Payment</Link></TableCell>

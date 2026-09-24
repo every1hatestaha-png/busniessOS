@@ -57,6 +57,58 @@ describe("print UX regression contracts", () => {
     expect(source("app/(dashboard)/accounting/cash-bank/[id]/page.tsx")).toContain("/reports/cash-bank?accountId=");
   });
 
+  it("keeps long report surfaces pageable instead of clipping them", () => {
+    const reportFrame = source("components/reports/report-frame.tsx");
+    expect(reportFrame).toContain("print:overflow-visible");
+    expect(reportFrame).toContain("overflow-x-auto print:mt-3 print:overflow-visible");
+  });
+
+  it("waits for fonts and images before automatic ledger printing", () => {
+    const autoPrint = source("components/reports/auto-print-report.tsx");
+    expect(autoPrint).toContain("document.fonts?.ready");
+    expect(autoPrint).toContain("[data-print-surface] img, [data-document] img");
+    expect(autoPrint).toContain("await nextPaint()");
+    expect(autoPrint).not.toContain("setTimeout(() => window.print(), 250)");
+  });
+
+  it("uses fixed portrait-safe columns for statements and ledgers", () => {
+    const statement = source("components/reports/statement-table.tsx");
+    const generalLedger = source("app/(dashboard)/reports/general-ledger/page.tsx");
+    const cashBank = source("app/(dashboard)/reports/cash-bank/page.tsx");
+
+    for (const report of [statement, generalLedger, cashBank]) {
+      expect(report).toContain("<colgroup>");
+      expect(report).toContain("print:min-w-0");
+    }
+    expect(generalLedger).toContain("PARTIAL REPORT");
+    expect(cashBank).toContain("PARTIAL REPORT");
+    expect(cashBank).toContain("getGeneralLedger");
+  });
+
+  it("keeps inventory and aging reports portrait-safe and honest when truncated", () => {
+    const currentStock = source("app/(dashboard)/reports/current-stock/page.tsx");
+    const stockMovement = source("app/(dashboard)/reports/stock-movement/page.tsx");
+    const purchaseHistory = source("app/(dashboard)/reports/purchase-price-history/page.tsx");
+    const receivables = source("components/receivables/receivables-table.tsx");
+    const payables = source("components/payables/payables-table.tsx");
+
+    for (const report of [currentStock, stockMovement, purchaseHistory, receivables, payables]) {
+      expect(report).toContain("<colgroup>");
+      expect(report).toContain("print:min-w-0");
+    }
+    for (const report of [stockMovement, purchaseHistory]) {
+      expect(report).toContain("PARTIAL REPORT");
+      expect(report).not.toMatch(/PARTIAL REPORT[^\n]*print:hidden/);
+    }
+    expect(receivables).toContain("print:overflow-visible");
+    expect(payables).toContain("print:overflow-visible");
+  });
+
+  it("keeps ledger money columns unbroken in portrait print", () => {
+    const financialTable = source("components/reports/financial-table.tsx");
+    expect(financialTable).toContain("print:whitespace-nowrap print:break-normal");
+  });
+
   it("keeps the Electron Ctrl/Cmd+P print accelerator wired", () => {
     const electronMain = source("desktop/main.cjs");
     expect(electronMain).toContain("before-input-event");

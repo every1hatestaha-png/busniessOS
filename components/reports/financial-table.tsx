@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { cn, formatPKR } from "@/lib/utils";
 
 export function FinancialTable({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className="overflow-x-auto print:overflow-visible"><table data-financial-table className={cn("w-full border-collapse text-xs print:min-w-0 print:table-fixed print:text-[7.5pt]", className)}>{children}</table></div>;
+  return <div className="w-full overflow-x-auto print:overflow-visible"><table data-financial-table className={cn("w-full border-collapse text-xs print:min-w-0 print:table-fixed print:text-[7.5pt]", className)}>{children}</table></div>;
 }
 
 export function FinancialHead({ children }: { children: ReactNode }) {
@@ -16,11 +16,11 @@ export function FinancialRow({ children, className }: { children: ReactNode; cla
 }
 
 export function FinancialCell({ children, numeric = false, className, colSpan }: { children: ReactNode; numeric?: boolean; className?: string; colSpan?: number }) {
-  return <td colSpan={colSpan} className={cn("px-2 py-1.5 align-top print:whitespace-normal print:break-words print:px-1 print:py-1", numeric && "text-right tabular-nums", className)}>{children}</td>;
+  return <td colSpan={colSpan} className={cn("px-2 py-1.5 align-top print:whitespace-normal print:break-words print:px-1 print:py-1", numeric && "whitespace-nowrap text-right tabular-nums print:whitespace-nowrap print:break-normal", className)}>{children}</td>;
 }
 
 export function FinancialHeading({ children, numeric = false, className }: { children: ReactNode; numeric?: boolean; className?: string }) {
-  return <th className={cn("whitespace-nowrap px-2 py-2 text-left font-semibold print:whitespace-normal print:break-words print:px-1 print:py-1", numeric && "text-right", className)}>{children}</th>;
+  return <th className={cn("whitespace-nowrap px-2 py-2 text-left font-semibold print:whitespace-normal print:break-words print:px-1 print:py-1", numeric && "text-right print:whitespace-nowrap print:break-normal", className)}>{children}</th>;
 }
 
 export function Money({ value, dashZero = false }: { value: number; dashZero?: boolean }) {

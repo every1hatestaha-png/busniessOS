@@ -74,14 +74,25 @@ export default async function PurchasePriceHistoryPage({ searchParams }: { searc
       subtitle="Accepted GRN costs by supplier and product, with chronological price deltas."
       filters={filters}
     >
-      {report.truncated && <div className="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950 print:hidden">Showing the latest 2,000 matching accepted GRN lines. Narrow the filters to inspect older history.</div>}
-      <FinancialTable className="min-w-[1100px]">
+      {report.truncated && <div className="mb-4 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-950 print:border-2">PARTIAL REPORT: only the latest 2,000 matching accepted GRN lines are shown. Narrow the filters before relying on or printing the transaction history.</div>}
+      <FinancialTable className="min-w-[1100px] print:min-w-0 print:text-[6.8pt]">
+        <colgroup>
+          <col style={{ width: "10%" }} />
+          <col style={{ width: "18%" }} />
+          <col style={{ width: "17%" }} />
+          <col style={{ width: "12%" }} />
+          <col style={{ width: "9%" }} />
+          <col style={{ width: "10%" }} />
+          <col style={{ width: "10%" }} />
+          <col style={{ width: "7%" }} />
+          <col style={{ width: "7%" }} />
+        </colgroup>
         <FinancialHead><tr>
           <FinancialHeading>Date</FinancialHeading>
           <FinancialHeading>Product</FinancialHeading>
           <FinancialHeading>Supplier</FinancialHeading>
           <FinancialHeading>GRN / PO</FinancialHeading>
-          <FinancialHeading numeric>Accepted Qty</FinancialHeading>
+          <FinancialHeading numeric>Qty</FinancialHeading>
           <FinancialHeading numeric>Unit Cost</FinancialHeading>
           <FinancialHeading numeric>Previous</FinancialHeading>
           <FinancialHeading numeric>Change</FinancialHeading>
@@ -90,14 +101,14 @@ export default async function PurchasePriceHistoryPage({ searchParams }: { searc
         <tbody>
           {report.rows.map((row) => <FinancialRow key={row.id}>
             <FinancialCell>{dateInputValue(row.receiptDate)}</FinancialCell>
-            <FinancialCell><div className="font-medium">{row.productName}</div><div className="text-[10px] text-neutral-500">{row.sku || "No SKU"} · {row.unit.toLowerCase()}</div></FinancialCell>
-            <FinancialCell>{row.supplierName}</FinancialCell>
-            <FinancialCell><Link href={`/goods-receipts/${row.grnId}`} className="font-medium hover:underline">{row.grnNumber}</Link><div className="text-[10px] text-neutral-500">{row.purchaseOrderNumber}</div></FinancialCell>
+            <FinancialCell className="whitespace-normal"><div className="font-medium">{row.productName}</div><div className="text-[10px] text-neutral-500 print:text-[6pt]">{row.sku || "No SKU"} · {row.unit.toLowerCase()}</div></FinancialCell>
+            <FinancialCell className="whitespace-normal">{row.supplierName}</FinancialCell>
+            <FinancialCell className="break-all print:break-words"><Link href={`/goods-receipts/${row.grnId}`} className="font-medium hover:underline print:no-underline">{row.grnNumber}</Link><div className="text-[10px] text-neutral-500 print:text-[6pt]">{row.purchaseOrderNumber}</div></FinancialCell>
             <FinancialCell numeric>{row.acceptedQuantity.toLocaleString("en-PK", { maximumFractionDigits: 4 })}</FinancialCell>
             <FinancialCell numeric><Money value={row.unitCost} /></FinancialCell>
             <FinancialCell numeric>{row.previousUnitCost === null ? "-" : <Money value={row.previousUnitCost} />}</FinancialCell>
             <FinancialCell numeric>{row.changeFromPrevious === null ? "-" : <span className={row.changeFromPrevious > 0 ? "font-semibold text-red-700" : row.changeFromPrevious < 0 ? "font-semibold text-emerald-700" : ""}>{row.changeFromPrevious > 0 ? "+" : ""}{row.changePercent?.toFixed(1)}%</span>}</FinancialCell>
-            <FinancialCell numeric>{row.ratePerKg === null ? "-" : <><Money value={row.ratePerKg} /><span className="text-[10px] text-neutral-500">/kg</span></>}</FinancialCell>
+            <FinancialCell numeric>{row.ratePerKg === null ? "-" : <><Money value={row.ratePerKg} /><span className="text-[10px] text-neutral-500 print:text-[6pt]">/kg</span></>}</FinancialCell>
           </FinancialRow>)}
           {report.rows.length === 0 && <FinancialRow><FinancialCell colSpan={9} className="h-28 text-center text-neutral-500">No accepted purchase-price history matches these filters.</FinancialCell></FinancialRow>}
         </tbody>
