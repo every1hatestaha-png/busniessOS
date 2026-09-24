@@ -94,9 +94,9 @@ export async function requirePlatformOwner() {
   if (!userId) redirect("/platform/sign-in");
 
   const clerkUser = await (await clerkClient()).users.getUser(userId);
-  const primaryEmailAddress =
-    clerkUser.emailAddresses.find((email) => email.id === clerkUser.primaryEmailAddressId) ??
-    clerkUser.emailAddresses[0];
+  const primaryEmailAddress = clerkUser.primaryEmailAddressId
+    ? clerkUser.emailAddresses.find((email) => email.id === clerkUser.primaryEmailAddressId)
+    : undefined;
   const authenticatedEmail = primaryEmailAddress?.emailAddress?.trim().toLowerCase();
 
   if (
