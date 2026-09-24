@@ -57,15 +57,15 @@ export async function requireApiUser() {
   // authenticated request, exactly like the server-rendered application path.
   // A lifecycle webhook-created local row is not sufficient authorization.
   const clerkUser = await (await clerkClient()).users.getUser(userId);
-  const primaryEmailAddress =
-    clerkUser.emailAddresses.find((entry) => entry.id === clerkUser.primaryEmailAddressId)
-    ?? clerkUser.emailAddresses[0];
+  const primaryEmailAddress = clerkUser.primaryEmailAddressId
+    ? clerkUser.emailAddresses.find((entry) => entry.id === clerkUser.primaryEmailAddressId)
+    : undefined;
   const primaryEmail = primaryEmailAddress?.emailAddress?.trim().toLowerCase();
 
   if (!primaryEmail) {
     throw new ApiError(403, "USER_EMAIL_REQUIRED", "A verified primary email address is required.");
   }
-  if (primaryEmailAddress?.verification?.status !== "verified") {
+  if (primaryEmailAddress.verification?.status !== "verified") {
     throw new ApiError(403, "EMAIL_NOT_VERIFIED", "Verify your primary email address before using the MunshiOS API.");
   }
 
