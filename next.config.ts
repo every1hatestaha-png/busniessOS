@@ -24,6 +24,11 @@ const securityHeaders = [
     : []),
 ];
 
+const noStoreHeaders = [
+  { key: "Cache-Control", value: "no-store, max-age=0" },
+  { key: "Pragma", value: "no-cache" },
+];
+
 const nextConfig: NextConfig = {
   ...(isVercelBuild ? {} : { output: "standalone" as const }),
   outputFileTracingIncludes: {
@@ -36,20 +41,24 @@ const nextConfig: NextConfig = {
         headers: securityHeaders,
       },
       {
+        source: "/api/v1/:path*",
+        headers: noStoreHeaders,
+      },
+      {
         source: "/sign-in/:path*",
-        headers: [{ key: "Cache-Control", value: "no-store, max-age=0" }],
+        headers: noStoreHeaders,
       },
       {
         source: "/sign-up/:path*",
-        headers: [{ key: "Cache-Control", value: "no-store, max-age=0" }],
+        headers: noStoreHeaders,
       },
       {
         source: "/forgot-password/:path*",
-        headers: [{ key: "Cache-Control", value: "no-store, max-age=0" }],
+        headers: noStoreHeaders,
       },
       {
         source: "/account-recovery/:path*",
-        headers: [{ key: "Cache-Control", value: "no-store, max-age=0" }],
+        headers: noStoreHeaders,
       },
     ];
   },
