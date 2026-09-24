@@ -13,6 +13,7 @@ const handleProxy = clerkMiddleware(
     const userAgent = request.headers.get("user-agent") || "";
     const isElectron = userAgent.includes("Electron");
     const authHeader = request.headers.get("authorization");
+    const isPreviewQaRoute = path.startsWith("/qa-preview") && process.env.VERCEL_ENV !== "production";
 
     const limited = checkAppRateLimit(request, path);
     if (limited) {
@@ -27,6 +28,7 @@ const handleProxy = clerkMiddleware(
     }
 
     if (
+      isPreviewQaRoute ||
       path.startsWith("/desktop-auth") ||
       path === "/api/desktop-config" ||
       path === "/api/health" ||
