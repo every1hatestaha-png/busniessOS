@@ -69,6 +69,7 @@ jobs:
         run: |
           node --check tests/visual-qa/generate-documents.js
           node --check tests/visual-qa/visual-qa.cjs
+          node --check tests/visual-qa/qa-preview.cjs
 
       - name: Full unit and integration suite
         run: npm test
@@ -119,3 +120,42 @@ jobs:
 
       - name: Desktop smoke tests
         run: npm run desktop:test
+
+  qa-preview-visual:
+    if: github.event_name == 'pull_request' && github.head_ref == 'qa/visual-preview-harness'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      QA_VISUAL_PREVIEW: "1"
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Zml4dHVyZS5jbGVyay5hY2NvdW50cy5kZXYk
+      CLERK_SECRET_KEY: sk_test_fixture
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install virtual display
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
+      - name: Capture desktop and mobile QA preview
+        run: xvfb-run -a npx electron --no-sandbox tests/visual-qa/qa-preview.cjs
+
+      - name: Upload QA preview screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-preview-screenshots
+          path: tests/visual-qa/qa-preview-output
+          if-no-files-found: warn
+          retention-days: 3
