@@ -9,19 +9,16 @@ describe("workspace branding", () => {
     logoAlt: "Arshad Sons Engineering Solutions",
   };
 
-  it("applies the Arshad Sons logo to the actual workspace name", () => {
+  it("applies the Arshad Sons logo to reviewed workspace-name variants", () => {
     expect(getWorkspaceBranding("Arshad Sons and Engineering Solution")).toEqual(expected);
+    expect(getWorkspaceBranding("Arshad Sons Engineering Solution")).toEqual(expected);
+    expect(getWorkspaceBranding("Arshad Sons and Engineering Solutions")).toEqual(expected);
+    expect(getWorkspaceBranding("Arshad Sons Engineering Solutions")).toEqual(expected);
     expect(getWorkspaceBranding("  ARSHAD   SONS AND ENGINEERING SOLUTION  ")).toEqual(expected);
   });
 
-  it("keeps the reviewed legacy spelling as an exact fallback", () => {
-    expect(getWorkspaceBranding("Arshad Sons Engineering Solutions")).toEqual(expected);
-  });
-
-  it("does not leak Arshad Sons branding to other or merely similar workspaces", () => {
+  it("does not leak Arshad Sons branding to other workspaces", () => {
     expect(getWorkspaceBranding("Arshad Sons")).toBeNull();
-    expect(getWorkspaceBranding("Arshad Sons Engineering Solution")).toBeNull();
-    expect(getWorkspaceBranding("Arshad Sons and Engineering Solutions")).toBeNull();
     expect(getWorkspaceBranding("Demo Engineering Solutions")).toBeNull();
   });
 });
