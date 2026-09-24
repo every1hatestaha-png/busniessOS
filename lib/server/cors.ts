@@ -26,6 +26,20 @@ export function getAllowedCorsOrigin(origin: string | null) {
   return isLocalExpoWeb ? origin : null;
 }
 
+export function isTrustedMutationOrigin(origin: string | null, requestOrigin: string) {
+  if (!origin) return true;
+  let parsedOrigin: URL;
+  let parsedRequestOrigin: URL;
+  try {
+    parsedOrigin = new URL(origin);
+    parsedRequestOrigin = new URL(requestOrigin);
+  } catch {
+    return false;
+  }
+  if (parsedOrigin.origin === parsedRequestOrigin.origin) return true;
+  return Boolean(getAllowedCorsOrigin(origin));
+}
+
 export function applyCorsHeaders(response: Response, origin: string | null) {
   const allowedOrigin = getAllowedCorsOrigin(origin);
   if (!allowedOrigin) return response;
