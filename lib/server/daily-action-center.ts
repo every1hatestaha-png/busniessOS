@@ -86,7 +86,7 @@ export async function getDailyActionCenter(
       tone: hasOutOfStock ? "danger" : "warning",
       title: `${lowStockCount} product${lowStockCount === 1 ? "" : "s"} need restocking`,
       detail: `${sampleDetail} ${lowStockCount === 1 ? "is" : "are"} at or below a configured reorder level.`,
-      href: "/reports/current-stock?lowStock=true",
+      href: "/inventory",
       actionLabel: "Review stock",
     });
   }
