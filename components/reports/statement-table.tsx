@@ -13,7 +13,7 @@ export function StatementTable({ statement, balanceLabel }: { statement: Stateme
 
   return (
     <section data-statement-print className="min-w-0">
-      <div className="mb-4 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4 print:mb-3 print:grid-cols-4 print:gap-1.5 print:text-[8pt]">
+      <div className="mb-4 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4 print:mb-3 print:grid-cols-4 print:gap-1.5 print:text-[8pt]">
         <div className="rounded-md border border-neutral-200 bg-white p-3 print:rounded-none print:p-2">
           <p className="text-neutral-500">Opening balance</p>
           <p className="mt-1 font-bold tabular-nums text-neutral-950"><Money value={statement.openingBalance} /></p>
