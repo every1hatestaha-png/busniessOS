@@ -15,8 +15,6 @@ function sourceHref(sourceType: string, sourceId: string) {
   if (sourceType === "SALE") return `/sales/${sourceId}`;
   if (sourceType === "PURCHASE") return `/purchases/${sourceId}`;
   if (sourceType === "PURCHASE_RECEIPT") return `/goods-receipts/${sourceId}`;
-  if (sourceType === "RECEIPT") return `/payments/${sourceId}`;
-  if (sourceType === "PAYMENT") return `/accounting/payment-vouchers/${sourceId}`;
   if (sourceType === "EXPENSE") return `/accounting/expenses/${sourceId}`;
   if (sourceType === "CUSTOMER_RETURN") return `/customer-returns/${sourceId}`;
   if (sourceType === "SUPPLIER_RETURN") return `/supplier-returns/${sourceId}`;
