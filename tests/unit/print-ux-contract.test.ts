@@ -66,6 +66,7 @@ describe("print UX regression contracts", () => {
 
   it("uses one tenant-aware workspace identity across shared and manual print headers", () => {
     const identity = source("components/documents/workspace-identity.tsx");
+    const monogram = source("components/documents/print-safe-monogram.tsx");
     const documentHeader = source("components/documents/document-header.tsx");
     const reportHeader = source("components/reports/report-company-header.tsx");
     const invoice = source("app/(dashboard)/invoices/[id]/page.tsx");
@@ -73,8 +74,13 @@ describe("print UX regression contracts", () => {
     const supplierVoucher = source("app/(dashboard)/accounting/payment-vouchers/[id]/page.tsx");
 
     expect(identity).toContain("getWorkspaceBranding(workspace.name)");
+    expect(identity).toContain("<PrintSafeMonogram");
     expect(identity).toContain("src={branding.markPath}");
-    expect(identity).toContain("print:block");
+    expect(monogram).toContain('canvas.toDataURL("image/png")');
+    expect(monogram).toContain("data[index + 3] = Math.round(alpha * 255)");
+    expect(monogram).toContain('data-print-safe-monogram="true"');
+    expect(monogram).not.toContain("filter:invert");
+    expect(monogram).not.toContain("maskImage");
     for (const sharedHeader of [documentHeader, reportHeader]) {
       expect(sharedHeader).toContain("<WorkspaceIdentity");
       expect(sharedHeader).toContain("workspace={workspace}");
@@ -84,7 +90,7 @@ describe("print UX regression contracts", () => {
     expect(supplierVoucher).toContain("<WorkspaceIdentity workspace={voucher.workspace}");
   });
 
-  it("waits for workspace logos and fonts before every app-driven print", () => {
+  it("waits for workspace logos and generated print assets before every app-driven print", () => {
     const printButton = source("components/invoices/print-button.tsx");
     const printOnLoad = source("components/documents/print-on-load.tsx");
     const autoPrintReport = source("components/reports/auto-print-report.tsx");
@@ -93,6 +99,7 @@ describe("print UX regression contracts", () => {
     for (const entry of [printButton, printOnLoad, autoPrintReport]) {
       expect(entry).toContain("waitForPrintableAssets");
     }
+    expect(printAssets).toContain('data-print-asset-pending="true"');
     expect(printAssets).toContain("[data-print-surface] img, [data-document] img");
     expect(printAssets).toContain("document.fonts.ready");
     expect(printAssets).toContain("image.decode()");
