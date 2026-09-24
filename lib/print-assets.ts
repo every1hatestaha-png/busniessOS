@@ -1,4 +1,12 @@
 export async function waitForPrintableAssets() {
+  const pendingDeadline = Date.now() + 3000;
+  while (
+    document.querySelector('[data-print-asset-pending="true"]') &&
+    Date.now() < pendingDeadline
+  ) {
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 50));
+  }
+
   const images = Array.from(
     document.querySelectorAll<HTMLImageElement>("[data-print-surface] img, [data-document] img"),
   );
