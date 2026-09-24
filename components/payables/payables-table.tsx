@@ -45,8 +45,18 @@ export function PayablesTable({ report, suppliers, filters }: { report: Payables
         </div>
       </form>
 
-      <div className="overflow-hidden rounded-xl border bg-white">
-        <Table className="min-w-[940px] text-xs print:min-w-0 print:table-fixed print:text-[8px] print:[&_td]:whitespace-normal print:[&_td]:px-1 print:[&_th]:whitespace-normal print:[&_th]:px-1">
+      <div className="overflow-hidden rounded-xl border bg-white print:overflow-visible print:rounded-none print:border-0">
+        <Table className="min-w-[940px] text-xs print:min-w-0 print:table-fixed print:text-[7.5pt] print:[&_td]:whitespace-normal print:[&_td]:px-1 print:[&_th]:whitespace-normal print:[&_th]:px-1">
+          <colgroup>
+            <col style={{ width: "22%" }} />
+            <col style={{ width: "17%" }} />
+            <col style={{ width: "12%" }} />
+            <col style={{ width: "16%" }} />
+            <col style={{ width: "17%" }} />
+            <col style={{ width: "7%" }} />
+            <col style={{ width: "9%" }} />
+            <col className="print:hidden" />
+          </colgroup>
           <TableHeader>
             <TableRow>
               <TableHead>Supplier</TableHead>
@@ -63,10 +73,10 @@ export function PayablesTable({ report, suppliers, filters }: { report: Payables
             {items.map((item) => (
               <TableRow key={item.purchaseId}>
                 <TableCell className="font-medium"><Link prefetch={false} href={`/suppliers/${item.supplierId}`} className="hover:underline">{item.supplierName}</Link></TableCell>
-                <TableCell className="font-mono"><Link prefetch={false} href={`/purchases/${item.purchaseId}`} className="hover:underline">{item.documentNumber}</Link></TableCell>
+                <TableCell className="font-mono break-all print:break-words"><Link prefetch={false} href={`/purchases/${item.purchaseId}`} className="hover:underline">{item.documentNumber}</Link></TableCell>
                 <TableCell>{formatDate(item.purchaseDate)}</TableCell>
-                <TableCell className="text-right tabular-nums">{formatPKR(item.originalAmount)}</TableCell>
-                <TableCell className="text-right font-semibold tabular-nums">{formatPKR(item.outstandingAmount)}</TableCell>
+                <TableCell className="whitespace-nowrap text-right tabular-nums">{formatPKR(item.originalAmount)}</TableCell>
+                <TableCell className="whitespace-nowrap text-right font-semibold tabular-nums">{formatPKR(item.outstandingAmount)}</TableCell>
                 <TableCell className="text-right tabular-nums">{item.ageDays}</TableCell>
                 <TableCell>{item.bucket === "current" ? "Current" : item.bucket}</TableCell>
                 <TableCell className="text-right print:hidden"><Link prefetch={false} href={`/suppliers/${item.supplierId}`} className={buttonVariants({ size: "xs" })}>Pay Supplier</Link></TableCell>
