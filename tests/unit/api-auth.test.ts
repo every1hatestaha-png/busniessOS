@@ -132,6 +132,27 @@ describe("API authentication contract", () => {
     expect(findUniqueMock).not.toHaveBeenCalled();
   });
 
+  it("never falls back to another verified address when Clerk has no explicit primary email", async () => {
+    authMock.mockResolvedValue({ userId: "clerk-user", tokenType: "oauth_token" });
+    getUserMock.mockResolvedValue({
+      ...verifiedClerkUser(),
+      primaryEmailAddressId: null,
+      emailAddresses: [{
+        id: "secondary-email",
+        emailAddress: "secondary@example.com",
+        verification: { status: "verified" },
+      }],
+    });
+
+    await expect(requireApiUser()).rejects.toMatchObject({
+      status: 403,
+      code: "USER_EMAIL_REQUIRED",
+    });
+    expect(findUniqueMock).not.toHaveBeenCalled();
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
   it("rejects verified-email relinking when another local user owns the email", async () => {
     authMock.mockResolvedValue({ userId: "clerk-user", tokenType: "oauth_token" });
     getUserMock.mockResolvedValue(verifiedClerkUser("new@example.com"));
