@@ -15,6 +15,11 @@ function sourceHref(sourceType: string, sourceId: string) {
   if (sourceType === "SALE") return `/sales/${sourceId}`;
   if (sourceType === "PURCHASE") return `/purchases/${sourceId}`;
   if (sourceType === "PURCHASE_RECEIPT") return `/goods-receipts/${sourceId}`;
+  if (sourceType === "RECEIPT") return `/payments/${sourceId}`;
+  if (sourceType === "PAYMENT") return `/accounting/payment-vouchers/${sourceId}`;
+  if (sourceType === "EXPENSE") return `/accounting/expenses/${sourceId}`;
+  if (sourceType === "CUSTOMER_RETURN") return `/customer-returns/${sourceId}`;
+  if (sourceType === "SUPPLIER_RETURN") return `/supplier-returns/${sourceId}`;
   return null;
 }
 
@@ -49,7 +54,32 @@ export default async function GeneralLedgerPage({ searchParams }: { searchParams
   const filters = <ReportFilterBar><ReportFilterField label="Account"><select className={reportSelectClassName} name="accountId" defaultValue={accountId}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.code} - {account.name}</option>)}</select></ReportFilterField><PeriodFilters from={dateInputValue(from)} to={dateInputValue(to)} /><SearchFilter value={query.search} /></ReportFilterBar>;
   return (
     <ReportFrame workspace={workspace} title="General Ledger" from={report?.from ?? from} to={report?.to ?? to} subtitle={report ? `${report.account.code} - ${report.account.name} (${report.account.normalBalance.toLowerCase()} normal balance)` : "No ledger account available"} filters={filters}>
-      {report ? <>{report.truncated && <div className="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950 print:hidden">This view is limited to the first 2,000 matching ledger entries. Opening and closing balances still include the full selected period. Narrow the date range or search to inspect additional rows.</div>}<div className="mb-4 grid grid-cols-2 gap-3 text-xs lg:grid-cols-4"><div className="rounded border border-neutral-200 p-3"><p className="text-neutral-500">Opening balance</p><p className="mt-1 text-base font-bold tabular-nums"><Money value={report.openingBalance} /></p></div><div className="rounded border border-neutral-200 p-3"><p className="text-neutral-500">Closing balance</p><p className="mt-1 text-base font-bold tabular-nums"><Money value={report.closingBalance} /></p></div><div className="rounded border border-neutral-200 p-3"><p className="text-neutral-500">Entries</p><p className="mt-1 text-base font-bold tabular-nums">{report.entries.length}</p></div></div><FinancialTable className="min-w-[950px]"><FinancialHead><tr><FinancialHeading>Date</FinancialHeading><FinancialHeading>Document</FinancialHeading><FinancialHeading>Source</FinancialHeading><FinancialHeading className="w-full">Narration</FinancialHeading><FinancialHeading numeric>Debit</FinancialHeading><FinancialHeading numeric>Credit</FinancialHeading><FinancialHeading numeric>Running</FinancialHeading></tr></FinancialHead><tbody><FinancialRow className="bg-neutral-50 font-semibold"><FinancialCell colSpan={6}>Opening balance</FinancialCell><FinancialCell numeric><Money value={report.openingBalance} /></FinancialCell></FinancialRow>{report.entries.map((entry) => <FinancialRow key={entry.id}><FinancialCell>{dateInputValue(entry.date)}</FinancialCell><FinancialCell><SourceDocumentLink href={sourceHref(entry.sourceType, entry.sourceId)}>{displayDocument(entry)}</SourceDocumentLink></FinancialCell><FinancialCell>{entry.sourceType.replaceAll("_", " ")}</FinancialCell><FinancialCell className="whitespace-normal">{displayNarration(entry)}</FinancialCell><FinancialCell numeric><Money value={entry.debit} dashZero /></FinancialCell><FinancialCell numeric><Money value={entry.credit} dashZero /></FinancialCell><FinancialCell numeric className="font-semibold"><Money value={entry.runningBalance} /></FinancialCell></FinancialRow>)}{report.entries.length === 0 && <EmptyReportRow colSpan={7} />}</tbody><tfoot><FinancialRow className="border-t-2 border-neutral-900 font-bold"><FinancialCell colSpan={6}>Closing balance</FinancialCell><FinancialCell numeric><Money value={report.closingBalance} /></FinancialCell></FinancialRow></tfoot></FinancialTable></> : <p className="py-12 text-center text-sm text-neutral-500">No chart of accounts is available.</p>}
+      {report ? <>
+        {report.truncated && <div className="mb-4 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-950 print:mb-2 print:border-2">PARTIAL REPORT: only the first 2,000 matching ledger entries are shown. Opening and closing balances include the full selected period. Narrow the date range before relying on or printing the transaction detail.</div>}
+        <div className="mb-4 grid grid-cols-2 gap-3 text-xs lg:grid-cols-4 print:grid-cols-3 print:gap-1.5">
+          <div className="rounded border border-neutral-200 p-3 print:p-2"><p className="text-neutral-500">Opening balance</p><p className="mt-1 text-base font-bold tabular-nums print:text-sm"><Money value={report.openingBalance} /></p></div>
+          <div className="rounded border border-neutral-200 p-3 print:p-2"><p className="text-neutral-500">Closing balance</p><p className="mt-1 text-base font-bold tabular-nums print:text-sm"><Money value={report.closingBalance} /></p></div>
+          <div className="rounded border border-neutral-200 p-3 print:p-2"><p className="text-neutral-500">Entries shown</p><p className="mt-1 text-base font-bold tabular-nums print:text-sm">{report.entries.length}</p></div>
+        </div>
+        <FinancialTable className="min-w-[950px] print:min-w-0">
+          <colgroup>
+            <col style={{ width: "11%" }} />
+            <col style={{ width: "15%" }} />
+            <col style={{ width: "13%" }} />
+            <col style={{ width: "25%" }} />
+            <col style={{ width: "12%" }} />
+            <col style={{ width: "12%" }} />
+            <col style={{ width: "12%" }} />
+          </colgroup>
+          <FinancialHead><tr><FinancialHeading>Date</FinancialHeading><FinancialHeading>Document</FinancialHeading><FinancialHeading>Source</FinancialHeading><FinancialHeading>Narration</FinancialHeading><FinancialHeading numeric>Debit</FinancialHeading><FinancialHeading numeric>Credit</FinancialHeading><FinancialHeading numeric>Running</FinancialHeading></tr></FinancialHead>
+          <tbody>
+            <FinancialRow className="bg-neutral-50 font-semibold"><FinancialCell colSpan={6}>Opening balance</FinancialCell><FinancialCell numeric><Money value={report.openingBalance} /></FinancialCell></FinancialRow>
+            {report.entries.map((entry) => <FinancialRow key={entry.id}><FinancialCell>{dateInputValue(entry.date)}</FinancialCell><FinancialCell className="break-all print:break-words"><SourceDocumentLink href={sourceHref(entry.sourceType, entry.sourceId)}>{displayDocument(entry)}</SourceDocumentLink></FinancialCell><FinancialCell className="whitespace-normal">{entry.sourceType.replaceAll("_", " ")}</FinancialCell><FinancialCell className="whitespace-normal">{displayNarration(entry)}</FinancialCell><FinancialCell numeric><Money value={entry.debit} dashZero /></FinancialCell><FinancialCell numeric><Money value={entry.credit} dashZero /></FinancialCell><FinancialCell numeric className="font-semibold"><Money value={entry.runningBalance} /></FinancialCell></FinancialRow>)}
+            {report.entries.length === 0 && <EmptyReportRow colSpan={7} />}
+          </tbody>
+          <tfoot><FinancialRow className="border-t-2 border-neutral-900 font-bold"><FinancialCell colSpan={6}>Closing balance</FinancialCell><FinancialCell numeric><Money value={report.closingBalance} /></FinancialCell></FinancialRow></tfoot>
+        </FinancialTable>
+      </> : <p className="py-12 text-center text-sm text-neutral-500">No chart of accounts is available.</p>}
     </ReportFrame>
   );
 }
