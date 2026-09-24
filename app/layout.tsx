@@ -62,10 +62,10 @@ function AppDocument({ children }: Readonly<{ children: React.ReactNode }>) {
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  // Temporary branch-only visual QA harness: preview deployments intentionally
-  // render synthetic /qa-preview content without depending on Clerk preview keys.
-  // This branch is explicitly marked DO NOT MERGE and production remains unchanged.
-  if (process.env.VERCEL_ENV === "preview") {
+  // Temporary branch-only visual QA harness. CI starts the app with
+  // QA_VISUAL_PREVIEW=1 and requests only synthetic /qa-preview pages.
+  // The branch is explicitly DO NOT MERGE; production remains unchanged.
+  if (process.env.QA_VISUAL_PREVIEW === "1" || process.env.VERCEL_ENV === "preview") {
     return <AppDocument>{children}</AppDocument>;
   }
 
