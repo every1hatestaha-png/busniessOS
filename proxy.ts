@@ -3,9 +3,24 @@ import { NextResponse } from "next/server";
 
 import { isAuthEntryPath, isPublicMarketingPath, safeInternalDestination } from "@/lib/auth-routing";
 import { checkAppRateLimit } from "@/lib/request-rate-limit";
-import { applyCorsHeaders, corsPreflightResponse, isApiV1Request } from "@/lib/server/cors";
+import { applyCorsHeaders, corsPreflightResponse, getAllowedCorsOrigin, isApiV1Request } from "@/lib/server/cors";
 
 function d4ProxyLog(message: string) {
+}
+
+function isMutationMethod(method: string) {
+  return !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase());
+}
+
+function isTrustedApiOrigin(request: Request, requestOrigin: string) {
+  const origin = request.headers.get("origin");
+  if (!origin) return true;
+  try {
+    if (new URL(origin).origin === requestOrigin) return true;
+  } catch {
+    return false;
+  }
+  return Boolean(getAllowedCorsOrigin(origin));
 }
 
 const handleProxy = clerkMiddleware(
@@ -43,6 +58,13 @@ const handleProxy = clerkMiddleware(
 
     if (isApiV1Request(path) && request.method === "OPTIONS") {
       return corsPreflightResponse(request);
+    }
+
+    if (isApiV1Request(path) && isMutationMethod(request.method) && !isTrustedApiOrigin(request, request.nextUrl.origin)) {
+      return NextResponse.json(
+        { error: { code: "UNTRUSTED_ORIGIN", message: "This request origin is not allowed." } },
+        { status: 403, headers: { "Cache-Control": "no-store" } },
+      );
     }
 
     if (isElectron) {
