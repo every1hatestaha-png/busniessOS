@@ -13,7 +13,6 @@ const handleProxy = clerkMiddleware(
     const userAgent = request.headers.get("user-agent") || "";
     const isElectron = userAgent.includes("Electron");
     const authHeader = request.headers.get("authorization");
-    const isPreviewQaRoute = path.startsWith("/qa-preview") && process.env.VERCEL_ENV !== "production";
 
     const limited = checkAppRateLimit(request, path);
     if (limited) {
@@ -28,7 +27,6 @@ const handleProxy = clerkMiddleware(
     }
 
     if (
-      isPreviewQaRoute ||
       path.startsWith("/desktop-auth") ||
       path === "/api/desktop-config" ||
       path === "/api/health" ||
@@ -96,7 +94,7 @@ export { handleProxy as proxy };
 
 export const config = {
   matcher: [
-    "/((?!_next|sign-in|sign-up|forgot-password|account-recovery|recovery|desktop-auth|api/webhooks|api/health|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/((?!_next|qa-preview|sign-in|sign-up|forgot-password|account-recovery|recovery|desktop-auth|api/webhooks|api/health|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
     "/(api|trpc)(.*)",
     "/__clerk/(.*)",
   ],
