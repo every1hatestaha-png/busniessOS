@@ -53,20 +53,21 @@ export async function requireApiUser() {
     throw new ApiError(401, "UNAUTHENTICATED", "Authentication is required.");
   }
 
-  // API access must prove current verified primary-email ownership on every
-  // authenticated request, exactly like the server-rendered application path.
-  // A lifecycle webhook-created local row is not sufficient authorization.
   const clerkUser = await (await clerkClient()).users.getUser(userId);
   const primaryEmailAddress = clerkUser.primaryEmailAddressId
     ? clerkUser.emailAddresses.find((entry) => entry.id === clerkUser.primaryEmailAddressId)
     : undefined;
-  const primaryEmail = primaryEmailAddress?.emailAddress?.trim().toLowerCase();
 
-  if (!primaryEmail) {
+  if (!primaryEmailAddress?.emailAddress) {
     throw new ApiError(403, "USER_EMAIL_REQUIRED", "A verified primary email address is required.");
   }
   if (primaryEmailAddress.verification?.status !== "verified") {
     throw new ApiError(403, "EMAIL_NOT_VERIFIED", "Verify your primary email address before using the MunshiOS API.");
+  }
+
+  const primaryEmail = primaryEmailAddress.emailAddress.trim().toLowerCase();
+  if (!primaryEmail) {
+    throw new ApiError(403, "USER_EMAIL_REQUIRED", "A verified primary email address is required.");
   }
 
   const existing = await db.user.findUnique({ where: { clerkId: userId } });
@@ -137,8 +138,6 @@ export async function requireApiContext(permission?: Permission): Promise<ApiCon
     throw new ApiError(403, "FORBIDDEN", "You do not have permission to perform this action.");
   }
 
-  // Preserve read-only access after expiry while blocking all permissions that
-  // can mutate workspace or financial state.
   if (permission && permission !== "business.read") {
     const access = await getWorkspaceAccess(membership.workspaceId);
     if (!access.allowed) {
