@@ -10,7 +10,7 @@ const outputDir = path.join(root, "tests/visual-qa/qa-preview-output");
 fs.mkdirSync(outputDir, { recursive: true });
 
 const port = 3331;
-const baseUrl = `http://127.0.0.1:${port}`;
+const baseUrl = `http://localhost:${port}`;
 const views = ["dashboard", "sales", "purchases", "inventory", "customers", "suppliers", "manufacturing", "finance", "reports", "print", "settings"];
 let serverProcess = null;
 
@@ -73,44 +73,43 @@ async function inspectPage(win) {
   })()`);
 }
 
-async function capture(view, width, height, suffix) {
-  const win = new BrowserWindow({
-    show: false,
-    width,
-    height,
-    webPreferences: { contextIsolation: true, sandbox: false, nodeIntegration: false },
-  });
-
+async function captureWithWindow(win, view, width, height, suffix) {
   const consoleMessages = [];
-  win.webContents.on("console-message", (_event, level, message) => {
+  const onConsole = (_event, level, message) => {
     if (level >= 2) consoleMessages.push(`[${level}] ${message}`);
-  });
+  };
+  win.webContents.on("console-message", onConsole);
 
   try {
+    win.setContentSize(width, height);
     await win.loadURL(`${baseUrl}/qa-preview?view=${view}`);
-    await sleep(900);
-    const initial = await inspectPage(win);
-    const targetHeight = Math.max(height, Math.min(initial.documentHeight + 40, suffix === "mobile" ? 3200 : 4200));
-    win.setContentSize(width, targetHeight);
-    await sleep(250);
-    const final = await inspectPage(win);
+    await sleep(700);
+    const info = await inspectPage(win);
     const image = await win.webContents.capturePage();
     const file = path.join(outputDir, `${view}-${suffix}.png`);
     fs.writeFileSync(file, image.toPNG());
-    return { view, suffix, file, ...final, consoleMessages };
+    return { view, suffix, file, ...info, consoleMessages };
   } catch (error) {
     return { view, suffix, error: error instanceof Error ? error.message : String(error), consoleMessages };
   } finally {
-    win.destroy();
+    win.webContents.removeListener("console-message", onConsole);
   }
 }
 
 async function run() {
   await startServer();
+
+  const win = new BrowserWindow({
+    show: false,
+    width: 1440,
+    height: 1100,
+    webPreferences: { contextIsolation: true, sandbox: false, nodeIntegration: false },
+  });
+
   const results = [];
   for (const view of views) {
-    results.push(await capture(view, 1440, 1100, "desktop"));
-    results.push(await capture(view, 390, 844, "mobile"));
+    results.push(await captureWithWindow(win, view, 1440, 1100, "desktop"));
+    results.push(await captureWithWindow(win, view, 390, 844, "mobile"));
     console.log(`Captured ${view}`);
   }
   fs.writeFileSync(path.join(outputDir, "results.json"), JSON.stringify(results, null, 2));
@@ -119,8 +118,8 @@ async function run() {
   console.log(`QA preview captures: ${results.length}; flagged: ${failures.length}`);
   if (failures.length) console.log(JSON.stringify(failures, null, 2));
 
+  win.destroy();
   stopServer();
-  for (const win of BrowserWindow.getAllWindows()) win.destroy();
   app.quit();
 }
 
