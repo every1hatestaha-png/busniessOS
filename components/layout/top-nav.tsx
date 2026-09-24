@@ -40,12 +40,12 @@ export function TopNav({ workspaceName, workspaceId, workspaces, role, enabledMo
 
         {branding && (
           <Image
-            src={branding.logoPath}
+            src={branding.markPath}
             alt={branding.logoAlt}
-            width={54}
+            width={36}
             height={36}
             unoptimized
-            className="h-7 w-auto max-w-12 rounded-sm object-contain lg:hidden"
+            className="size-9 rounded-md object-contain lg:hidden"
           />
         )}
         <span className="max-w-40 truncate text-base font-bold tracking-tight lg:hidden" title={workspaceName}>{workspaceName}</span>

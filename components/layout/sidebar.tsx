@@ -94,15 +94,15 @@ export function Sidebar({
     <aside className="flex h-full w-[260px] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <div className="flex h-[72px] shrink-0 items-center gap-3 border-b border-sidebar-border px-4">
         {branding ? (
-          <div className="relative h-12 w-14 shrink-0 overflow-hidden rounded-xl border border-white/15 bg-black shadow-sm" aria-label={branding.logoAlt}>
+          <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/15 bg-black shadow-sm" aria-label={branding.logoAlt}>
             <Image
-              src={branding.logoPath}
+              src={branding.markPath}
               alt={branding.logoAlt}
-              width={108}
-              height={72}
+              width={48}
+              height={48}
               unoptimized
               priority
-              className="absolute left-1/2 top-0 h-[72px] w-[108px] max-w-none -translate-x-1/2 object-cover"
+              className="size-full object-contain"
             />
           </div>
         ) : (
