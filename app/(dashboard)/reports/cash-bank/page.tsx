@@ -33,15 +33,18 @@ export default async function CashBankReportPage({ searchParams }: { searchParam
   const fullClosingBalance = report && ledgerMeta ? ledgerMeta.closingBalance + legacyOpening : report?.closingBalance ?? 0;
   const reconciliationDifference = report ? report.currentBalance - fullClosingBalance : 0;
   const truncated = Boolean(ledgerMeta?.truncated);
+  const filtered = Boolean(query.search?.trim());
+  const detailIsPartial = truncated || filtered;
 
   return (
     <ReportFrame workspace={workspace} title="Cash & Bank Ledger" from={report?.from ?? from} to={report?.to ?? to} subtitle={report ? `${report.code} - ${report.name}${report.bankName ? ` | ${report.bankName}` : ""}` : "No active cash or bank account available"} filters={filters}>
       {report ? <>
+        {filtered && <div className="mb-3 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-950 print:border-2">FILTERED VIEW: only matching document/narration rows are shown. Opening, running, ledger closing, current balance and reconciliation difference retain all account activity in the selected period.</div>}
         {truncated && <div className="mb-4 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-950 print:mb-2 print:border-2">PARTIAL REPORT: transaction detail is limited to the first 2,000 matching ledger entries. Opening, ledger closing, current balance and reconciliation difference below use the full selected period. Narrow the date range before relying on or printing the detailed receipt/payment totals.</div>}
         <div className="mb-4 grid grid-cols-2 gap-3 text-xs lg:grid-cols-3 2xl:grid-cols-6 print:grid-cols-3 print:gap-1.5">
           <div className="rounded border p-3 print:p-2"><p className="text-neutral-500">Opening</p><p className="mt-1 font-bold"><Money value={report.openingBalance} /></p></div>
-          <div className="rounded border p-3 print:p-2"><p className="text-neutral-500">{truncated ? "Shown receipts" : "Receipts"}</p><p className="mt-1 font-bold"><Money value={report.receipts} /></p></div>
-          <div className="rounded border p-3 print:p-2"><p className="text-neutral-500">{truncated ? "Shown payments" : "Payments"}</p><p className="mt-1 font-bold"><Money value={report.payments} /></p></div>
+          <div className="rounded border p-3 print:p-2"><p className="text-neutral-500">{detailIsPartial ? "Shown receipts" : "Receipts"}</p><p className="mt-1 font-bold"><Money value={report.receipts} /></p></div>
+          <div className="rounded border p-3 print:p-2"><p className="text-neutral-500">{detailIsPartial ? "Shown payments" : "Payments"}</p><p className="mt-1 font-bold"><Money value={report.payments} /></p></div>
           <div className="rounded border p-3 print:p-2"><p className="text-neutral-500">Ledger closing</p><p className="mt-1 font-bold"><Money value={fullClosingBalance} /></p></div>
           <div className="rounded border p-3 print:p-2"><p className="text-neutral-500">Current balance</p><p className="mt-1 font-bold"><Money value={report.currentBalance} /></p></div>
           <div className="rounded border p-3 print:p-2"><p className="text-neutral-500">Difference</p><p className="mt-1 font-bold"><Money value={reconciliationDifference} /></p></div>
