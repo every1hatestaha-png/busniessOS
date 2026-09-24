@@ -30,6 +30,16 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Require Windows signing credentials
+        shell: pwsh
+        run: |
+          if (-not $env:CSC_LINK) {
+            throw "WINDOWS_CSC_LINK is required. MunshiOS customer releases must be code signed."
+          }
+          if (-not $env:CSC_KEY_PASSWORD) {
+            throw "WINDOWS_CSC_KEY_PASSWORD is required. MunshiOS customer releases must be code signed."
+          }
+
       - name: Install dependencies
         run: npm ci
 
@@ -59,7 +69,7 @@ jobs:
       - name: Package Windows installer
         run: npm run desktop:package
 
-      - name: Locate installer and create SHA-256 manifest
+      - name: Locate signed installer and create SHA-256 manifest
         id: artifact
         shell: pwsh
         run: |
@@ -71,17 +81,14 @@ jobs:
             throw "MunshiOS installer was not produced"
           }
 
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
+          if ($signature.Status -ne 'Valid') {
+            throw "MunshiOS customer installer signature is not valid: $($signature.Status)"
+          }
+
           $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer.FullName).Hash.ToLowerInvariant()
           $checksumPath = "$($installer.FullName).sha256"
           "$hash  $($installer.Name)" | Set-Content -LiteralPath $checksumPath -Encoding ascii
-
-          $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
-          if ($env:CSC_LINK -and $signature.Status -ne 'Valid') {
-            throw "A signing credential was provided but the installer signature is not valid: $($signature.Status)"
-          }
-          if (-not $env:CSC_LINK) {
-            Write-Warning "WINDOWS_CSC_LINK is not configured. Release will be checksum-verified but unsigned; MunshiOS will refuse automatic installation."
-          }
 
           "installer=$($installer.FullName)" >> $env:GITHUB_OUTPUT
           "checksum=$checksumPath" >> $env:GITHUB_OUTPUT
