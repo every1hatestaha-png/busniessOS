@@ -73,6 +73,8 @@ describe("print UX regression contracts", () => {
     const supplierVoucher = source("app/(dashboard)/accounting/payment-vouchers/[id]/page.tsx");
 
     expect(identity).toContain("getWorkspaceBranding(workspace.name)");
+    expect(identity).toContain("src={branding.markPath}");
+    expect(identity).toContain("print:block");
     for (const sharedHeader of [documentHeader, reportHeader]) {
       expect(sharedHeader).toContain("<WorkspaceIdentity");
       expect(sharedHeader).toContain("workspace={workspace}");
