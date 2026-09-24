@@ -1,0 +1,43 @@
+name: Render MunshiOS Reel
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'marketing/remotion/**'
+      - '.github/workflows/render-munshios-reel.yml'
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        working-directory: marketing/remotion
+        run: npm install
+
+      - name: Type check
+        working-directory: marketing/remotion
+        run: npm run check
+
+      - name: Render reel
+        working-directory: marketing/remotion
+        run: npx remotion render MunshiOSReel out/munshios-reel-v2.mp4 --concurrency=1
+
+      - name: Upload reel
+        uses: actions/upload-artifact@v4
+        with:
+          name: munshios-reel-v2
+          path: marketing/remotion/out/munshios-reel-v2.mp4
+          if-no-files-found: error
