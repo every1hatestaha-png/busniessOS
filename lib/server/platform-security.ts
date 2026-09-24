@@ -60,9 +60,9 @@ export async function getVerifiedPlatformOwnerIdentity() {
   if (!userId) redirect("/platform/sign-in");
 
   const clerkUser = await (await clerkClient()).users.getUser(userId);
-  const primaryEmail =
-    clerkUser.emailAddresses.find((entry) => entry.id === clerkUser.primaryEmailAddressId) ??
-    clerkUser.emailAddresses[0];
+  const primaryEmail = clerkUser.primaryEmailAddressId
+    ? clerkUser.emailAddresses.find((entry) => entry.id === clerkUser.primaryEmailAddressId)
+    : undefined;
   const email = primaryEmail?.emailAddress?.trim().toLowerCase();
 
   if (!email || primaryEmail?.verification?.status !== "verified" || email !== configuredOwner) {
