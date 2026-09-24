@@ -81,4 +81,18 @@ describe("print UX regression contracts", () => {
     expect(gatePass).toContain("<WorkspaceIdentity workspace={seller}");
     expect(supplierVoucher).toContain("<WorkspaceIdentity workspace={voucher.workspace}");
   });
+
+  it("waits for workspace logos and fonts before every app-driven print", () => {
+    const printButton = source("components/invoices/print-button.tsx");
+    const printOnLoad = source("components/documents/print-on-load.tsx");
+    const autoPrintReport = source("components/reports/auto-print-report.tsx");
+    const printAssets = source("lib/print-assets.ts");
+
+    for (const entry of [printButton, printOnLoad, autoPrintReport]) {
+      expect(entry).toContain("waitForPrintableAssets");
+    }
+    expect(printAssets).toContain("[data-print-surface] img, [data-document] img");
+    expect(printAssets).toContain("document.fonts.ready");
+    expect(printAssets).toContain("image.decode()");
+  });
 });
