@@ -19,7 +19,12 @@ export async function getDashboardActivity(workspaceId: string) {
       },
     }),
     db.product.findMany({
-      where: { workspaceId, stockQuantity: { lte: db.product.fields.reorderLevel } },
+      where: {
+        workspaceId,
+        status: "ACTIVE",
+        reorderLevel: { gt: 0 },
+        stockQuantity: { lte: db.product.fields.reorderLevel },
+      },
       orderBy: { stockQuantity: "asc" },
       take: 5,
       select: {
