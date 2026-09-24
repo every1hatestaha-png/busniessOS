@@ -35,16 +35,28 @@ export function WorkspaceIdentity({
   return (
     <div className="flex min-w-0 items-start gap-4">
       {branding && (
-        <Image
-          src={branding.logoPath}
-          alt={branding.logoAlt}
-          width={150}
-          height={100}
-          loading="eager"
-          fetchPriority="high"
-          unoptimized
-          className="h-16 w-auto max-w-[110px] shrink-0 rounded-sm object-contain print:block print:h-14 print:max-w-[100px]"
-        />
+        <>
+          <Image
+            src={branding.logoPath}
+            alt={branding.logoAlt}
+            width={150}
+            height={100}
+            loading="eager"
+            fetchPriority="high"
+            unoptimized
+            className="h-16 w-auto max-w-[110px] shrink-0 rounded-sm object-contain print:hidden"
+          />
+          <Image
+            src={branding.markPath}
+            alt={`${branding.logoAlt} monogram`}
+            width={96}
+            height={96}
+            loading="eager"
+            fetchPriority="high"
+            unoptimized
+            className="hidden h-14 w-14 shrink-0 object-contain print:block"
+          />
+        </>
       )}
       <div className="min-w-0">
         {eyebrow && <p className="text-xs font-bold uppercase tracking-[0.2em] text-neutral-500">{eyebrow}</p>}
