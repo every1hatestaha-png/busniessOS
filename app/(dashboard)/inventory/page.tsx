@@ -4,7 +4,8 @@ import { WarehouseTransfer } from "@/components/inventory/warehouse-transfer";
 import { MetricCard } from "@/components/business/metric-card";
 import { PageHeader } from "@/components/business/page-header";
 import { listProducts } from "@/lib/server/products";
-import { calculateInventoryValue, formatPKR, getStockStatus } from "@/lib/utils";
+import { calculateInventoryValue, formatPKR } from "@/lib/utils";
+import { isReorderAttentionNeeded } from "@/lib/stock-attention";
 import { canPerformAction } from "@/lib/server/authorization";
 import { requireWorkspace } from "@/lib/server/auth";
 import { db } from "@/lib/server/db";
@@ -39,7 +40,7 @@ export default async function InventoryPage() {
     0,
   );
   const lowStock = products.filter(
-    (product) => getStockStatus(product.stockQuantity, product.reorderLevel) !== "In Stock",
+    (product) => product.status === "ACTIVE" && isReorderAttentionNeeded(product.stockQuantity, product.reorderLevel),
   ).length;
 
   return (
@@ -52,7 +53,7 @@ export default async function InventoryPage() {
       <section className="grid gap-3 sm:grid-cols-3">
         <MetricCard label="Stock on hand" value={`${totalUnits} units`} detail={`${products.length} product lines`} icon={Boxes} />
         <MetricCard label="Inventory value" value={formatPKR(inventoryValue)} detail="Valued at current cost" icon={Warehouse} />
-        <MetricCard label="Needs attention" value={`${lowStock} products`} detail="At or below reorder level" icon={AlertTriangle} />
+        <MetricCard label="Needs attention" value={`${lowStock} products`} detail="At or below configured reorder level" icon={AlertTriangle} />
       </section>
       {warehouseMode === "MANAGED" && canTransferStock && warehouses.length >= 2 && (
         <WarehouseTransfer
