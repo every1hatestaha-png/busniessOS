@@ -11,6 +11,7 @@ describe("production release workflow", () => {
 
   it("migrates production only after an explicit production-target assertion", () => {
     expect(workflow).toContain("migrate-production:");
+    expect(workflow).toContain("if: github.event_name == 'workflow_dispatch'");
     expect(workflow).toContain("node scripts/assert-production-database-target.cjs");
     expect(workflow).toContain("npx prisma migrate deploy");
     expect(workflow).toContain("npx prisma migrate status");
@@ -26,8 +27,10 @@ describe("production release workflow", () => {
     expect(workflow).not.toContain("azurewebsites.net");
   });
 
-  it("verifies the exact Vercel revision and runtime database after release", () => {
-    expect(workflow).toContain("needs:\n      - build\n      - migrate-production");
+  it("verifies the exact Vercel revision and runtime database after an explicit release", () => {
+    expect(workflow).toContain("verify-vercel-production:");
+    expect(workflow).toContain("if: github.event_name == 'workflow_dispatch'");
+    expect(workflow).toContain("needs:\n      - migrate-production");
     expect(workflow).toContain("/api/readiness");
     expect(workflow).toContain('expected_revision="${GITHUB_SHA:0:12}"');
     expect(workflow).toContain('body.revision === process.env.EXPECTED_REVISION');
