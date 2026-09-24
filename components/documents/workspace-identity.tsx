@@ -46,21 +46,60 @@ export function WorkspaceIdentity({
             unoptimized
             className="h-16 w-auto max-w-[110px] shrink-0 rounded-sm object-contain print:hidden"
           />
+
+          {/* Keep the source mark in document.images so auto-print waits for it to decode. */}
           <Image
             src={branding.markPath}
-            alt={`${branding.logoAlt} monogram`}
-            width={96}
-            height={96}
+            alt=""
+            aria-hidden="true"
+            width={1}
+            height={1}
             loading="eager"
             fetchPriority="high"
             unoptimized
-            className="hidden h-14 w-14 shrink-0 bg-white object-contain print:block print:[filter:invert(1)_grayscale(1)_contrast(1.15)]"
-            style={{
-              backgroundColor: "#fff",
-              WebkitPrintColorAdjust: "exact",
-              printColorAdjust: "exact",
-            }}
+            className="pointer-events-none absolute h-px w-px opacity-0"
           />
+
+          {/*
+            Print-safe monochrome rendering for opaque logo files.
+            The source WebP has a black background. Instead of relying on CSS
+            filters or CSS masks (which Chromium/Electron can flatten into a
+            black square while printing), convert source luminance into alpha
+            inside SVG: dark pixels become transparent and bright logo pixels
+            become solid black. This is deterministic on black-and-white
+            printers and needs no printed background graphics.
+          */}
+          <svg
+            viewBox="0 0 96 96"
+            role="img"
+            aria-label={`${branding.logoAlt} monogram`}
+            className="hidden h-14 w-14 shrink-0 overflow-visible print:block"
+          >
+            <defs>
+              <filter id="munshios-print-monogram-luma" colorInterpolationFilters="sRGB">
+                <feColorMatrix
+                  type="matrix"
+                  values="0 0 0 0 0
+                          0 0 0 0 0
+                          0 0 0 0 0
+                          0.2126 0.7152 0.0722 0 0"
+                  result="luminanceAlpha"
+                />
+                <feComponentTransfer in="luminanceAlpha">
+                  <feFuncA type="linear" slope="3" intercept="-1" />
+                </feComponentTransfer>
+              </filter>
+            </defs>
+            <image
+              href={branding.markPath}
+              x="0"
+              y="0"
+              width="96"
+              height="96"
+              preserveAspectRatio="xMidYMid meet"
+              filter="url(#munshios-print-monogram-luma)"
+            />
+          </svg>
         </>
       )}
       <div className="min-w-0">
