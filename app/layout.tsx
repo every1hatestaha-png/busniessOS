@@ -53,12 +53,25 @@ const clerkLocalization = {
   },
 };
 
+function AppDocument({ children }: Readonly<{ children: React.ReactNode }>) {
+  return (
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+      <body className="flex min-h-full flex-col"><MarketingStructuredData />{children}</body>
+    </html>
+  );
+}
+
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  // Temporary branch-only visual QA harness: preview deployments intentionally
+  // render synthetic /qa-preview content without depending on Clerk preview keys.
+  // This branch is explicitly marked DO NOT MERGE and production remains unchanged.
+  if (process.env.VERCEL_ENV === "preview") {
+    return <AppDocument>{children}</AppDocument>;
+  }
+
   return (
     <ClerkProvider afterSignOutUrl="/sign-in" localization={clerkLocalization}>
-      <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-        <body className="flex min-h-full flex-col"><MarketingStructuredData />{children}</body>
-      </html>
+      <AppDocument>{children}</AppDocument>
     </ClerkProvider>
   );
 }
