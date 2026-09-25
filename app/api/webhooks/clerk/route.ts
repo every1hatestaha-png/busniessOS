@@ -1,7 +1,6 @@
 import { headers } from "next/headers";
 import { Webhook } from "svix";
 import { getClerkUserIdentity, isClerkUserLifecycleEvent, type ClerkWebhookEvent } from "@/lib/server/clerk-webhook";
-import { ClerkUserSyncConflictError, syncClerkLifecycleIdentity } from "@/lib/server/clerk-user-sync";
 
 export async function POST(request: Request) {
   const secret = process.env.CLERK_WEBHOOK_SECRET;
@@ -15,6 +14,10 @@ export async function POST(request: Request) {
   if (!isClerkUserLifecycleEvent(event.type)) return Response.json({ received: true, ignored: true });
   const identity = getClerkUserIdentity(event.data);
   if (!identity) return Response.json({ error: "Invalid Clerk user payload." }, { status: 422 });
+
+  // Keep database initialization request-scoped so preview builds without DATABASE_URL
+  // can still compile. Production requests still require the configured database.
+  const { ClerkUserSyncConflictError, syncClerkLifecycleIdentity } = await import("@/lib/server/clerk-user-sync");
   try {
     const result = await syncClerkLifecycleIdentity(event.type, identity);
     return Response.json({ received: true, identitySync: result.synced ? "synced" : result.reason });
