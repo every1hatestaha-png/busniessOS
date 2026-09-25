@@ -46,7 +46,6 @@
   --radius-2xl: 12px;
   --radius-3xl: 14px;
   --radius-4xl: 16px;
-  /* MunshiOS custom tokens */
   --color-primary-hover: var(--primary-hover);
   --color-primary-active: var(--primary-active);
   --color-muted-border: var(--muted-border);
@@ -58,20 +57,16 @@
 }
 
 :root {
-  /* Premium stone/cream background for a calm, professional feel */
   --background: #fafaf8;
   --foreground: #0f172a;
   --card: #ffffff;
   --card-foreground: #0f172a;
   --popover: #ffffff;
   --popover-foreground: #0f172a;
-
-  /* Premium emerald accent - restrained, professional, finance-appropriate */
   --primary: #059669;
   --primary-foreground: #ffffff;
   --primary-hover: #047857;
   --primary-active: #065f46;
-
   --secondary: #f1f5f3;
   --secondary-foreground: #1e293b;
   --muted: #f1f5f3;
@@ -81,24 +76,18 @@
   --accent: #ecfdf5;
   --accent-foreground: #065f46;
   --accent-hover: #d1fae5;
-
   --destructive: #b91c1c;
   --destructive-foreground: #ffffff;
   --destructive-hover: #991b1b;
-
   --border: #e2e8e5;
   --input: #e2e8e5;
   --ring: #059669;
-
   --chart-1: #059669;
   --chart-2: #0d9488;
   --chart-3: #14b8a6;
   --chart-4: #2dd4bf;
   --chart-5: #5eead4;
-
   --radius: 0.5rem;
-
-  /* Premium dark sidebar */
   --sidebar: #0c1115;
   --sidebar-foreground: #e2e8e5;
   --sidebar-primary: #10b981;
@@ -173,29 +162,18 @@
     size: A4 portrait;
     margin: 12mm;
   }
-
-  /*
-   * MunshiOS prints every A4 document in portrait. Keep a named portrait page
-   * for report surfaces so a stale/legacy "landscape" attribute can never
-   * rotate the physical output.
-   */
   @page portrait-report {
     size: A4 portrait;
     margin: 12mm;
   }
-
   @page thermal {
     size: 80mm auto;
     margin: 4mm;
   }
-
-  /* Physical cheque stock is not an A4 document. Keep it isolated from the
-   * portrait-only A4 policy and print at real cheque dimensions. */
   @page cheque {
     size: 190mm 90mm;
     margin: 0;
   }
-
   html[data-print-format="thermal"] [data-document] {
     page: thermal;
     width: 72mm !important;
@@ -203,58 +181,42 @@
     font-size: 7.5pt !important;
     line-height: 1.25 !important;
   }
-
   html[data-print-format="thermal"] [data-document] header,
   html[data-print-format="thermal"] [data-document] section {
     padding: 2mm !important;
   }
-
   html[data-print-format="thermal"] [data-document] table {
     table-layout: fixed !important;
     font-size: 6.5pt !important;
   }
-
   html[data-print-format="thermal"] [data-document] th,
   html[data-print-format="thermal"] [data-document] td {
     padding: 1mm 0.5mm !important;
     overflow-wrap: anywhere !important;
   }
-
   html[data-print-format="thermal"] [data-document] [data-document-totals] > div {
     max-width: none !important;
     width: 100% !important;
   }
-
   * {
     print-color-adjust: exact;
   }
-
   thead {
     display: table-header-group;
   }
-
   tfoot {
     display: table-footer-group;
   }
-
   table[data-financial-table] tfoot {
     display: table-row-group;
   }
-
   body {
     background: white !important;
     color: black !important;
   }
-
-  /*
-   * When a screen contains an official printable document/report, Ctrl+P must
-   * print that surface only. Keep its ancestor chain alive, hide every sibling
-   * branch, and let the canonical surface occupy the paper normally.
-   */
   body:has([data-print-surface], [data-document]) *:not([data-print-surface]):not([data-print-surface] *):not([data-document]):not([data-document] *):not(:has([data-print-surface], [data-document])) {
     display: none !important;
   }
-
   [data-print-surface],
   [data-document] {
     width: 100% !important;
@@ -262,12 +224,10 @@
     margin: 0 !important;
     box-shadow: none !important;
   }
-
   [data-print-orientation="portrait"],
   [data-print-orientation="landscape"] {
     page: portrait-report;
   }
-
   [data-cheque-print] {
     page: cheque !important;
     width: 190mm !important;
@@ -279,22 +239,18 @@
     border: 0 !important;
     box-shadow: none !important;
   }
-
   body:has([data-cheque-print]) {
     margin: 0 !important;
     padding: 0 !important;
   }
-
   [data-document] {
     font-size: 9pt;
     line-height: 1.4;
   }
-
   p {
     orphans: 3;
     widows: 3;
   }
-
   [data-report-section],
   [data-document-section],
   [data-document-totals],
@@ -302,12 +258,10 @@
   [data-status-stamp] {
     break-inside: avoid;
   }
-
   tr,
   img {
     break-inside: avoid;
   }
-
   table {
     min-width: 0 !important;
     width: 100% !important;
@@ -317,4 +271,170 @@
 
 @utility text-balance {
   text-wrap: balance;
+}
+
+/* 2026 marketing presentation system. Scoped to the public landing page only. */
+@keyframes marketing-rise {
+  from { opacity: 0; transform: translateY(30px) scale(.985); filter: blur(5px); }
+  to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+
+@keyframes marketing-float {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  50% { transform: translate3d(0, -10px, 0) rotate(.4deg); }
+}
+
+@keyframes marketing-glow {
+  0%, 100% { opacity: .45; transform: scale(.94); }
+  50% { opacity: .8; transform: scale(1.06); }
+}
+
+@keyframes marketing-sheen {
+  0% { transform: translateX(-180%) skewX(-18deg); }
+  55%, 100% { transform: translateX(260%) skewX(-18deg); }
+}
+
+@supports selector(body:has(*)) {
+  body:has(a[aria-label="MunshiOS home"]) {
+    background:
+      radial-gradient(circle at 8% 4%, rgb(16 185 129 / .055), transparent 28rem),
+      radial-gradient(circle at 92% 14%, rgb(14 116 144 / .045), transparent 32rem),
+      #fbfcfa;
+  }
+
+  body:has(a[aria-label="MunshiOS home"]) main > header {
+    box-shadow: 0 10px 40px -32px rgb(15 23 42 / .45);
+  }
+
+  body:has(a[aria-label="MunshiOS home"]) main > section {
+    position: relative;
+    isolation: isolate;
+  }
+
+  body:has(a[aria-label="MunshiOS home"]) main > section:not(:first-of-type) > div {
+    animation: marketing-rise .8s cubic-bezier(.2,.75,.25,1) both;
+    animation-timeline: view();
+    animation-range: entry 8% cover 28%;
+  }
+
+  body:has(a[aria-label="MunshiOS home"]) main > section:first-of-type::before,
+  body:has(a[aria-label="MunshiOS home"]) main > section:first-of-type::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+    border-radius: 999px;
+    filter: blur(8px);
+    z-index: -1;
+  }
+
+  body:has(a[aria-label="MunshiOS home"]) main > section:first-of-type::before {
+    width: 22rem;
+    height: 22rem;
+    right: 8%;
+    top: 3rem;
+    background: radial-gradient(circle, rgb(16 185 129 / .17), rgb(16 185 129 / 0) 68%);
+    animation: marketing-glow 7s ease-in-out infinite;
+  }
+
+  body:has(a[aria-label="MunshiOS home"]) main > section:first-of-type::after {
+    width: 18rem;
+    height: 18rem;
+    left: 36%;
+    bottom: -5rem;
+    background: radial-gradient(circle, rgb(15 118 110 / .1), rgb(15 118 110 / 0) 70%);
+    animation: marketing-glow 9s ease-in-out infinite reverse;
+  }
+
+  body:has(a[aria-label="MunshiOS home"]) main > section:first-of-type > div:last-child > div:last-child {
+    perspective: 1200px;
+  }
+
+  body:has(a[aria-label="MunshiOS home"]) main > section:first-of-type > div:last-child > div:last-child > div {
+    animation: marketing-float 6.5s ease-in-out infinite;
+    transform-origin: 50% 60%;
+  }
+
+  body:has(a[aria-label="MunshiOS home"]) main a[href="/get-your-munshi"] {
+    position: relative;
+    overflow: hidden;
+    transform: translateZ(0);
+    transition: transform .28s cubic-bezier(.2,.8,.2,1), box-shadow .28s ease, background-color .28s ease;
+  }
+
+  body:has(a[aria-label="MunshiOS home"]) main a[href="/get-your-munshi"]::after {
+    content: "";
+    position: absolute;
+    inset: -20% auto -20% -35%;
+    width: 28%;
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / .42), transparent);
+    animation: marketing-sheen 5.5s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  body:has(a[aria-label="MunshiOS home"]) main a[href="/get-your-munshi"]:hover {
+    transform: translateY(-2px) scale(1.015);
+    box-shadow: 0 18px 36px -22px rgb(5 150 105 / .7);
+  }
+
+  body:has(a[aria-label="MunshiOS home"]) main section div[class*="rounded-[24px]"],
+  body:has(a[aria-label="MunshiOS home"]) main section div[class*="rounded-[28px]"],
+  body:has(a[aria-label="MunshiOS home"]) main section div[class*="rounded-[30px]"],
+  body:has(a[aria-label="MunshiOS home"]) main section div[class*="rounded-2xl"],
+  body:has(a[aria-label="MunshiOS home"]) main section div[class*="rounded-3xl"] {
+    transition: transform .32s cubic-bezier(.2,.8,.2,1), box-shadow .32s ease, border-color .32s ease, background-color .32s ease;
+  }
+
+  body:has(a[aria-label="MunshiOS home"]) main section div[class*="rounded-[24px]"]:hover,
+  body:has(a[aria-label="MunshiOS home"]) main section div[class*="rounded-[28px]"]:hover,
+  body:has(a[aria-label="MunshiOS home"]) main section div[class*="rounded-[30px]"]:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 26px 70px -40px rgb(15 23 42 / .38);
+    border-color: rgb(16 185 129 / .28);
+  }
+
+  body:has(a[aria-label="MunshiOS home"]) main section[id="features"]::before,
+  body:has(a[aria-label="MunshiOS home"]) main section[id="industries"]::before,
+  body:has(a[aria-label="MunshiOS home"]) main section[id="pricing"]::before {
+    content: "";
+    position: absolute;
+    inset: 10% 4%;
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(ellipse at 50% 20%, rgb(16 185 129 / .055), transparent 58%);
+    filter: blur(22px);
+  }
+
+  body:has(a[aria-label="MunshiOS home"]) main nav a,
+  body:has(a[aria-label="MunshiOS home"]) footer a {
+    position: relative;
+  }
+
+  body:has(a[aria-label="MunshiOS home"]) main nav a::after,
+  body:has(a[aria-label="MunshiOS home"]) footer a::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 100%;
+    bottom: -5px;
+    height: 1px;
+    background: currentColor;
+    opacity: .45;
+    transition: right .25s ease;
+  }
+
+  body:has(a[aria-label="MunshiOS home"]) main nav a:hover::after,
+  body:has(a[aria-label="MunshiOS home"]) footer a:hover::after {
+    right: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body:has(a[aria-label="MunshiOS home"]) *,
+  body:has(a[aria-label="MunshiOS home"]) *::before,
+  body:has(a[aria-label="MunshiOS home"]) *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: .001ms !important;
+  }
 }
