@@ -1,0 +1,5 @@
+@supports selector(body:has(*)) {
+  body:has(a[aria-label="MunshiOS home"]) main > section:not(:first-of-type) > div {
+    filter: none !important;
+  }
+}
