@@ -28,7 +28,7 @@ export default async function PaymentVoucherPage({ params }: { params: Promise<{
       <article data-document className="bg-white p-8 shadow-sm print:p-0 print:shadow-none">
         <header className="border-b-2 border-neutral-900 pb-5">
           <div className="flex items-start justify-between gap-8">
-            <WorkspaceIdentity workspace={voucher.workspace} eyebrow={isReversal ? "Bank Payment Reversal Voucher" : "Bank Payment Voucher"} />
+            <WorkspaceIdentity workspace={voucher.workspace} eyebrow={isReversal ? "Supplier Payment Reversal Voucher" : "Supplier Payment Voucher"} />
             <div className="text-right"><p className="font-mono text-lg font-bold">{voucher.documentNumber}</p><p className="mt-2 text-sm text-neutral-600">Date: {formatDate(voucher.paymentDate)}</p><p className="text-sm text-neutral-600">Method: {voucher.method.replaceAll("_", " ")}</p>{status && <p className="mt-2 text-xs font-bold uppercase tracking-[0.18em]">{status}</p>}</div>
           </div>
         </header>

@@ -47,7 +47,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         <MetricCard label="Total sales" value={formatPKR(customer.totalSales)} detail="Lifetime sales" icon={ShoppingCart} />
         <MetricCard label="Total payments" value={formatPKR(customer.totalPayments)} detail="Lifetime receipts" icon={CircleDollarSign} />
       </div>
-      <div className={`grid min-w-0 items-start gap-4 ${customer.currentBalance > 0 && canRecordPayments ? "2xl:grid-cols-[minmax(0,1fr)_360px]" : ""}`}><div className="min-w-0"><CustomerDetailsTabs customer={customer} /></div>{customer.currentBalance > 0 && canRecordPayments && <div className="min-w-0 rounded-xl border bg-white p-4"><h2 className="font-semibold">Record receipt</h2><p className="mb-4 mt-1 text-xs text-neutral-500">Choose opening balance or leave the receipt unallocated on this customer account.</p><RecordPaymentForm customers={[{ id: customer.id, name: customer.companyName, balance: customer.currentBalance, openingBalance: openingBalanceOutstanding }]} cashBankAccounts={cashBankAccounts} /></div>}</div>
+      <div className={`grid min-w-0 items-start gap-4 ${canRecordPayments ? "2xl:grid-cols-[minmax(0,1fr)_360px]" : ""}`}><div className="min-w-0"><CustomerDetailsTabs customer={customer} /></div>{canRecordPayments && <div className="min-w-0 rounded-xl border bg-white p-4"><h2 className="font-semibold">Record receipt</h2><p className="mb-4 mt-1 text-xs text-neutral-500">Record an advance, settle opening balance, or allocate a receipt to invoices.</p><RecordPaymentForm customers={[{ id: customer.id, name: customer.companyName, balance: customer.currentBalance, openingBalance: openingBalanceOutstanding }]} cashBankAccounts={cashBankAccounts} /></div>}</div>
     </div>
   );
 }

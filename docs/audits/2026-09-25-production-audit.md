@@ -104,3 +104,7 @@ No second authorized tenant or lower-role session was available. Thus API/UI IDO
 349 unit tests passed across 64 files. TypeScript `tsc --noEmit` passed. ESLint passed for changed and new TypeScript files. Tests used a dummy loopback database URL only; no production database access. Optimized Next.js production build passed with a dummy loopback database URL. Deployed browser regressions remain a release gate. Regression coverage added for return reversal classification, inactive stock rejection, optional product numeric values and public-route/canonical boundaries.
 
 GitHub publication was blocked by automatic approval review because explicit permission to share the changes with the repository destination was not established. Changes are committed locally; no successful push or deployment is claimed.
+
+## Follow-up fixes
+
+Source review found that customer detail hid the receipt form when balance was zero or credit, preventing advances from that route even after the on-account amount cap was removed. The form now remains available to users with receipt permission regardless of balance. Recommended deployed regression: record an advance for a zero-balance customer, confirm cash debit and customer credit, then reverse and reconcile. Also changed the supplier voucher heading to a payment-method-neutral title and explicitly labelled dashboard revenue as net sales after returns/cancellations. These are source-confirmed UI fixes, not newly completed authenticated browser tests.
