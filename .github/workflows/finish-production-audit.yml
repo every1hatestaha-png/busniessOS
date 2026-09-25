@@ -1,0 +1,66 @@
+name: Finish production audit fixes
+
+on:
+  push:
+    branches:
+      - fix/production-audit-20260925
+    paths:
+      - '.github/workflows/finish-production-audit.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  finish-fixes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply remaining safe audit fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          proxy = Path('proxy.ts')
+          text = proxy.read_text()
+          old = '{ contentSecurityPolicy: {} },'
+          new = '{ contentSecurityPolicy: { strict: true } },'
+          if old not in text:
+              raise SystemExit('Expected Clerk CSP configuration not found')
+          proxy.write_text(text.replace(old, new, 1))
+
+          layout = Path('app/layout.tsx')
+          text = layout.read_text()
+          old = '<ClerkProvider afterSignOutUrl="/sign-in" localization={clerkLocalization}>'
+          new = '<ClerkProvider dynamic afterSignOutUrl="/sign-in" localization={clerkLocalization}>'
+          if old not in text:
+              raise SystemExit('Expected ClerkProvider configuration not found')
+          layout.write_text(text.replace(old, new, 1))
+
+          customers = Path('lib/server/customers.ts')
+          text = customers.read_text()
+          old = 'ORDER BY "date" ASC, "createdAt" ASC'
+          new = '''ORDER BY "date"::date ASC,
+        CASE WHEN "type" = 'OPENING_BALANCE' THEN 0 ELSE 1 END ASC,
+        "date" ASC, "createdAt" ASC, "id" ASC'''
+          if old not in text:
+              raise SystemExit('Expected ledger ordering query not found')
+          customers.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Commit fixes and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add proxy.ts app/layout.tsx lib/server/customers.ts
+          git commit -m 'Harden Clerk CSP and stabilize same-day ledger ordering'
+          rm -f .github/workflows/finish-production-audit.yml
+          git add -A
+          git commit -m 'Remove temporary audit finishing workflow'
+          git push origin HEAD:fix/production-audit-20260925
