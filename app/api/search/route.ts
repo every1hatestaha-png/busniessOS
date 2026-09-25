@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireWorkspace } from "@/lib/server/auth";
-import { db } from "@/lib/server/db";
 import type { SearchResult } from "@/lib/search";
 
 export async function GET(request: NextRequest) {
   const { workspaceId } = await requireWorkspace();
   const q = request.nextUrl.searchParams.get("q")?.trim() ?? "";
   if (q.length < 2) return NextResponse.json({ results: [] satisfies SearchResult[] });
+
+  // Load the database client only when this authenticated route is actually
+  // executed. This keeps Vercel preview/build-time route analysis from
+  // requiring DATABASE_URL just to collect route metadata.
+  const { db } = await import("@/lib/server/db");
+
   const term = q.slice(0, 80);
   const customerNameMatch = {
     OR: [
