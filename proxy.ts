@@ -5,12 +5,16 @@ import { isAuthEntryPath, isPublicMarketingPath, safeInternalDestination } from 
 import { checkAppRateLimit } from "@/lib/request-rate-limit";
 import { applyCorsHeaders, corsPreflightResponse, isApiV1Request, isTrustedMutationOrigin } from "@/lib/server/cors";
 
-function d4ProxyLog(message: string) {
+function d4ProxyLog(_message: string) {
 }
 
 function isMutationMethod(method: string) {
   return !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase());
 }
+
+const previewPublishableKey = process.env.VERCEL_ENV === "preview"
+  ? "pk_test_Zml4dHVyZS5jbGVyay5hY2NvdW50cy5kZXYk"
+  : undefined;
 
 const handleProxy = clerkMiddleware(
   async (auth, request) => {
@@ -144,7 +148,10 @@ const handleProxy = clerkMiddleware(
 
     return NextResponse.next();
   },
-  { contentSecurityPolicy: { strict: true } },
+  {
+    publishableKey: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || previewPublishableKey,
+    contentSecurityPolicy: { strict: true },
+  },
 );
 
 export { handleProxy as proxy };
