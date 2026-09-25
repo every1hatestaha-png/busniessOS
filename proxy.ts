@@ -16,6 +16,10 @@ const isPreview = process.env.VERCEL_ENV === "preview";
 const previewPublishableKey = isPreview ? "pk_test_Zml4dHVyZS5jbGVyay5hY2NvdW50cy5kZXYk" : undefined;
 const previewSecretKey = isPreview ? "sk_test_preview_only_not_for_auth" : undefined;
 
+if (isPreview) {
+  process.env.CLERK_ENCRYPTION_KEY ||= "munshios-preview-clerk-key-32byte";
+}
+
 const handleProxy = clerkMiddleware(
   async (auth, request) => {
     const path = request.nextUrl.pathname;
