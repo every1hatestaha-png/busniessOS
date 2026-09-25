@@ -6,11 +6,13 @@ import { CheckCircle2, CircleX, PackageCheck } from "lucide-react";
 import {
   approveProductionRunAction,
   cancelProductionRunAction,
-  initialManufacturingActionState,
+  type ManufacturingActionState,
   postProductionRunAction,
 } from "@/app/(dashboard)/manufacturing/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+
+const initialManufacturingActionState: ManufacturingActionState = { status: "idle", message: "" };
 
 type Run = { id: string; runNumber: string; status: string; plannedOutput: number; actualOutput: number | null; wastageQuantity: number };
 

@@ -16,7 +16,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
-import { productSchema, type ProductEditInput, type ProductInput } from "@/lib/validation/product";
+import { optionalProductNumber, productSchema, type ProductEditInput, type ProductInput } from "@/lib/validation/product";
 
 type ProductFormInput = ProductInput;
 type ProductFormValues = z.output<typeof productSchema>;
@@ -165,13 +165,13 @@ export function ProductForm({ product }: ProductFormProps) {
           </div>
           <div className={fieldClass}>
             <label className={labelClass} htmlFor="fbrTransactionTypeId">FBR transaction type ID</label>
-            <Input id="fbrTransactionTypeId" list="fbr-transaction-type-options" type="number" min="1" step="1" placeholder="Choose from loaded FBR transaction types" aria-invalid={!!errors.fbrTransactionTypeId} {...register("fbrTransactionTypeId", { setValueAs: (value) => value === "" ? undefined : Number(value) })} />
+            <Input id="fbrTransactionTypeId" list="fbr-transaction-type-options" type="number" min="1" step="1" placeholder="Choose from loaded FBR transaction types" aria-invalid={!!errors.fbrTransactionTypeId} {...register("fbrTransactionTypeId", { setValueAs: optionalProductNumber })} />
             <p className="text-[11px] text-neutral-500">The official sale type description is fetched by MunshiOS during verification; it is not trusted from browser text.</p>
             {errors.fbrTransactionTypeId && <p className={errorClass}>{errors.fbrTransactionTypeId.message}</p>}
           </div>
           <div className={fieldClass}>
             <label className={labelClass} htmlFor="fbrRateId">FBR rate ID</label>
-            <Input id="fbrRateId" list="fbr-rate-options" type="number" min="1" step="1" placeholder={selectedFbrTransactionTypeId ? "Choose from current FBR rates" : "Select a transaction type, then refresh"} aria-invalid={!!errors.fbrRateId} {...register("fbrRateId", { setValueAs: (value) => value === "" ? undefined : Number(value) })} />
+            <Input id="fbrRateId" list="fbr-rate-options" type="number" min="1" step="1" placeholder={selectedFbrTransactionTypeId ? "Choose from current FBR rates" : "Select a transaction type, then refresh"} aria-invalid={!!errors.fbrRateId} {...register("fbrRateId", { setValueAs: optionalProductNumber })} />
             <p className="text-[11px] text-neutral-500">Validated against invoice-date rate rules for the seller province before production use.</p>
             {errors.fbrRateId && <p className={errorClass}>{errors.fbrRateId.message}</p>}
           </div>
@@ -211,7 +211,7 @@ export function ProductForm({ product }: ProductFormProps) {
           </div>
           <div className={fieldClass}>
             <label className={labelClass} htmlFor="defaultWeightKg">Default weight per {selectedUnit?.toLowerCase() || "unit"} (kg)</label>
-            <Input id="defaultWeightKg" type="number" min="0.001" step="0.001" placeholder="Optional, e.g. 4.500" aria-invalid={!!errors.defaultWeightKg} {...register("defaultWeightKg", { setValueAs: (value) => value === "" ? undefined : Number(value) })} />
+            <Input id="defaultWeightKg" type="number" min="0.001" step="0.001" placeholder="Optional, e.g. 4.500" aria-invalid={!!errors.defaultWeightKg} {...register("defaultWeightKg", { setValueAs: optionalProductNumber })} />
             <p className="text-[11px] text-neutral-500">Suggestion only. PO, GRN and sales transactions can override the actual weight every time.</p>
             {errors.defaultWeightKg && <p className={errorClass}>{errors.defaultWeightKg.message}</p>}
           </div>

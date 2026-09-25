@@ -28,6 +28,16 @@ describe("auth routing security", () => {
     expect(safeInternalDestination("/sales?status=DRAFT", BASE)).toBe("/sales?status=DRAFT");
   });
 
+  it("allows public industry and crawler routes without exposing adjacent paths", () => {
+    for (const path of ["manufacturing", "wholesale", "retail", "restaurant", "services"]) {
+      expect(isPublicMarketingPath(`/industries/${path}`)).toBe(true);
+    }
+    expect(isPublicMarketingPath("/robots.txt")).toBe(true);
+    expect(isPublicMarketingPath("/sitemap.xml")).toBe(true);
+    expect(isPublicMarketingPath("/industries/private")).toBe(false);
+    expect(isPublicMarketingPath("/get-your-munshi-private")).toBe(false);
+  });
+
   it("blocks external and protocol-relative redirect destinations", () => {
     expect(safeInternalDestination("https://evil.example", BASE)).toBe("/dashboard");
     expect(safeInternalDestination("//evil.example/path", BASE)).toBe("/dashboard");

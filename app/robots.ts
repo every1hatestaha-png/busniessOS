@@ -1,7 +1,8 @@
+import { publicSiteUrl } from "@/lib/site-url";
 import type { MetadataRoute } from "next";
 
 export default function robots(): MetadataRoute.Robots {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://business-os-one-gules.vercel.app";
+  const baseUrl = publicSiteUrl();
 
   return {
     rules: {

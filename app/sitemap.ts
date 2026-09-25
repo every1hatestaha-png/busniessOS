@@ -1,7 +1,8 @@
+import { publicSiteUrl } from "@/lib/site-url";
 import type { MetadataRoute } from "next";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://business-os-khzr.vercel.app";
+  const baseUrl = publicSiteUrl();
   const routes = [
     "/",
     "/get-your-munshi",

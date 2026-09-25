@@ -1,3 +1,4 @@
+import { publicSiteUrl } from "@/lib/site-url";
 import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
@@ -8,7 +9,7 @@ import { MarketingStructuredData } from "@/components/marketing-structured-data"
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://business-os-one-gules.vercel.app";
+const siteUrl = publicSiteUrl();
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

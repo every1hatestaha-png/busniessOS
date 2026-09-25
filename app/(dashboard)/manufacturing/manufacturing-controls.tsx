@@ -7,11 +7,13 @@ import {
   createBomAction,
   createProductionRunAction,
   createWarehouseAction,
-  initialManufacturingActionState,
+  type ManufacturingActionState,
 } from "@/app/(dashboard)/manufacturing/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+
+const initialManufacturingActionState: ManufacturingActionState = { status: "idle", message: "" };
 
 type ProductOption = { id: string; name: string; sku: string };
 type BomOption = { id: string; name: string; version: number };

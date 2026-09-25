@@ -1,5 +1,7 @@
+import { publicSiteUrl } from "@/lib/site-url";
+
 export function MarketingStructuredData() {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://business-os-one-gules.vercel.app";
+  const siteUrl = publicSiteUrl();
 
   const graph = {
     "@context": "https://schema.org",

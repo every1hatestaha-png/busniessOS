@@ -18,7 +18,6 @@ export type ManufacturingActionState = {
   message: string;
 };
 
-export const initialManufacturingActionState: ManufacturingActionState = { status: "idle", message: "" };
 
 function fail(message: string): ManufacturingActionState {
   return { status: "error", message };

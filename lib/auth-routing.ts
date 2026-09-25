@@ -2,6 +2,13 @@ export const PUBLIC_MARKETING_PATHS = new Set([
   "/",
   "/features",
   "/industries",
+  "/industries/manufacturing",
+  "/industries/wholesale",
+  "/industries/retail",
+  "/industries/restaurant",
+  "/industries/services",
+  "/robots.txt",
+  "/sitemap.xml",
   "/pricing",
   "/faq",
   "/privacy",
@@ -20,7 +27,7 @@ export function isAuthEntryPath(path: string) {
 }
 
 export function isPublicMarketingPath(path: string) {
-  return PUBLIC_MARKETING_PATHS.has(path) || path.startsWith("/get-your-munshi");
+  return PUBLIC_MARKETING_PATHS.has(path) || path === "/get-your-munshi" || path.startsWith("/get-your-munshi/");
 }
 
 export function safeInternalDestination(value: string | null, requestUrl: string, fallback = "/dashboard") {
