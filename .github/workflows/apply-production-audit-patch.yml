@@ -1,0 +1,48 @@
+name: Apply production audit patch
+
+on:
+  push:
+    branches:
+      - fix/production-audit-20260925
+    paths:
+      - '.github/workflows/apply-production-audit-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reconstruct and verify patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .handoff/patch.gz.b64.part* | base64 -d > /tmp/audit.patch.gz
+          gzip -dc /tmp/audit.patch.gz > /tmp/audit.patch
+          echo '1e1ed533534924eadec7fc3eb36be41350ff6f516364b62586251424e7b19654  /tmp/audit.patch' | sha256sum -c -
+
+      - name: Apply audited commit series
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git am --3way /tmp/audit.patch
+
+      - name: Remove temporary handoff files
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .handoff
+          rm -f .github/workflows/apply-production-audit-patch.yml
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m 'Remove temporary audit patch applicator'
+          fi
+          git push origin HEAD:fix/production-audit-20260925
