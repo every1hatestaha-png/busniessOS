@@ -101,4 +101,6 @@ No second authorized tenant or lower-role session was available. Thus API/UI IDO
 
 ## Remediation validation
 
-349 unit tests passed across 64 files. TypeScript `tsc --noEmit` passed. ESLint passed for changed and new TypeScript files. Tests used a dummy loopback database URL only; no production database access. Production build and deployed browser regressions remain release gates. Regression coverage added for return reversal classification, inactive stock rejection, optional product numeric values and public-route/canonical boundaries.
+349 unit tests passed across 64 files. TypeScript `tsc --noEmit` passed. ESLint passed for changed and new TypeScript files. Tests used a dummy loopback database URL only; no production database access. Optimized Next.js production build passed with a dummy loopback database URL. Deployed browser regressions remain a release gate. Regression coverage added for return reversal classification, inactive stock rejection, optional product numeric values and public-route/canonical boundaries.
+
+GitHub publication was blocked by automatic approval review because explicit permission to share the changes with the repository destination was not established. Changes are committed locally; no successful push or deployment is claimed.
