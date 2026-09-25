@@ -151,7 +151,9 @@ export async function getCustomer(workspaceId: string, id: string): Promise<Cust
       SELECT "id", "date", "referenceId", "description", "debit", "credit"
       FROM "ledger_entries"
       WHERE "workspaceId" = ${workspaceId} AND "customerId" = ${id}
-      ORDER BY "date" ASC, "createdAt" ASC
+      ORDER BY "date"::date ASC,
+        CASE WHEN "type" = 'OPENING_BALANCE' THEN 0 ELSE 1 END ASC,
+        "date" ASC, "createdAt" ASC, "id" ASC
     `,
   ]);
 

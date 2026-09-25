@@ -57,7 +57,7 @@ const clerkLocalization = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <ClerkProvider afterSignOutUrl="/sign-in" localization={clerkLocalization}>
+    <ClerkProvider dynamic afterSignOutUrl="/sign-in" localization={clerkLocalization}>
       <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
         <body className="flex min-h-full flex-col"><MarketingStructuredData />{children}</body>
       </html>

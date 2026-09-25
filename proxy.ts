@@ -144,7 +144,7 @@ const handleProxy = clerkMiddleware(
 
     return NextResponse.next();
   },
-  { contentSecurityPolicy: {} },
+  { contentSecurityPolicy: { strict: true } },
 );
 
 export { handleProxy as proxy };
