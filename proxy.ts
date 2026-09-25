@@ -12,9 +12,9 @@ function isMutationMethod(method: string) {
   return !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase());
 }
 
-const previewPublishableKey = process.env.VERCEL_ENV === "preview"
-  ? "pk_test_Zml4dHVyZS5jbGVyay5hY2NvdW50cy5kZXYk"
-  : undefined;
+const isPreview = process.env.VERCEL_ENV === "preview";
+const previewPublishableKey = isPreview ? "pk_test_Zml4dHVyZS5jbGVyay5hY2NvdW50cy5kZXYk" : undefined;
+const previewSecretKey = isPreview ? "sk_test_preview_only_not_for_auth" : undefined;
 
 const handleProxy = clerkMiddleware(
   async (auth, request) => {
@@ -150,6 +150,7 @@ const handleProxy = clerkMiddleware(
   },
   {
     publishableKey: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || previewPublishableKey,
+    secretKey: process.env.CLERK_SECRET_KEY || previewSecretKey,
     contentSecurityPolicy: { strict: true },
   },
 );
