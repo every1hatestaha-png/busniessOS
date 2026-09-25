@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server";
 
-import { checkDatabaseReadiness } from "@/lib/server/database-readiness";
-import { getFbrCredentialDeploymentReadiness } from "@/lib/server/fbr-credentials";
-
 export const dynamic = "force-dynamic";
 
 function deploymentRevision() {
@@ -12,6 +9,13 @@ function deploymentRevision() {
 
 export async function GET() {
   try {
+    // Keep database-backed readiness dependencies request-scoped so Vercel preview
+    // builds without DATABASE_URL can compile. Runtime readiness still verifies the
+    // real database and FBR deployment configuration before reporting ready.
+    const [{ checkDatabaseReadiness }, { getFbrCredentialDeploymentReadiness }] = await Promise.all([
+      import("@/lib/server/database-readiness"),
+      import("@/lib/server/fbr-credentials"),
+    ]);
     const readiness = await checkDatabaseReadiness();
     if (!readiness.ready) {
       return NextResponse.json(
