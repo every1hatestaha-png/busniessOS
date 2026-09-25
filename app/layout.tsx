@@ -2,6 +2,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import "./marketing-fix.css";
 import "./auth-visual.css";
 import { MarketingStructuredData } from "@/components/marketing-structured-data";
 
