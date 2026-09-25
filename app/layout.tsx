@@ -10,6 +10,10 @@ import { MarketingStructuredData } from "@/components/marketing-structured-data"
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 const siteUrl = publicSiteUrl();
+const previewPublishableKey = process.env.VERCEL_ENV === "preview"
+  ? "pk_test_Zml4dHVyZS5jbGVyay5hY2NvdW50cy5kZXYk"
+  : undefined;
+const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || previewPublishableKey;
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -57,7 +61,7 @@ const clerkLocalization = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <ClerkProvider dynamic afterSignOutUrl="/sign-in" localization={clerkLocalization}>
+    <ClerkProvider dynamic publishableKey={clerkPublishableKey} afterSignOutUrl="/sign-in" localization={clerkLocalization}>
       <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
         <body className="flex min-h-full flex-col"><MarketingStructuredData />{children}</body>
       </html>
