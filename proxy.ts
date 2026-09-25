@@ -1,5 +1,5 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 
 import { isAuthEntryPath, isPublicMarketingPath, safeInternalDestination } from "@/lib/auth-routing";
 import { checkAppRateLimit } from "@/lib/request-rate-limit";
@@ -12,13 +12,10 @@ function isMutationMethod(method: string) {
   return !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase());
 }
 
-const isPreview = process.env.VERCEL_ENV === "preview";
-const previewPublishableKey = isPreview ? "pk_test_Zml4dHVyZS5jbGVyay5hY2NvdW50cy5kZXYk" : undefined;
-const previewSecretKey = isPreview ? "sk_test_preview_only_not_for_auth" : undefined;
-
-if (isPreview) {
-  process.env.CLERK_ENCRYPTION_KEY ||= "munshios-preview-clerk-key-32byte";
-}
+const isPreviewWithoutServerAuth = process.env.VERCEL_ENV === "preview" && !process.env.CLERK_SECRET_KEY;
+const previewPublishableKey = process.env.VERCEL_ENV === "preview"
+  ? "pk_test_Zml4dHVyZS5jbGVyay5hY2NvdW50cy5kZXYk"
+  : undefined;
 
 const handleProxy = clerkMiddleware(
   async (auth, request) => {
@@ -154,12 +151,37 @@ const handleProxy = clerkMiddleware(
   },
   {
     publishableKey: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || previewPublishableKey,
-    secretKey: process.env.CLERK_SECRET_KEY || previewSecretKey,
     contentSecurityPolicy: { strict: true },
   },
 );
 
-export { handleProxy as proxy };
+export async function proxy(request: NextRequest, event: NextFetchEvent) {
+  if (isPreviewWithoutServerAuth) {
+    const path = request.nextUrl.pathname;
+    if (
+      isPublicMarketingPath(path)
+      || isAuthEntryPath(path)
+      || path === "/api/health"
+      || path === "/api/readiness"
+      || path === "/api/desktop-config"
+      || path.startsWith("/forgot-password")
+      || path.startsWith("/account-recovery")
+      || path.startsWith("/recovery")
+    ) {
+      return NextResponse.next();
+    }
+    if (isApiV1Request(path)) {
+      return NextResponse.json(
+        { error: { code: "PREVIEW_AUTH_UNAVAILABLE", message: "Authenticated preview access is not configured." } },
+        { status: 503, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    const signInUrl = new URL("/sign-in", request.url);
+    signInUrl.searchParams.set("redirect_url", `${request.nextUrl.pathname}${request.nextUrl.search}`);
+    return NextResponse.redirect(signInUrl);
+  }
+  return handleProxy(request, event);
+}
 
 export const config = {
   matcher: [
