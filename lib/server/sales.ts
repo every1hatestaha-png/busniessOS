@@ -304,21 +304,19 @@ export async function createSale(context: ServiceContext, input: SaleInput) {
     const dueDate = new Date(order.orderDate);
     dueDate.setDate(dueDate.getDate() + customer.creditDays);
 
-    const [seller, warehouse] = await Promise.all([
-      tx.workspace.findUniqueOrThrow({
-        where: { id: context.workspaceId },
-        select: { name: true, phone: true, email: true, address: true, city: true, country: true, currency: true, timezone: true, ntn: true, strn: true, province: true },
-      }),
-      data.warehouseId
-        ? tx.$queryRaw<Array<{ id: string; name: string; code: string | null }>>`
-            SELECT "id"::text AS "id", "name", "code"
-            FROM "warehouses"
-            WHERE "id"=${data.warehouseId}::uuid
-              AND "workspaceId"=${context.workspaceId}::uuid
-            LIMIT 1
-          `.then((rows) => rows[0] ?? null)
-        : Promise.resolve(null),
-    ]);
+    const seller = await tx.workspace.findUniqueOrThrow({
+      where: { id: context.workspaceId },
+      select: { name: true, phone: true, email: true, address: true, city: true, country: true, currency: true, timezone: true, ntn: true, strn: true, province: true },
+    });
+    const warehouse = data.warehouseId
+      ? (await tx.$queryRaw<Array<{ id: string; name: string; code: string | null }>>`
+          SELECT "id"::text AS "id", "name", "code"
+          FROM "warehouses"
+          WHERE "id"=${data.warehouseId}::uuid
+            AND "workspaceId"=${context.workspaceId}::uuid
+          LIMIT 1
+        `)[0] ?? null
+      : null;
 
     const distinctTaxRates = [...new Set(taxAllocation.lines.map((line) => Number(line.taxRate)))];
     const issuedSnapshot = {

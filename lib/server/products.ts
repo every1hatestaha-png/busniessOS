@@ -19,7 +19,7 @@ type ProductMutationContext = { workspaceId: string; role: Role; userId?: string
 
 export class ProductDomainError extends Error {
   constructor(
-    public readonly code: "PRODUCT_NOT_FOUND" | "PERMISSION_DENIED" | "INVALID_COST_PRICE" | "WAREHOUSE_NOT_READY",
+    public readonly code: "PRODUCT_NOT_FOUND" | "PERMISSION_DENIED" | "INVALID_COST_PRICE" | "WAREHOUSE_NOT_READY" | "INACTIVE_PRODUCT",
     message: string,
   ) {
     super(message);
@@ -324,8 +324,9 @@ export class StockAdjustmentRejectedError extends Error {}
 export async function adjustProductStock(context: ProductMutationContext, productId: string, quantity: number, reason: string, warehouseId?: string | null) {
   if (!canPerformAction(context.role, "inventory.adjust")) throw new ProductDomainError("PERMISSION_DENIED", "Unauthorized");
   return withSerializableRetry(async (transaction) => {
-    const productBefore = await transaction.product.findFirst({ where: { id: productId, workspaceId: context.workspaceId }, select: { costPrice: true, stockQuantity: true } });
+    const productBefore = await transaction.product.findFirst({ where: { id: productId, workspaceId: context.workspaceId }, select: { costPrice: true, stockQuantity: true, status: true } });
     if (!productBefore) throw new StockAdjustmentRejectedError();
+    if (productBefore.status !== "ACTIVE") throw new ProductDomainError("INACTIVE_PRODUCT", "Reactivate this product before adjusting stock.");
     const warehouseMode = await getWarehouseStockModeInTransaction(transaction, context.workspaceId);
     if (warehouseMode === "MANAGED" && !warehouseId) throw new StockAdjustmentRejectedError();
     if (quantity < 0 && productBefore.stockQuantity.toNumber() < -quantity) throw new StockAdjustmentRejectedError();

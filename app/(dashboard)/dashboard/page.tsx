@@ -131,7 +131,7 @@ export default async function DashboardPage() {
 
       {financials && (
         <section aria-label="Financial overview" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          <KpiCard href="/sales" label="Sales this month" value={formatPKR(financials.salesThisMonth)} detail="Current month sales" icon={ShoppingCart} />
+          <KpiCard href="/sales" label="Net sales this month" value={formatPKR(financials.salesThisMonth)} detail="After returns and cancellations" icon={ShoppingCart} />
           <KpiCard href="/goods-receipts" label="Goods received this month" value={formatPKR(financials.purchasesThisMonth)} detail="Received purchasing, not ordered PO value" icon={PackageCheck} />
           <KpiCard href="/receivables" label="Receivables" value={formatPKR(financials.receivables)} detail="Customer account balances" icon={ReceiptText} />
           <KpiCard href="/payables" label="Payables" value={formatPKR(financials.payables)} detail="Supplier account balances" icon={Banknote} />
@@ -211,7 +211,7 @@ export default async function DashboardPage() {
                 <p className="mt-1 text-xl font-semibold tracking-tight text-foreground tabular-nums">{formatPKR(financials.receivables)}</p>
               </div>
               <div className="grid grid-cols-2 gap-2 border-t pt-3">
-                <div className="rounded border bg-slate-50 p-2.5"><p className="text-[10px] text-slate-500">Sales this month</p><p className="mt-1 text-xs font-semibold tabular-nums">{formatPKR(financials.salesThisMonth)}</p></div>
+                <div className="rounded border bg-slate-50 p-2.5"><p className="text-[10px] text-slate-500">Net sales this month</p><p className="mt-1 text-xs font-semibold tabular-nums">{formatPKR(financials.salesThisMonth)}</p></div>
                 <div className="rounded border bg-slate-50 p-2.5"><p className="text-[10px] text-slate-500">Operating position</p><p className="mt-1 text-xs font-semibold tabular-nums">{formatPKR(financials.netOperatingPosition)}</p></div>
               </div>
               <p className="text-[10px] leading-relaxed text-slate-500">Open the aging report for overdue invoice detail.</p>

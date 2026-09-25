@@ -3,7 +3,11 @@ import "server-only";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 
-const connectionString = process.env.DATABASE_URL;
+const previewBuildConnectionString =
+  process.env.VERCEL_ENV === "preview"
+    ? "postgresql://preview:preview@127.0.0.1:5432/preview?sslmode=disable"
+    : undefined;
+const connectionString = process.env.DATABASE_URL ?? previewBuildConnectionString;
 
 if (!connectionString) {
   throw new Error("DATABASE_URL is required for server database access.");

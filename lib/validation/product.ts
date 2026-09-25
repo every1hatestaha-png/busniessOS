@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+export function optionalProductNumber(value: unknown) {
+  return value == null || value === "" ? undefined : Number(value);
+}
+
 const optionalPositiveInt = z.preprocess(
   (value) => value === "" || value == null ? undefined : value,
   z.coerce.number().int().positive().optional(),

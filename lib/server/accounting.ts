@@ -535,8 +535,17 @@ export async function getProfitAndLoss(workspaceId: string, input: ProfitLossInp
   const accountById = new Map(accounts.map((account) => [account.id, account]));
   const costOfGoodsSold = profitAndLossEntries.reduce((sum, entry) => accountById.get(entry.accountId)?.category === "COST_OF_SALES" ? sum.plus(new Prisma.Decimal(amount(entry._sum.debit)).minus(new Prisma.Decimal(amount(entry._sum.credit)))) : sum, new Prisma.Decimal(0)).toNumber();
   const salesRevenueEntry = profitAndLossEntries.find((entry) => accountById.get(entry.accountId)?.systemCode === "SALES_REVENUE");
-  const grossSales = amount(salesRevenueEntry?._sum.credit);
-  const salesReturns = amount(salesRevenueEntry?._sum.debit);
+  const returnReversals = await db.generalLedgerEntry.aggregate({
+    where: {
+      workspaceId, date: { gte: from, lte: to }, sourceType: "REVERSAL",
+      account: { systemCode: "SALES_REVENUE" },
+      reversalOf: { workspaceId, sourceType: "CUSTOMER_RETURN" },
+    },
+    _sum: { credit: true, debit: true },
+  });
+  const cancelledReturns = new Prisma.Decimal(amount(returnReversals._sum.credit)).minus(amount(returnReversals._sum.debit));
+  const grossSales = new Prisma.Decimal(amount(salesRevenueEntry?._sum.credit)).minus(cancelledReturns).toNumber();
+  const salesReturns = new Prisma.Decimal(amount(salesRevenueEntry?._sum.debit)).minus(cancelledReturns).toNumber();
   const expenseMap = new Map<string, { id: string; code: string; name: string; amount: number }>();
   for (const entry of profitAndLossEntries) {
     const account = accountById.get(entry.accountId);
@@ -606,5 +615,5 @@ export async function getFinancialDashboard(workspaceId: string) {
   const receivableAmount = amount(row?.receivables);
   const payableAmount = amount(row?.payables);
   const cashBankAmount = amount(row?.cashBank);
-  return { receivables: receivableAmount, payables: payableAmount, inventoryValue, cashBank: cashBankAmount, salesThisMonth: grossSales, purchasesThisMonth: amount(row?.purchasesThisMonth), expensesThisMonth: operatingExpenses, grossProfit: totals.grossProfit, netProfit: new Prisma.Decimal(totals.netProfit).plus(new Prisma.Decimal(otherIncome)).toNumber(), lowStockCount: Number(row?.lowStockCount ?? 0), netOperatingPosition: new Prisma.Decimal(receivableAmount).plus(new Prisma.Decimal(inventoryValue)).plus(new Prisma.Decimal(cashBankAmount)).minus(new Prisma.Decimal(payableAmount)).toNumber() };
+  return { receivables: receivableAmount, payables: payableAmount, inventoryValue, cashBank: cashBankAmount, salesThisMonth: totals.salesRevenue, purchasesThisMonth: amount(row?.purchasesThisMonth), expensesThisMonth: operatingExpenses, grossProfit: totals.grossProfit, netProfit: new Prisma.Decimal(totals.netProfit).plus(new Prisma.Decimal(otherIncome)).toNumber(), lowStockCount: Number(row?.lowStockCount ?? 0), netOperatingPosition: new Prisma.Decimal(receivableAmount).plus(new Prisma.Decimal(inventoryValue)).plus(new Prisma.Decimal(cashBankAmount)).minus(new Prisma.Decimal(payableAmount)).toNumber() };
 }

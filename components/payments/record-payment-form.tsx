@@ -53,7 +53,7 @@ function PaymentFields({ customers, invoice, cashBankAccounts, state, action, pe
   const withholdingAmount = Number(withholdingTax || 0);
   const netReceived = Math.max(0, grossAmount - withholdingAmount);
   const invalidWithholding = withholdingAmount > grossAmount;
-  const maximum = invoice?.balance ?? (effectiveTarget === "OPENING_BALANCE" ? openingBalance : selectedCustomer?.balance);
+  const maximum = invoice?.balance ?? (effectiveTarget === "OPENING_BALANCE" ? openingBalance : undefined);
 
   useEffect(() => {
     if (invoice || target !== "INVOICES" || !customerId) return;

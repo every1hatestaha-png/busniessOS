@@ -231,6 +231,7 @@ export async function adjustStockAction(
     if (error instanceof StockAdjustmentRejectedError) {
       return { error: "The adjustment could not be applied. Check the available stock and try again." };
     }
+    if (error instanceof ProductDomainError) return { error: error.message };
     return { error: "Stock could not be adjusted. Please try again." };
   }
 }

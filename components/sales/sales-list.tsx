@@ -31,14 +31,14 @@ export function SalesList({ sales }: { sales: SaleListItem[] }) {
     const matchesQuery = !deferredQuery || `${sale.orderNumber} ${sale.customerName}`.toLowerCase().includes(deferredQuery);
     return matchesQuery && (status === "ALL" || sale.status === status);
   });
-  const total = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
+  const total = filteredSales.filter((sale) => sale.status !== "CANCELLED" && sale.status !== "DRAFT").reduce((sum, sale) => sum + sale.total, 0);
   const balance = filteredSales.reduce((sum, sale) => sum + sale.balanceAmount, 0);
 
   return (
     <div className="space-y-3">
       <div className="grid overflow-hidden rounded-md border bg-white sm:grid-cols-3 sm:divide-x">
         <SummaryMetric label="Orders shown" value={String(filteredSales.length)} />
-        <SummaryMetric label="Sales value" value={formatPKR(total)} />
+        <SummaryMetric label="Posted sales value" value={formatPKR(total)} />
         <SummaryMetric label="Balance due" value={formatPKR(balance)} attention={balance > 0} />
       </div>
 
