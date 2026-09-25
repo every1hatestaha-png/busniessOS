@@ -1,0 +1,42 @@
+name: Fix transaction query concurrency
+
+on:
+  push:
+    branches:
+      - fix/production-audit-20260925
+    paths:
+      - .github/workflows/fix-transaction-query-concurrency.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Remove parallel queries on one interactive transaction client
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('lib/server/sales.ts')
+          s = p.read_text()
+          old = '''    const [seller, warehouse] = await Promise.all([\n      tx.workspace.findUniqueOrThrow({\n        where: { id: context.workspaceId },\n        select: { name: true, phone: true, email: true, address: true, city: true, country: true, currency: true, timezone: true, ntn: true, strn: true, province: true },\n      }),\n      data.warehouseId\n        ? tx.$queryRaw<Array<{ id: string; name: string; code: string | null }>>`\n            SELECT "id"::text AS "id", "name", "code"\n            FROM "warehouses"\n            WHERE "id"=${data.warehouseId}::uuid\n              AND "workspaceId"=${context.workspaceId}::uuid\n            LIMIT 1\n          `.then((rows) => rows[0] ?? null)\n        : Promise.resolve(null),\n    ]);'''
+          new = '''    const seller = await tx.workspace.findUniqueOrThrow({\n      where: { id: context.workspaceId },\n      select: { name: true, phone: true, email: true, address: true, city: true, country: true, currency: true, timezone: true, ntn: true, strn: true, province: true },\n    });\n    const warehouse = data.warehouseId\n      ? (await tx.$queryRaw<Array<{ id: string; name: string; code: string | null }>>`\n          SELECT "id"::text AS "id", "name", "code"\n          FROM "warehouses"\n          WHERE "id"=${data.warehouseId}::uuid\n            AND "workspaceId"=${context.workspaceId}::uuid\n          LIMIT 1\n        `)[0] ?? null\n      : null;'''
+          if old not in s:
+              raise SystemExit('Expected sales transaction concurrency block not found')
+          p.write_text(s.replace(old, new, 1))
+      - name: Commit fix and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/server/sales.ts
+          git commit -m 'Serialize snapshot queries inside sale transaction'
+          rm -f .github/workflows/fix-transaction-query-concurrency.yml
+          git add -A
+          git commit -m 'Remove temporary transaction fix workflow'
+          git push origin HEAD:fix/production-audit-20260925
