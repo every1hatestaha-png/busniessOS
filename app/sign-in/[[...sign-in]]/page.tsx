@@ -37,7 +37,7 @@ function signUpDestination() {
   return query ? `/sign-up?${query}` : "/sign-up";
 }
 
-type VerificationStrategy = "email_code" | "phone_code" | "totp" | "backup_code";
+type VerificationStrategy = "email_code_first_factor" | "email_code" | "phone_code" | "totp" | "backup_code";
 
 export default function SignInPage() {
   const { signIn, errors, fetchStatus } = useSignIn();
@@ -123,7 +123,7 @@ export default function SignInPage() {
 
       const { error } = await signIn.password({ emailAddress: identifier, password });
       if (error) {
-        setLocalError(errors.fields.identifier?.message || errors.fields.password?.message || "Email or password is incorrect.");
+        setLocalError(errors.fields.identifier?.message || errors.fields.password?.message || "Email or password is incorrect. You can also sign in with an email code below.");
         return;
       }
 
@@ -151,6 +151,28 @@ export default function SignInPage() {
     });
   }
 
+  async function handleEmailCodeSignIn() {
+    await runOnce(async () => {
+      setLocalError("");
+      setVerificationStrategy(null);
+      const identifier = email.trim().toLowerCase();
+      if (!identifier) {
+        setLocalError("Enter your email address first.");
+        return;
+      }
+
+      await signIn.reset();
+      const { error } = await signIn.emailCode.sendCode({ emailAddress: identifier });
+      if (error) {
+        setLocalError(errors.fields.identifier?.message || "We could not send a sign-in code. Check the email address and try again.");
+        return;
+      }
+
+      setCode("");
+      setVerificationStrategy("email_code_first_factor");
+    });
+  }
+
   async function handleVerification(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await runOnce(async () => {
@@ -162,7 +184,8 @@ export default function SignInPage() {
       }
 
       let error: unknown = null;
-      if (verificationStrategy === "email_code") ({ error } = await signIn.mfa.verifyEmailCode({ code: value }));
+      if (verificationStrategy === "email_code_first_factor") ({ error } = await signIn.emailCode.verifyCode({ code: value }));
+      else if (verificationStrategy === "email_code") ({ error } = await signIn.mfa.verifyEmailCode({ code: value }));
       else if (verificationStrategy === "phone_code") ({ error } = await signIn.mfa.verifyPhoneCode({ code: value }));
       else if (verificationStrategy === "totp") ({ error } = await signIn.mfa.verifyTOTP({ code: value }));
       else ({ error } = await signIn.mfa.verifyBackupCode({ code: value }));
@@ -182,6 +205,11 @@ export default function SignInPage() {
         return;
       }
 
+      if (signIn.status === "needs_second_factor") {
+        await beginSecondFactor(false);
+        return;
+      }
+
       setLocalError("More verification is required. Please try again.");
     });
   }
@@ -189,7 +217,10 @@ export default function SignInPage() {
   async function resendVerificationCode() {
     await runOnce(async () => {
       setLocalError("");
-      if (verificationStrategy === "email_code") {
+      if (verificationStrategy === "email_code_first_factor") {
+        const { error } = await signIn.emailCode.sendCode();
+        if (error) setLocalError("We could not send another code yet. Please wait a moment and try again.");
+      } else if (verificationStrategy === "email_code") {
         const { error } = await signIn.mfa.sendEmailCode();
         if (error) setLocalError("We could not send another code yet. Please wait a moment and try again.");
       } else if (verificationStrategy === "phone_code") {
@@ -219,7 +250,7 @@ export default function SignInPage() {
   const verificationActive = verificationStrategy !== null;
   const fieldError = errors.fields.identifier?.message || errors.fields.password?.message || errors.fields.code?.message || localError;
   const verificationTitle = verificationStrategy === "totp" ? "Authenticator verification" : verificationStrategy === "backup_code" ? "Backup code verification" : "Verify your account";
-  const verificationHelp = verificationStrategy === "email_code" ? "Enter the verification code sent to your email." : verificationStrategy === "phone_code" ? "Enter the verification code sent to your phone." : verificationStrategy === "totp" ? "Enter the code from your authenticator app." : "Enter one of your unused backup codes.";
+  const verificationHelp = verificationStrategy === "email_code_first_factor" || verificationStrategy === "email_code" ? "Enter the verification code sent to your email." : verificationStrategy === "phone_code" ? "Enter the verification code sent to your phone." : verificationStrategy === "totp" ? "Enter the code from your authenticator app." : "Enter one of your unused backup codes.";
 
   return (
     <main className="min-h-dvh w-full overflow-x-hidden bg-[#06131a] text-white">
@@ -270,6 +301,13 @@ export default function SignInPage() {
                   </button>
                 </form>
 
+                <div className="my-5 flex items-center gap-4"><div className="h-px flex-1 bg-slate-700/70" /><span className="text-xs text-slate-500">or</span><div className="h-px flex-1 bg-slate-700/70" /></div>
+                <button type="button" disabled={busy} onClick={() => void handleEmailCodeSignIn()} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-teal-500/50 bg-teal-500/10 text-sm font-semibold text-teal-200 transition hover:bg-teal-500/15 disabled:cursor-not-allowed disabled:opacity-60">
+                  <Mail className="size-4" />
+                  {busy ? "Sending code..." : "Sign in with email code"}
+                </button>
+                <p className="mt-3 text-center text-xs text-slate-500">Use this if your account was migrated or you do not have a password yet.</p>
+
                 <div className="my-7 flex items-center gap-4"><div className="h-px flex-1 bg-slate-700/70" /><span className="text-xs text-slate-500">or</span><div className="h-px flex-1 bg-slate-700/70" /></div>
                 <p className="text-center text-sm text-slate-400">New to MunshiOS? <Link href="/sign-up" onClick={(event) => { event.preventDefault(); router.push(signUpDestination()); }} className="font-medium text-teal-300 hover:text-teal-200">Create account</Link></p>
                 <button type="button" disabled={busy} onClick={() => void resetSavedSession()} className="mt-4 w-full text-center text-xs text-slate-500 transition hover:text-slate-300 disabled:opacity-50">Login stuck in this browser? Reset saved session</button>
@@ -287,7 +325,7 @@ export default function SignInPage() {
                   </div>
                   {fieldError && <p className="text-sm text-rose-300">{fieldError}</p>}
                   <button disabled={busy} className="h-12 w-full rounded-xl bg-gradient-to-r from-[#18c4ad] to-[#10967f] text-sm font-semibold disabled:opacity-60">{busy ? "Verifying..." : "Verify and continue"}</button>
-                  {(verificationStrategy === "email_code" || verificationStrategy === "phone_code") && <button type="button" disabled={busy} onClick={() => void resendVerificationCode()} className="w-full text-center text-sm text-teal-300 disabled:opacity-60">Send another code</button>}
+                  {(verificationStrategy === "email_code_first_factor" || verificationStrategy === "email_code" || verificationStrategy === "phone_code") && <button type="button" disabled={busy} onClick={() => void resendVerificationCode()} className="w-full text-center text-sm text-teal-300 disabled:opacity-60">Send another code</button>}
                   <button type="button" disabled={busy} onClick={() => void startOver()} className="w-full text-center text-sm text-slate-400 hover:text-slate-200 disabled:opacity-60">Start over</button>
                 </form>
               </>
