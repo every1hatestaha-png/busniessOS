@@ -6,7 +6,9 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useClerk, useSignIn } from "@clerk/nextjs";
 import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
+
 const LOGIN_VISUAL = "/auth/faisal-mosque.webp";
+const AUTH_TIMEOUT_MS = 15000;
 
 function signInDestination() {
   if (typeof window === "undefined") return "/dashboard";
@@ -37,10 +39,24 @@ function signUpDestination() {
   return query ? `/sign-up?${query}` : "/sign-up";
 }
 
+async function withAuthTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), AUTH_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
 type VerificationStrategy = "email_code_first_factor" | "email_code" | "phone_code" | "totp" | "backup_code";
+type AuthAction = "password" | "email_code" | "verify" | "reset" | null;
 
 export default function SignInPage() {
-  const { signIn, errors, fetchStatus } = useSignIn();
+  const { signIn, errors } = useSignIn();
   const { signOut } = useClerk();
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -49,31 +65,34 @@ export default function SignInPage() {
   const [verificationStrategy, setVerificationStrategy] = useState<VerificationStrategy | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [localError, setLocalError] = useState("");
-  const [actionBusy, setActionBusy] = useState(false);
+  const [activeAction, setActiveAction] = useState<AuthAction>(null);
 
-  const busy = fetchStatus === "fetching" || actionBusy;
+  const busy = activeAction !== null;
 
-  async function runOnce(action: () => Promise<void>) {
+  async function runOnce(actionName: Exclude<AuthAction, null>, action: () => Promise<void>) {
     if (busy) return;
-    setActionBusy(true);
+    setActiveAction(actionName);
     try {
       await action();
     } catch (caught) {
       setLocalError(caught instanceof Error ? caught.message : "Something went wrong. Please try again.");
     } finally {
-      setActionBusy(false);
+      setActiveAction(null);
     }
   }
 
   async function finishSignIn(target = signInDestination()) {
-    const { error } = await signIn.finalize({
-      navigate: ({ session, decorateUrl }) => {
-        if (session?.currentTask) return;
-        const url = decorateUrl(target);
-        if (url.startsWith("http")) window.location.href = url;
-        else router.push(url);
-      },
-    });
+    const { error } = await withAuthTimeout(
+      signIn.finalize({
+        navigate: ({ session, decorateUrl }) => {
+          if (session?.currentTask) return;
+          const url = decorateUrl(target);
+          if (url.startsWith("http")) window.location.href = url;
+          else router.push(url);
+        },
+      }),
+      "Sign-in took too long. Please try again.",
+    );
     if (error) setLocalError("We could not finish signing you in. Please try again.");
   }
 
@@ -93,13 +112,13 @@ export default function SignInPage() {
     }
 
     if (strategy === "email_code") {
-      const { error } = await signIn.mfa.sendEmailCode();
+      const { error } = await withAuthTimeout(signIn.mfa.sendEmailCode(), "Email verification is taking too long. Please try again.");
       if (error) {
         setLocalError("We could not send the verification email. Please try again.");
         return;
       }
     } else if (strategy === "phone_code") {
-      const { error } = await signIn.mfa.sendPhoneCode();
+      const { error } = await withAuthTimeout(signIn.mfa.sendPhoneCode(), "Phone verification is taking too long. Please try again.");
       if (error) {
         setLocalError("We could not send the verification code. Please try again.");
         return;
@@ -112,7 +131,7 @@ export default function SignInPage() {
 
   async function handleSignIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await runOnce(async () => {
+    await runOnce("password", async () => {
       setLocalError("");
       setVerificationStrategy(null);
       const identifier = email.trim().toLowerCase();
@@ -121,7 +140,10 @@ export default function SignInPage() {
         return;
       }
 
-      const { error } = await signIn.password({ emailAddress: identifier, password });
+      const { error } = await withAuthTimeout(
+        signIn.password({ emailAddress: identifier, password }),
+        "Password sign-in took too long. Use the email code option below or try again.",
+      );
       if (error) {
         setLocalError(errors.fields.identifier?.message || errors.fields.password?.message || "Email or password is incorrect. You can also sign in with an email code below.");
         return;
@@ -152,7 +174,7 @@ export default function SignInPage() {
   }
 
   async function handleEmailCodeSignIn() {
-    await runOnce(async () => {
+    await runOnce("email_code", async () => {
       setLocalError("");
       setVerificationStrategy(null);
       const identifier = email.trim().toLowerCase();
@@ -162,9 +184,21 @@ export default function SignInPage() {
       }
 
       await signIn.reset();
-      const { error } = await signIn.emailCode.sendCode({ emailAddress: identifier });
-      if (error) {
-        setLocalError(errors.fields.identifier?.message || "We could not send a sign-in code. Check the email address and try again.");
+      const { error: createError } = await withAuthTimeout(
+        signIn.create({ identifier }),
+        "Could not start email-code sign-in. Please try again.",
+      );
+      if (createError) {
+        setLocalError(errors.fields.identifier?.message || "We could not find that account. Check the email address and try again.");
+        return;
+      }
+
+      const { error: sendError } = await withAuthTimeout(
+        signIn.emailCode.sendCode(),
+        "Sending the sign-in code took too long. Please try again.",
+      );
+      if (sendError) {
+        setLocalError("We could not send the sign-in code. Please try again in a moment.");
         return;
       }
 
@@ -175,7 +209,7 @@ export default function SignInPage() {
 
   async function handleVerification(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await runOnce(async () => {
+    await runOnce("verify", async () => {
       setLocalError("");
       const value = code.trim();
       if (!value || !verificationStrategy) {
@@ -184,11 +218,17 @@ export default function SignInPage() {
       }
 
       let error: unknown = null;
-      if (verificationStrategy === "email_code_first_factor") ({ error } = await signIn.emailCode.verifyCode({ code: value }));
-      else if (verificationStrategy === "email_code") ({ error } = await signIn.mfa.verifyEmailCode({ code: value }));
-      else if (verificationStrategy === "phone_code") ({ error } = await signIn.mfa.verifyPhoneCode({ code: value }));
-      else if (verificationStrategy === "totp") ({ error } = await signIn.mfa.verifyTOTP({ code: value }));
-      else ({ error } = await signIn.mfa.verifyBackupCode({ code: value }));
+      if (verificationStrategy === "email_code_first_factor") {
+        ({ error } = await withAuthTimeout(signIn.emailCode.verifyCode({ code: value }), "Code verification took too long. Please try again."));
+      } else if (verificationStrategy === "email_code") {
+        ({ error } = await withAuthTimeout(signIn.mfa.verifyEmailCode({ code: value }), "Code verification took too long. Please try again."));
+      } else if (verificationStrategy === "phone_code") {
+        ({ error } = await withAuthTimeout(signIn.mfa.verifyPhoneCode({ code: value }), "Code verification took too long. Please try again."));
+      } else if (verificationStrategy === "totp") {
+        ({ error } = await withAuthTimeout(signIn.mfa.verifyTOTP({ code: value }), "Code verification took too long. Please try again."));
+      } else {
+        ({ error } = await withAuthTimeout(signIn.mfa.verifyBackupCode({ code: value }), "Code verification took too long. Please try again."));
+      }
 
       if (error) {
         setLocalError("That verification code is not valid.");
@@ -215,23 +255,23 @@ export default function SignInPage() {
   }
 
   async function resendVerificationCode() {
-    await runOnce(async () => {
+    await runOnce("verify", async () => {
       setLocalError("");
       if (verificationStrategy === "email_code_first_factor") {
-        const { error } = await signIn.emailCode.sendCode();
+        const { error } = await withAuthTimeout(signIn.emailCode.sendCode(), "Sending another code took too long. Please try again.");
         if (error) setLocalError("We could not send another code yet. Please wait a moment and try again.");
       } else if (verificationStrategy === "email_code") {
-        const { error } = await signIn.mfa.sendEmailCode();
+        const { error } = await withAuthTimeout(signIn.mfa.sendEmailCode(), "Sending another code took too long. Please try again.");
         if (error) setLocalError("We could not send another code yet. Please wait a moment and try again.");
       } else if (verificationStrategy === "phone_code") {
-        const { error } = await signIn.mfa.sendPhoneCode();
+        const { error } = await withAuthTimeout(signIn.mfa.sendPhoneCode(), "Sending another code took too long. Please try again.");
         if (error) setLocalError("We could not send another code yet. Please wait a moment and try again.");
       }
     });
   }
 
   async function startOver() {
-    await runOnce(async () => {
+    await runOnce("reset", async () => {
       await signIn.reset();
       setVerificationStrategy(null);
       setCode("");
@@ -241,7 +281,7 @@ export default function SignInPage() {
   }
 
   async function resetSavedSession() {
-    await runOnce(async () => {
+    await runOnce("reset", async () => {
       await signIn.reset();
       await signOut({ redirectUrl: "/sign-in" });
     });
@@ -296,7 +336,7 @@ export default function SignInPage() {
 
                   {fieldError && <p className="text-sm text-rose-300">{fieldError}</p>}
                   <button disabled={busy} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#18c4ad] to-[#10967f] text-sm font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60">
-                    {busy ? "Signing in..." : "Sign in"}
+                    {activeAction === "password" ? "Signing in..." : "Sign in"}
                     {!busy && <ArrowRight className="size-4" />}
                   </button>
                 </form>
@@ -304,7 +344,7 @@ export default function SignInPage() {
                 <div className="my-5 flex items-center gap-4"><div className="h-px flex-1 bg-slate-700/70" /><span className="text-xs text-slate-500">or</span><div className="h-px flex-1 bg-slate-700/70" /></div>
                 <button type="button" disabled={busy} onClick={() => void handleEmailCodeSignIn()} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-teal-500/50 bg-teal-500/10 text-sm font-semibold text-teal-200 transition hover:bg-teal-500/15 disabled:cursor-not-allowed disabled:opacity-60">
                   <Mail className="size-4" />
-                  {busy ? "Sending code..." : "Sign in with email code"}
+                  {activeAction === "email_code" ? "Sending code..." : "Sign in with email code"}
                 </button>
                 <p className="mt-3 text-center text-xs text-slate-500">Use this if your account was migrated or you do not have a password yet.</p>
 
@@ -324,7 +364,7 @@ export default function SignInPage() {
                     <input id="verification-code" inputMode={verificationStrategy === "backup_code" ? "text" : "numeric"} autoComplete="one-time-code" required disabled={busy} value={code} onChange={(e) => setCode(e.target.value)} className="h-12 w-full rounded-xl border border-slate-600/80 bg-[#0b1921] px-4 text-sm tracking-[0.18em] text-white outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400 disabled:opacity-60" />
                   </div>
                   {fieldError && <p className="text-sm text-rose-300">{fieldError}</p>}
-                  <button disabled={busy} className="h-12 w-full rounded-xl bg-gradient-to-r from-[#18c4ad] to-[#10967f] text-sm font-semibold disabled:opacity-60">{busy ? "Verifying..." : "Verify and continue"}</button>
+                  <button disabled={busy} className="h-12 w-full rounded-xl bg-gradient-to-r from-[#18c4ad] to-[#10967f] text-sm font-semibold disabled:opacity-60">{activeAction === "verify" ? "Verifying..." : "Verify and continue"}</button>
                   {(verificationStrategy === "email_code_first_factor" || verificationStrategy === "email_code" || verificationStrategy === "phone_code") && <button type="button" disabled={busy} onClick={() => void resendVerificationCode()} className="w-full text-center text-sm text-teal-300 disabled:opacity-60">Send another code</button>}
                   <button type="button" disabled={busy} onClick={() => void startOver()} className="w-full text-center text-sm text-slate-400 hover:text-slate-200 disabled:opacity-60">Start over</button>
                 </form>
