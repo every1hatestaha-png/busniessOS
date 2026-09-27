@@ -45,29 +45,33 @@ export default function ForgotPasswordPage() {
     setBusy(true);
     setError("");
 
-    const linkDestination = "/forgot-password?verified=1";
-    const emailRedirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(linkDestination)}`;
-    const { error: otpError } = await supabase.auth.signInWithOtp({
-      email: identifier,
-      options: {
-        shouldCreateUser: false,
-        emailRedirectTo,
-      },
-    });
+    try {
+      const linkDestination = "/forgot-password?verified=1";
+      const redirectTo = `/auth/callback?next=${encodeURIComponent(linkDestination)}`;
+      const response = await fetch("/auth/recovery/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: identifier, redirectTo }),
+      });
 
-    setBusy(false);
-
-    if (otpError) {
-      const message = otpError.message.toLowerCase();
-      if (message.includes("rate") || message.includes("too many")) {
+      if (response.status === 429) {
         setError("Too many recovery attempts. Wait a moment and try again.");
         return;
       }
-      setError("We could not send a recovery code right now. Please try again.");
-      return;
-    }
 
-    setStep("code");
+      if (!response.ok) {
+        setError("We could not send a recovery code right now. Please try again.");
+        return;
+      }
+
+      setEmail(identifier);
+      setCode("");
+      setStep("code");
+    } catch {
+      setError("We could not send a recovery code right now. Please try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function verifyRecoveryCode(event: FormEvent<HTMLFormElement>) {
@@ -101,8 +105,7 @@ export default function ForgotPasswordPage() {
   }
 
   function continueWithoutChangingPassword() {
-    router.replace("/dashboard");
-    router.refresh();
+    window.location.assign("/dashboard");
   }
 
   function changePassword() {
@@ -127,7 +130,7 @@ export default function ForgotPasswordPage() {
 
         {step === "code" ? (
           <>
-            <p className="mt-2 text-sm text-slate-400">A confirmation code has been sent to {email.trim().toLowerCase()}.</p>
+            <p className="mt-2 text-sm text-slate-400">If this email belongs to a MunshiOS account, a confirmation code has been sent to {email.trim().toLowerCase()}.</p>
             <form onSubmit={verifyRecoveryCode} className="mt-6 space-y-4">
               <input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={8} required value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="Confirmation code" className="h-12 w-full rounded-xl border border-slate-600 bg-[#0b1921] px-4 text-center text-lg tracking-[0.28em] outline-none focus:border-teal-400" />
               {error ? <p role="alert" className="text-sm text-red-300">{error}</p> : null}
