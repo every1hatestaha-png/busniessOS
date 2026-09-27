@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Sidebar } from "@/components/layout/sidebar";
 import { GlobalSearch } from "@/components/search/global-search";
-import { DesktopAccountMenu } from "@/components/layout/desktop-logout-button";
+import { DesktopClerkAccountMenu } from "@/components/layout/desktop-clerk-account-menu";
 import { WebAccountMenu } from "@/components/layout/web-account-menu";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { getWorkspaceBranding } from "@/lib/workspace-branding";
@@ -56,7 +56,7 @@ export function TopNav({ workspaceName, workspaceId, workspaces, role, enabledMo
           <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileSearchOpen((open) => !open)} aria-label={mobileSearchOpen ? "Close search" : "Open search"}>
             {mobileSearchOpen ? <X /> : <Search />}
           </Button>
-          {isDesktop ? <DesktopAccountMenu /> : <WebAccountMenu />}
+          {isDesktop ? <DesktopClerkAccountMenu /> : <WebAccountMenu />}
         </div>
       </div>
       {mobileSearchOpen && <GlobalSearch autoFocus onNavigate={() => setMobileSearchOpen(false)} className="mt-3 w-full lg:hidden" />}
