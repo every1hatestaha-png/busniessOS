@@ -6,6 +6,9 @@ import { isAuthEntryPath, isPublicMarketingPath, safeInternalDestination } from 
 import { checkAppRateLimit } from "@/lib/request-rate-limit";
 import { applyCorsHeaders, corsPreflightResponse, isApiV1Request, isTrustedMutationOrigin } from "@/lib/server/cors";
 
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://wunynhbseytthrwceqhg.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "sb_publishable_ZrVgIikHRhL86YNlopG72g_Em-2_wWP";
+
 function d4ProxyLog(_message: string) {
 }
 
@@ -14,17 +17,13 @@ function isMutationMethod(method: string) {
 }
 
 async function hasSupabaseSession(request: NextRequest) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-  if (!url || !key) return false;
-
-  const supabase = createServerClient(url, key, {
+  const supabase = createServerClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     cookies: {
       getAll() {
         return request.cookies.getAll();
       },
       setAll() {
-        // Cookie refresh is handled by the browser client and server callback.
+        // Browser auth and callback routes persist refreshed auth cookies.
       },
     },
   });
@@ -32,7 +31,7 @@ async function hasSupabaseSession(request: NextRequest) {
   return !error && Boolean(data.user?.email_confirmed_at);
 }
 
-const isPreviewWithoutServerAuth = process.env.VERCEL_ENV === "preview" && !process.env.CLERK_SECRET_KEY && !process.env.NEXT_PUBLIC_SUPABASE_URL;
+const isPreviewWithoutServerAuth = process.env.VERCEL_ENV === "preview" && !process.env.CLERK_SECRET_KEY && !SUPABASE_URL;
 const previewPublishableKey = process.env.VERCEL_ENV === "preview"
   ? "pk_test_Zml4dHVyZS5jbGVyay5hY2NvdW50cy5kZXYk"
   : undefined;
@@ -99,8 +98,17 @@ const handleProxy = clerkMiddleware(
     }
 
     if (!isApiV1Request(path)) {
-      const [authState, supabaseSignedIn] = await Promise.all([auth(), hasSupabaseSession(request)]);
-      const signedIn = Boolean(authState.userId) || supabaseSignedIn;
+      const supabaseSignedIn = await hasSupabaseSession(request);
+      let clerkSignedIn = false;
+      if (!supabaseSignedIn) {
+        try {
+          const authState = await auth();
+          clerkSignedIn = Boolean(authState.userId);
+        } catch {
+          clerkSignedIn = false;
+        }
+      }
+      const signedIn = supabaseSignedIn || clerkSignedIn;
 
       if (path === "/login" || path.startsWith("/login/")) {
         if (signedIn) return NextResponse.redirect(new URL("/dashboard", request.url));
