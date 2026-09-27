@@ -1,5 +1,4 @@
 import { publicSiteUrl } from "@/lib/site-url";
-import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -10,10 +9,6 @@ import { MarketingStructuredData } from "@/components/marketing-structured-data"
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 const siteUrl = publicSiteUrl();
-const previewPublishableKey = process.env.VERCEL_ENV === "preview"
-  ? "pk_test_Zml4dHVyZS5jbGVyay5hY2NvdW50cy5kZXYk"
-  : undefined;
-const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || previewPublishableKey;
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -45,26 +40,10 @@ export const metadata: Metadata = {
   },
 };
 
-const clerkLocalization = {
-  signIn: {
-    start: {
-      title: "Sign in to MunshiOS",
-      titleCombined: "Continue to MunshiOS",
-    },
-  },
-  signUp: {
-    start: {
-      title: "Create your MunshiOS account",
-    },
-  },
-};
-
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <ClerkProvider dynamic publishableKey={clerkPublishableKey} afterSignOutUrl="/sign-in" localization={clerkLocalization}>
-      <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-        <body className="flex min-h-full flex-col"><MarketingStructuredData />{children}</body>
-      </html>
-    </ClerkProvider>
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+      <body className="flex min-h-full flex-col"><MarketingStructuredData />{children}</body>
+    </html>
   );
 }
