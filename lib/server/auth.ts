@@ -8,6 +8,8 @@ import { cookies, headers } from "next/headers";
 import { db } from "@/lib/server/db";
 import { getSupabaseAuthUser } from "@/lib/supabase/server";
 
+const CLERK_SERVER_CONFIGURED = Boolean(process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+
 type AuthIdentity = {
   provider: "supabase" | "clerk";
   providerUserId: string;
@@ -34,24 +36,30 @@ const getCurrentIdentity = cache(async (): Promise<AuthIdentity | null> => {
     };
   }
 
-  const session = await auth({ acceptsToken: ["session_token", "oauth_token"] });
-  const clerkUserId = "userId" in session ? session.userId : null;
-  if (!clerkUserId) return null;
+  if (!CLERK_SERVER_CONFIGURED) return null;
 
-  const clerkUser = await (await clerkClient()).users.getUser(clerkUserId);
-  const primaryEmailAddress = clerkUser.primaryEmailAddressId
-    ? clerkUser.emailAddresses.find((email) => email.id === clerkUser.primaryEmailAddressId)
-    : undefined;
-  const email = primaryEmailAddress?.emailAddress?.trim().toLowerCase();
-  if (!email || primaryEmailAddress?.verification?.status !== "verified") return null;
+  try {
+    const session = await auth({ acceptsToken: ["session_token", "oauth_token"] });
+    const clerkUserId = "userId" in session ? session.userId : null;
+    if (!clerkUserId) return null;
 
-  return {
-    provider: "clerk",
-    providerUserId: clerkUserId,
-    email,
-    firstName: clerkUser.firstName,
-    lastName: clerkUser.lastName,
-  };
+    const clerkUser = await (await clerkClient()).users.getUser(clerkUserId);
+    const primaryEmailAddress = clerkUser.primaryEmailAddressId
+      ? clerkUser.emailAddresses.find((email) => email.id === clerkUser.primaryEmailAddressId)
+      : undefined;
+    const email = primaryEmailAddress?.emailAddress?.trim().toLowerCase();
+    if (!email || primaryEmailAddress?.verification?.status !== "verified") return null;
+
+    return {
+      provider: "clerk",
+      providerUserId: clerkUserId,
+      email,
+      firstName: clerkUser.firstName,
+      lastName: clerkUser.lastName,
+    };
+  } catch {
+    return null;
+  }
 });
 
 async function resolveLocalUser(identity: AuthIdentity) {
@@ -84,9 +92,6 @@ async function resolveLocalUser(identity: AuthIdentity) {
 
   const existingByEmail = await db.user.findUnique({ where: { email: identity.email } });
   if (existingByEmail) {
-    // Existing customers retain their original local user id and all workspace
-    // memberships. For Supabase migration we deliberately do not overwrite a
-    // legacy Clerk id. Verified email ownership is the migration bridge.
     if (identity.provider === "clerk") {
       return db.user.update({
         where: { id: existingByEmail.id },
