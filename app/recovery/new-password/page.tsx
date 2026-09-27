@@ -6,6 +6,17 @@ import { Eye, EyeOff, LockKeyhole, ShieldCheck } from "lucide-react";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
+function hasRecoveryAuthMethod(claims: unknown) {
+  if (!claims || typeof claims !== "object") return false;
+  const amr = (claims as { amr?: unknown }).amr;
+  if (!Array.isArray(amr)) return false;
+  return amr.some((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    const method = (entry as { method?: unknown }).method;
+    return method === "otp" || method === "recovery" || method === "magiclink";
+  });
+}
+
 export default function RecoveryNewPasswordPage() {
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -18,14 +29,20 @@ export default function RecoveryNewPasswordPage() {
 
   useEffect(() => {
     let active = true;
-    void supabase.auth.getUser().then(({ data, error: authError }) => {
+    void (async () => {
+      const [{ data: userData, error: userError }, { data: claimsData, error: claimsError }] = await Promise.all([
+        supabase.auth.getUser(),
+        supabase.auth.getClaims(),
+      ]);
       if (!active) return;
-      if (authError || !data.user) {
+
+      if (userError || !userData.user || claimsError || !hasRecoveryAuthMethod(claimsData?.claims)) {
         router.replace("/forgot-password");
         return;
       }
       setCheckingSession(false);
-    });
+    })();
+
     return () => {
       active = false;
     };
@@ -46,6 +63,14 @@ export default function RecoveryNewPasswordPage() {
     }
 
     setBusy(true);
+
+    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
+    if (claimsError || !hasRecoveryAuthMethod(claimsData?.claims)) {
+      setError("Your recovery verification has expired. Request a new confirmation code.");
+      setBusy(false);
+      return;
+    }
+
     const { error: updateError } = await supabase.auth.updateUser({ password });
     if (updateError) {
       setError("We could not update your password. Please request a new recovery code and try again.");
