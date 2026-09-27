@@ -16,6 +16,10 @@ type AuthIdentity = {
   lastName: string | null;
 };
 
+function providerStorageId(identity: AuthIdentity) {
+  return identity.provider === "supabase" ? `supabase:${identity.providerUserId}` : identity.providerUserId;
+}
+
 const getCurrentIdentity = cache(async (): Promise<AuthIdentity | null> => {
   const supabaseUser = await getSupabaseAuthUser();
   if (supabaseUser) {
@@ -51,46 +55,61 @@ const getCurrentIdentity = cache(async (): Promise<AuthIdentity | null> => {
 });
 
 async function resolveLocalUser(identity: AuthIdentity) {
-  if (identity.provider === "clerk") {
-    const existing = await db.user.findUnique({ where: { clerkId: identity.providerUserId } });
-    if (existing) {
-      if (
-        existing.email === identity.email
-        && existing.firstName === identity.firstName
-        && existing.lastName === identity.lastName
-      ) {
-        return existing;
-      }
-      const conflictingEmailOwner = await db.user.findUnique({ where: { email: identity.email } });
-      if (conflictingEmailOwner && conflictingEmailOwner.id !== existing.id) {
-        throw new Error("This verified email is already linked to another MunshiOS user.");
-      }
-      return db.user.update({
-        where: { id: existing.id },
-        data: { email: identity.email, firstName: identity.firstName, lastName: identity.lastName },
-      });
+  const storedProviderId = providerStorageId(identity);
+  const existingByProvider = await db.user.findUnique({ where: { clerkId: storedProviderId } });
+
+  if (existingByProvider) {
+    const conflictingEmailOwner = await db.user.findUnique({ where: { email: identity.email } });
+    if (conflictingEmailOwner && conflictingEmailOwner.id !== existingByProvider.id) {
+      throw new Error("This verified email is already linked to another MunshiOS user.");
     }
+
+    if (
+      existingByProvider.email === identity.email
+      && (identity.firstName === null || existingByProvider.firstName === identity.firstName)
+      && (identity.lastName === null || existingByProvider.lastName === identity.lastName)
+    ) {
+      return existingByProvider;
+    }
+
+    return db.user.update({
+      where: { id: existingByProvider.id },
+      data: {
+        email: identity.email,
+        firstName: identity.firstName ?? existingByProvider.firstName,
+        lastName: identity.lastName ?? existingByProvider.lastName,
+      },
+    });
   }
 
   const existingByEmail = await db.user.findUnique({ where: { email: identity.email } });
   if (existingByEmail) {
+    // Existing customers retain their original local user id and all workspace
+    // memberships. For Supabase migration we deliberately do not overwrite a
+    // legacy Clerk id. Verified email ownership is the migration bridge.
+    if (identity.provider === "clerk") {
+      return db.user.update({
+        where: { id: existingByEmail.id },
+        data: {
+          clerkId: identity.providerUserId,
+          firstName: identity.firstName ?? existingByEmail.firstName,
+          lastName: identity.lastName ?? existingByEmail.lastName,
+        },
+      });
+    }
+
     return db.user.update({
       where: { id: existingByEmail.id },
       data: {
-        ...(identity.provider === "clerk" ? { clerkId: identity.providerUserId } : {}),
         firstName: identity.firstName ?? existingByEmail.firstName,
         lastName: identity.lastName ?? existingByEmail.lastName,
       },
     });
   }
 
-  if (identity.provider === "supabase") {
-    throw new Error("This Supabase account is not linked to a MunshiOS user yet. Complete signup or contact support.");
-  }
-
   return db.user.create({
     data: {
-      clerkId: identity.providerUserId,
+      clerkId: storedProviderId,
       email: identity.email,
       firstName: identity.firstName,
       lastName: identity.lastName,
