@@ -50,7 +50,7 @@ export default function ForgotPasswordPage() {
     const { error: otpError } = await supabase.auth.signInWithOtp({
       email: identifier,
       options: {
-        shouldCreateUser: true,
+        shouldCreateUser: false,
         emailRedirectTo,
       },
     });
