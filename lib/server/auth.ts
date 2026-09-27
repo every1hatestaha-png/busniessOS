@@ -98,14 +98,19 @@ async function resolveLocalUser(identity: AuthIdentity) {
   });
 }
 
-export const getCurrentUser = cache(async () => {
+export const getOptionalCurrentUser = cache(async () => {
   const identity = await getCurrentIdentity();
-  if (!identity) {
+  return identity ? resolveLocalUser(identity) : null;
+});
+
+export const getCurrentUser = cache(async () => {
+  const user = await getOptionalCurrentUser();
+  if (!user) {
     const requestHeaders = await headers();
     const isElectron = (requestHeaders.get("user-agent") || "").includes("Electron");
     redirect(isElectron ? "/desktop-auth" : "/sign-in");
   }
-  return resolveLocalUser(identity);
+  return user;
 });
 
 const getCurrentUserWorkspaceMemberships = cache(async () => {
@@ -120,10 +125,9 @@ const getCurrentUserWorkspaceMemberships = cache(async () => {
 });
 
 export const getCurrentWorkspace = cache(async () => {
-  const identity = await getCurrentIdentity();
-  if (!identity) return null;
+  const user = await getOptionalCurrentUser();
+  if (!user) return null;
 
-  const user = await resolveLocalUser(identity);
   const activeWorkspaceId = (await cookies()).get("businessos_workspace")?.value;
   const memberships = await db.workspaceMember.findMany({
     where: { userId: user.id },
