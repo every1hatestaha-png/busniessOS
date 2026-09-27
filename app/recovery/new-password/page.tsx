@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, LockKeyhole, ShieldCheck } from "lucide-react";
 
@@ -13,11 +13,27 @@ export default function RecoveryNewPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    void supabase.auth.getUser().then(({ data, error: authError }) => {
+      if (!active) return;
+      if (authError || !data.user) {
+        router.replace("/forgot-password");
+        return;
+      }
+      setCheckingSession(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [router, supabase]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || checkingSession) return;
     setError("");
 
     if (password.length < 8) {
@@ -32,13 +48,21 @@ export default function RecoveryNewPasswordPage() {
     setBusy(true);
     const { error: updateError } = await supabase.auth.updateUser({ password });
     if (updateError) {
-      setError(updateError.message);
+      setError("We could not update your password. Please request a new recovery code and try again.");
       setBusy(false);
       return;
     }
 
     router.replace("/dashboard");
     router.refresh();
+  }
+
+  if (checkingSession) {
+    return (
+      <main className="grid min-h-dvh place-items-center bg-[#06131a] px-4 py-10 text-white">
+        <div className="text-sm text-slate-300">Checking secure recovery session...</div>
+      </main>
+    );
   }
 
   return (
@@ -55,7 +79,7 @@ export default function RecoveryNewPasswordPage() {
             <button type="button" onClick={() => setShowPassword((value) => !value)} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-slate-400" aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button>
           </div>
           <input type={showPassword ? "text" : "password"} autoComplete="new-password" minLength={8} required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirm new password" className="h-12 w-full rounded-xl border border-slate-600 bg-[#0b1921] px-4 text-sm outline-none focus:border-teal-400" />
-          {error ? <p className="text-sm text-red-300">{error}</p> : null}
+          {error ? <p role="alert" className="text-sm text-red-300">{error}</p> : null}
           <button type="submit" disabled={busy} className="h-12 w-full rounded-xl bg-emerald-600 text-sm font-semibold hover:bg-emerald-500 disabled:opacity-60">{busy ? "Updating..." : "Update password"}</button>
         </form>
       </div>
