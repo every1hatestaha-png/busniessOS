@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -17,6 +17,21 @@ export default function ForgotPasswordPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const verifiedByLink = new URLSearchParams(window.location.search).get("verified") === "1";
+    if (!verifiedByLink) return;
+
+    let active = true;
+    void supabase.auth.getUser().then(({ data, error: authError }) => {
+      if (!active) return;
+      if (!authError && data.user) setStep("choice");
+    });
+    return () => {
+      active = false;
+    };
+  }, [supabase]);
+
   async function sendRecoveryCode(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
     if (busy) return;
@@ -30,20 +45,26 @@ export default function ForgotPasswordPage() {
     setBusy(true);
     setError("");
 
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(identifier, {
-      redirectTo: `${window.location.origin}/auth/callback?next=/recovery/new-password`,
+    const linkDestination = "/forgot-password?verified=1";
+    const emailRedirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(linkDestination)}`;
+    const { error: otpError } = await supabase.auth.signInWithOtp({
+      email: identifier,
+      options: {
+        shouldCreateUser: true,
+        emailRedirectTo,
+      },
     });
 
     setBusy(false);
 
-    if (resetError) {
-      const message = resetError.message.toLowerCase();
+    if (otpError) {
+      const message = otpError.message.toLowerCase();
       if (message.includes("rate") || message.includes("too many")) {
         setError("Too many recovery attempts. Wait a moment and try again.");
         return;
       }
-      // Keep account existence private. The next screen uses the same response
-      // whether or not the supplied address belongs to a MunshiOS account.
+      setError("We could not send a recovery code right now. Please try again.");
+      return;
     }
 
     setStep("code");
@@ -66,7 +87,7 @@ export default function ForgotPasswordPage() {
     const { error: verifyError } = await supabase.auth.verifyOtp({
       email: identifier,
       token,
-      type: "recovery",
+      type: "email",
     });
 
     setBusy(false);
@@ -106,7 +127,7 @@ export default function ForgotPasswordPage() {
 
         {step === "code" ? (
           <>
-            <p className="mt-2 text-sm text-slate-400">If an account exists for {email.trim().toLowerCase()}, a confirmation code has been sent.</p>
+            <p className="mt-2 text-sm text-slate-400">A confirmation code has been sent to {email.trim().toLowerCase()}.</p>
             <form onSubmit={verifyRecoveryCode} className="mt-6 space-y-4">
               <input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={8} required value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="Confirmation code" className="h-12 w-full rounded-xl border border-slate-600 bg-[#0b1921] px-4 text-center text-lg tracking-[0.28em] outline-none focus:border-teal-400" />
               {error ? <p role="alert" className="text-sm text-red-300">{error}</p> : null}
