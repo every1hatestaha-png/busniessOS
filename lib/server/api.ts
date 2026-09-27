@@ -2,12 +2,12 @@ import "server-only";
 
 import type { Role } from "@prisma/client";
 import { Prisma } from "@prisma/client";
-import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { z, ZodError, type ZodType } from "zod";
 
 import { canPerformAction, type Permission } from "@/lib/server/authorization";
+import { getOptionalCurrentUser } from "@/lib/server/auth";
 import { db } from "@/lib/server/db";
 import { getWorkspaceAccess } from "@/lib/server/subscriptions";
 
@@ -47,75 +47,11 @@ export class ApiError extends Error {
 }
 
 export async function requireApiUser() {
-  const session = await auth({ acceptsToken: ["session_token", "oauth_token"] });
-  const userId = "userId" in session ? session.userId : null;
-  if (!userId) {
+  const user = await getOptionalCurrentUser();
+  if (!user) {
     throw new ApiError(401, "UNAUTHENTICATED", "Authentication is required.");
   }
-
-  const clerkUser = await (await clerkClient()).users.getUser(userId);
-  const primaryEmailAddress = clerkUser.primaryEmailAddressId
-    ? clerkUser.emailAddresses.find((entry) => entry.id === clerkUser.primaryEmailAddressId)
-    : undefined;
-
-  if (!primaryEmailAddress?.emailAddress) {
-    throw new ApiError(403, "USER_EMAIL_REQUIRED", "A verified primary email address is required.");
-  }
-  if (primaryEmailAddress.verification?.status !== "verified") {
-    throw new ApiError(403, "EMAIL_NOT_VERIFIED", "Verify your primary email address before using the MunshiOS API.");
-  }
-
-  const primaryEmail = primaryEmailAddress.emailAddress.trim().toLowerCase();
-  if (!primaryEmail) {
-    throw new ApiError(403, "USER_EMAIL_REQUIRED", "A verified primary email address is required.");
-  }
-
-  const existing = await db.user.findUnique({ where: { clerkId: userId } });
-  if (existing) {
-    if (
-      existing.email === primaryEmail
-      && existing.firstName === clerkUser.firstName
-      && existing.lastName === clerkUser.lastName
-    ) {
-      return existing;
-    }
-
-    const conflictingEmailOwner = await db.user.findUnique({ where: { email: primaryEmail } });
-    if (conflictingEmailOwner && conflictingEmailOwner.id !== existing.id) {
-      throw new ApiError(409, "EMAIL_ALREADY_LINKED", "This verified email is already linked to another MunshiOS user.");
-    }
-
-    return db.user.update({
-      where: { id: existing.id },
-      data: {
-        email: primaryEmail,
-        firstName: clerkUser.firstName,
-        lastName: clerkUser.lastName,
-      },
-    });
-  }
-
-  const existingByEmail = await db.user.findUnique({ where: { email: primaryEmail } });
-  if (existingByEmail) {
-    return db.user.update({
-      where: { id: existingByEmail.id },
-      data: {
-        clerkId: userId,
-        email: primaryEmail,
-        firstName: clerkUser.firstName,
-        lastName: clerkUser.lastName,
-      },
-    });
-  }
-
-  return db.user.create({
-    data: {
-      clerkId: userId,
-      email: primaryEmail,
-      firstName: clerkUser.firstName,
-      lastName: clerkUser.lastName,
-    },
-  });
+  return user;
 }
 
 export async function requireApiContext(permission?: Permission): Promise<ApiContext> {
