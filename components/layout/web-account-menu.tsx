@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useClerk } from "@clerk/nextjs";
 import { LogOut, UserRound } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -9,20 +8,16 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export function WebAccountMenu() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
-  const { signOut: clerkSignOut } = useClerk();
   const [busy, setBusy] = useState(false);
 
   async function signOut() {
     if (busy) return;
     setBusy(true);
-    await supabase.auth.signOut();
     try {
-      await clerkSignOut();
-    } catch {
-      // Clerk is a temporary fallback during the migration. Supabase logout
-      // must still succeed if Clerk is unavailable.
+      await supabase.auth.signOut();
+    } finally {
+      window.location.assign("/sign-in");
     }
-    window.location.assign("/sign-in");
   }
 
   return (
