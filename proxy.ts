@@ -1,4 +1,5 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
+import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 
 import { isAuthEntryPath, isPublicMarketingPath, safeInternalDestination } from "@/lib/auth-routing";
@@ -12,7 +13,26 @@ function isMutationMethod(method: string) {
   return !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase());
 }
 
-const isPreviewWithoutServerAuth = process.env.VERCEL_ENV === "preview" && !process.env.CLERK_SECRET_KEY;
+async function hasSupabaseSession(request: NextRequest) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) return false;
+
+  const supabase = createServerClient(url, key, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
+      },
+      setAll() {
+        // Cookie refresh is handled by the browser client and server callback.
+      },
+    },
+  });
+  const { data, error } = await supabase.auth.getUser();
+  return !error && Boolean(data.user?.email_confirmed_at);
+}
+
+const isPreviewWithoutServerAuth = process.env.VERCEL_ENV === "preview" && !process.env.CLERK_SECRET_KEY && !process.env.NEXT_PUBLIC_SUPABASE_URL;
 const previewPublishableKey = process.env.VERCEL_ENV === "preview"
   ? "pk_test_Zml4dHVyZS5jbGVyay5hY2NvdW50cy5kZXYk"
   : undefined;
@@ -38,6 +58,7 @@ const handleProxy = clerkMiddleware(
 
     if (
       path.startsWith("/desktop-auth") ||
+      path.startsWith("/auth/") ||
       path === "/api/desktop-config" ||
       path === "/api/health" ||
       path === "/api/readiness" ||
@@ -72,20 +93,14 @@ const handleProxy = clerkMiddleware(
       }
 
       d4ProxyLog(`Electron request path=${path} Authorization header attached=YES`);
-      try {
-        const protectedAuth = await auth.protect({ token: ["session_token", "oauth_token"] });
-        d4ProxyLog(`auth.protect passed=YES userIdPresent=${protectedAuth.userId ? "YES" : "NO"}`);
-        return NextResponse.next();
-      } catch (error) {
-        const errorName = error instanceof Error ? error.name : "unknown";
-        d4ProxyLog(`auth.protect passed=NO error=${errorName}`);
-        throw error;
-      }
+      const protectedAuth = await auth.protect({ token: ["session_token", "oauth_token"] });
+      d4ProxyLog(`auth.protect passed=YES userIdPresent=${protectedAuth.userId ? "YES" : "NO"}`);
+      return NextResponse.next();
     }
 
     if (!isApiV1Request(path)) {
-      const authState = await auth();
-      const signedIn = Boolean(authState.userId);
+      const [authState, supabaseSignedIn] = await Promise.all([auth(), hasSupabaseSession(request)]);
+      const signedIn = Boolean(authState.userId) || supabaseSignedIn;
 
       if (path === "/login" || path.startsWith("/login/")) {
         if (signedIn) return NextResponse.redirect(new URL("/dashboard", request.url));
@@ -161,6 +176,7 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
     if (
       isPublicMarketingPath(path)
       || isAuthEntryPath(path)
+      || path.startsWith("/auth/")
       || path === "/api/health"
       || path === "/api/readiness"
       || path === "/api/desktop-config"
