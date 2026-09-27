@@ -14,17 +14,43 @@ function isMutationMethod(method: string) {
   return !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase());
 }
 
-async function hasSupabaseSession(request: NextRequest) {
+function copyResponseCookies(from: NextResponse, to: NextResponse) {
+  for (const cookie of from.cookies.getAll()) {
+    to.cookies.set(cookie);
+  }
+  return to;
+}
+
+function redirectWithCookies(url: URL, authResponse: NextResponse) {
+  return copyResponseCookies(authResponse, NextResponse.redirect(url));
+}
+
+async function getSupabaseSessionState(request: NextRequest) {
+  let response = NextResponse.next({ request });
+
   const supabase = createServerClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     cookies: {
       getAll() {
         return request.cookies.getAll();
       },
-      setAll() {},
+      setAll(cookiesToSet) {
+        for (const { name, value } of cookiesToSet) {
+          request.cookies.set(name, value);
+        }
+
+        response = NextResponse.next({ request });
+        for (const { name, value, options } of cookiesToSet) {
+          response.cookies.set(name, value, options);
+        }
+      },
     },
   });
+
   const { data, error } = await supabase.auth.getUser();
-  return !error && Boolean(data.user?.email_confirmed_at);
+  return {
+    signedIn: !error && Boolean(data.user?.email_confirmed_at),
+    response,
+  };
 }
 
 function publicAuthPath(path: string) {
@@ -68,27 +94,30 @@ async function applyCommonGuards(request: NextRequest) {
   return null;
 }
 
-async function routeWebRequest(request: NextRequest, signedIn: boolean) {
+async function routeWebRequest(request: NextRequest, signedIn: boolean, authResponse: NextResponse) {
   const path = request.nextUrl.pathname;
 
   if (path === "/login" || path.startsWith("/login/")) {
-    if (signedIn) return NextResponse.redirect(new URL("/dashboard", request.url));
+    if (signedIn) return redirectWithCookies(new URL("/dashboard", request.url), authResponse);
     const signInUrl = new URL("/sign-in", request.url);
     const redirectUrl = request.nextUrl.searchParams.get("redirect_url");
     const sanitizedRedirect = redirectUrl ? safeInternalDestination(redirectUrl, request.url, "") : "";
     if (sanitizedRedirect) signInUrl.searchParams.set("redirect_url", sanitizedRedirect);
-    return NextResponse.redirect(signInUrl);
+    return redirectWithCookies(signInUrl, authResponse);
   }
 
   if (path === "/signup" || path.startsWith("/signup/")) {
-    if (signedIn) return NextResponse.redirect(new URL("/dashboard", request.url));
-    return NextResponse.redirect(new URL("/sign-up", request.url));
+    if (signedIn) return redirectWithCookies(new URL("/dashboard", request.url), authResponse);
+    return redirectWithCookies(new URL("/sign-up", request.url), authResponse);
   }
 
   if (isAuthEntryPath(path)) {
     const redirectUrl = request.nextUrl.searchParams.get("redirect_url");
     if (signedIn) {
-      return NextResponse.redirect(new URL(safeInternalDestination(redirectUrl, request.url), request.url));
+      return redirectWithCookies(
+        new URL(safeInternalDestination(redirectUrl, request.url), request.url),
+        authResponse,
+      );
     }
     if (redirectUrl) {
       const sanitizedRedirect = safeInternalDestination(redirectUrl, request.url, "");
@@ -96,22 +125,24 @@ async function routeWebRequest(request: NextRequest, signedIn: boolean) {
         const sanitizedUrl = request.nextUrl.clone();
         if (sanitizedRedirect) sanitizedUrl.searchParams.set("redirect_url", sanitizedRedirect);
         else sanitizedUrl.searchParams.delete("redirect_url");
-        return NextResponse.redirect(sanitizedUrl);
+        return redirectWithCookies(sanitizedUrl, authResponse);
       }
     }
-    return NextResponse.next();
+    return authResponse;
   }
 
-  if (path === "/" && signedIn) return NextResponse.redirect(new URL("/dashboard", request.url));
-  if (isPublicMarketingPath(path) || publicAuthPath(path)) return NextResponse.next();
+  if (path === "/" && signedIn) {
+    return redirectWithCookies(new URL("/dashboard", request.url), authResponse);
+  }
+  if (isPublicMarketingPath(path) || publicAuthPath(path)) return authResponse;
 
   if (!signedIn) {
     const signInUrl = new URL("/sign-in", request.url);
     signInUrl.searchParams.set("redirect_url", `${request.nextUrl.pathname}${request.nextUrl.search}`);
-    return NextResponse.redirect(signInUrl);
+    return redirectWithCookies(signInUrl, authResponse);
   }
 
-  return NextResponse.next();
+  return authResponse;
 }
 
 async function supabaseOnlyProxy(request: NextRequest) {
@@ -131,13 +162,13 @@ async function supabaseOnlyProxy(request: NextRequest) {
     );
   }
 
-  const signedIn = await hasSupabaseSession(request);
+  const { signedIn, response } = await getSupabaseSessionState(request);
 
   if (isApiV1Request(path)) {
-    return applyCorsHeaders(NextResponse.next(), request.headers.get("origin"));
+    return applyCorsHeaders(response, request.headers.get("origin"));
   }
 
-  return routeWebRequest(request, signedIn);
+  return routeWebRequest(request, signedIn, response);
 }
 
 const previewPublishableKey = process.env.VERCEL_ENV === "preview"
@@ -165,7 +196,7 @@ const clerkProxy = clerkMiddleware(
       return applyCorsHeaders(NextResponse.next(), request.headers.get("origin"));
     }
 
-    const supabaseSignedIn = await hasSupabaseSession(request);
+    const { signedIn: supabaseSignedIn, response } = await getSupabaseSessionState(request);
     let signedIn = supabaseSignedIn;
     if (!signedIn) {
       try {
@@ -176,7 +207,7 @@ const clerkProxy = clerkMiddleware(
       }
     }
 
-    return routeWebRequest(request, signedIn);
+    return routeWebRequest(request, signedIn, response);
   },
   {
     publishableKey: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || previewPublishableKey,
