@@ -3,6 +3,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 
 import { writeAudit } from "@/lib/server/audit";
+import { canPerformAction } from "@/lib/server/authorization";
 import { db } from "@/lib/server/db";
 import type { ServiceContext } from "@/lib/server/sales";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
@@ -16,6 +17,7 @@ function invoiceStatus(amount: Prisma.Decimal, settled: Prisma.Decimal) {
 }
 
 export async function allocateCustomerCredit(context: ServiceContext, input: CustomerCreditAllocationInput) {
+  if (!canPerformAction(context.role, "financial.manage")) throw new CustomerCreditDomainError("Unauthorized");
   const data = customerCreditAllocationSchema.parse(input);
   const amount = new Prisma.Decimal(data.amount);
   return withSerializableRetry(async (tx) => {
