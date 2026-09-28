@@ -4,7 +4,7 @@ import { createGoodsReceipt, listGoodsReceipts, PurchaseDomainError } from "@/li
 import { goodsReceiptSchema } from "@/lib/validation/purchase";
 
 export const GET = apiHandler(async (request: Request) => {
-  const context = await requireApiContext("business.read");
+  const context = await requireApiContext("grn.create");
   const url = new URL(request.url);
   const purchaseOrderId = url.searchParams.get("purchaseOrderId");
   if (!purchaseOrderId) throw new ApiError(422, "VALIDATION_ERROR", "purchaseOrderId query parameter is required.");
