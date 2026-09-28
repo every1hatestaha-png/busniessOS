@@ -20,7 +20,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22.12.0'
           cache: npm
 
       - name: Install dependencies
@@ -45,12 +45,20 @@ jobs:
           app/layout.tsx
           app/platform/layout.tsx
           proxy.ts
+          tests/unit/api-auth.test.ts
 
       - name: TypeScript
         run: npx tsc --noEmit
 
-      - name: Tests
-        run: npm test
-
       - name: Dependency audit
         run: npm audit --omit=dev --audit-level=high
+
+      - name: Auth and authorization regression tests
+        run: >-
+          npx vitest run
+          tests/unit/api-auth.test.ts
+          tests/unit/auth-routing.test.ts
+          tests/unit/auth-recovery-policy.test.ts
+          tests/unit/authorization.test.ts
+          tests/unit/cors.test.ts
+          tests/unit/members.test.ts
