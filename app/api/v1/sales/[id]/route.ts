@@ -4,6 +4,27 @@ import { canPerformAction } from "@/lib/server/authorization";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
+type ProductView = NonNullable<Awaited<ReturnType<typeof getSale>>>["items"][number]["product"];
+
+function staffProductView(product: ProductView) {
+  return {
+    id: product.id,
+    workspaceId: product.workspaceId,
+    name: product.name,
+    sku: product.sku,
+    description: product.description,
+    category: product.category,
+    sellingPrice: product.sellingPrice,
+    stockQuantity: product.stockQuantity,
+    reorderLevel: product.reorderLevel,
+    defaultWeightKg: product.defaultWeightKg,
+    unit: product.unit,
+    status: product.status,
+    createdAt: product.createdAt,
+    updatedAt: product.updatedAt,
+  };
+}
+
 export const GET = apiHandler(async (_request: Request, route: RouteContext) => {
   const context = await requireApiContext("business.read");
   const { id } = await route.params;
@@ -21,5 +42,13 @@ export const GET = apiHandler(async (_request: Request, route: RouteContext) => 
       phone: sale.customer.phone,
       address: sale.customer.address,
     },
+    items: sale.items.map((item) => ({
+      ...item,
+      product: staffProductView(item.product),
+      bomConsumptions: item.bomConsumptions.map((consumption) => ({
+        ...consumption,
+        componentProduct: staffProductView(consumption.componentProduct),
+      })),
+    })),
   });
 });
