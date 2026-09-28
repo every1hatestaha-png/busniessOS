@@ -13,7 +13,7 @@ import { formatPKR, getCreditStatus } from "@/lib/utils";
 
 const selectClassName = "h-8 rounded-lg border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-neutral-400 focus:ring-2 focus:ring-neutral-200";
 
-export function CustomerTable({ customers }: { customers: CustomerListItem[] }) {
+export function CustomerTable({ customers, canViewFinancials = true }: { customers: CustomerListItem[]; canViewFinancials?: boolean }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("ALL");
   const [city, setCity] = useState("ALL");
@@ -23,6 +23,8 @@ export function CustomerTable({ customers }: { customers: CustomerListItem[] }) 
     const searchable = [customer.name, customer.companyName, ...splitContactPhones(customer.phone), customer.email, customer.city].join(" ").toLowerCase();
     return searchable.includes(deferredQuery) && (status === "ALL" || customer.status === status) && (city === "ALL" || customer.city === city);
   });
+
+  const columnCount = canViewFinancials ? 6 : 4;
 
   return (
     <div>
@@ -42,23 +44,22 @@ export function CustomerTable({ customers }: { customers: CustomerListItem[] }) 
         </div>
       </div>
       <div className="border-t border-neutral-200">
-        <Table className="min-w-[860px]">
-          <TableHeader className="bg-neutral-50/80"><TableRow><TableHead>Customer</TableHead><TableHead className="text-right">Receivable</TableHead><TableHead className="text-right">Credit limit</TableHead><TableHead>Status</TableHead><TableHead>Contact</TableHead><TableHead>City</TableHead></TableRow></TableHeader>
+        <Table className={canViewFinancials ? "min-w-[860px]" : "min-w-[620px]"}>
+          <TableHeader className="bg-neutral-50/80"><TableRow><TableHead>Customer</TableHead>{canViewFinancials && <><TableHead className="text-right">Receivable</TableHead><TableHead className="text-right">Credit limit</TableHead></>}<TableHead>Status</TableHead><TableHead>Contact</TableHead><TableHead>City</TableHead></TableRow></TableHeader>
           <TableBody>
             {filtered.map((customer) => {
               const phones = splitContactPhones(customer.phone);
               return (
                 <TableRow key={customer.id}>
                   <TableCell><Link prefetch={false} href={`/customers/${customer.id}`} className="font-medium text-neutral-950 hover:underline">{customer.companyName}</Link><p className="text-xs text-neutral-500">{customer.name}</p></TableCell>
-                  <TableCell className="text-right"><p className="font-semibold tabular-nums">{formatPKR(customer.currentBalance)}</p><StatusBadge status={getCreditStatus(customer.currentBalance, customer.creditLimit)} /></TableCell>
-                  <TableCell className="text-right tabular-nums">{customer.creditLimit > 0 ? formatPKR(customer.creditLimit) : "Not configured"}</TableCell>
+                  {canViewFinancials && <><TableCell className="text-right"><p className="font-semibold tabular-nums">{formatPKR(customer.currentBalance)}</p><StatusBadge status={getCreditStatus(customer.currentBalance, customer.creditLimit)} /></TableCell><TableCell className="text-right tabular-nums">{customer.creditLimit > 0 ? formatPKR(customer.creditLimit) : "Not configured"}</TableCell></>}
                   <TableCell><StatusBadge status={customer.status} /></TableCell>
                   <TableCell><p>{phones[0] || "No phone"}{phones.length > 1 ? <span className="ml-1 text-xs text-neutral-400">+{phones.length - 1} more</span> : null}</p><p className="text-xs text-neutral-500">{customer.email}</p></TableCell>
                   <TableCell>{customer.city}</TableCell>
                 </TableRow>
               );
             })}
-            {filtered.length === 0 && <TableRow><TableCell colSpan={6} className="h-28 text-center text-neutral-500">No customers match these filters.</TableCell></TableRow>}
+            {filtered.length === 0 && <TableRow><TableCell colSpan={columnCount} className="h-28 text-center text-neutral-500">No customers match these filters.</TableCell></TableRow>}
           </TableBody>
         </Table>
       </div>
