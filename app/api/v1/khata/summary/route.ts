@@ -2,6 +2,6 @@ import { getKhataSummary } from "@/lib/server/khata";
 import { apiData, apiHandler, requireApiContext } from "@/lib/server/api";
 
 export const GET = apiHandler(async () => {
-  const { workspaceId } = await requireApiContext("business.read");
+  const { workspaceId } = await requireApiContext("financial.manage");
   return apiData(await getKhataSummary(workspaceId));
 });
