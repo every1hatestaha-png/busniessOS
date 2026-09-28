@@ -18,6 +18,7 @@ export default async function InventoryPage() {
     getWarehouseStockMode(workspaceId),
   ]);
   const canWriteProducts = canPerformAction(role, "products.write");
+  const canViewFinancials = canPerformAction(role, "financial.manage");
   const canTransferStock = role === "OWNER" || role === "ADMIN" || role === "MANAGER";
   const warehouses = warehouseMode === "MANAGED" ? await listActiveStockWarehouses(workspaceId) : [];
   const warehouseBalances = warehouseMode === "MANAGED" && canTransferStock
@@ -35,10 +36,9 @@ export default async function InventoryPage() {
       `
     : [];
   const totalUnits = products.reduce((sum, product) => sum + product.stockQuantity, 0);
-  const inventoryValue = products.reduce(
-    (sum, product) => sum + calculateInventoryValue(product.stockQuantity, product.costPrice),
-    0,
-  );
+  const inventoryValue = canViewFinancials
+    ? products.reduce((sum, product) => sum + calculateInventoryValue(product.stockQuantity, product.costPrice), 0)
+    : 0;
   const lowStock = products.filter(
     (product) => product.status === "ACTIVE" && isReorderAttentionNeeded(product.stockQuantity, product.reorderLevel),
   ).length;
@@ -47,12 +47,12 @@ export default async function InventoryPage() {
     <main className="mx-auto max-w-[1600px] space-y-6">
       <PageHeader
         title="Inventory"
-        description="Track stock levels, pricing, and products that need attention."
+        description={canViewFinancials ? "Track stock levels, pricing, and products that need attention." : "Track stock levels and products that need attention."}
         action={canWriteProducts ? { label: "New product", href: "/inventory/new", icon: PackagePlus } : undefined}
       />
-      <section className="grid gap-3 sm:grid-cols-3">
+      <section className={`grid gap-3 ${canViewFinancials ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
         <MetricCard label="Stock on hand" value={`${totalUnits} units`} detail={`${products.length} product lines`} icon={Boxes} />
-        <MetricCard label="Inventory value" value={formatPKR(inventoryValue)} detail="Valued at current cost" icon={Warehouse} />
+        {canViewFinancials && <MetricCard label="Inventory value" value={formatPKR(inventoryValue)} detail="Valued at current cost" icon={Warehouse} />}
         <MetricCard label="Needs attention" value={`${lowStock} products`} detail="At or below configured reorder level" icon={AlertTriangle} />
       </section>
       {warehouseMode === "MANAGED" && canTransferStock && warehouses.length >= 2 && (
@@ -62,7 +62,7 @@ export default async function InventoryPage() {
           balances={warehouseBalances.map((row) => ({ ...row, quantity: Number(row.quantity) }))}
         />
       )}
-      <InventoryTable products={products} canCreate={canWriteProducts} />
+      <InventoryTable products={products} canCreate={canWriteProducts} canViewFinancials={canViewFinancials} />
     </main>
   );
 }
