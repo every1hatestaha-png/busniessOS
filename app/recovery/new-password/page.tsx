@@ -5,6 +5,12 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { ArrowLeft, Eye, EyeOff, LockKeyhole, ShieldCheck } from "lucide-react";
 
+import {
+  MAX_NEW_PASSWORD_LENGTH,
+  MIN_NEW_PASSWORD_LENGTH,
+  isAcceptableNewPassword,
+} from "@/lib/auth-password-policy";
+
 export default function RecoveryNewPasswordPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -39,8 +45,8 @@ export default function RecoveryNewPasswordPage() {
     if (busy || checkingSession) return;
     setError("");
 
-    if (password.length < 8 || password.length > 128) {
-      setError("Use a password between 8 and 128 characters.");
+    if (!isAcceptableNewPassword(password)) {
+      setError(`Use a password between ${MIN_NEW_PASSWORD_LENGTH} and ${MAX_NEW_PASSWORD_LENGTH} characters.`);
       return;
     }
     if (password !== confirmPassword) {
@@ -96,21 +102,21 @@ export default function RecoveryNewPasswordPage() {
             <ShieldCheck className="size-5 text-emerald-300" />
           </div>
           <h1 className="mt-6 text-[34px] font-semibold tracking-[-0.045em] text-white">Choose a new password</h1>
-          <p className="mt-2 text-[15px] leading-6 text-slate-400">Use a password you don&apos;t use elsewhere. Your recovery verification expires shortly.</p>
+          <p className="mt-2 text-[15px] leading-6 text-slate-400">Use at least {MIN_NEW_PASSWORD_LENGTH} characters and don&apos;t reuse a password from another service. Your recovery verification expires shortly.</p>
 
           <form onSubmit={handleSubmit} className="mt-7 space-y-4">
             <div>
               <label htmlFor="new-password" className="mb-2 block text-sm font-medium text-slate-200">New password</label>
               <div className="relative">
                 <LockKeyhole className="absolute left-4 top-1/2 size-[18px] -translate-y-1/2 text-slate-500" />
-                <input id="new-password" type={showPassword ? "text" : "password"} autoComplete="new-password" minLength={8} maxLength={128} required disabled={busy} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="8–128 characters" className="h-[52px] w-full rounded-xl border border-white/10 bg-white/[0.035] pl-12 pr-12 text-sm text-white outline-none transition placeholder:text-slate-600 hover:border-white/15 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-400/10 disabled:opacity-60" />
+                <input id="new-password" type={showPassword ? "text" : "password"} autoComplete="new-password" minLength={MIN_NEW_PASSWORD_LENGTH} maxLength={MAX_NEW_PASSWORD_LENGTH} required disabled={busy} value={password} onChange={(event) => setPassword(event.target.value)} placeholder={`${MIN_NEW_PASSWORD_LENGTH}–${MAX_NEW_PASSWORD_LENGTH} characters`} className="h-[52px] w-full rounded-xl border border-white/10 bg-white/[0.035] pl-12 pr-12 text-sm text-white outline-none transition placeholder:text-slate-600 hover:border-white/15 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-400/10 disabled:opacity-60" />
                 <button type="button" disabled={busy} onClick={() => setShowPassword((value) => !value)} className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-500 transition hover:bg-white/[0.05] hover:text-slate-200 disabled:opacity-50" aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff className="size-[18px]" /> : <Eye className="size-[18px]" />}</button>
               </div>
             </div>
 
             <div>
               <label htmlFor="confirm-password" className="mb-2 block text-sm font-medium text-slate-200">Confirm new password</label>
-              <input id="confirm-password" type={showPassword ? "text" : "password"} autoComplete="new-password" minLength={8} maxLength={128} required disabled={busy} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Enter it again" className="h-[52px] w-full rounded-xl border border-white/10 bg-white/[0.035] px-4 text-sm text-white outline-none transition placeholder:text-slate-600 hover:border-white/15 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-400/10 disabled:opacity-60" />
+              <input id="confirm-password" type={showPassword ? "text" : "password"} autoComplete="new-password" minLength={MIN_NEW_PASSWORD_LENGTH} maxLength={MAX_NEW_PASSWORD_LENGTH} required disabled={busy} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Enter it again" className="h-[52px] w-full rounded-xl border border-white/10 bg-white/[0.035] px-4 text-sm text-white outline-none transition placeholder:text-slate-600 hover:border-white/15 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-400/10 disabled:opacity-60" />
             </div>
 
             {error ? <p role="alert" className="rounded-xl border border-red-400/20 bg-red-500/[0.07] px-4 py-3 text-sm leading-5 text-red-200">{error}</p> : null}
