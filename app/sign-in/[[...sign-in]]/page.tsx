@@ -24,12 +24,14 @@ export default function SignInPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(searchParams.get("error") || "");
+  const [showMigrationHelp, setShowMigrationHelp] = useState(false);
 
   async function handleSignIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
     setBusy(true);
     setError("");
+    setShowMigrationHelp(false);
 
     const identifier = email.trim().toLowerCase();
     if (!identifier || !password) {
@@ -44,13 +46,17 @@ export default function SignInPage() {
     });
 
     if (signInError) {
-      setError(signInError.message === "Invalid login credentials" ? "Email or password is incorrect." : signInError.message);
+      if (signInError.message === "Invalid login credentials") {
+        setError("Email or password is incorrect.");
+        setShowMigrationHelp(true);
+      } else {
+        setError(signInError.message);
+      }
       setBusy(false);
       return;
     }
 
-    router.replace(safeDestination(searchParams.get("redirect_url")));
-    router.refresh();
+    window.location.assign(safeDestination(searchParams.get("redirect_url")));
   }
 
   return (
@@ -94,11 +100,22 @@ export default function SignInPage() {
 
               {error ? <p role="alert" className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</p> : null}
 
+              {showMigrationHelp ? (
+                <div className="rounded-xl border border-teal-400/30 bg-teal-500/10 px-4 py-3 text-sm leading-6 text-teal-50">
+                  Existing MunshiOS customer from the previous login system? Your old password may not work after the auth migration. Verify your email once and choose a new password to activate permanent Supabase login.
+                  <Link href="/forgot-password" className="ml-1 font-semibold text-teal-300 underline underline-offset-2 hover:text-teal-200">Activate existing account</Link>
+                </div>
+              ) : null}
+
               <button type="submit" disabled={busy} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60">
                 {busy ? "Signing in..." : "Sign in"}
                 {!busy ? <ArrowRight className="size-4" /> : null}
               </button>
             </form>
+
+            <div className="mt-5 rounded-xl border border-slate-700/80 bg-[#0b1921]/70 px-4 py-3 text-sm text-slate-300">
+              Used MunshiOS before the login-system upgrade? <Link href="/forgot-password" className="font-medium text-teal-300 hover:text-teal-200">Activate your existing account with an email code</Link>.
+            </div>
 
             <p className="mt-7 text-center text-sm text-slate-400">
               New to MunshiOS? <Link href="/sign-up" className="font-medium text-teal-300 hover:text-teal-200">Create an account</Link>
