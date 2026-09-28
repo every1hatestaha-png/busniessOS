@@ -2,19 +2,14 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { FormEvent, useEffect, useState } from "react";
 import { ArrowLeft, CheckCircle2, KeyRound, Mail, ShieldCheck } from "lucide-react";
-
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type RecoveryStep = "email" | "code" | "choice";
 
 const RESEND_COOLDOWN_SECONDS = 30;
 
 export default function ForgotPasswordPage() {
-  const router = useRouter();
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [step, setStep] = useState<RecoveryStep>("email");
@@ -28,14 +23,15 @@ export default function ForgotPasswordPage() {
     if (!verifiedByLink) return;
 
     let active = true;
-    void supabase.auth.getUser().then(({ data, error: authError }) => {
+    void fetch("/auth/recovery/status", { cache: "no-store" }).then((response) => {
       if (!active) return;
-      if (!authError && data.user) setStep("choice");
-    });
+      if (response.ok) setStep("choice");
+    }).catch(() => undefined);
+
     return () => {
       active = false;
     };
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -103,20 +99,25 @@ export default function ForgotPasswordPage() {
     setBusy(true);
     setError("");
 
-    const { error: verifyError } = await supabase.auth.verifyOtp({
-      email: identifier,
-      token,
-      type: "email",
-    });
+    try {
+      const response = await fetch("/auth/recovery/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: identifier, token }),
+      });
 
-    setBusy(false);
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        setError(payload?.error || "That confirmation code is invalid or has expired.");
+        return;
+      }
 
-    if (verifyError) {
-      setError("That confirmation code is invalid or has expired.");
-      return;
+      setStep("choice");
+    } catch {
+      setError("We could not verify that code right now. Please try again.");
+    } finally {
+      setBusy(false);
     }
-
-    setStep("choice");
   }
 
   function continueWithoutChangingPassword() {
@@ -124,7 +125,7 @@ export default function ForgotPasswordPage() {
   }
 
   function changePassword() {
-    router.push("/recovery/new-password");
+    window.location.assign("/recovery/new-password");
   }
 
   return (
@@ -180,7 +181,7 @@ export default function ForgotPasswordPage() {
               <CheckCircle2 className="size-6 text-emerald-300" />
             </div>
             <h1 className="mt-6 text-[34px] font-semibold tracking-[-0.045em] text-white">Email verified</h1>
-            <p className="mt-2 text-[15px] leading-6 text-slate-400">Your Supabase session is active. You can continue now or set a password for future email + password sign-in.</p>
+            <p className="mt-2 text-[15px] leading-6 text-slate-400">Your identity is verified. Continue to your workspace now, or set a password for future email + password sign-ins.</p>
 
             <div className="mt-7 space-y-3">
               <button type="button" onClick={continueWithoutChangingPassword} className="h-[52px] w-full rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-[#03251b] transition hover:bg-emerald-400">Continue to dashboard</button>
