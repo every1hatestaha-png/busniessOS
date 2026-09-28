@@ -22,6 +22,17 @@ function providerStorageId(identity: AuthIdentity) {
   return identity.provider === "supabase" ? `supabase:${identity.providerUserId}` : identity.providerUserId;
 }
 
+async function findLocalUserByEmail(email: string) {
+  return db.user.findFirst({
+    where: {
+      email: {
+        equals: email,
+        mode: "insensitive",
+      },
+    },
+  });
+}
+
 const getCurrentIdentity = cache(async (): Promise<AuthIdentity | null> => {
   const supabaseUser = await getSupabaseAuthUser();
   if (supabaseUser) {
@@ -36,6 +47,8 @@ const getCurrentIdentity = cache(async (): Promise<AuthIdentity | null> => {
     };
   }
 
+  // A present-but-unverified Supabase identity must never silently fall through
+  // to Clerk. That would let two auth providers disagree about the same browser.
   if (!CLERK_SERVER_CONFIGURED) return null;
 
   try {
@@ -67,7 +80,7 @@ async function resolveLocalUser(identity: AuthIdentity) {
   const existingByProvider = await db.user.findUnique({ where: { clerkId: storedProviderId } });
 
   if (existingByProvider) {
-    const conflictingEmailOwner = await db.user.findUnique({ where: { email: identity.email } });
+    const conflictingEmailOwner = await findLocalUserByEmail(identity.email);
     if (conflictingEmailOwner && conflictingEmailOwner.id !== existingByProvider.id) {
       throw new Error("This verified email is already linked to another MunshiOS user.");
     }
@@ -90,13 +103,14 @@ async function resolveLocalUser(identity: AuthIdentity) {
     });
   }
 
-  const existingByEmail = await db.user.findUnique({ where: { email: identity.email } });
+  const existingByEmail = await findLocalUserByEmail(identity.email);
   if (existingByEmail) {
     if (identity.provider === "clerk") {
       return db.user.update({
         where: { id: existingByEmail.id },
         data: {
           clerkId: identity.providerUserId,
+          email: identity.email,
           firstName: identity.firstName ?? existingByEmail.firstName,
           lastName: identity.lastName ?? existingByEmail.lastName,
         },
@@ -106,6 +120,7 @@ async function resolveLocalUser(identity: AuthIdentity) {
     return db.user.update({
       where: { id: existingByEmail.id },
       data: {
+        email: identity.email,
         firstName: identity.firstName ?? existingByEmail.firstName,
         lastName: identity.lastName ?? existingByEmail.lastName,
       },
