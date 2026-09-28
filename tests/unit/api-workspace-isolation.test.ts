@@ -21,7 +21,7 @@ vi.mock("@/lib/server/subscriptions", () => ({
 }));
 vi.mock("@/lib/server/error-monitoring", () => ({ reportServerFailure: vi.fn() }));
 
-import { ApiError, requireApiContext } from "@/lib/server/api";
+import { requireApiContext } from "@/lib/server/api";
 
 const user = { id: "user-1", email: "owner@example.com", firstName: "Owner", lastName: "One" };
 const workspace = {
@@ -63,7 +63,7 @@ describe("API workspace isolation", () => {
     mocks.cookiesGet.mockReturnValue({ value: foreignWorkspaceId });
     mocks.findMembership.mockResolvedValue(null);
 
-    await expect(requireApiContext("business.read")).rejects.toMatchObject<ApiError>({
+    await expect(requireApiContext("business.read")).rejects.toMatchObject({
       status: 403,
       code: "WORKSPACE_REQUIRED",
     });
@@ -76,7 +76,7 @@ describe("API workspace isolation", () => {
     mocks.cookiesGet.mockReturnValue({ value: workspace.id });
     mocks.findMembership.mockResolvedValue({ workspaceId: workspace.id, role: "STAFF", workspace });
 
-    await expect(requireApiContext("financial.manage")).rejects.toMatchObject<ApiError>({
+    await expect(requireApiContext("financial.manage")).rejects.toMatchObject({
       status: 403,
       code: "FORBIDDEN",
     });
