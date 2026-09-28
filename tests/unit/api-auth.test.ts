@@ -9,6 +9,7 @@ const authMock = vi.hoisted(() => vi.fn());
 const getClerkUserMock = vi.hoisted(() => vi.fn());
 const getSupabaseAuthUserMock = vi.hoisted(() => vi.fn());
 const findUniqueMock = vi.hoisted(() => vi.fn());
+const findFirstMock = vi.hoisted(() => vi.fn());
 const updateMock = vi.hoisted(() => vi.fn());
 const createMock = vi.hoisted(() => vi.fn());
 
@@ -25,6 +26,7 @@ vi.mock("@/lib/server/db", () => ({
   db: {
     user: {
       findUnique: findUniqueMock,
+      findFirst: findFirstMock,
       update: updateMock,
       create: createMock,
     },
@@ -68,12 +70,22 @@ function verifiedSupabaseUser(email = "owner@example.com") {
   };
 }
 
+const insensitiveEmailLookup = (email: string) => ({
+  where: {
+    email: {
+      equals: email,
+      mode: "insensitive",
+    },
+  },
+});
+
 describe("API authentication contract", () => {
   beforeEach(() => {
     authMock.mockReset();
     getClerkUserMock.mockReset();
     getSupabaseAuthUserMock.mockReset();
     findUniqueMock.mockReset();
+    findFirstMock.mockReset();
     updateMock.mockReset();
     createMock.mockReset();
     getSupabaseAuthUserMock.mockResolvedValue(null);
@@ -81,21 +93,19 @@ describe("API authentication contract", () => {
 
   it("prefers a verified Supabase identity and preserves an existing local user id", async () => {
     getSupabaseAuthUserMock.mockResolvedValue(verifiedSupabaseUser());
-    findUniqueMock
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ ...localUser, clerkId: "legacy-clerk-user" });
+    findUniqueMock.mockResolvedValueOnce(null);
+    findFirstMock.mockResolvedValueOnce({ ...localUser, clerkId: "legacy-clerk-user" });
     updateMock.mockResolvedValue({ ...localUser, clerkId: "legacy-clerk-user" });
 
     await expect(requireApiUser()).resolves.toMatchObject({ id: "local-user", email: "owner@example.com" });
-    expect(findUniqueMock).toHaveBeenNthCalledWith(1, {
+    expect(findUniqueMock).toHaveBeenCalledWith({
       where: { clerkId: "supabase:supabase-user" },
     });
-    expect(findUniqueMock).toHaveBeenNthCalledWith(2, {
-      where: { email: "owner@example.com" },
-    });
+    expect(findFirstMock).toHaveBeenCalledWith(insensitiveEmailLookup("owner@example.com"));
     expect(updateMock).toHaveBeenCalledWith({
       where: { id: "local-user" },
       data: {
+        email: "owner@example.com",
         firstName: "Owner",
         lastName: "User",
       },
@@ -104,9 +114,29 @@ describe("API authentication contract", () => {
     expect(createMock).not.toHaveBeenCalled();
   });
 
+  it("matches legacy mixed-case local emails without creating a duplicate user", async () => {
+    getSupabaseAuthUserMock.mockResolvedValue(verifiedSupabaseUser("OWNER@EXAMPLE.COM"));
+    findUniqueMock.mockResolvedValueOnce(null);
+    findFirstMock.mockResolvedValueOnce({ ...localUser, email: "Owner@Example.com", clerkId: "legacy-clerk-user" });
+    updateMock.mockResolvedValue({ ...localUser, clerkId: "legacy-clerk-user" });
+
+    await expect(requireApiUser()).resolves.toMatchObject({ id: "local-user" });
+    expect(findFirstMock).toHaveBeenCalledWith(insensitiveEmailLookup("owner@example.com"));
+    expect(updateMock).toHaveBeenCalledWith({
+      where: { id: "local-user" },
+      data: {
+        email: "owner@example.com",
+        firstName: "Owner",
+        lastName: "User",
+      },
+    });
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
   it("creates a new local user for a new verified Supabase customer", async () => {
     getSupabaseAuthUserMock.mockResolvedValue(verifiedSupabaseUser("new@example.com"));
-    findUniqueMock.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+    findUniqueMock.mockResolvedValueOnce(null);
+    findFirstMock.mockResolvedValueOnce(null);
     createMock.mockResolvedValue({ ...localUser, clerkId: "supabase:supabase-user", email: "new@example.com" });
 
     await expect(requireApiUser()).resolves.toMatchObject({ email: "new@example.com" });
@@ -123,9 +153,8 @@ describe("API authentication contract", () => {
 
   it("resolves an already-linked Supabase identity directly by provider id", async () => {
     getSupabaseAuthUserMock.mockResolvedValue(verifiedSupabaseUser());
-    findUniqueMock
-      .mockResolvedValueOnce({ ...localUser, clerkId: "supabase:supabase-user" })
-      .mockResolvedValueOnce({ ...localUser, clerkId: "supabase:supabase-user" });
+    findUniqueMock.mockResolvedValueOnce({ ...localUser, clerkId: "supabase:supabase-user" });
+    findFirstMock.mockResolvedValueOnce({ ...localUser, clerkId: "supabase:supabase-user" });
 
     await expect(requireApiUser()).resolves.toMatchObject({ id: "local-user" });
     expect(updateMock).not.toHaveBeenCalled();
@@ -146,6 +175,7 @@ describe("API authentication contract", () => {
     });
     expect(authMock).not.toHaveBeenCalled();
     expect(findUniqueMock).not.toHaveBeenCalled();
+    expect(findFirstMock).not.toHaveBeenCalled();
   });
 
   it.each(["oauth_token", "session_token"])(
@@ -153,9 +183,8 @@ describe("API authentication contract", () => {
     async (tokenType) => {
       authMock.mockResolvedValue({ userId: "clerk-user", tokenType });
       getClerkUserMock.mockResolvedValue(verifiedClerkUser());
-      findUniqueMock
-        .mockResolvedValueOnce(localUser)
-        .mockResolvedValueOnce(localUser);
+      findUniqueMock.mockResolvedValueOnce(localUser);
+      findFirstMock.mockResolvedValueOnce(localUser);
 
       await expect(requireApiUser()).resolves.toEqual(localUser);
       expect(authMock).toHaveBeenCalledWith({
@@ -170,7 +199,8 @@ describe("API authentication contract", () => {
   it("provisions a new legacy Clerk user only from a verified primary email", async () => {
     authMock.mockResolvedValue({ userId: "clerk-user", tokenType: "oauth_token" });
     getClerkUserMock.mockResolvedValue(verifiedClerkUser());
-    findUniqueMock.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+    findUniqueMock.mockResolvedValueOnce(null);
+    findFirstMock.mockResolvedValueOnce(null);
     createMock.mockResolvedValue(localUser);
 
     await expect(requireApiUser()).resolves.toEqual(localUser);
@@ -187,9 +217,8 @@ describe("API authentication contract", () => {
   it("links an existing verified-email local user to the current legacy Clerk identity", async () => {
     authMock.mockResolvedValue({ userId: "clerk-user", tokenType: "oauth_token" });
     getClerkUserMock.mockResolvedValue(verifiedClerkUser());
-    findUniqueMock
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ ...localUser, clerkId: "old-clerk-user" });
+    findUniqueMock.mockResolvedValueOnce(null);
+    findFirstMock.mockResolvedValueOnce({ ...localUser, clerkId: "old-clerk-user" });
     updateMock.mockResolvedValue(localUser);
 
     await expect(requireApiUser()).resolves.toEqual(localUser);
@@ -197,6 +226,7 @@ describe("API authentication contract", () => {
       where: { id: "local-user" },
       data: {
         clerkId: "clerk-user",
+        email: "owner@example.com",
         firstName: "Owner",
         lastName: "User",
       },
@@ -219,6 +249,7 @@ describe("API authentication contract", () => {
       code: "UNAUTHENTICATED",
     });
     expect(findUniqueMock).not.toHaveBeenCalled();
+    expect(findFirstMock).not.toHaveBeenCalled();
   });
 
   it("rejects requests without a supported Supabase or Clerk identity", async () => {
