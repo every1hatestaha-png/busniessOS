@@ -9,7 +9,7 @@ import {
 import { updateGoodsReceiptSchema, voidGoodsReceiptSchema } from "@/lib/validation/purchase";
 
 export const GET = apiHandler(async (_request: Request, { params }: { params: Promise<{ id: string }> }) => {
-  const context = await requireApiContext("business.read");
+  const context = await requireApiContext("grn.create");
   const { id } = z.object({ id: z.uuid() }).parse(await params);
   const grn = await getGoodsReceipt(context.workspaceId, id);
   if (!grn) throw new ApiError(404, "NOT_FOUND", "Goods receipt not found.");
