@@ -1,25 +1,11 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Eye, EyeOff, LockKeyhole, ShieldCheck } from "lucide-react";
-
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-
-function hasRecoveryAuthMethod(claims: unknown) {
-  if (!claims || typeof claims !== "object") return false;
-  const amr = (claims as { amr?: unknown }).amr;
-  if (!Array.isArray(amr)) return false;
-  return amr.some((entry) => {
-    if (!entry || typeof entry !== "object") return false;
-    const method = (entry as { method?: unknown }).method;
-    return method === "otp" || method === "recovery" || method === "magiclink";
-  });
-}
+import Image from "next/image";
+import Link from "next/link";
+import { FormEvent, useEffect, useState } from "react";
+import { ArrowLeft, Eye, EyeOff, LockKeyhole, ShieldCheck } from "lucide-react";
 
 export default function RecoveryNewPasswordPage() {
-  const router = useRouter();
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -29,32 +15,32 @@ export default function RecoveryNewPasswordPage() {
 
   useEffect(() => {
     let active = true;
-    void (async () => {
-      const [{ data: userData, error: userError }, { data: claimsData, error: claimsError }] = await Promise.all([
-        supabase.auth.getUser(),
-        supabase.auth.getClaims(),
-      ]);
-      if (!active) return;
 
-      if (userError || !userData.user || claimsError || !hasRecoveryAuthMethod(claimsData?.claims)) {
-        router.replace("/forgot-password");
-        return;
-      }
-      setCheckingSession(false);
-    })();
+    void fetch("/auth/recovery/status", { cache: "no-store" })
+      .then((response) => {
+        if (!active) return;
+        if (!response.ok) {
+          window.location.replace("/forgot-password");
+          return;
+        }
+        setCheckingSession(false);
+      })
+      .catch(() => {
+        if (active) window.location.replace("/forgot-password");
+      });
 
     return () => {
       active = false;
     };
-  }, [router, supabase]);
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy || checkingSession) return;
     setError("");
 
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
+    if (password.length < 8 || password.length > 128) {
+      setError("Use a password between 8 and 128 characters.");
       return;
     }
     if (password !== confirmPassword) {
@@ -64,50 +50,76 @@ export default function RecoveryNewPasswordPage() {
 
     setBusy(true);
 
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
-    if (claimsError || !hasRecoveryAuthMethod(claimsData?.claims)) {
-      setError("Your recovery verification has expired. Request a new confirmation code.");
-      setBusy(false);
-      return;
-    }
+    try {
+      const response = await fetch("/auth/recovery/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
 
-    const { error: updateError } = await supabase.auth.updateUser({ password });
-    if (updateError) {
-      setError("We could not update your password. Please request a new recovery code and try again.");
-      setBusy(false);
-      return;
-    }
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        setError(payload?.error || "We could not update your password. Please request a new recovery code and try again.");
+        setBusy(false);
+        return;
+      }
 
-    // Full navigation guarantees the updated Supabase cookies are visible to
-    // server components and middleware on the very next dashboard request.
-    window.location.assign("/dashboard");
+      window.location.assign("/dashboard");
+    } catch {
+      setError("We could not update your password right now. Please try again.");
+      setBusy(false);
+    }
   }
 
   if (checkingSession) {
     return (
-      <main className="grid min-h-dvh place-items-center bg-[#06131a] px-4 py-10 text-white">
-        <div className="text-sm text-slate-300">Checking secure recovery session...</div>
+      <main className="min-h-dvh bg-[#071821] px-6 py-10 text-white sm:px-10">
+        <div className="mx-auto flex min-h-[calc(100dvh-5rem)] w-full max-w-[430px] items-center justify-center">
+          <p className="text-sm text-slate-400">Checking secure recovery session...</p>
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="grid min-h-dvh place-items-center bg-[#06131a] px-4 py-10 text-white">
-      <div className="w-full max-w-md rounded-3xl border border-teal-500/40 bg-[#07151d] p-7 shadow-2xl">
-        <ShieldCheck className="size-10 text-emerald-400" />
-        <h1 className="mt-4 text-3xl font-semibold">Choose a new password</h1>
-        <p className="mt-2 text-sm text-slate-400">Use at least 8 characters.</p>
+    <main className="min-h-dvh bg-[#071821] px-6 py-10 text-white sm:px-10">
+      <div className="mx-auto flex min-h-[calc(100dvh-5rem)] w-full max-w-[430px] flex-col justify-center">
+        <Link href="/" className="mb-10 inline-flex items-center gap-3 self-start">
+          <span className="grid size-10 place-items-center rounded-xl border border-white/10 bg-white/[0.04] shadow-[0_8px_30px_rgba(0,0,0,0.18)]">
+            <Image src="/brand/munshios-mark.svg" alt="MunshiOS" width={28} height={28} priority />
+          </span>
+          <span className="text-lg font-semibold tracking-[-0.03em] text-white">munshi<span className="text-emerald-400">OS</span></span>
+        </Link>
 
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-          <div className="relative">
-            <LockKeyhole className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
-            <input type={showPassword ? "text" : "password"} autoComplete="new-password" minLength={8} required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="New password" className="h-12 w-full rounded-xl border border-slate-600 bg-[#0b1921] pl-11 pr-11 text-sm outline-none focus:border-teal-400" />
-            <button type="button" onClick={() => setShowPassword((value) => !value)} className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-slate-400" aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button>
+        <section>
+          <div className="grid size-12 place-items-center rounded-2xl border border-emerald-400/15 bg-emerald-400/[0.06]">
+            <ShieldCheck className="size-5 text-emerald-300" />
           </div>
-          <input type={showPassword ? "text" : "password"} autoComplete="new-password" minLength={8} required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirm new password" className="h-12 w-full rounded-xl border border-slate-600 bg-[#0b1921] px-4 text-sm outline-none focus:border-teal-400" />
-          {error ? <p role="alert" className="text-sm text-red-300">{error}</p> : null}
-          <button type="submit" disabled={busy} className="h-12 w-full rounded-xl bg-emerald-600 text-sm font-semibold hover:bg-emerald-500 disabled:opacity-60">{busy ? "Updating..." : "Update password"}</button>
-        </form>
+          <h1 className="mt-6 text-[34px] font-semibold tracking-[-0.045em] text-white">Choose a new password</h1>
+          <p className="mt-2 text-[15px] leading-6 text-slate-400">Use a password you don&apos;t use elsewhere. Your recovery verification expires shortly.</p>
+
+          <form onSubmit={handleSubmit} className="mt-7 space-y-4">
+            <div>
+              <label htmlFor="new-password" className="mb-2 block text-sm font-medium text-slate-200">New password</label>
+              <div className="relative">
+                <LockKeyhole className="absolute left-4 top-1/2 size-[18px] -translate-y-1/2 text-slate-500" />
+                <input id="new-password" type={showPassword ? "text" : "password"} autoComplete="new-password" minLength={8} maxLength={128} required disabled={busy} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="8–128 characters" className="h-[52px] w-full rounded-xl border border-white/10 bg-white/[0.035] pl-12 pr-12 text-sm text-white outline-none transition placeholder:text-slate-600 hover:border-white/15 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-400/10 disabled:opacity-60" />
+                <button type="button" disabled={busy} onClick={() => setShowPassword((value) => !value)} className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-500 transition hover:bg-white/[0.05] hover:text-slate-200 disabled:opacity-50" aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff className="size-[18px]" /> : <Eye className="size-[18px]" />}</button>
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="confirm-password" className="mb-2 block text-sm font-medium text-slate-200">Confirm new password</label>
+              <input id="confirm-password" type={showPassword ? "text" : "password"} autoComplete="new-password" minLength={8} maxLength={128} required disabled={busy} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Enter it again" className="h-[52px] w-full rounded-xl border border-white/10 bg-white/[0.035] px-4 text-sm text-white outline-none transition placeholder:text-slate-600 hover:border-white/15 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-400/10 disabled:opacity-60" />
+            </div>
+
+            {error ? <p role="alert" className="rounded-xl border border-red-400/20 bg-red-500/[0.07] px-4 py-3 text-sm leading-5 text-red-200">{error}</p> : null}
+
+            <button type="submit" disabled={busy} className="h-[52px] w-full rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-[#03251b] shadow-[0_10px_30px_rgba(16,185,129,0.14)] transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60">{busy ? "Updating password..." : "Update password"}</button>
+          </form>
+        </section>
+
+        <Link href="/forgot-password" className="mt-8 inline-flex items-center gap-2 self-start text-sm text-slate-500 transition hover:text-slate-300"><ArrowLeft className="size-4" /> Start recovery again</Link>
       </div>
     </main>
   );
