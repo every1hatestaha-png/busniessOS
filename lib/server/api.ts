@@ -64,7 +64,22 @@ export async function requireApiContext(permission?: Permission): Promise<ApiCon
     select: {
       workspaceId: true,
       role: true,
-      workspace: true,
+      workspace: {
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          email: true,
+          address: true,
+          city: true,
+          country: true,
+          currency: true,
+          timezone: true,
+          businessType: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      },
     },
   });
 
