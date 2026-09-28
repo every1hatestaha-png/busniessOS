@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -16,7 +16,6 @@ function safeDestination(value: string | null) {
 }
 
 export default function SignInPage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [email, setEmail] = useState("");
@@ -50,7 +49,7 @@ export default function SignInPage() {
         setError("Email or password is incorrect.");
         setShowMigrationHelp(true);
       } else {
-        setError(signInError.message);
+        setError("We could not sign you in right now. Please try again.");
       }
       setBusy(false);
       return;
