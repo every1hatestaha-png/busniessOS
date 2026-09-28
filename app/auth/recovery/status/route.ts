@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { hasFreshRecoveryProof, hasRecoveryMarker } from "@/lib/server/recovery-session";
+import { hasFreshRecoveryProof } from "@/lib/auth-recovery-proof";
+import { hasRecoveryMarker } from "@/lib/server/recovery-session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function GET() {
