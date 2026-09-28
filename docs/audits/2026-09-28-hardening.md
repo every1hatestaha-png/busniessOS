@@ -14,17 +14,20 @@ Scope: all seven priorities requested on 2026-09-28. No production writes perfor
 - VERIFIED on prior branch head: Prisma validation, all migrations, TypeScript, production Next.js build, 660 unit/integration tests, 49 finance-grade tests, ESLint with zero errors, production dependency audit with zero known vulnerabilities, desktop smoke and the PR security/auth gate all passed.
 - VERIFIED on the rate-limit branch head: the PR security/auth gate passed after adding password-recovery and authenticated AI request limits.
 - SECURITY HARDENING awaiting newest-head CI: the public readiness endpoint no longer exposes deployment revision or FBR credential/transmission posture. It now returns only minimal database readiness state.
-- SECURITY HARDENING awaiting newest-head CI: STAFF least-privilege gaps were closed across customer balances and credit limits, product cost/FBR mapping, procurement, supplier, GRN and khata reads. Staff sale-detail access no longer includes the customer's account balance or credit limit.
+- SECURITY HARDENING awaiting newest-head CI: STAFF least-privilege gaps were closed across customer balances and credit limits, product cost/FBR mapping, procurement, supplier, GRN, returns, payments, manufacturing and khata surfaces. Staff sale-detail access no longer includes the customer's account balance or credit limit.
+- INTEGRITY HARDENING awaiting newest-head CI: customer-credit allocation now rejects a changed request that reuses an idempotency key, with regression coverage for exact replay versus conflicting replay.
+- INTEGRITY HARDENING awaiting newest-head CI: the GRN API re-verifies the persisted receipt against the parsed idempotent request after creation/replay, so concurrent or sequential reuse of the same key with a different purchase, warehouse, header or line payload returns an idempotency conflict rather than silently accepting the old GRN.
+- P1 code-hardening follow-up: `createGoodsReceipt` itself still has an early replay path before semantic request comparison. The production API boundary now verifies the persisted request, but the service should also gain the same invariant before this branch is considered fully hardened for future internal callers.
 - P1 verification gate: authenticated browser QA against the dedicated test account and dummy workspaces remains required before merge or production deployment.
 - P1 verification gate: Neon project ID and actual recovery retention are not yet verified. Do not infer them from plan marketing.
 - P2: rendered printable-document, phone-layout and optional-onboarding verification remains.
 
 ## Coverage status
 
-1. ERP integrity: return integrity, managed-warehouse sale lifecycle and BOM stock/history regressions are covered by passing isolated-database tests. Continue endpoint and browser QA.
-2. Accounting integrity: return rounding and finance-grade lifecycle scenarios pass on the verified branch head. Continue reconciliation review around remaining mutations.
+1. ERP integrity: return integrity, managed-warehouse sale lifecycle and BOM stock/history regressions are covered by passing isolated-database tests. Customer-credit and GRN idempotency hardening are on the newest head and await CI. Continue endpoint and browser QA.
+2. Accounting integrity: return rounding and finance-grade lifecycle scenarios pass on the verified branch head. Customer-credit allocation replay semantics were tightened. Continue reconciliation review around remaining mutations.
 3. Printing: print contract tests pass. Rendered A4 and thermal verification remains.
-4. Security: API context validates active workspace membership, RBAC gates sensitive member operations, database parent guards reject cross-workspace references, Clerk webhook signatures are verified with Svix, FBR bearer tokens use workspace/environment-bound AES-256-GCM storage, recovery abuse controls were added, AI chat remains read-only and workspace scoped, public readiness metadata has been minimized, and STAFF read surfaces are being reduced to role-appropriate data. Newest-head CI and authenticated cross-tenant browser QA remain release gates.
+4. Security: API context validates active workspace membership, RBAC gates sensitive member operations, database parent guards reject cross-workspace references, Clerk webhook signatures are verified with Svix, FBR bearer tokens use workspace/environment-bound AES-256-GCM storage, recovery abuse controls were added, AI chat remains read-only and workspace scoped, public readiness metadata has been minimized, and sensitive dashboard subtrees are now protected by role-appropriate server-side route guards. Newest-head CI and authenticated cross-tenant browser QA remain release gates.
 5. Mobile: responsive contract tests pass. Browser/device verification remains.
 6. Onboarding: invitation acceptance is bound to the authenticated user’s verified email and invitation state. Browser review remains.
 7. Backups and monitoring: Vercel reported no grouped errors for the inspected window. This is not proof of transaction correctness. Recovery configuration remains unverified.
@@ -41,6 +44,8 @@ Scope: all seven priorities requested on 2026-09-28. No production writes perfor
 - STAFF customer responses omit receivable, credit-limit and credit-term fields. Customer dashboard/detail UI follows the same rule.
 - STAFF product responses omit cost price and FBR reference/mapping metadata. Inventory dashboard/detail UI also hides cost valuation, gross margin and FBR mapping.
 - Procurement, supplier, GRN and khata read APIs now require their corresponding privileged permissions instead of generic business.read.
+- Sensitive SSR page trees for suppliers, purchases, goods receipts, customer returns, supplier returns, khata, payment receipts and manufacturing now enforce permission checks server-side instead of relying on hidden buttons or navigation links.
+- The invoice register's workspace-wide billed/outstanding/overdue summary now requires financial permission while individual sale-linked invoice documents remain available for legitimate sales workflow access.
 - STAFF can inspect sales needed for sales work, but customer-level balance and credit-limit data is no longer exposed through sale detail API or UI.
 - Application rate limiting is defense in depth and process-local. Provider, platform and authentication controls remain required for distributed abuse resistance.
 
