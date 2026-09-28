@@ -32,6 +32,8 @@ export function checkAppRateLimit(request: Request, pathname: string) {
 
   if (method === "POST" && recoveryPostLimits[pathname]) {
     limit = recoveryPostLimits[pathname];
+  } else if (pathname === "/api/ai/chat" && method === "POST") {
+    limit = 20;
   } else if (pathname.startsWith("/api/v1/")) {
     limit = method === "GET" ? 180 : 60;
   } else if (pathname === "/api/search") {
