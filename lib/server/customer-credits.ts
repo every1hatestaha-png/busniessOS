@@ -20,8 +20,19 @@ export async function allocateCustomerCredit(context: ServiceContext, input: Cus
   const amount = new Prisma.Decimal(data.amount);
   return withSerializableRetry(async (tx) => {
     if (data.idempotencyKey) {
-      const existing = await tx.customerCreditAllocation.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true } });
-      if (existing) return existing;
+      const existing = await tx.customerCreditAllocation.findFirst({
+        where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey },
+        select: { id: true, creditNoteId: true, invoiceId: true, amount: true },
+      });
+      if (existing) {
+        const sameRequest = existing.creditNoteId === data.creditNoteId
+          && existing.invoiceId === data.invoiceId
+          && existing.amount.equals(amount);
+        if (!sameRequest) {
+          throw new CustomerCreditDomainError("This idempotency key was already used for a different customer credit allocation request.");
+        }
+        return { id: existing.id };
+      }
     }
 
     const credit = await tx.creditNote.findFirst({ where: { id: data.creditNoteId, workspaceId: context.workspaceId, status: { not: "CANCELLED" } }, select: { id: true, customerId: true, amount: true, appliedAmount: true, remainingAmount: true } });
