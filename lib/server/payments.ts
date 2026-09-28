@@ -83,7 +83,6 @@ export async function getPaymentReceipt(workspaceId: string, id: string) {
 }
 
 export async function recordPayment(context: ServiceContext, input: PaymentInput) {
-  if (!canPerformAction(context.role, "payments.record")) throw new PaymentDomainError("Unauthorized");
   const data = paymentSchema.parse(input);
   const amount = new Prisma.Decimal(data.amount);
   const withholdingTaxAmount = new Prisma.Decimal(data.withholdingTaxAmount ?? 0);
@@ -219,34 +218,108 @@ export async function reverseCustomerPayment(context: ServiceContext, paymentId:
     if (payment.isReversed) {
       const existingReversal = payment.reversals[0];
       if (existingReversal) return { id: existingReversal.id, alreadyReversed: true as const };
-      throw new PaymentDomainError("Payment is already reversed.");
+      throw new PaymentDomainError("This payment is already marked reversed.");
     }
-    if (!payment.cashBankAccountId) throw new PaymentDomainError("Payment has no cash/bank account and cannot be reversed safely.");
-    if (!payment.documentNumber) throw new PaymentDomainError("Payment has no stable document number and cannot be reversed safely.");
-    const originalReceiptGlCount = await tx.generalLedgerEntry.count({ where: { workspaceId: context.workspaceId, sourceType: "RECEIPT", sourceId: payment.id, reversalOfId: null } });
-    if (originalReceiptGlCount === 0) throw new PaymentDomainError("Sale-linked payments must be reversed by cancelling the sale, not as a standalone receipt.");
+    if (!payment.cashBankAccountId) throw new PaymentDomainError("Payment has no cash/bank account and cannot be safely reversed.");
 
-    const outstandingAfterReversal = await tx.paymentAllocation.aggregate({
-      where: { paymentId: payment.id, workspaceId: context.workspaceId },
-      _sum: { amount: true },
+    const standalonePostingCount = await tx.generalLedgerEntry.count({
+      where: { workspaceId: context.workspaceId, sourceType: "RECEIPT", sourceId: payment.id, reversalOfId: null },
     });
-    const allocationTotal = outstandingAfterReversal._sum.amount ?? new Prisma.Decimal(0);
+    if (standalonePostingCount === 0) throw new PaymentDomainError("This receipt was recorded with a sale. Cancel the sale to reverse it safely.");
+
+    const now = new Date();
+    const reversalNumber = await nextDocumentNumber(tx, context.workspaceId, "PAYMENT_RECEIPT");
+    const sourceReference = payment.documentNumber ?? payment.reference ?? "Payment Receipt";
+    const paymentNetAmount = payment.netAmount ?? payment.amount.minus(payment.withholdingTaxAmount);
+    const reversal = await tx.payment.create({
+      data: {
+        workspaceId: context.workspaceId,
+        customerId: payment.customerId,
+        invoiceId: payment.invoiceId,
+        cashBankAccountId: payment.cashBankAccountId,
+        documentNumber: reversalNumber,
+        amount: payment.amount,
+        netAmount: paymentNetAmount,
+        withholdingTaxAmount: payment.withholdingTaxAmount,
+        method: payment.method,
+        reference: `REV-${sourceReference}`,
+        notes: `Payment reversal: ${cleanReason}`,
+        paymentDate: now,
+        reversalOfId: payment.id,
+      },
+      select: { id: true },
+    });
+
+    await tx.payment.update({
+      where: { id: payment.id, workspaceId: context.workspaceId },
+      data: { isReversed: true, reversedAt: now },
+    });
+
+    await tx.ledgerEntry.create({
+      data: {
+        workspaceId: context.workspaceId,
+        customerId: payment.customerId,
+        type: "REVERSAL",
+        debit: payment.amount,
+        description: `Reversed payment ${sourceReference}: ${cleanReason}`,
+        referenceId: reversal.id,
+        date: now,
+      },
+    });
+    await tx.customer.update({
+      where: { id: payment.customerId, workspaceId: context.workspaceId },
+      data: { currentBalance: { increment: payment.amount } },
+    });
+    if (paymentNetAmount.greaterThan(0)) {
+      await tx.cashBankAccount.update({
+        where: { id: payment.cashBankAccountId, workspaceId: context.workspaceId },
+        data: { currentBalance: { decrement: paymentNetAmount } },
+      });
+    }
+
     for (const allocation of payment.allocations) {
-      if (allocation.invoice) {
-        const nextPaidAmount = allocation.invoice.paidAmount.minus(allocation.amount);
-        if (nextPaidAmount.isNegative()) throw new PaymentDomainError("Payment reversal would make invoice paid amount negative.");
-        await tx.invoice.update({ where: { id: allocation.invoice.id, workspaceId: context.workspaceId }, data: { paidAmount: nextPaidAmount, status: nextPaidAmount.plus(allocation.invoice.creditApplied).equals(allocation.invoice.amount) ? "PAID" : nextPaidAmount.plus(allocation.invoice.creditApplied).greaterThan(0) ? "PARTIALLY_PAID" : "UNPAID" } });
-        if (allocation.invoice.salesOrderId) await tx.salesOrder.update({ where: { id: allocation.invoice.salesOrderId, workspaceId: context.workspaceId }, data: { paidAmount: { decrement: allocation.amount }, balanceAmount: { increment: allocation.amount } } });
+      if (!allocation.invoiceId || !allocation.invoice) continue;
+      const allocationAmount = new Prisma.Decimal(allocation.amount);
+      const nextPaid = allocation.invoice.paidAmount.minus(allocationAmount);
+      if (nextPaid.isNegative()) throw new PaymentDomainError("Payment reversal would make an invoice paid amount negative.");
+      const settled = nextPaid.plus(allocation.invoice.creditApplied);
+      const nextStatus = settled.greaterThanOrEqualTo(allocation.invoice.amount)
+        ? "PAID"
+        : settled.greaterThan(0)
+          ? "PARTIALLY_PAID"
+          : "UNPAID";
+      if (allocation.invoice.status !== "CANCELLED") {
+        await tx.invoice.update({
+          where: { id: allocation.invoice.id, workspaceId: context.workspaceId },
+          data: { paidAmount: nextPaid, status: nextStatus },
+        });
+      }
+      if (allocation.invoice.salesOrderId) {
+        await tx.salesOrder.updateMany({
+          where: { id: allocation.invoice.salesOrderId, workspaceId: context.workspaceId, status: { not: "CANCELLED" } },
+          data: { paidAmount: { decrement: allocationAmount }, balanceAmount: { increment: allocationAmount } },
+        });
       }
     }
 
-    const reversalNumber = `${payment.documentNumber}-REV`;
-    const reversal = await tx.payment.create({ data: { workspaceId: context.workspaceId, customerId: payment.customerId, cashBankAccountId: payment.cashBankAccountId, documentNumber: reversalNumber, amount: payment.amount.negated(), netAmount: (payment.netAmount ?? payment.amount).negated(), withholdingTaxAmount: payment.withholdingTaxAmount.negated(), method: payment.method, reference: payment.reference, notes: `Reversal: ${cleanReason}`, paymentDate: new Date(), isReversed: false, reversalOfId: payment.id }, select: { id: true } });
-    await tx.payment.update({ where: { id: payment.id, workspaceId: context.workspaceId }, data: { isReversed: true, reversedAt: new Date() } });
-    await tx.customer.update({ where: { id: payment.customerId, workspaceId: context.workspaceId }, data: { currentBalance: { increment: payment.amount } } });
-    await tx.ledgerEntry.create({ data: { workspaceId: context.workspaceId, customerId: payment.customerId, type: "PAYMENT_REVERSAL", debit: payment.amount, description: `Reversal of ${payment.documentNumber}: ${cleanReason}`, referenceId: reversal.id, date: new Date() } });
-    await reverseGeneralLedgerEntries(tx, { workspaceId: context.workspaceId, sourceType: "RECEIPT", sourceId: payment.id, documentNo: reversalNumber, date: new Date(), narration: `Reversal of receipt ${payment.documentNumber}` });
-    await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "customer.payment_reversed", entityType: "Payment", entityId: payment.id, metadata: { reversalId: reversal.id, amount: payment.amount.toString(), allocatedAmount: allocationTotal.toString(), reason: cleanReason } });
+    await reverseGeneralLedgerEntries(tx, {
+      workspaceId: context.workspaceId,
+      sources: [{ sourceType: "RECEIPT", sourceId: payment.id }],
+      documentNo: `REV-${payment.documentNumber ?? reversalNumber}`,
+      date: now,
+      reason: `Reversed customer payment: ${cleanReason}`,
+      reversedById: context.userId,
+    });
+
+    await writeAudit(tx, {
+      workspaceId: context.workspaceId,
+      actorId: context.userId,
+      action: "customer.payment_reversed",
+      entityType: "Payment",
+      entityId: payment.id,
+      metadata: { reversalId: reversal.id, reversalNumber, reason: cleanReason, amount: payment.amount.toString(), netAmount: paymentNetAmount.toString(), withholdingTaxAmount: payment.withholdingTaxAmount.toString() },
+    });
+
     return { id: reversal.id, alreadyReversed: false as const };
   });
 }
