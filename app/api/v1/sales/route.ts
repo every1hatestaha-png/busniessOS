@@ -1,23 +1,10 @@
 import { createSale, listSales, SaleDomainError } from "@/lib/server/sales";
 import { ApiError, apiData, apiHandler, parseApiBody, requireApiContext, requireIdempotencyKey } from "@/lib/server/api";
-import { canPerformAction } from "@/lib/server/authorization";
 import { saleSchema } from "@/lib/validation/sale";
 
 export const GET = apiHandler(async () => {
-  const context = await requireApiContext("business.read");
-  const sales = await listSales(context.workspaceId);
-  if (canPerformAction(context.role, "financial.manage")) return apiData(sales);
-
-  return apiData(sales.map((sale) => ({
-    ...sale,
-    customer: {
-      id: sale.customer.id,
-      name: sale.customer.name,
-      companyName: sale.customer.companyName,
-      phone: sale.customer.phone,
-      address: sale.customer.address,
-    },
-  })));
+  const { workspaceId } = await requireApiContext("business.read");
+  return apiData(await listSales(workspaceId));
 });
 
 export const POST = apiHandler(async (request: Request) => {
