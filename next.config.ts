@@ -3,16 +3,23 @@ import type { NextConfig } from "next";
 const isVercelBuild = process.env.VERCEL === "1";
 const isProduction = process.env.NODE_ENV === "production";
 
-const contentSecurityPolicy = [
-  "base-uri 'self'",
-  "object-src 'none'",
-  "frame-ancestors 'none'",
-  "form-action 'self' https://*.clerk.accounts.dev https://accounts.clerk.com",
-  ...(isProduction ? ["upgrade-insecure-requests"] : []),
-].join("; ");
+function buildContentSecurityPolicy(formAction: string) {
+  return [
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    `form-action ${formAction}`,
+    ...(isProduction ? ["upgrade-insecure-requests"] : []),
+  ].join("; ");
+}
+
+const customerContentSecurityPolicy = buildContentSecurityPolicy("'self'");
+const legacyClerkContentSecurityPolicy = buildContentSecurityPolicy(
+  "'self' https://*.clerk.accounts.dev https://accounts.clerk.com",
+);
 
 const securityHeaders = [
-  { key: "Content-Security-Policy", value: contentSecurityPolicy },
+  { key: "Content-Security-Policy", value: customerContentSecurityPolicy },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
@@ -22,6 +29,10 @@ const securityHeaders = [
   ...(isProduction
     ? [{ key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" }]
     : []),
+];
+
+const legacyClerkCspHeader = [
+  { key: "Content-Security-Policy", value: legacyClerkContentSecurityPolicy },
 ];
 
 const noStoreHeaders = [
@@ -39,6 +50,21 @@ const nextConfig: NextConfig = {
       {
         source: "/:path*",
         headers: securityHeaders,
+      },
+      // Customer web is Supabase-only, so Clerk form targets are not allowed on
+      // normal pages. Keep the broader form-action allowlist scoped strictly to
+      // the legacy Clerk surfaces that still need it during the migration.
+      {
+        source: "/platform/:path*",
+        headers: legacyClerkCspHeader,
+      },
+      {
+        source: "/desktop-auth/:path*",
+        headers: legacyClerkCspHeader,
+      },
+      {
+        source: "/__clerk/:path*",
+        headers: legacyClerkCspHeader,
       },
       {
         source: "/api/v1/:path*",
@@ -58,6 +84,10 @@ const nextConfig: NextConfig = {
       },
       {
         source: "/account-recovery/:path*",
+        headers: noStoreHeaders,
+      },
+      {
+        source: "/recovery/:path*",
         headers: noStoreHeaders,
       },
     ];
