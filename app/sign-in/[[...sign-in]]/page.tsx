@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
+import { ArrowRight, CheckCircle2, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 
 import { safeInternalDestination } from "@/lib/auth-routing";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -20,6 +20,7 @@ export default function SignInPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(searchParams.get("error") || "");
   const [showMigrationHelp, setShowMigrationHelp] = useState(false);
+  const emailConfirmed = searchParams.get("confirmed") === "1";
 
   async function handleSignIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -52,7 +53,7 @@ export default function SignInPage() {
     }
 
     const destination = safeInternalDestination(
-      searchParams.get("redirect_url"),
+      searchParams.get("redirect_url") ?? searchParams.get("next"),
       window.location.href,
       "/dashboard",
     );
@@ -89,6 +90,13 @@ export default function SignInPage() {
               <h1 className="text-[34px] font-semibold tracking-[-0.045em] text-white sm:text-[38px]">Welcome back</h1>
               <p className="mt-2 text-[15px] text-slate-400">Sign in to continue to your workspace.</p>
             </div>
+
+            {emailConfirmed ? (
+              <p role="status" className="mb-5 flex items-start gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.07] px-4 py-3 text-sm leading-5 text-emerald-100">
+                <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-300" />
+                Email confirmed. Sign in once to continue your setup.
+              </p>
+            ) : null}
 
             <form onSubmit={handleSignIn} className="space-y-5">
               <div>
