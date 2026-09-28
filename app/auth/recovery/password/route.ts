@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 
 import { hasFreshRecoveryProof } from "@/lib/auth-recovery-proof";
 import {
+  MAX_NEW_PASSWORD_LENGTH,
+  MIN_NEW_PASSWORD_LENGTH,
+  isAcceptableNewPassword,
+} from "@/lib/auth-password-policy";
+import {
   clearRecoveryMarker,
   hasRecoveryMarker,
 } from "@/lib/server/recovery-session";
@@ -12,9 +17,9 @@ export async function POST(request: Request) {
     const body = (await request.json()) as { password?: unknown };
     const password = typeof body.password === "string" ? body.password : "";
 
-    if (password.length < 8 || password.length > 128) {
+    if (!isAcceptableNewPassword(password)) {
       return NextResponse.json(
-        { error: "Password must be between 8 and 128 characters." },
+        { error: `Password must be between ${MIN_NEW_PASSWORD_LENGTH} and ${MAX_NEW_PASSWORD_LENGTH} characters.` },
         { status: 422, headers: { "Cache-Control": "no-store" } },
       );
     }
