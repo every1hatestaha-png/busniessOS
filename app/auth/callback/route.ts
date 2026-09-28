@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
+import { hasFreshRecoveryProof } from "@/lib/auth-recovery-proof";
 import { safeInternalDestination } from "@/lib/auth-routing";
-import { hasFreshRecoveryProof, issueRecoveryMarker } from "@/lib/server/recovery-session";
+import { issueRecoveryMarker } from "@/lib/server/recovery-session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 function isRecoveryDestination(next: string) {
