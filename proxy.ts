@@ -215,11 +215,28 @@ const clerkProxy = clerkMiddleware(
   },
 );
 
+function needsLegacyClerk(request: NextRequest) {
+  const path = request.nextUrl.pathname;
+  const isElectron = (request.headers.get("user-agent") || "").includes("Electron");
+  const hasLegacyAuthorization = Boolean(request.headers.get("authorization"));
+
+  return (
+    isElectron ||
+    path.startsWith("/desktop-auth") ||
+    path.startsWith("/platform") ||
+    path.startsWith("/__clerk/") ||
+    (isApiV1Request(path) && hasLegacyAuthorization)
+  );
+}
+
 export async function proxy(request: NextRequest, event: NextFetchEvent) {
-  if (!CLERK_SERVER_CONFIGURED) {
-    return supabaseOnlyProxy(request);
+  // Customer web traffic is always Supabase-only. Clerk is invoked only for
+  // explicit legacy desktop/platform/bearer-token paths, so a Clerk outage or
+  // missing Clerk configuration cannot break normal customer sign-in.
+  if (needsLegacyClerk(request) && CLERK_SERVER_CONFIGURED) {
+    return clerkProxy(request, event);
   }
-  return clerkProxy(request, event);
+  return supabaseOnlyProxy(request);
 }
 
 export const config = {
