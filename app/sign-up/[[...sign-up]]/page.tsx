@@ -34,7 +34,7 @@ export default function SignUpPage() {
     }
 
     const origin = window.location.origin;
-    const { error: signUpError } = await supabase.auth.signUp({
+    const { data, error: signUpError } = await supabase.auth.signUp({
       email: identifier,
       password,
       options: {
@@ -47,11 +47,24 @@ export default function SignUpPage() {
     });
 
     if (signUpError) {
-      setError(signUpError.message);
+      const message = signUpError.message.toLowerCase();
+      if (message.includes("rate") || message.includes("too many")) {
+        setError("Too many signup attempts. Please wait a moment and try again.");
+      } else {
+        setError("We could not create your account right now. Please try again.");
+      }
       setBusy(false);
       return;
     }
 
+    // If email confirmation is disabled for any environment, Supabase returns a
+    // session immediately. Use a full navigation so SSR sees the fresh cookies.
+    if (data.session) {
+      window.location.assign("/onboarding");
+      return;
+    }
+
+    setEmail(identifier);
     setSent(true);
     setBusy(false);
   }
@@ -72,6 +85,7 @@ export default function SignUpPage() {
                 <CheckCircle2 className="mx-auto size-12 text-emerald-400" />
                 <h1 className="mt-5 text-3xl font-semibold">Check your email</h1>
                 <p className="mt-3 text-slate-400">We sent a verification link to {email.trim().toLowerCase()}.</p>
+                <p className="mt-2 text-sm text-slate-500">Open the link on this device to finish setup and continue to onboarding.</p>
                 <Link href="/sign-in" className="mt-7 inline-flex rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-500">Back to sign in</Link>
               </div>
             ) : (
@@ -83,8 +97,8 @@ export default function SignUpPage() {
 
                 <form onSubmit={handleSubmit} className="space-y-5">
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First name" className="h-12 rounded-xl border border-slate-600/80 bg-[#0b1921] px-4 text-sm text-white outline-none focus:border-teal-400" />
-                    <input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last name" className="h-12 rounded-xl border border-slate-600/80 bg-[#0b1921] px-4 text-sm text-white outline-none focus:border-teal-400" />
+                    <input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First name" autoComplete="given-name" className="h-12 rounded-xl border border-slate-600/80 bg-[#0b1921] px-4 text-sm text-white outline-none focus:border-teal-400" />
+                    <input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last name" autoComplete="family-name" className="h-12 rounded-xl border border-slate-600/80 bg-[#0b1921] px-4 text-sm text-white outline-none focus:border-teal-400" />
                   </div>
 
                   <div className="relative">
@@ -95,7 +109,7 @@ export default function SignUpPage() {
                   <div className="relative">
                     <LockKeyhole className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
                     <input type={showPassword ? "text" : "password"} autoComplete="new-password" minLength={8} required disabled={busy} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password, minimum 8 characters" className="h-12 w-full rounded-xl border border-slate-600/80 bg-[#0b1921] pl-11 pr-11 text-sm text-white outline-none focus:border-teal-400 disabled:opacity-60" />
-                    <button type="button" onClick={() => setShowPassword((value) => !value)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-2 text-slate-400 hover:text-white" aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button>
+                    <button type="button" disabled={busy} onClick={() => setShowPassword((value) => !value)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-2 text-slate-400 hover:text-white disabled:opacity-60" aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button>
                   </div>
 
                   {error ? <p role="alert" className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</p> : null}
