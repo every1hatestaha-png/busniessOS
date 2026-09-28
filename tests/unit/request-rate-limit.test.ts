@@ -46,6 +46,18 @@ describe("application rate limiting", () => {
     );
   });
 
+  it("limits authenticated AI chat requests per IP", () => {
+    const request = makeRequest("203.0.113.14");
+
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      expect(checkAppRateLimit(request, "/api/ai/chat")).toBeNull();
+    }
+
+    expect(checkAppRateLimit(request, "/api/ai/chat")).toEqual(
+      expect.objectContaining({ retryAfter: expect.any(Number) }),
+    );
+  });
+
   it("keeps unrelated public routes outside the limiter", () => {
     expect(checkAppRateLimit(makeRequest("203.0.113.13"), "/features")).toBeNull();
   });
