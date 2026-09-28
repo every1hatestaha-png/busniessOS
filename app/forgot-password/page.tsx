@@ -115,11 +115,11 @@ export default function ForgotPasswordPage() {
   return (
     <main className="grid min-h-dvh place-items-center bg-[#06131a] px-4 py-10 text-white">
       <div className="w-full max-w-md rounded-3xl border border-teal-500/40 bg-[#07151d] p-7 shadow-2xl">
-        <h1 className="text-3xl font-semibold">Recover your account</h1>
+        <h1 className="text-3xl font-semibold">Recover or activate your account</h1>
 
         {step === "email" ? (
           <>
-            <p className="mt-2 text-sm text-slate-400">Enter your account email. We will send a confirmation code.</p>
+            <p className="mt-2 text-sm leading-6 text-slate-400">Enter the email already attached to your MunshiOS account. Existing customers from the previous login system can use this once to activate Supabase access without losing any business data.</p>
             <form onSubmit={sendRecoveryCode} className="mt-6 space-y-4">
               <input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" className="h-12 w-full rounded-xl border border-slate-600 bg-[#0b1921] px-4 text-sm outline-none focus:border-teal-400" />
               {error ? <p role="alert" className="text-sm text-red-300">{error}</p> : null}
@@ -143,10 +143,13 @@ export default function ForgotPasswordPage() {
 
         {step === "choice" ? (
           <>
-            <p className="mt-2 text-sm text-slate-400">Email verified. You are securely signed in.</p>
+            <p className="mt-2 text-sm text-slate-400">Email verified. Your existing MunshiOS account is now authenticated with Supabase.</p>
+            <div className="mt-5 rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-50">
+              For permanent email + password login, choose <strong>Change password</strong> once. Your previous Clerk password is not transferred to Supabase. You can still continue to the dashboard now if you prefer.
+            </div>
             <div className="mt-6 space-y-3">
               <button type="button" onClick={continueWithoutChangingPassword} className="h-12 w-full rounded-xl bg-emerald-600 text-sm font-semibold hover:bg-emerald-500">Continue to dashboard</button>
-              <button type="button" onClick={changePassword} className="h-12 w-full rounded-xl border border-teal-500/50 bg-[#0b1921] text-sm font-semibold text-teal-100 hover:border-teal-400">Change password</button>
+              <button type="button" onClick={changePassword} className="h-12 w-full rounded-xl border border-teal-500/50 bg-[#0b1921] text-sm font-semibold text-teal-100 hover:border-teal-400">Change password for permanent login</button>
             </div>
           </>
         ) : null}
