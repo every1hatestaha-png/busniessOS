@@ -51,7 +51,7 @@ export const goodsReceiptSchema = z.object({
 }).superRefine((receipt, context) => {
   const itemIds = receipt.items.map((item) => item.purchaseOrderItemId);
   if (new Set(itemIds).size !== itemIds.length) {
-    context.addIssue({ code: "custom", path: ["items"], message: "Combine duplicate purchase order items into one receipt line." });
+    context.addIssue({ code: "custom", path: ["items"], message: "Duplicate purchase order items are not allowed on a GRN." });
   }
   receipt.items.forEach((item, index) => {
     if (item.acceptedQuantity > item.receivedQuantity) context.addIssue({ code: "custom", path: ["items", index, "acceptedQuantity"], message: "Accepted quantity cannot exceed received quantity." });
@@ -95,7 +95,7 @@ export const updateGoodsReceiptSchema = z.object({
   if (receipt.items) {
     const itemIds = receipt.items.map((item) => item.purchaseOrderItemId);
     if (new Set(itemIds).size !== itemIds.length) {
-      context.addIssue({ code: "custom", path: ["items"], message: "Combine duplicate purchase order items into one receipt line." });
+      context.addIssue({ code: "custom", path: ["items"], message: "Duplicate purchase order items are not allowed on a GRN." });
     }
   }
   receipt.items?.forEach((item, index) => {
