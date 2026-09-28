@@ -9,6 +9,13 @@ function isRecoveryDestination(next: string) {
   return next === "/forgot-password?verified=1" || next.startsWith("/recovery/");
 }
 
+function signInFallback(requestUrl: string, next: string) {
+  const target = new URL("/sign-in", requestUrl);
+  target.searchParams.set("next", next);
+  target.searchParams.set("confirmed", "1");
+  return NextResponse.redirect(target);
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
@@ -21,7 +28,12 @@ export async function GET(request: Request) {
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
-    return NextResponse.redirect(new URL(`/sign-in?error=${encodeURIComponent("Could not complete authentication. Please try again.")}`, request.url));
+    // Email confirmation may be opened on a different browser/device from the
+    // one that initiated the PKCE signup. In that case the confirmation itself
+    // succeeds at Supabase, but this browser does not have the PKCE verifier.
+    // Never bypass authentication: require a normal password sign-in and keep
+    // the intended post-login destination.
+    return signInFallback(request.url, next);
   }
 
   if (isRecoveryDestination(next)) {
