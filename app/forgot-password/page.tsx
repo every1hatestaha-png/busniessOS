@@ -1,226 +1,197 @@
 "use client";
 
+import Image from "next/image";
+import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth, useClerk, useSignIn } from "@clerk/nextjs";
+import { ArrowLeft, CheckCircle2, KeyRound, Mail, ShieldCheck } from "lucide-react";
+
+type RecoveryStep = "email" | "code" | "choice";
+
+const RESEND_COOLDOWN_SECONDS = 30;
 
 export default function ForgotPasswordPage() {
-  const { signIn, fetchStatus } = useSignIn();
-  const { isLoaded, isSignedIn } = useAuth();
-  const { signOut } = useClerk();
-  const router = useRouter();
-  const [step, setStep] = useState<"email" | "code" | "password">("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [step, setStep] = useState<RecoveryStep>("email");
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [actionBusy, setActionBusy] = useState(false);
-  const [sessionPreparationFailed, setSessionPreparationFailed] = useState(false);
-  const [resendSeconds, setResendSeconds] = useState(0);
-  const sessionPreparing = !sessionPreparationFailed && (!isLoaded || Boolean(isSignedIn));
-  const busy = fetchStatus === "fetching" || actionBusy || sessionPreparing;
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn || sessionPreparationFailed) return;
+    if (typeof window === "undefined") return;
+    const verifiedByLink = new URLSearchParams(window.location.search).get("verified") === "1";
+    if (!verifiedByLink) return;
 
-    let cancelled = false;
-
-    void signOut({ redirectUrl: "/forgot-password?recovery=1" }).catch(() => {
-      if (cancelled) return;
-      setSessionPreparationFailed(true);
-      setError("We could not prepare password recovery. Please refresh this page and try again.");
-    });
+    let active = true;
+    void fetch("/auth/recovery/status", { cache: "no-store" }).then((response) => {
+      if (!active) return;
+      if (response.ok) setStep("choice");
+    }).catch(() => undefined);
 
     return () => {
-      cancelled = true;
+      active = false;
     };
-  }, [isLoaded, isSignedIn, sessionPreparationFailed, signOut]);
+  }, []);
 
   useEffect(() => {
-    if (resendSeconds <= 0) return;
-    const timer = window.setInterval(() => setResendSeconds((value) => Math.max(0, value - 1)), 1000);
+    if (resendCooldown <= 0) return;
+    const timer = window.setInterval(() => {
+      setResendCooldown((value) => Math.max(0, value - 1));
+    }, 1000);
     return () => window.clearInterval(timer);
-  }, [resendSeconds]);
+  }, [resendCooldown]);
 
-  async function runOnce(action: () => Promise<void>) {
-    if (busy) return;
-    setActionBusy(true);
-    try {
-      await action();
-    } catch {
-      setError("Something went wrong. Please wait a moment and try again.");
-    } finally {
-      setActionBusy(false);
+  async function sendRecoveryCode(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+    if (busy || (step === "code" && resendCooldown > 0)) return;
+
+    const identifier = email.trim().toLowerCase();
+    if (!identifier) {
+      setError("Enter your email address.");
+      return;
     }
-  }
 
-  async function sendCode(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    await runOnce(async () => {
-      setError("");
-      setCode("");
+    setBusy(true);
+    setError("");
 
-      const identifier = email.trim().toLowerCase();
-      if (!identifier) {
-        setError("Enter your account email.");
+    try {
+      const linkDestination = "/forgot-password?verified=1";
+      const redirectTo = `/auth/callback?next=${encodeURIComponent(linkDestination)}`;
+      const response = await fetch("/auth/recovery/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: identifier, redirectTo }),
+      });
+
+      if (response.status === 429) {
+        setError("Please wait a moment before requesting another code.");
+        setResendCooldown(RESEND_COOLDOWN_SECONDS);
         return;
       }
 
-      await signIn.reset();
-      const { error: createError } = await signIn.create({ identifier });
-      if (createError) {
-        const message = typeof createError === "object" && createError && "message" in createError
-          ? String(createError.message)
-          : "";
-        setError(message || "We could not start password recovery. Please refresh the page and try again.");
-        return;
-      }
-
-      const { error: sendError } = await signIn.resetPasswordEmailCode.sendCode();
-      if (sendError) {
-        const message = typeof sendError === "object" && sendError && "message" in sendError
-          ? String(sendError.message)
-          : "";
-        setError(message || "We could not send a reset code right now. Please wait before trying again.");
+      if (!response.ok) {
+        setError("We could not start recovery right now. Please try again shortly.");
         return;
       }
 
       setEmail(identifier);
-      setResendSeconds(60);
+      setCode("");
       setStep("code");
-    });
+      setResendCooldown(RESEND_COOLDOWN_SECONDS);
+    } catch {
+      setError("We could not start recovery right now. Please try again shortly.");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  async function resendCode() {
-    if (resendSeconds > 0 || busy) return;
-    await runOnce(async () => {
-      setError("");
-      const { error: sendError } = await signIn.resetPasswordEmailCode.sendCode();
-      if (sendError) {
-        setError("We could not resend a code right now. Please wait and try again.");
-        return;
-      }
-      setCode("");
-      setResendSeconds(60);
-    });
-  }
-
-  async function restartRecovery() {
+  async function verifyRecoveryCode(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     if (busy) return;
-    await runOnce(async () => {
-      await signIn.reset();
-      setCode("");
-      setPassword("");
-      setConfirmPassword("");
-      setError("");
-      setResendSeconds(0);
-      setStep("email");
-    });
-  }
 
-  async function verifyCode(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    await runOnce(async () => {
-      setError("");
-      const enteredCode = code.trim();
-      if (!enteredCode) {
-        setError("Enter the reset code from your email.");
-        return;
-      }
+    const identifier = email.trim().toLowerCase();
+    const token = code.trim();
+    if (!identifier || !/^\d{6,8}$/.test(token)) {
+      setError("Enter the confirmation code from your email.");
+      return;
+    }
 
-      const { error: verifyError } = await signIn.resetPasswordEmailCode.verifyCode({ code: enteredCode });
-      if (verifyError) {
-        setError("That reset code is invalid or expired.");
-        return;
-      }
+    setBusy(true);
+    setError("");
 
-      setStep("password");
-    });
-  }
-
-  async function submitPassword(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    await runOnce(async () => {
-      setError("");
-
-      if (password.length < 8) {
-        setError("Use at least 8 characters for the new password.");
-        return;
-      }
-      if (password !== confirmPassword) {
-        setError("Passwords do not match.");
-        return;
-      }
-
-      const { error: passwordError } = await signIn.resetPasswordEmailCode.submitPassword({
-        password,
-        signOutOfOtherSessions: true,
+    try {
+      const response = await fetch("/auth/recovery/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: identifier, token }),
       });
-      if (passwordError) {
-        setError("We could not update the password. Please restart password recovery and try again.");
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        setError(payload?.error || "That confirmation code is invalid or has expired.");
         return;
       }
 
-      if (signIn.status === "complete") {
-        const { error: finalizeError } = await signIn.finalize({
-          navigate: ({ session, decorateUrl }) => {
-            if (session?.currentTask) return;
-            const url = decorateUrl("/platform/sign-in?reauth=1");
-            if (url.startsWith("http")) window.location.href = url;
-            else router.push(url);
-          },
-        });
-        if (finalizeError) {
-          setError("Password changed. Return to owner sign in and use the new password.");
-        }
-        return;
-      }
+      setStep("choice");
+    } catch {
+      setError("We could not verify that code right now. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
-      router.push("/platform/sign-in?reauth=1");
-    });
+  function continueWithoutChangingPassword() {
+    window.location.assign("/dashboard");
+  }
+
+  function changePassword() {
+    window.location.assign("/recovery/new-password");
   }
 
   return (
-    <main className="grid min-h-dvh place-items-center bg-[#06131a] px-5 py-10 text-white">
-      <section className="w-full max-w-lg rounded-[28px] border border-teal-500/50 bg-[#07151d] p-7 shadow-2xl sm:p-10">
-        <button type="button" disabled={busy} onClick={() => router.push("/platform/sign-in")} className="mb-6 text-sm text-slate-400 hover:text-white disabled:opacity-50">← Back to owner sign in</button>
-        <h1 className="text-3xl font-semibold tracking-[-0.03em]">Reset your password</h1>
-        <p className="mt-2 text-sm leading-6 text-slate-400">
-          {sessionPreparing ? "Preparing secure password recovery..." : step === "email" ? "Enter your account email and we will send a password reset code." : step === "code" ? `Enter the code sent to ${email}.` : "Choose a new password for your MunshiOS account."}
-        </p>
+    <main className="min-h-dvh bg-[#071821] px-6 py-10 text-white sm:px-10">
+      <div className="mx-auto flex min-h-[calc(100dvh-5rem)] w-full max-w-[430px] flex-col justify-center">
+        <Link href="/" className="mb-10 inline-flex items-center gap-3 self-start">
+          <span className="grid size-10 place-items-center rounded-xl border border-white/10 bg-white/[0.04] shadow-[0_8px_30px_rgba(0,0,0,0.18)]">
+            <Image src="/brand/munshios-mark.svg" alt="MunshiOS" width={28} height={28} priority />
+          </span>
+          <span className="text-lg font-semibold tracking-[-0.03em] text-white">munshi<span className="text-emerald-400">OS</span></span>
+        </Link>
 
-        {sessionPreparing && <div className="mt-8 rounded-xl border border-slate-700 bg-[#0b1921] px-4 py-4 text-sm text-slate-300">Signing out the current session so Clerk can start a clean password recovery attempt...</div>}
-
-        {!sessionPreparing && step === "email" && (
-          <form onSubmit={sendCode} className="mt-8 space-y-5">
-            <input type="email" autoComplete="email" required disabled={busy} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" className="h-12 w-full rounded-xl border border-slate-600/80 bg-[#0b1921] px-4 text-sm text-white outline-none focus:border-teal-400 disabled:opacity-60" />
-            {error && <p className="text-sm text-rose-300">{error}</p>}
-            <button type="submit" disabled={busy} className="h-12 w-full rounded-xl bg-gradient-to-r from-[#18c4ad] to-[#10967f] text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60">{busy ? "Sending..." : "Send reset code"}</button>
-          </form>
-        )}
-
-        {!sessionPreparing && step === "code" && (
-          <form onSubmit={verifyCode} className="mt-8 space-y-5">
-            <input inputMode="numeric" autoComplete="one-time-code" required disabled={busy} value={code} onChange={(e) => setCode(e.target.value)} placeholder="Reset code" className="h-12 w-full rounded-xl border border-slate-600/80 bg-[#0b1921] px-4 text-sm tracking-[0.25em] text-white outline-none focus:border-teal-400 disabled:opacity-60" />
-            {error && <p className="text-sm text-rose-300">{error}</p>}
-            <button type="submit" disabled={busy} className="h-12 w-full rounded-xl bg-gradient-to-r from-[#18c4ad] to-[#10967f] text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60">{busy ? "Verifying..." : "Verify code"}</button>
-            <div className="flex items-center justify-between gap-3 text-xs">
-              <button type="button" disabled={busy || resendSeconds > 0} onClick={resendCode} className="text-teal-300 hover:text-teal-200 disabled:cursor-not-allowed disabled:text-slate-500">{resendSeconds > 0 ? `Resend in ${resendSeconds}s` : "Resend code"}</button>
-              <button type="button" disabled={busy} onClick={restartRecovery} className="text-slate-400 hover:text-white disabled:opacity-50">Use a different email</button>
+        {step === "email" ? (
+          <section>
+            <div className="grid size-12 place-items-center rounded-2xl border border-emerald-400/15 bg-emerald-400/[0.06]">
+              <Mail className="size-5 text-emerald-300" />
             </div>
-          </form>
-        )}
+            <h1 className="mt-6 text-[34px] font-semibold tracking-[-0.045em] text-white">Recover your account</h1>
+            <p className="mt-2 text-[15px] leading-6 text-slate-400">Enter the email attached to your MunshiOS account. We&apos;ll send a short confirmation code.</p>
 
-        {!sessionPreparing && step === "password" && (
-          <form onSubmit={submitPassword} className="mt-8 space-y-5">
-            <input type="password" autoComplete="new-password" required disabled={busy} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="New password" className="h-12 w-full rounded-xl border border-slate-600/80 bg-[#0b1921] px-4 text-sm text-white outline-none focus:border-teal-400 disabled:opacity-60" />
-            <input type="password" autoComplete="new-password" required disabled={busy} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirm new password" className="h-12 w-full rounded-xl border border-slate-600/80 bg-[#0b1921] px-4 text-sm text-white outline-none focus:border-teal-400 disabled:opacity-60" />
-            {error && <p className="text-sm text-rose-300">{error}</p>}
-            <button type="submit" disabled={busy} className="h-12 w-full rounded-xl bg-gradient-to-r from-[#18c4ad] to-[#10967f] text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60">{busy ? "Updating..." : "Set new password"}</button>
-          </form>
-        )}
-      </section>
+            <form onSubmit={sendRecoveryCode} className="mt-7 space-y-4">
+              <div>
+                <label htmlFor="recovery-email" className="mb-2 block text-sm font-medium text-slate-200">Email</label>
+                <input id="recovery-email" type="email" autoComplete="email" required disabled={busy} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" className="h-[52px] w-full rounded-xl border border-white/10 bg-white/[0.035] px-4 text-sm text-white outline-none transition placeholder:text-slate-600 hover:border-white/15 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-400/10 disabled:opacity-60" />
+              </div>
+              {error ? <p role="alert" className="rounded-xl border border-red-400/20 bg-red-500/[0.07] px-4 py-3 text-sm leading-5 text-red-200">{error}</p> : null}
+              <button type="submit" disabled={busy} className="h-[52px] w-full rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-[#03251b] shadow-[0_10px_30px_rgba(16,185,129,0.14)] transition hover:bg-emerald-400 disabled:opacity-60">{busy ? "Sending..." : "Send confirmation code"}</button>
+            </form>
+          </section>
+        ) : null}
+
+        {step === "code" ? (
+          <section>
+            <div className="grid size-12 place-items-center rounded-2xl border border-emerald-400/15 bg-emerald-400/[0.06]">
+              <KeyRound className="size-5 text-emerald-300" />
+            </div>
+            <h1 className="mt-6 text-[34px] font-semibold tracking-[-0.045em] text-white">Enter your code</h1>
+            <p className="mt-2 text-[15px] leading-6 text-slate-400">If <span className="font-medium text-slate-300">{email}</span> belongs to a MunshiOS account, a confirmation code has been sent.</p>
+
+            <form onSubmit={verifyRecoveryCode} className="mt-7 space-y-4">
+              <input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={8} required disabled={busy} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="000000" className="h-[56px] w-full rounded-xl border border-white/10 bg-white/[0.035] px-4 text-center text-xl tracking-[0.32em] text-white outline-none transition placeholder:text-slate-700 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-400/10 disabled:opacity-60" />
+              {error ? <p role="alert" className="rounded-xl border border-red-400/20 bg-red-500/[0.07] px-4 py-3 text-sm leading-5 text-red-200">{error}</p> : null}
+              <button type="submit" disabled={busy} className="h-[52px] w-full rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-[#03251b] transition hover:bg-emerald-400 disabled:opacity-60">{busy ? "Verifying..." : "Verify code"}</button>
+              <button type="button" disabled={busy || resendCooldown > 0} onClick={() => void sendRecoveryCode()} className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] text-sm font-medium text-slate-300 transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-50">{resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : "Resend code"}</button>
+              <button type="button" disabled={busy} onClick={() => { setStep("email"); setCode(""); setError(""); setResendCooldown(0); }} className="w-full text-sm text-slate-500 transition hover:text-slate-300">Use another email</button>
+            </form>
+          </section>
+        ) : null}
+
+        {step === "choice" ? (
+          <section>
+            <div className="grid size-12 place-items-center rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.08]">
+              <CheckCircle2 className="size-6 text-emerald-300" />
+            </div>
+            <h1 className="mt-6 text-[34px] font-semibold tracking-[-0.045em] text-white">Email verified</h1>
+            <p className="mt-2 text-[15px] leading-6 text-slate-400">Your identity is verified. Continue to your workspace now, or set a password for future email + password sign-ins.</p>
+
+            <div className="mt-7 space-y-3">
+              <button type="button" onClick={continueWithoutChangingPassword} className="h-[52px] w-full rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-[#03251b] transition hover:bg-emerald-400">Continue to dashboard</button>
+              <button type="button" onClick={changePassword} className="flex h-[52px] w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.035] text-sm font-semibold text-slate-200 transition hover:bg-white/[0.06]"><ShieldCheck className="size-4" /> Set or change password</button>
+            </div>
+          </section>
+        ) : null}
+
+        <Link href="/sign-in" className="mt-8 inline-flex items-center gap-2 self-start text-sm text-slate-500 transition hover:text-slate-300"><ArrowLeft className="size-4" /> Back to sign in</Link>
+      </div>
     </main>
   );
 }

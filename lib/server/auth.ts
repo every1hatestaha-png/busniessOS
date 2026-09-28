@@ -6,78 +6,150 @@ import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
 
 import { db } from "@/lib/server/db";
+import { getSupabaseAuthUser } from "@/lib/supabase/server";
 
-export const getCurrentUser = cache(async () => {
-  const session = await auth({ acceptsToken: ["session_token", "oauth_token"] });
-  const userId = "userId" in session ? session.userId : null;
-  const requestHeaders = await headers();
-  const isElectron = (requestHeaders.get("user-agent") || "").includes("Electron");
+const CLERK_SERVER_CONFIGURED = Boolean(process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
-  if (!userId) {
-    redirect(isElectron ? "/desktop-auth" : "/sign-in");
+type AuthIdentity = {
+  provider: "supabase" | "clerk";
+  providerUserId: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+};
+
+function providerStorageId(identity: AuthIdentity) {
+  return identity.provider === "supabase" ? `supabase:${identity.providerUserId}` : identity.providerUserId;
+}
+
+async function findLocalUserByEmail(email: string) {
+  return db.user.findFirst({
+    where: {
+      email: {
+        equals: email,
+        mode: "insensitive",
+      },
+    },
+  });
+}
+
+const getCurrentIdentity = cache(async (): Promise<AuthIdentity | null> => {
+  const supabaseUser = await getSupabaseAuthUser();
+  if (supabaseUser) {
+    const email = supabaseUser.email?.trim().toLowerCase();
+    if (!email || !supabaseUser.email_confirmed_at) return null;
+    return {
+      provider: "supabase",
+      providerUserId: supabaseUser.id,
+      email,
+      firstName: typeof supabaseUser.user_metadata?.first_name === "string" ? supabaseUser.user_metadata.first_name : null,
+      lastName: typeof supabaseUser.user_metadata?.last_name === "string" ? supabaseUser.user_metadata.last_name : null,
+    };
   }
 
-  const clerkUser = await (await clerkClient()).users.getUser(userId);
-  const primaryEmailAddress = clerkUser.primaryEmailAddressId
-    ? clerkUser.emailAddresses.find((email) => email.id === clerkUser.primaryEmailAddressId)
-    : undefined;
+  // A present-but-unverified Supabase identity must never silently fall through
+  // to Clerk. That would let two auth providers disagree about the same browser.
+  if (!CLERK_SERVER_CONFIGURED) return null;
 
-  if (!primaryEmailAddress?.emailAddress) {
-    throw new Error("Set a primary email address in Clerk before using MunshiOS.");
-  }
-  if (primaryEmailAddress.verification?.status !== "verified") {
-    throw new Error("Verify your primary email address before using MunshiOS.");
-  }
+  try {
+    const session = await auth({ acceptsToken: ["session_token", "oauth_token"] });
+    const clerkUserId = "userId" in session ? session.userId : null;
+    if (!clerkUserId) return null;
 
-  const primaryEmail = primaryEmailAddress.emailAddress.trim().toLowerCase();
-  if (!primaryEmail) {
-    throw new Error("Set a primary email address in Clerk before using MunshiOS.");
-  }
+    const clerkUser = await (await clerkClient()).users.getUser(clerkUserId);
+    const primaryEmailAddress = clerkUser.primaryEmailAddressId
+      ? clerkUser.emailAddresses.find((email) => email.id === clerkUser.primaryEmailAddressId)
+      : undefined;
+    const email = primaryEmailAddress?.emailAddress?.trim().toLowerCase();
+    if (!email || primaryEmailAddress?.verification?.status !== "verified") return null;
 
-  const existing = await db.user.findUnique({ where: { clerkId: userId } });
-  if (existing) {
-    if (
-      existing.email === primaryEmail
-      && existing.firstName === clerkUser.firstName
-      && existing.lastName === clerkUser.lastName
-    ) {
-      return existing;
-    }
-    const conflictingEmailOwner = await db.user.findUnique({ where: { email: primaryEmail } });
-    if (conflictingEmailOwner && conflictingEmailOwner.id !== existing.id) {
+    return {
+      provider: "clerk",
+      providerUserId: clerkUserId,
+      email,
+      firstName: clerkUser.firstName,
+      lastName: clerkUser.lastName,
+    };
+  } catch {
+    return null;
+  }
+});
+
+async function resolveLocalUser(identity: AuthIdentity) {
+  const storedProviderId = providerStorageId(identity);
+  const existingByProvider = await db.user.findUnique({ where: { clerkId: storedProviderId } });
+
+  if (existingByProvider) {
+    const conflictingEmailOwner = await findLocalUserByEmail(identity.email);
+    if (conflictingEmailOwner && conflictingEmailOwner.id !== existingByProvider.id) {
       throw new Error("This verified email is already linked to another MunshiOS user.");
     }
+
+    if (
+      existingByProvider.email === identity.email
+      && (identity.firstName === null || existingByProvider.firstName === identity.firstName)
+      && (identity.lastName === null || existingByProvider.lastName === identity.lastName)
+    ) {
+      return existingByProvider;
+    }
+
     return db.user.update({
-      where: { id: existing.id },
+      where: { id: existingByProvider.id },
       data: {
-        email: primaryEmail,
-        firstName: clerkUser.firstName,
-        lastName: clerkUser.lastName,
+        email: identity.email,
+        firstName: identity.firstName ?? existingByProvider.firstName,
+        lastName: identity.lastName ?? existingByProvider.lastName,
       },
     });
   }
 
-  const existingByEmail = await db.user.findUnique({ where: { email: primaryEmail } });
+  const existingByEmail = await findLocalUserByEmail(identity.email);
   if (existingByEmail) {
+    if (identity.provider === "clerk") {
+      return db.user.update({
+        where: { id: existingByEmail.id },
+        data: {
+          clerkId: identity.providerUserId,
+          email: identity.email,
+          firstName: identity.firstName ?? existingByEmail.firstName,
+          lastName: identity.lastName ?? existingByEmail.lastName,
+        },
+      });
+    }
+
     return db.user.update({
       where: { id: existingByEmail.id },
       data: {
-        clerkId: userId,
-        email: primaryEmail,
-        firstName: clerkUser.firstName,
-        lastName: clerkUser.lastName,
+        email: identity.email,
+        firstName: identity.firstName ?? existingByEmail.firstName,
+        lastName: identity.lastName ?? existingByEmail.lastName,
       },
     });
   }
 
   return db.user.create({
     data: {
-      clerkId: userId,
-      email: primaryEmail,
-      firstName: clerkUser.firstName,
-      lastName: clerkUser.lastName,
+      clerkId: storedProviderId,
+      email: identity.email,
+      firstName: identity.firstName,
+      lastName: identity.lastName,
     },
   });
+}
+
+export const getOptionalCurrentUser = cache(async () => {
+  const identity = await getCurrentIdentity();
+  return identity ? resolveLocalUser(identity) : null;
+});
+
+export const getCurrentUser = cache(async () => {
+  const user = await getOptionalCurrentUser();
+  if (!user) {
+    const requestHeaders = await headers();
+    const isElectron = (requestHeaders.get("user-agent") || "").includes("Electron");
+    redirect(isElectron ? "/desktop-auth" : "/sign-in");
+  }
+  return user;
 });
 
 const getCurrentUserWorkspaceMemberships = cache(async () => {
@@ -92,19 +164,17 @@ const getCurrentUserWorkspaceMemberships = cache(async () => {
 });
 
 export const getCurrentWorkspace = cache(async () => {
-  const session = await auth({ acceptsToken: ["session_token", "oauth_token"] });
-  const userId = "userId" in session ? session.userId : null;
+  const user = await getOptionalCurrentUser();
+  if (!user) return null;
 
-  if (!userId) {
-    return null;
-  }
-
-  const { user, activeWorkspaceId, memberships } = await getCurrentUserWorkspaceMemberships();
+  const activeWorkspaceId = (await cookies()).get("businessos_workspace")?.value;
+  const memberships = await db.workspaceMember.findMany({
+    where: { userId: user.id },
+    orderBy: { createdAt: "asc" },
+    select: { workspaceId: true, role: true, workspace: true },
+  });
   const membership = memberships.find((entry) => entry.workspaceId === activeWorkspaceId) ?? memberships[0];
-
-  if (!membership) {
-    return null;
-  }
+  if (!membership) return null;
 
   return {
     user,
@@ -125,8 +195,6 @@ export async function listCurrentUserWorkspaces() {
 
 export async function requireWorkspace() {
   const context = await getCurrentWorkspace();
-  if (!context) {
-    redirect("/onboarding");
-  }
+  if (!context) redirect("/onboarding");
   return context;
 }
