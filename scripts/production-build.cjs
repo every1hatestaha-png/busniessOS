@@ -9,13 +9,25 @@ function run(command, args) {
 
 function assertProductionAuthConfiguration() {
   if (process.env.VERCEL_ENV !== "production") return;
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
+  const supabasePublishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ?? "";
+  if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(supabaseUrl)) {
+    throw new Error("Production deployment requires a valid NEXT_PUBLIC_SUPABASE_URL.");
+  }
+  if (!supabasePublishableKey.startsWith("sb_publishable_")) {
+    throw new Error("Production deployment requires NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.");
+  }
+
+  // Clerk remains a temporary legacy dependency for desktop/platform-admin
+  // flows only. Customer web auth is Supabase-only.
   const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim() ?? "";
   const secretKey = process.env.CLERK_SECRET_KEY?.trim() ?? "";
   if (!publishableKey.startsWith("pk_live_")) {
-    throw new Error("Production deployment requires a Clerk live publishable key.");
+    throw new Error("Production deployment requires a Clerk live publishable key for legacy desktop/platform auth.");
   }
   if (!secretKey.startsWith("sk_live_")) {
-    throw new Error("Production deployment requires a Clerk live secret key.");
+    throw new Error("Production deployment requires a Clerk live secret key for legacy desktop/platform auth.");
   }
 }
 
