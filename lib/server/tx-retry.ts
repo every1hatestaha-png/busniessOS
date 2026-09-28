@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/server/db";
+import { reportServerFailure } from "@/lib/server/error-monitoring";
 
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 150;
@@ -35,6 +36,7 @@ export async function withSerializableRetry<T>(
         await new Promise((resolve) => setTimeout(resolve, BASE_DELAY_MS * 2 ** attempt));
         continue;
       }
+      if (isRetryableError(err)) reportServerFailure("transaction", err);
       throw err;
     }
   }

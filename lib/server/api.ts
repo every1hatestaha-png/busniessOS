@@ -10,6 +10,7 @@ import { canPerformAction, type Permission } from "@/lib/server/authorization";
 import { getOptionalCurrentUser } from "@/lib/server/auth";
 import { db } from "@/lib/server/db";
 import { getWorkspaceAccess } from "@/lib/server/subscriptions";
+import { reportServerFailure } from "@/lib/server/error-monitoring";
 
 export type ApiContext = {
   user: {
@@ -148,6 +149,7 @@ export function apiError(error: unknown) {
     }
   }
 
+  reportServerFailure("api", error);
   return NextResponse.json(
     { error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred." } },
     { status: 500 },

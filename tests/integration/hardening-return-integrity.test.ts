@@ -54,6 +54,22 @@ describe("production hardening return integrity", () => {
     expect(await db.customerReturn.count({ where: { salesOrderId: order.id } })).toBe(1);
   });
 
+  it("reconciles partial-return tax, including a cancelled earlier partial return", async () => {
+    const product = await db.product.create({ data: { workspaceId, name: "Tax rounding", sku: randomUUID(), stockQuantity: 1, costPrice: 0.01, sellingPrice: 0.17 } });
+    const order = await sales.createSale(context(), { customerId, items: [{ productId: product.id, quantity: 1, unitPrice: 0.17, discountPerUnit: 0, taxRate: 18 }], orderDiscount: 0, paidAmount: 0, idempotencyKey: randomUUID() });
+    const item = await db.salesOrderItem.findFirstOrThrow({ where: { salesOrderId: order.id } });
+    const input = { salesOrderId: order.id, items: [{ itemId: item.id, quantity: 0.5 }], restock: false, reason: "", notes: "" };
+    const first = await sales.createCustomerReturn(context(), { ...input, idempotencyKey: randomUUID() });
+    await sales.createCustomerReturn(context(), { ...input, idempotencyKey: randomUUID() });
+    const { cancelCustomerReturn } = await import("@/lib/server/customer-return-reversals");
+    await cancelCustomerReturn(context(), first.id, "Correct earlier return");
+    await sales.createCustomerReturn(context(), { ...input, idempotencyKey: randomUUID() });
+    const active = await db.customerReturn.findMany({ where: { salesOrderId: order.id, creditNote: { is: { status: { not: "CANCELLED" } } } } });
+    const tax = await db.generalLedgerEntry.aggregate({ where: { workspaceId, sourceType: "CUSTOMER_RETURN", sourceId: { in: active.map((entry) => entry.id) }, reversalOfId: null, account: { systemCode: "SALES_TAX_PAYABLE" } }, _sum: { debit: true } });
+    expect(Number(tax._sum.debit)).toBe(Number(item.salesTaxAmount));
+    expect(active.reduce((sum, entry) => sum + Number(entry.totalAmount), 0)).toBe(0.2);
+  });
+
   it("includes unscoped supplier returns when checking a later receipt-specific return", async () => {
     const product = await db.product.create({ data: { workspaceId, name: "Mixed cost", sku: randomUUID(), stockQuantity: 100, costPrice: 100, sellingPrice: 200 } });
     const order = await purchases.createPurchase(context(), { supplierId, items: [{ productId: product.id, quantity: 20, unitCost: 100 }], idempotencyKey: randomUUID() });

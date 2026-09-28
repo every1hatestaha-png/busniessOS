@@ -154,6 +154,7 @@ describe("managed warehouse sales lifecycle", () => {
 
     const detail = await createSaleDetail(sale.id);
     expect(detail?.warehouse?.id).toBe(warehouseId);
+    const originalMovement = await db.inventoryTransaction.findFirstOrThrow({ where: { workspaceId, reference: storedSale.orderNumber, type: "SALE" } });
 
     await updateSaleAndInvoice(context(), {
       saleId: sale.id,
@@ -167,6 +168,12 @@ describe("managed warehouse sales lifecycle", () => {
     });
 
     await expectQuantities(13);
+    const historicalMovement = await db.inventoryTransaction.findUniqueOrThrow({ where: { id: originalMovement.id } });
+    expect(historicalMovement.createdAt).toEqual(originalMovement.createdAt);
+    expect(historicalMovement.quantityChanged.equals(originalMovement.quantityChanged)).toBe(true);
+    const editReversal = await db.inventoryTransaction.findFirstOrThrow({ where: { workspaceId, reference: historicalMovement.reference, type: "SALE_CANCELLATION" } });
+    expect(editReversal.quantityChanged.plus(historicalMovement.quantityChanged).isZero()).toBe(true);
+    expect(await db.inventoryTransaction.count({ where: { workspaceId, reference: storedSale.orderNumber, type: "SALE" } })).toBe(1);
 
     const documentVersions = await db.invoiceDocumentVersion.findMany({
       where: { invoiceId },

@@ -131,6 +131,7 @@ describe("customer-specific sales BOM", () => {
     );
     expect(snapshots).toHaveLength(3);
     expect(snapshots.every((row) => row.productCode === "FHFF")).toBe(true);
+    const originalComponentMovements = await db.inventoryTransaction.findMany({ where: { workspaceId, type: "SALE", reference: { startsWith: "BOM:" } } });
 
     await updateSaleAndInvoice(context(), {
       saleId: sale.id,
@@ -147,6 +148,12 @@ describe("customer-specific sales BOM", () => {
     await expectStock(bearingId, 90);
     await expectStock(sealId, 47.5);
     await expectStock(studId, 175);
+    for (const original of originalComponentMovements) {
+      const retained = await db.inventoryTransaction.findUniqueOrThrow({ where: { id: original.id } });
+      expect(retained.createdAt).toEqual(original.createdAt);
+      const reversal = await db.inventoryTransaction.findFirstOrThrow({ where: { workspaceId, reference: retained.reference, type: "SALE_CANCELLATION" } });
+      expect(reversal.quantityChanged.plus(retained.quantityChanged).isZero()).toBe(true);
+    }
 
     const saleItem = await db.salesOrderItem.findFirstOrThrow({ where: { salesOrderId: sale.id, productId: hubId } });
     const createdReturn = await createCustomerReturn(context(), {

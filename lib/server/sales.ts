@@ -415,19 +415,29 @@ export async function createCustomerReturn(context: ServiceContext, input: Custo
   const data = customerReturnSchema.parse(input);
   return withSerializableRetry(async (tx) => {
     if (data.idempotencyKey) {
-      const existing = await tx.customerReturn.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true } });
-      if (existing) return existing;
+      const existing = await tx.customerReturn.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, include: { items: true } });
+      if (existing) {
+        const sameItems = new Set(data.items.map((item) => item.itemId)).size === data.items.length
+          && existing.items.length === data.items.length
+          && data.items.every((item) => existing.items.some((stored) => stored.salesOrderItemId === item.itemId && stored.quantity.equals(item.quantity)));
+        if (existing.salesOrderId !== data.salesOrderId || existing.restock !== data.restock
+          || (existing.reason ?? "") !== data.reason || (existing.notes ?? "") !== data.notes || !sameItems) {
+          throw new SaleDomainError("IDEMPOTENCY_CONFLICT", "This idempotency key was already used for a different customer return request.");
+        }
+        return { id: existing.id };
+      }
     }
     const order = await tx.salesOrder.findFirst({ where: { id: data.salesOrderId, workspaceId: context.workspaceId, status: { not: "CANCELLED" } }, include: { items: true } });
     if (!order) throw new SaleDomainError("SALE_NOT_FOUND", "Sale not found.");
     const itemIds = data.items.map((item) => item.itemId);
     if (new Set(itemIds).size !== itemIds.length) throw new SaleDomainError("INVALID_RETURN", "Duplicate return items are not allowed.");
-    const previous = await tx.customerReturnItem.groupBy({ by: ["salesOrderItemId"], where: { salesOrderItemId: { in: itemIds }, customerReturn: { workspaceId: context.workspaceId, creditNote: { is: { status: { not: "CANCELLED" } } } } }, _sum: { quantity: true } });
+    const previous = await tx.customerReturnItem.groupBy({ by: ["salesOrderItemId"], where: { salesOrderItemId: { in: order.items.map((item) => item.id) }, customerReturn: { workspaceId: context.workspaceId, creditNote: { is: { status: { not: "CANCELLED" } } } } }, _sum: { quantity: true, totalPrice: true } });
     const refundableBase = order.items.reduce((sum, entry) => sum.plus(entry.totalPrice), new Prisma.Decimal(0));
     const lines = data.items.map((item) => {
       const source = order.items.find((entry) => entry.id === item.itemId);
-      const returned = Number(previous.find((entry) => entry.salesOrderItemId === item.itemId)?._sum.quantity ?? 0);
-      if (!source || item.quantity > source.quantity.toNumber() - returned) throw new SaleDomainError("INVALID_RETURN", "Return quantity exceeds sold quantity.");
+      const prior = previous.find((entry) => entry.salesOrderItemId === item.itemId);
+      const returned = prior?._sum.quantity ?? new Prisma.Decimal(0);
+      if (!source || returned.plus(item.quantity).gt(source.quantity)) throw new SaleDomainError("INVALID_RETURN", "Return quantity exceeds sold quantity.");
       const hasTaxSnapshot = source.taxableAmount !== null && source.salesTaxAmount !== null;
       const allocatedLineTotal = hasTaxSnapshot
         ? source.taxableAmount!.plus(source.salesTaxAmount!)
@@ -435,20 +445,34 @@ export async function createCustomerReturn(context: ServiceContext, input: Custo
           ? new Prisma.Decimal(0)
           : source.totalPrice.mul(order.total).div(refundableBase);
       const unitPrice = allocatedLineTotal.div(source.quantity);
-      const salesTax = hasTaxSnapshot
-        ? source.salesTaxAmount!.div(source.quantity).mul(item.quantity).toDecimalPlaces(2)
-        : new Prisma.Decimal(0);
-      return { source, quantity: item.quantity, unitPrice, total: unitPrice.mul(item.quantity).toDecimalPlaces(2), salesTax };
+      // Round the cumulative entitlement, then subtract actual prior credits.
+      // Independent rounding of each fractional return can over-refund a line.
+      const cumulativeTotal = allocatedLineTotal.mul(returned.plus(item.quantity)).div(source.quantity).toDecimalPlaces(2);
+      const total = Prisma.Decimal.max(0, cumulativeTotal.minus(prior?._sum.totalPrice ?? 0));
+      return { source, quantity: item.quantity, unitPrice, total };
     });
     const total = lines.reduce((sum, line) => sum.plus(line.total), new Prisma.Decimal(0));
-    const hasCompleteTaxSnapshot = lines.every((line) => line.source.taxableAmount !== null && line.source.salesTaxAmount !== null);
+    const hasCompleteTaxSnapshot = order.items.every((item) => item.taxableAmount !== null && item.salesTaxAmount !== null);
     const taxableOrderAmount = order.subtotal.minus(order.discount);
     const orderSalesTax = Prisma.Decimal.max(order.total.minus(taxableOrderAmount), new Prisma.Decimal(0));
-    const returnSalesTax = hasCompleteTaxSnapshot
-      ? lines.reduce((sum, line) => sum.plus(line.salesTax), new Prisma.Decimal(0)).toDecimalPlaces(2)
-      : order.total.greaterThan(0) && orderSalesTax.greaterThan(0)
-        ? total.mul(orderSalesTax).div(order.total).toDecimalPlaces(2)
+    const cumulativeTax = hasCompleteTaxSnapshot
+      ? order.items.reduce((sum, item) => {
+          const returned = previous.find((entry) => entry.salesOrderItemId === item.id)?._sum.quantity ?? new Prisma.Decimal(0);
+          const added = lines.find((line) => line.source.id === item.id)?.quantity ?? 0;
+          return sum.plus(item.salesTaxAmount!.mul(returned.plus(added)).div(item.quantity).toDecimalPlaces(2));
+        }, new Prisma.Decimal(0))
+      : order.total.gt(0)
+        ? previous.reduce((sum, entry) => sum.plus(entry._sum.totalPrice ?? 0), total).mul(orderSalesTax).div(order.total).toDecimalPlaces(2)
         : new Prisma.Decimal(0);
+    const activeReturns = await tx.customerReturn.findMany({
+      where: { workspaceId: context.workspaceId, salesOrderId: order.id, creditNote: { is: { status: { not: "CANCELLED" } } } },
+      select: { id: true },
+    });
+    const postedTax = activeReturns.length ? await tx.generalLedgerEntry.aggregate({
+      where: { workspaceId: context.workspaceId, sourceType: "CUSTOMER_RETURN", sourceId: { in: activeReturns.map((entry) => entry.id) }, reversalOfId: null, account: { systemCode: "SALES_TAX_PAYABLE" } },
+      _sum: { debit: true },
+    }) : null;
+    const returnSalesTax = Prisma.Decimal.min(total, Prisma.Decimal.max(0, cumulativeTax.minus(postedTax?._sum.debit ?? 0)));
     const saleCosts = data.restock ? await tx.inventoryTransaction.findMany({ where: { workspaceId: context.workspaceId, reference: order.orderNumber, type: "SALE", productId: { in: lines.map((line) => line.source.productId) } }, select: { productId: true, unitCost: true } }) : [];
     let inventoryCost = lines.reduce((sum, line) => {
       const cost = saleCosts.find((entry) => entry.productId === line.source.productId)?.unitCost ?? new Prisma.Decimal(0);

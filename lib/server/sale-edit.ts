@@ -5,6 +5,7 @@ import { Prisma, type Role } from "@prisma/client";
 import { postSaleToGeneralLedger, reverseGeneralLedgerEntries } from "@/lib/server/accounting";
 import { writeAudit } from "@/lib/server/audit";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
+import { preserveSupersededSaleMovements } from "@/lib/server/sale-movement-history";
 import { allocateSalesTaxByLine } from "@/lib/sales-tax";
 import { applyManagedWarehouseStockDelta, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
 import { consumeCustomerSalesBomComponents, CustomerSalesBomError, restoreSaleBomComponents } from "@/lib/server/customer-sales-bom";
@@ -108,9 +109,7 @@ export async function updateSaleAndInvoice(context: EditContext, input: SaleEdit
       throwBomAsEditError(error);
     }
 
-    await tx.inventoryTransaction.deleteMany({
-      where: { workspaceId: context.workspaceId, reference: order.orderNumber, type: "SALE" },
-    });
+    await preserveSupersededSaleMovements(tx, context.workspaceId, order.orderNumber);
 
     const freshProducts = await tx.product.findMany({
       where: { workspaceId: context.workspaceId, id: { in: requestedProductIds }, status: "ACTIVE" },

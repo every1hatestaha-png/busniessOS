@@ -593,8 +593,19 @@ export async function createSupplierReturn(context: ServiceContext, input: Suppl
   const data = supplierReturnSchema.parse(input);
   return withSerializableRetry(async (tx) => {
     if (data.idempotencyKey) {
-      const existing = await tx.supplierReturn.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true } });
-      if (existing) return existing;
+      const existing = await tx.supplierReturn.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, include: { items: true } });
+      if (existing) {
+        const sameItems = new Set(data.items.map((item) => item.itemId)).size === data.items.length
+          && existing.items.length === data.items.length
+          && data.items.every((item) => existing.items.some((stored) => stored.purchaseOrderItemId === item.itemId
+            && stored.quantity.equals(item.quantity)
+            && (item.returnedWeightKg === undefined || stored.returnedWeightKg?.equals(item.returnedWeightKg))));
+        if (existing.purchaseOrderId !== data.purchaseOrderId || existing.goodReceivedNoteId !== (data.goodReceivedNoteId ?? null)
+          || (existing.reason ?? "") !== data.reason || (existing.notes ?? "") !== data.notes || !sameItems) {
+          throw new PurchaseDomainError("IDEMPOTENCY_CONFLICT", "This idempotency key was already used for a different supplier return request.");
+        }
+        return { id: existing.id };
+      }
     }
     const order = await tx.purchaseOrder.findFirst({ where: { id: data.purchaseOrderId, workspaceId: context.workspaceId, status: { not: "CANCELLED" } }, include: { items: true } });
     if (!order) throw new PurchaseDomainError("PURCHASE_NOT_FOUND", "Purchase not found.");
@@ -639,7 +650,10 @@ export async function createSupplierReturn(context: ServiceContext, input: Suppl
     const supplierReturnScope = {
       workspaceId: context.workspaceId,
       status: "POSTED" as const,
-      ...(data.goodReceivedNoteId ? { goodReceivedNoteId: data.goodReceivedNoteId } : {}),
+      // Unlinked legacy returns have already consumed received quantities.
+      // Conservatively count them against a selected receipt as their source
+      // cannot be proven. They must never disappear when switching scopes.
+      ...(data.goodReceivedNoteId ? { OR: [{ goodReceivedNoteId: data.goodReceivedNoteId }, { goodReceivedNoteId: null }] } : {}),
     };
     const previous = await tx.supplierReturnItem.groupBy({ by: ["purchaseOrderItemId"], where: { purchaseOrderItemId: { in: itemIds }, supplierReturn: supplierReturnScope }, _sum: { quantity: true } });
     const received = await tx.goodReceivedNoteItem.groupBy({ by: ["purchaseOrderItemId"], where: grnWhere, _sum: { acceptedQuantity: true, totalCost: true } });
@@ -669,10 +683,10 @@ export async function createSupplierReturn(context: ServiceContext, input: Suppl
 
     const lines = data.items.map((item) => {
       const source = order.items.find((entry) => entry.id === item.itemId);
-      const returned = Number(previous.find((entry) => entry.purchaseOrderItemId === item.itemId)?._sum.quantity ?? 0);
+      const returned = previous.find((entry) => entry.purchaseOrderItemId === item.itemId)?._sum.quantity ?? new Prisma.Decimal(0);
       const receipt = received.find((entry) => entry.purchaseOrderItemId === item.itemId);
       const acceptedQuantity = Number(receipt?._sum.acceptedQuantity ?? 0);
-      if (!source || item.quantity > acceptedQuantity - returned) throw new PurchaseDomainError("INVALID_RETURN", "Return quantity exceeds received quantity.");
+      if (!source || returned.plus(item.quantity).gt(receipt?._sum.acceptedQuantity ?? 0)) throw new PurchaseDomainError("INVALID_RETURN", "Return quantity exceeds received quantity after earlier returns, including returns without a linked GRN.");
 
       const weightDetail = weightDetailByPoItem.get(item.itemId);
       const previouslyReturnedWeight = Number(previousWeight.find((entry) => entry.purchaseOrderItemId === item.itemId)?._sum.returnedWeightKg ?? 0);
@@ -1775,4 +1789,3 @@ export async function deleteGoodsReceipt(_context: ServiceContext, _id: string) 
     "Posted goods receipts cannot be deleted. Use void receipt instead to preserve audit and accounting integrity.",
   );
 }
-
