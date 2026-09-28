@@ -1,52 +1,44 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { checkDatabaseReadiness, getFbrCredentialDeploymentReadiness } = vi.hoisted(() => ({
+const { checkDatabaseReadiness } = vi.hoisted(() => ({
   checkDatabaseReadiness: vi.fn(),
-  getFbrCredentialDeploymentReadiness: vi.fn(),
 }));
 
 vi.mock("@/lib/server/database-readiness", () => ({ checkDatabaseReadiness }));
-vi.mock("@/lib/server/fbr-credentials", () => ({ getFbrCredentialDeploymentReadiness }));
 
 import { GET } from "@/app/api/readiness/route";
 
 describe("database readiness endpoint", () => {
   beforeEach(() => {
     checkDatabaseReadiness.mockReset();
-    getFbrCredentialDeploymentReadiness.mockReset();
-    getFbrCredentialDeploymentReadiness.mockReturnValue({
-      credentialEncryption: "configured",
-      productionTransmission: "disabled",
-    });
-    delete process.env.VERCEL_GIT_COMMIT_SHA;
   });
 
-  it("returns ready only when the deployed runtime database has every shipped migration", async () => {
+  it("returns only minimal public readiness metadata when the deployed database is ready", async () => {
     checkDatabaseReadiness.mockResolvedValue({ ready: true, pendingCount: 0 });
     const response = await GET();
     expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toContain("no-store");
     await expect(response.json()).resolves.toEqual({
       ok: true,
       database: "ready",
-      revision: null,
-      fbr: { credentialEncryption: "configured", productionTransmission: "disabled" },
     });
   });
 
-  it("reports the non-secret Vercel deployment revision and safe FBR deployment state", async () => {
+  it("does not expose deployment revision or FBR credential posture", async () => {
     process.env.VERCEL_GIT_COMMIT_SHA = "5127483238af1b63598eb39dff5bb64f6a2a9ed7";
+    process.env.FBR_DI_PRODUCTION_TRANSMISSION_ENABLED = "1";
+    process.env.FBR_DI_CREDENTIAL_ENCRYPTION_KEY = "sensitive-deployment-state";
     checkDatabaseReadiness.mockResolvedValue({ ready: true, pendingCount: 0 });
-    getFbrCredentialDeploymentReadiness.mockReturnValue({
-      credentialEncryption: "missing",
-      productionTransmission: "disabled",
-    });
+
     const response = await GET();
-    await expect(response.json()).resolves.toEqual({
-      ok: true,
-      database: "ready",
-      revision: "5127483238af",
-      fbr: { credentialEncryption: "missing", productionTransmission: "disabled" },
-    });
+    const payload = await response.json();
+    expect(payload).toEqual({ ok: true, database: "ready" });
+    expect(payload).not.toHaveProperty("revision");
+    expect(payload).not.toHaveProperty("fbr");
+
+    delete process.env.VERCEL_GIT_COMMIT_SHA;
+    delete process.env.FBR_DI_PRODUCTION_TRANSMISSION_ENABLED;
+    delete process.env.FBR_DI_CREDENTIAL_ENCRYPTION_KEY;
   });
 
   it("fails closed when migrations are pending", async () => {
