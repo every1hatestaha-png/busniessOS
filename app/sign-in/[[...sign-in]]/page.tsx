@@ -123,7 +123,7 @@ export default function SignInPage() {
 
               {showMigrationHelp ? (
                 <div className="rounded-xl border border-emerald-400/15 bg-emerald-400/[0.05] px-4 py-3 text-sm leading-6 text-slate-300">
-                  Used MunshiOS before the login upgrade? <Link href="/forgot-password" className="font-medium text-emerald-300 hover:text-emerald-200">Activate your account with an email code.</Link>
+                  Used MunshiOS before the login upgrade? Your old Clerk password was not transferred to the new login system. <Link href="/forgot-password" className="font-medium text-emerald-300 hover:text-emerald-200">Activate your account once by email and set a new password.</Link>
                 </div>
               ) : null}
 
