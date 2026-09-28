@@ -78,8 +78,9 @@ export default function RecoveryNewPasswordPage() {
       return;
     }
 
-    router.replace("/dashboard");
-    router.refresh();
+    // Full navigation guarantees the updated Supabase cookies are visible to
+    // server components and middleware on the very next dashboard request.
+    window.location.assign("/dashboard");
   }
 
   if (checkingSession) {
