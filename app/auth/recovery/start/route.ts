@@ -15,8 +15,13 @@ export async function POST(request: Request) {
       return NextResponse.json(GENERIC_RESPONSE, { status: 200, headers: { "Cache-Control": "no-store" } });
     }
 
-    const existingUser = await db.user.findUnique({
-      where: { email },
+    const existingUser = await db.user.findFirst({
+      where: {
+        email: {
+          equals: email,
+          mode: "insensitive",
+        },
+      },
       select: { id: true },
     });
 
@@ -27,9 +32,11 @@ export async function POST(request: Request) {
     }
 
     const origin = new URL(request.url).origin;
-    const redirectTo = typeof body.redirectTo === "string" && body.redirectTo.startsWith("/")
-      ? `${origin}${body.redirectTo}`
-      : `${origin}/auth/callback?next=${encodeURIComponent("/forgot-password?verified=1")}`;
+    const requestedRedirect = typeof body.redirectTo === "string" ? body.redirectTo : "";
+    const safeRedirectPath = requestedRedirect.startsWith("/") && !requestedRedirect.startsWith("//")
+      ? requestedRedirect
+      : `/auth/callback?next=${encodeURIComponent("/forgot-password?verified=1")}`;
+    const redirectTo = `${origin}${safeRedirectPath}`;
 
     const supabase = await createSupabaseServerClient();
     const { error } = await supabase.auth.signInWithOtp({
