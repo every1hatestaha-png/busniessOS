@@ -3,6 +3,12 @@ type Bucket = { count: number; resetAt: number };
 const buckets = new Map<string, Bucket>();
 let lastCleanup = 0;
 
+const recoveryPostLimits: Record<string, number> = {
+  "/auth/recovery/start": 5,
+  "/auth/recovery/verify": 20,
+  "/auth/recovery/password": 10,
+};
+
 function clientKey(request: Request) {
   const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
   return forwarded || request.headers.get("x-real-ip")?.trim() || null;
@@ -20,14 +26,17 @@ export function checkAppRateLimit(request: Request, pathname: string) {
   const ip = clientKey(request);
   if (!ip) return null;
 
+  const method = request.method.toUpperCase();
   let limit = 0;
   const windowMs = 60_000;
 
-  if (pathname.startsWith("/api/v1/")) {
-    limit = request.method === "GET" ? 180 : 60;
+  if (method === "POST" && recoveryPostLimits[pathname]) {
+    limit = recoveryPostLimits[pathname];
+  } else if (pathname.startsWith("/api/v1/")) {
+    limit = method === "GET" ? 180 : 60;
   } else if (pathname === "/api/search") {
     limit = 90;
-  } else if (pathname === "/platform" && request.method === "POST") {
+  } else if (pathname === "/platform" && method === "POST") {
     limit = 30;
   } else {
     return null;
@@ -35,7 +44,7 @@ export function checkAppRateLimit(request: Request, pathname: string) {
 
   const now = Date.now();
   cleanup(now);
-  const key = `${ip}:${request.method}:${pathname}`;
+  const key = `${ip}:${method}:${pathname}`;
   const existing = buckets.get(key);
 
   if (!existing || existing.resetAt <= now) {
