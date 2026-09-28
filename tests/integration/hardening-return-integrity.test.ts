@@ -30,7 +30,7 @@ describe("production hardening return integrity", () => {
 
   async function sale() {
     const product = await db.product.create({ data: { workspaceId, name: "Fractional", sku: randomUUID(), stockQuantity: 1, costPrice: 0.01, sellingPrice: 0.03 } });
-    const order = await sales.createSale(context(), { customerId, items: [{ productId: product.id, quantity: 1, unitPrice: 0.03 }], orderDiscount: 0, paidAmount: 0, idempotencyKey: randomUUID() });
+    const order = await sales.createSale(context(), { customerId, items: [{ productId: product.id, quantity: 1, unitPrice: 0.03, discountPerUnit: 0 }], orderDiscount: 0, paidAmount: 0, idempotencyKey: randomUUID() });
     const item = await db.salesOrderItem.findFirstOrThrow({ where: { salesOrderId: order.id } });
     return { order, item, product };
   }
