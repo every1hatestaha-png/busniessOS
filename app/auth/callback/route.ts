@@ -16,6 +16,12 @@ function signInFallback(requestUrl: string, next: string) {
   return NextResponse.redirect(target);
 }
 
+function recoveryActivationFallback(requestUrl: string) {
+  const target = new URL("/forgot-password", requestUrl);
+  target.searchParams.set("activation", "1");
+  return NextResponse.redirect(target);
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
@@ -28,11 +34,18 @@ export async function GET(request: Request) {
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
-    // Email confirmation may be opened on a different browser/device from the
-    // one that initiated the PKCE signup. In that case the confirmation itself
-    // succeeds at Supabase, but this browser does not have the PKCE verifier.
-    // Never bypass authentication: require a normal password sign-in and keep
-    // the intended post-login destination.
+    // A first-time legacy customer can receive an account-activation link before
+    // they have a Supabase password. When that link is opened on another
+    // browser/device, PKCE exchange can fail even though Supabase has confirmed
+    // the email. Sending that user to password sign-in would create a dead end,
+    // so keep recovery destinations inside the activation flow and let them
+    // request the follow-up verification code safely.
+    if (isRecoveryDestination(next)) {
+      return recoveryActivationFallback(request.url);
+    }
+
+    // Normal signup confirmation can safely fall back to password sign-in
+    // because a new signup already chose a password.
     return signInFallback(request.url, next);
   }
 
