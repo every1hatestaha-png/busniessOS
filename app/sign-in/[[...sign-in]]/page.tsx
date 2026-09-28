@@ -6,14 +6,10 @@ import { FormEvent, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 
+import { safeInternalDestination } from "@/lib/auth-routing";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const LOGIN_VISUAL = "/auth/faisal-mosque.webp";
-
-function safeDestination(value: string | null) {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.startsWith("/sign-in")) return "/dashboard";
-  return value;
-}
 
 export default function SignInPage() {
   const searchParams = useSearchParams();
@@ -55,7 +51,12 @@ export default function SignInPage() {
       return;
     }
 
-    window.location.assign(safeDestination(searchParams.get("redirect_url")));
+    const destination = safeInternalDestination(
+      searchParams.get("redirect_url"),
+      window.location.href,
+      "/dashboard",
+    );
+    window.location.assign(destination);
   }
 
   return (
@@ -94,17 +95,7 @@ export default function SignInPage() {
                 <label htmlFor="email" className="mb-2 block text-sm font-medium text-slate-200">Email</label>
                 <div className="relative">
                   <Mail className="absolute left-4 top-1/2 size-[18px] -translate-y-1/2 text-slate-500" />
-                  <input
-                    id="email"
-                    type="email"
-                    autoComplete="email"
-                    required
-                    disabled={busy}
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    placeholder="you@company.com"
-                    className="h-[52px] w-full rounded-xl border border-white/10 bg-white/[0.035] pl-12 pr-4 text-sm text-white outline-none transition placeholder:text-slate-600 hover:border-white/15 focus:border-emerald-400/70 focus:bg-white/[0.05] focus:ring-2 focus:ring-emerald-400/10 disabled:opacity-60"
-                  />
+                  <input id="email" type="email" autoComplete="email" required disabled={busy} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" className="h-[52px] w-full rounded-xl border border-white/10 bg-white/[0.035] pl-12 pr-4 text-sm text-white outline-none transition placeholder:text-slate-600 hover:border-white/15 focus:border-emerald-400/70 focus:bg-white/[0.05] focus:ring-2 focus:ring-emerald-400/10 disabled:opacity-60" />
                 </div>
               </div>
 
@@ -115,26 +106,8 @@ export default function SignInPage() {
                 </div>
                 <div className="relative">
                   <LockKeyhole className="absolute left-4 top-1/2 size-[18px] -translate-y-1/2 text-slate-500" />
-                  <input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    autoComplete="current-password"
-                    required
-                    disabled={busy}
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    placeholder="Enter your password"
-                    className="h-[52px] w-full rounded-xl border border-white/10 bg-white/[0.035] pl-12 pr-12 text-sm text-white outline-none transition placeholder:text-slate-600 hover:border-white/15 focus:border-emerald-400/70 focus:bg-white/[0.05] focus:ring-2 focus:ring-emerald-400/10 disabled:opacity-60"
-                  />
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => setShowPassword((value) => !value)}
-                    aria-label={showPassword ? "Hide password" : "Show password"}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-500 transition hover:bg-white/[0.05] hover:text-slate-200 disabled:opacity-50"
-                  >
-                    {showPassword ? <EyeOff className="size-[18px]" /> : <Eye className="size-[18px]" />}
-                  </button>
+                  <input id="password" type={showPassword ? "text" : "password"} autoComplete="current-password" required disabled={busy} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter your password" className="h-[52px] w-full rounded-xl border border-white/10 bg-white/[0.035] pl-12 pr-12 text-sm text-white outline-none transition placeholder:text-slate-600 hover:border-white/15 focus:border-emerald-400/70 focus:bg-white/[0.05] focus:ring-2 focus:ring-emerald-400/10 disabled:opacity-60" />
+                  <button type="button" disabled={busy} onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide password" : "Show password"} className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-500 transition hover:bg-white/[0.05] hover:text-slate-200 disabled:opacity-50">{showPassword ? <EyeOff className="size-[18px]" /> : <Eye className="size-[18px]" />}</button>
                 </div>
               </div>
 
@@ -153,14 +126,7 @@ export default function SignInPage() {
             </form>
 
             <div className="mt-7 border-t border-white/[0.08] pt-6">
-              <p className="text-center text-sm text-slate-500">
-                New to MunshiOS? <Link href="/sign-up" className="font-medium text-emerald-300 transition hover:text-emerald-200">Create an account</Link>
-              </p>
-              {!showMigrationHelp ? (
-                <p className="mt-4 text-center text-xs leading-5 text-slate-600">
-                  Existing customer? <Link href="/forgot-password" className="text-slate-400 transition hover:text-slate-300">Activate your account</Link>
-                </p>
-              ) : null}
+              <p className="text-center text-sm text-slate-500">New to MunshiOS? <Link href="/sign-up" className="font-medium text-emerald-300 transition hover:text-emerald-200">Create an account</Link></p>
             </div>
           </div>
         </section>
