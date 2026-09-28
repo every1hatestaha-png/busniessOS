@@ -1,12 +1,16 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ArrowLeft, CheckCircle2, KeyRound, Mail, ShieldCheck } from "lucide-react";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type RecoveryStep = "email" | "code" | "choice";
+
+const RESEND_COOLDOWN_SECONDS = 30;
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
@@ -16,6 +20,7 @@ export default function ForgotPasswordPage() {
   const [step, setStep] = useState<RecoveryStep>("email");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -32,9 +37,17 @@ export default function ForgotPasswordPage() {
     };
   }, [supabase]);
 
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setInterval(() => {
+      setResendCooldown((value) => Math.max(0, value - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendCooldown]);
+
   async function sendRecoveryCode(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
-    if (busy) return;
+    if (busy || (step === "code" && resendCooldown > 0)) return;
 
     const identifier = email.trim().toLowerCase();
     if (!identifier) {
@@ -55,20 +68,22 @@ export default function ForgotPasswordPage() {
       });
 
       if (response.status === 429) {
-        setError("Too many recovery attempts. Wait a moment and try again.");
+        setError("Please wait a moment before requesting another code.");
+        setResendCooldown(RESEND_COOLDOWN_SECONDS);
         return;
       }
 
       if (!response.ok) {
-        setError("We could not send a recovery code right now. Please try again.");
+        setError("We could not start recovery right now. Please try again shortly.");
         return;
       }
 
       setEmail(identifier);
       setCode("");
       setStep("code");
+      setResendCooldown(RESEND_COOLDOWN_SECONDS);
     } catch {
-      setError("We could not send a recovery code right now. Please try again.");
+      setError("We could not start recovery right now. Please try again shortly.");
     } finally {
       setBusy(false);
     }
@@ -113,48 +128,68 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <main className="grid min-h-dvh place-items-center bg-[#06131a] px-4 py-10 text-white">
-      <div className="w-full max-w-md rounded-3xl border border-teal-500/40 bg-[#07151d] p-7 shadow-2xl">
-        <h1 className="text-3xl font-semibold">Recover or activate your account</h1>
+    <main className="min-h-dvh bg-[#071821] px-6 py-10 text-white sm:px-10">
+      <div className="mx-auto flex min-h-[calc(100dvh-5rem)] w-full max-w-[430px] flex-col justify-center">
+        <Link href="/" className="mb-10 inline-flex items-center gap-3 self-start">
+          <span className="grid size-10 place-items-center rounded-xl border border-white/10 bg-white/[0.04] shadow-[0_8px_30px_rgba(0,0,0,0.18)]">
+            <Image src="/brand/munshios-mark.svg" alt="MunshiOS" width={28} height={28} priority />
+          </span>
+          <span className="text-lg font-semibold tracking-[-0.03em] text-white">munshi<span className="text-emerald-400">OS</span></span>
+        </Link>
 
         {step === "email" ? (
-          <>
-            <p className="mt-2 text-sm leading-6 text-slate-400">Enter the email already attached to your MunshiOS account. Existing customers from the previous login system can use this once to activate Supabase access without losing any business data.</p>
-            <form onSubmit={sendRecoveryCode} className="mt-6 space-y-4">
-              <input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" className="h-12 w-full rounded-xl border border-slate-600 bg-[#0b1921] px-4 text-sm outline-none focus:border-teal-400" />
-              {error ? <p role="alert" className="text-sm text-red-300">{error}</p> : null}
-              <button type="submit" disabled={busy} className="h-12 w-full rounded-xl bg-emerald-600 text-sm font-semibold hover:bg-emerald-500 disabled:opacity-60">{busy ? "Sending..." : "Send confirmation code"}</button>
+          <section>
+            <div className="grid size-12 place-items-center rounded-2xl border border-emerald-400/15 bg-emerald-400/[0.06]">
+              <Mail className="size-5 text-emerald-300" />
+            </div>
+            <h1 className="mt-6 text-[34px] font-semibold tracking-[-0.045em] text-white">Recover your account</h1>
+            <p className="mt-2 text-[15px] leading-6 text-slate-400">Enter the email attached to your MunshiOS account. We&apos;ll send a short confirmation code.</p>
+
+            <form onSubmit={sendRecoveryCode} className="mt-7 space-y-4">
+              <div>
+                <label htmlFor="recovery-email" className="mb-2 block text-sm font-medium text-slate-200">Email</label>
+                <input id="recovery-email" type="email" autoComplete="email" required disabled={busy} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" className="h-[52px] w-full rounded-xl border border-white/10 bg-white/[0.035] px-4 text-sm text-white outline-none transition placeholder:text-slate-600 hover:border-white/15 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-400/10 disabled:opacity-60" />
+              </div>
+              {error ? <p role="alert" className="rounded-xl border border-red-400/20 bg-red-500/[0.07] px-4 py-3 text-sm leading-5 text-red-200">{error}</p> : null}
+              <button type="submit" disabled={busy} className="h-[52px] w-full rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-[#03251b] shadow-[0_10px_30px_rgba(16,185,129,0.14)] transition hover:bg-emerald-400 disabled:opacity-60">{busy ? "Sending..." : "Send confirmation code"}</button>
             </form>
-          </>
+          </section>
         ) : null}
 
         {step === "code" ? (
-          <>
-            <p className="mt-2 text-sm text-slate-400">If this email belongs to a MunshiOS account, a confirmation code has been sent to {email.trim().toLowerCase()}.</p>
-            <form onSubmit={verifyRecoveryCode} className="mt-6 space-y-4">
-              <input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={8} required value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="Confirmation code" className="h-12 w-full rounded-xl border border-slate-600 bg-[#0b1921] px-4 text-center text-lg tracking-[0.28em] outline-none focus:border-teal-400" />
-              {error ? <p role="alert" className="text-sm text-red-300">{error}</p> : null}
-              <button type="submit" disabled={busy} className="h-12 w-full rounded-xl bg-emerald-600 text-sm font-semibold hover:bg-emerald-500 disabled:opacity-60">{busy ? "Verifying..." : "Verify code"}</button>
-              <button type="button" disabled={busy} onClick={() => void sendRecoveryCode()} className="h-11 w-full rounded-xl border border-slate-600 text-sm font-medium text-slate-200 hover:border-teal-400 disabled:opacity-60">Resend code</button>
-              <button type="button" disabled={busy} onClick={() => { setStep("email"); setCode(""); setError(""); }} className="w-full text-sm text-slate-400 hover:text-white">Use another email</button>
+          <section>
+            <div className="grid size-12 place-items-center rounded-2xl border border-emerald-400/15 bg-emerald-400/[0.06]">
+              <KeyRound className="size-5 text-emerald-300" />
+            </div>
+            <h1 className="mt-6 text-[34px] font-semibold tracking-[-0.045em] text-white">Enter your code</h1>
+            <p className="mt-2 text-[15px] leading-6 text-slate-400">If <span className="font-medium text-slate-300">{email}</span> belongs to a MunshiOS account, a confirmation code has been sent.</p>
+
+            <form onSubmit={verifyRecoveryCode} className="mt-7 space-y-4">
+              <input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={8} required disabled={busy} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="000000" className="h-[56px] w-full rounded-xl border border-white/10 bg-white/[0.035] px-4 text-center text-xl tracking-[0.32em] text-white outline-none transition placeholder:text-slate-700 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-400/10 disabled:opacity-60" />
+              {error ? <p role="alert" className="rounded-xl border border-red-400/20 bg-red-500/[0.07] px-4 py-3 text-sm leading-5 text-red-200">{error}</p> : null}
+              <button type="submit" disabled={busy} className="h-[52px] w-full rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-[#03251b] transition hover:bg-emerald-400 disabled:opacity-60">{busy ? "Verifying..." : "Verify code"}</button>
+              <button type="button" disabled={busy || resendCooldown > 0} onClick={() => void sendRecoveryCode()} className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] text-sm font-medium text-slate-300 transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-50">{resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : "Resend code"}</button>
+              <button type="button" disabled={busy} onClick={() => { setStep("email"); setCode(""); setError(""); setResendCooldown(0); }} className="w-full text-sm text-slate-500 transition hover:text-slate-300">Use another email</button>
             </form>
-          </>
+          </section>
         ) : null}
 
         {step === "choice" ? (
-          <>
-            <p className="mt-2 text-sm text-slate-400">Email verified. Your existing MunshiOS account is now authenticated with Supabase.</p>
-            <div className="mt-5 rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-50">
-              For permanent email + password login, choose <strong>Change password</strong> once. Your previous Clerk password is not transferred to Supabase. You can still continue to the dashboard now if you prefer.
+          <section>
+            <div className="grid size-12 place-items-center rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.08]">
+              <CheckCircle2 className="size-6 text-emerald-300" />
             </div>
-            <div className="mt-6 space-y-3">
-              <button type="button" onClick={continueWithoutChangingPassword} className="h-12 w-full rounded-xl bg-emerald-600 text-sm font-semibold hover:bg-emerald-500">Continue to dashboard</button>
-              <button type="button" onClick={changePassword} className="h-12 w-full rounded-xl border border-teal-500/50 bg-[#0b1921] text-sm font-semibold text-teal-100 hover:border-teal-400">Change password for permanent login</button>
+            <h1 className="mt-6 text-[34px] font-semibold tracking-[-0.045em] text-white">Email verified</h1>
+            <p className="mt-2 text-[15px] leading-6 text-slate-400">Your Supabase session is active. You can continue now or set a password for future email + password sign-in.</p>
+
+            <div className="mt-7 space-y-3">
+              <button type="button" onClick={continueWithoutChangingPassword} className="h-[52px] w-full rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-[#03251b] transition hover:bg-emerald-400">Continue to dashboard</button>
+              <button type="button" onClick={changePassword} className="flex h-[52px] w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.035] text-sm font-semibold text-slate-200 transition hover:bg-white/[0.06]"><ShieldCheck className="size-4" /> Set or change password</button>
             </div>
-          </>
+          </section>
         ) : null}
 
-        <Link href="/sign-in" className="mt-6 inline-block text-sm text-teal-300 hover:text-teal-200">Back to sign in</Link>
+        <Link href="/sign-in" className="mt-8 inline-flex items-center gap-2 self-start text-sm text-slate-500 transition hover:text-slate-300"><ArrowLeft className="size-4" /> Back to sign in</Link>
       </div>
     </main>
   );
