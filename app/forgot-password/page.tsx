@@ -16,16 +16,29 @@ export default function ForgotPasswordPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [activationNotice, setActivationNotice] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const verifiedByLink = new URLSearchParams(window.location.search).get("verified") === "1";
+    const params = new URLSearchParams(window.location.search);
+    const activationByLink = params.get("activation") === "1";
+    const verifiedByLink = params.get("verified") === "1";
+
+    if (activationByLink) setActivationNotice(true);
     if (!verifiedByLink) return;
 
     let active = true;
     void fetch("/auth/recovery/status", { cache: "no-store" }).then((response) => {
       if (!active) return;
-      if (response.ok) setStep("choice");
+      if (response.ok) {
+        setStep("choice");
+      } else {
+        // A legacy account activation link may have been opened on another
+        // device. The email can already be confirmed even though this browser
+        // does not own the recovery session. Keep the user in recovery so a
+        // second request can issue the normal verification code.
+        setActivationNotice(true);
+      }
     }).catch(() => undefined);
 
     return () => {
@@ -63,12 +76,6 @@ export default function ForgotPasswordPage() {
         body: JSON.stringify({ email: identifier, redirectTo }),
       });
 
-      if (response.status === 429) {
-        setError("Please wait a moment before requesting another code.");
-        setResendCooldown(RESEND_COOLDOWN_SECONDS);
-        return;
-      }
-
       if (!response.ok) {
         setError("We could not start recovery right now. Please try again shortly.");
         return;
@@ -76,6 +83,7 @@ export default function ForgotPasswordPage() {
 
       setEmail(identifier);
       setCode("");
+      setActivationNotice(false);
       setStep("code");
       setResendCooldown(RESEND_COOLDOWN_SECONDS);
     } catch {
@@ -92,7 +100,7 @@ export default function ForgotPasswordPage() {
     const identifier = email.trim().toLowerCase();
     const token = code.trim();
     if (!identifier || !/^\d{6,8}$/.test(token)) {
-      setError("Enter the confirmation code from your email.");
+      setError("Enter the 6–8 digit confirmation code from your email.");
       return;
     }
 
@@ -144,7 +152,13 @@ export default function ForgotPasswordPage() {
               <Mail className="size-5 text-emerald-300" />
             </div>
             <h1 className="mt-6 text-[34px] font-semibold tracking-[-0.045em] text-white">Recover your account</h1>
-            <p className="mt-2 text-[15px] leading-6 text-slate-400">Enter the email attached to your MunshiOS account. We&apos;ll send a short confirmation code.</p>
+            <p className="mt-2 text-[15px] leading-6 text-slate-400">Enter the email attached to your MunshiOS account. We&apos;ll send a verification code. If this is your first login after our auth upgrade, the first email may be an account-activation link instead.</p>
+
+            {activationNotice ? (
+              <p role="status" className="mt-5 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.07] px-4 py-3 text-sm leading-6 text-emerald-100">
+                Activation link opened. Enter your email again and request a recovery email to finish setting your new MunshiOS password.
+              </p>
+            ) : null}
 
             <form onSubmit={sendRecoveryCode} className="mt-7 space-y-4">
               <div>
@@ -152,7 +166,7 @@ export default function ForgotPasswordPage() {
                 <input id="recovery-email" type="email" autoComplete="email" required disabled={busy} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" className="h-[52px] w-full rounded-xl border border-white/10 bg-white/[0.035] px-4 text-sm text-white outline-none transition placeholder:text-slate-600 hover:border-white/15 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-400/10 disabled:opacity-60" />
               </div>
               {error ? <p role="alert" className="rounded-xl border border-red-400/20 bg-red-500/[0.07] px-4 py-3 text-sm leading-5 text-red-200">{error}</p> : null}
-              <button type="submit" disabled={busy} className="h-[52px] w-full rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-[#03251b] shadow-[0_10px_30px_rgba(16,185,129,0.14)] transition hover:bg-emerald-400 disabled:opacity-60">{busy ? "Sending..." : "Send confirmation code"}</button>
+              <button type="submit" disabled={busy} className="h-[52px] w-full rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-[#03251b] shadow-[0_10px_30px_rgba(16,185,129,0.14)] transition hover:bg-emerald-400 disabled:opacity-60">{busy ? "Sending..." : "Send recovery email"}</button>
             </form>
           </section>
         ) : null}
@@ -162,14 +176,15 @@ export default function ForgotPasswordPage() {
             <div className="grid size-12 place-items-center rounded-2xl border border-emerald-400/15 bg-emerald-400/[0.06]">
               <KeyRound className="size-5 text-emerald-300" />
             </div>
-            <h1 className="mt-6 text-[34px] font-semibold tracking-[-0.045em] text-white">Enter your code</h1>
-            <p className="mt-2 text-[15px] leading-6 text-slate-400">If <span className="font-medium text-slate-300">{email}</span> belongs to a MunshiOS account, a confirmation code has been sent.</p>
+            <h1 className="mt-6 text-[34px] font-semibold tracking-[-0.045em] text-white">Check your email</h1>
+            <p className="mt-2 text-[15px] leading-6 text-slate-400">If <span className="font-medium text-slate-300">{email}</span> belongs to a MunshiOS account, we sent an email. Enter the 6–8 digit code below.</p>
+            <p className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm leading-6 text-slate-400">Used MunshiOS before the login upgrade? Your first email may say <span className="font-medium text-slate-200">Confirm your email address</span> instead of showing a code. Open that activation link, then request recovery again. Also check Spam if the email is not in Inbox.</p>
 
             <form onSubmit={verifyRecoveryCode} className="mt-7 space-y-4">
-              <input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={8} required disabled={busy} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="000000" className="h-[56px] w-full rounded-xl border border-white/10 bg-white/[0.035] px-4 text-center text-xl tracking-[0.32em] text-white outline-none transition placeholder:text-slate-700 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-400/10 disabled:opacity-60" />
+              <input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={8} required disabled={busy} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="6–8 digit code" className="h-[56px] w-full rounded-xl border border-white/10 bg-white/[0.035] px-4 text-center text-xl tracking-[0.18em] text-white outline-none transition placeholder:text-sm placeholder:tracking-normal placeholder:text-slate-700 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-400/10 disabled:opacity-60" />
               {error ? <p role="alert" className="rounded-xl border border-red-400/20 bg-red-500/[0.07] px-4 py-3 text-sm leading-5 text-red-200">{error}</p> : null}
               <button type="submit" disabled={busy} className="h-[52px] w-full rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-[#03251b] transition hover:bg-emerald-400 disabled:opacity-60">{busy ? "Verifying..." : "Verify code"}</button>
-              <button type="button" disabled={busy || resendCooldown > 0} onClick={() => void sendRecoveryCode()} className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] text-sm font-medium text-slate-300 transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-50">{resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : "Resend code"}</button>
+              <button type="button" disabled={busy || resendCooldown > 0} onClick={() => void sendRecoveryCode()} className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] text-sm font-medium text-slate-300 transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-50">{resendCooldown > 0 ? `Resend email in ${resendCooldown}s` : "Resend recovery email"}</button>
               <button type="button" disabled={busy} onClick={() => { setStep("email"); setCode(""); setError(""); setResendCooldown(0); }} className="w-full text-sm text-slate-500 transition hover:text-slate-300">Use another email</button>
             </form>
           </section>
