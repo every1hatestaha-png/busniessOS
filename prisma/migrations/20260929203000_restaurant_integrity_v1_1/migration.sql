@@ -4,7 +4,8 @@
 
 ALTER TABLE "restaurant_orders"
   ADD COLUMN IF NOT EXISTS "inventoryPostedAt" timestamptz,
-  ADD COLUMN IF NOT EXISTS "accountingPostedAt" timestamptz;
+  ADD COLUMN IF NOT EXISTS "accountingPostedAt" timestamptz,
+  ADD COLUMN IF NOT EXISTS "inventoryCost" numeric(15,2) NOT NULL DEFAULT 0 CHECK ("inventoryCost" >= 0);
 
 CREATE TABLE IF NOT EXISTS "restaurant_payments" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
