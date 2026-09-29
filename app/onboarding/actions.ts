@@ -1,5 +1,6 @@
 "use server";
 
+import { createHash } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -14,6 +15,21 @@ import { createInitialWorkspace } from "@/lib/server/onboarding";
 import { onboardingSchema } from "@/lib/validation/onboarding";
 
 export type OnboardingState = { error: string | null };
+
+function provisioningRequestId(input: {
+  userId: string;
+  workspace: unknown;
+  modules: string[];
+  billing: string;
+  builderBusiness: string | null;
+  createAdditional: boolean;
+}) {
+  // A five-minute bucket makes browser double submits idempotent without preventing
+  // a deliberate later workspace with identical profile data.
+  const bucket = Math.floor(Date.now() / (5 * 60_000));
+  const digest = createHash("sha256").update(JSON.stringify({ ...input, bucket })).digest("hex").slice(0, 40);
+  return `onboarding:${digest}`;
+}
 
 export async function createWorkspace(
   _previousState: OnboardingState,
@@ -46,6 +62,15 @@ export async function createWorkspace(
   const createAdditional = formData.get("creationMode") === "additional";
 
   const user = await getCurrentUser();
+  const requestId = provisioningRequestId({
+    userId: user.id,
+    workspace: parsed.data,
+    modules,
+    billing,
+    builderBusiness,
+    createAdditional,
+  });
+
   try {
     const result = await createInitialWorkspace(user.id, parsed.data, {
       modules,
@@ -53,6 +78,7 @@ export async function createWorkspace(
       builderBusiness,
     }, {
       allowAdditional: createAdditional,
+      provisioningRequestId: requestId,
     });
     (await cookies()).set("businessos_workspace", result.workspaceId, {
       httpOnly: true,
