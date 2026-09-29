@@ -9,6 +9,8 @@ const workspace = ["/ai", "/settings"];
 
 // Composition is independent per experience. A module flag only controls whether
 // an optional entry appears; it never changes the workspace's vertical.
+// Restaurant Workspace v1 routes are currently exercised through the legacy
+// restaurant module while the persisted RESTAURANT vertical remains sealed.
 const navigation: Record<WorkspaceVertical, readonly NavigationSection[]> = {
   TRADING: [
     { label: "Overview", routes: overview },

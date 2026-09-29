@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Banknote, ChefHat, Clock3, LayoutGrid } from "lucide-react";
+import { Banknote, ChefHat, Clock3, LayoutGrid, MessageCircleMore, ShoppingCart, ClipboardList, UtensilsCrossed } from "lucide-react";
 
 import { MetricCard } from "@/components/business/metric-card";
 import { PageHeader } from "@/components/business/page-header";
@@ -17,6 +17,7 @@ import {
   listRestaurantTables,
   listWorkspaceModules,
 } from "@/lib/server/industry-modules";
+import { getRestaurantWorkspaceMetrics } from "@/lib/server/restaurant-workspace";
 
 export default async function RestaurantPage() {
   const { workspaceId, role } = await requireWorkspace();
@@ -25,7 +26,7 @@ export default async function RestaurantPage() {
     return <ModuleDisabled />;
   }
 
-  const [health, tables, recipes, tickets, shifts, products, sales] = await Promise.all([
+  const [health, tables, recipes, tickets, shifts, products, sales, restaurantMetrics] = await Promise.all([
     getIndustryHealth(workspaceId),
     listRestaurantTables(workspaceId),
     listRestaurantRecipes(workspaceId),
@@ -33,18 +34,36 @@ export default async function RestaurantPage() {
     listCashShifts(workspaceId),
     listProducts(workspaceId),
     listSales(workspaceId),
+    getRestaurantWorkspaceMetrics(workspaceId),
   ]);
   const openShift = shifts.find((shift) => shift.status === "OPEN");
   const canManageTables = role === "OWNER" || role === "ADMIN" || role === "MANAGER";
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">
-      <PageHeader title="Restaurant" description="Tables, kitchen flow, recipes, ingredient stock, and cash closing in one workspace." />
+      <PageHeader title="Restaurant Workspace" description="POS, WhatsApp intake, kitchen flow, tables, recipes, stock and cash operations in one tenant-isolated workspace." />
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <MetricCard label="Today's sales" value={`Rs ${restaurantMetrics.todaySales.toLocaleString()}`} detail={`${restaurantMetrics.todayOrders} restaurant orders today`} icon={Banknote} />
+        <MetricCard label="Live orders" value={String(restaurantMetrics.liveOrders)} detail="Confirmed, preparing or ready" icon={ClipboardList} />
+        <MetricCard label="WhatsApp review" value={String(restaurantMetrics.pendingWhatsapp)} detail="Waiting for staff confirmation" icon={MessageCircleMore} />
+        <MetricCard label="Ready" value={String(restaurantMetrics.readyOrders)} detail="Orders ready to hand over" icon={ChefHat} />
+        <MetricCard label="Cash shift" value={openShift ? "Open" : "Closed"} detail={openShift ? `Rs ${openShift.openingCash.toLocaleString()} opening cash` : "No open cash shift"} icon={Banknote} />
+      </section>
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <QuickLink href="/restaurant/pos" title="POS" description="Create dine-in, takeaway or delivery order" icon={ShoppingCart} />
+        <QuickLink href="/restaurant/orders" title="Orders" description="Review and move live orders" icon={ClipboardList} />
+        <QuickLink href="/restaurant/kitchen" title="Kitchen" description="Preparation board and ready queue" icon={ChefHat} />
+        <QuickLink href="/restaurant/menu" title="Menu" description="Items, prices and availability" icon={UtensilsCrossed} />
+        <QuickLink href="/restaurant/whatsapp" title="WhatsApp" description="Pending intake and provider messages" icon={MessageCircleMore} />
+      </section>
+
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Tables" value={String(health.restaurant.tables)} detail="Configured dining tables" icon={LayoutGrid} />
         <MetricCard label="Active recipes" value={String(health.restaurant.recipes)} detail="Recipes connected to inventory" icon={ChefHat} />
-        <MetricCard label="Kitchen queue" value={String(health.restaurant.openKitchenTickets)} detail="Queued, preparing, or ready" icon={Clock3} />
-        <MetricCard label="Cash shift" value={openShift ? "Open" : "Closed"} detail={openShift ? `Opened with Rs ${openShift.openingCash.toLocaleString()}` : "No open cash shift"} icon={Banknote} />
+        <MetricCard label="Legacy KOT queue" value={String(health.restaurant.openKitchenTickets)} detail="Existing sales-linked kitchen tickets" icon={Clock3} />
+        <MetricCard label="Menu & order layer" value="V1" detail="Restaurant-native ordering foundation" icon={UtensilsCrossed} />
       </section>
 
       <RestaurantControls openShiftId={openShift?.id ?? null} canManageTables={canManageTables} />
@@ -58,14 +77,14 @@ export default async function RestaurantPage() {
       />
 
       <div className="grid gap-5 xl:grid-cols-2">
-        <DataCard title="Table register" description="Current dining-floor state." action={{ label: "New sale", href: "/sales/new" }}>
+        <DataCard title="Table register" description="Current dining-floor state." action={{ label: "Open POS", href: "/restaurant/pos" }}>
           {tables.length ? <Table headers={["Table", "Area", "Capacity", "Status"]} rows={tables.map((row) => [row.name, row.area || "—", String(row.capacity), row.status])} /> : <Empty text="No restaurant tables configured yet." />}
         </DataCard>
         <DataCard title="Recipes" description="Finished products connected to ingredient consumption." action={{ label: "Inventory", href: "/inventory" }}>
           {recipes.length ? <Table headers={["Product", "Yield", "Ingredients", "State"]} rows={recipes.map((row) => [row.productName || "Unknown product", String(row.yieldQuantity), String(row.ingredientCount), row.isActive ? "ACTIVE" : "INACTIVE"])} /> : <Empty text="No recipes configured yet." />}
         </DataCard>
-        <DataCard title="Kitchen tickets" description="Latest 50 kitchen tickets and preparation states.">
-          {tickets.length ? <Table headers={["Ticket", "Table", "Status", "Created"]} rows={tickets.map((row) => [row.ticketNumber, row.tableName || "—", row.status, formatDate(row.createdAt)])} /> : <Empty text="No kitchen tickets yet." />}
+        <DataCard title="Legacy kitchen tickets" description="Sales-order kitchen tickets from the existing restaurant module." action={{ label: "Kitchen board", href: "/restaurant/kitchen" }}>
+          {tickets.length ? <Table headers={["Ticket", "Table", "Status", "Created"]} rows={tickets.map((row) => [row.ticketNumber, row.tableName || "—", row.status, formatDate(row.createdAt)])} /> : <Empty text="No legacy kitchen tickets yet." />}
         </DataCard>
         <DataCard title="Cash shifts" description="Latest opening/closing records and cash variance.">
           {shifts.length ? <Table headers={["Opened", "Status", "Opening", "Variance"]} rows={shifts.map((row) => [formatDate(row.openedAt), row.status, `Rs ${row.openingCash.toLocaleString()}`, row.variance === null ? "—" : `Rs ${row.variance.toLocaleString()}`])} /> : <Empty text="No cash shifts recorded yet." />}
@@ -73,6 +92,10 @@ export default async function RestaurantPage() {
       </div>
     </div>
   );
+}
+
+function QuickLink({ href, title, description, icon: Icon }: { href: string; title: string; description: string; icon: React.ComponentType<{ className?: string }> }) {
+  return <Link href={href} className="group rounded-lg border bg-card p-4 shadow-sm transition hover:border-emerald-300 hover:bg-emerald-50/30 dark:hover:bg-emerald-950/10"><div className="flex items-center gap-2"><Icon className="size-4 text-emerald-600" /><p className="font-semibold">{title}</p></div><p className="mt-1 text-xs text-muted-foreground">{description}</p></Link>;
 }
 
 function DataCard({ title, description, action, children }: { title: string; description: string; action?: { label: string; href: string }; children: React.ReactNode }) {

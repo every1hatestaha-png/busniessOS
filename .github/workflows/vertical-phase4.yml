@@ -5,6 +5,11 @@ on:
     branches:
       - architecture/vertical-dashboard-navigation
       - architecture/vertical-operational-readiness
+      - architecture/vertical-provisioning-transaction
+      - architecture/restaurant-workspace-v1
+  push:
+    branches:
+      - verification/restaurant-integrity-native-pg
 
 permissions:
   contents: read
