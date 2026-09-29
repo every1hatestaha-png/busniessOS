@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
-import { ArrowLeft, RotateCcw } from "lucide-react";
+import { ArrowLeft, RotateCcw, Undo2 } from "lucide-react";
 
+import { reverseRestaurantReturnAction } from "@/app/(dashboard)/restaurant/orders/[id]/return/reversal-actions";
 import { createRestaurantItemReturnAction } from "@/app/(dashboard)/restaurant/v1-actions";
 import { PageHeader } from "@/components/business/page-header";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
+import { listRestaurantReturnReversalState } from "@/lib/server/restaurant-return-reversal-ui";
 import { getRestaurantReturnUiState } from "@/lib/server/restaurant-return-ui";
 import { cn } from "@/lib/utils";
 
@@ -14,7 +16,11 @@ export default async function RestaurantOrderReturnPage({ params }: { params: Pr
   const { id } = await params;
   const { workspaceId, role } = await requireWorkspace();
   const canReturn = role === "OWNER" || role === "ADMIN" || role === "MANAGER";
-  const state = await getRestaurantReturnUiState(workspaceId, id);
+  const [state, reversalState] = await Promise.all([
+    getRestaurantReturnUiState(workspaceId, id),
+    listRestaurantReturnReversalState(workspaceId, id),
+  ]);
+  const reversalById = new Map(reversalState.map((row) => [row.id, row]));
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -77,8 +83,13 @@ export default async function RestaurantOrderReturnPage({ params }: { params: Pr
 
       <Card className="rounded-lg shadow-sm">
         <CardContent className="p-0">
-          <div className="border-b px-5 py-4"><h2 className="font-semibold">Return history</h2><p className="text-xs text-muted-foreground">Immutable returns already posted against this order.</p></div>
-          {state.returns.length ? <div className="divide-y">{state.returns.map((entry) => <div key={entry.id} className="grid gap-1 px-5 py-4 sm:grid-cols-[1fr_auto]"><div><p className="font-medium">{entry.returnNumber}</p><p className="text-xs text-muted-foreground">{entry.reason}</p><p className="text-xs text-muted-foreground">{new Intl.DateTimeFormat("en-PK", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Karachi" }).format(entry.createdAt)}</p></div><div className="text-right"><p className="font-semibold">Rs {entry.total.toLocaleString()}</p><p className="text-xs text-muted-foreground">Restocked cost Rs {entry.inventoryCost.toLocaleString()}</p></div></div>)}</div> : <div className="p-5 text-sm text-muted-foreground">No item returns posted yet.</div>}
+          <div className="border-b px-5 py-4"><h2 className="font-semibold">Return history</h2><p className="text-xs text-muted-foreground">Original returns remain immutable. Reversals are posted as separate compensating documents.</p></div>
+          {state.returns.length ? <div className="divide-y">{state.returns.map((entry) => {
+            const metadata = reversalById.get(entry.id);
+            const isReversal = metadata?.isReversal === true;
+            const hasReversal = metadata?.hasReversal === true;
+            return <div key={entry.id} className="grid gap-3 px-5 py-4 sm:grid-cols-[1fr_auto]"><div><div className="flex flex-wrap items-center gap-2"><p className="font-medium">{entry.returnNumber}</p>{isReversal ? <span className="rounded bg-muted px-2 py-0.5 text-[11px] font-semibold">REVERSAL</span> : hasReversal ? <span className="rounded bg-muted px-2 py-0.5 text-[11px] font-semibold">REVERSED</span> : null}</div><p className="text-xs text-muted-foreground">{entry.reason}</p><p className="text-xs text-muted-foreground">{new Intl.DateTimeFormat("en-PK", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Karachi" }).format(entry.createdAt)}</p>{metadata?.reversalReason ? <p className="mt-1 text-xs text-muted-foreground">Reversal reason: {metadata.reversalReason}</p> : null}</div><div className="space-y-2 text-right"><div><p className="font-semibold">Rs {entry.total.toLocaleString()}</p><p className="text-xs text-muted-foreground">Inventory effect Rs {entry.inventoryCost.toLocaleString()}</p></div>{canReturn && !isReversal && !hasReversal ? <form action={reverseRestaurantReturnAction} className="flex flex-wrap justify-end gap-2"><input type="hidden" name="orderId" value={state.order.id} /><input type="hidden" name="returnId" value={entry.id} /><input name="reason" minLength={3} maxLength={500} required placeholder="Reversal reason" className="h-8 w-44 rounded-md border bg-background px-2 text-xs" /><Button type="submit" size="sm" variant="outline"><Undo2 className="mr-1 size-3.5" />Reverse return</Button></form> : null}</div></div>;
+          })}</div> : <div className="p-5 text-sm text-muted-foreground">No item returns posted yet.</div>}
         </CardContent>
       </Card>
     </div>

@@ -30,6 +30,16 @@
     "scope": "dashboard layout plus entry point"
   },
   {
+    "file": "app/(dashboard)/restaurant/orders/[id]/return/reversal-actions.ts",
+    "symbol": "reverseRestaurantReturnAction",
+    "url": "/restaurant/orders/[id]/return",
+    "kind": "SERVER_ACTION",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
     "file": "app/(dashboard)/restaurant/orders/page.tsx",
     "symbol": null,
     "url": "/restaurant/orders",

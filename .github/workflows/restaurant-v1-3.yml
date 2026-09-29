@@ -5,6 +5,7 @@ on:
     branches:
       - architecture/restaurant-refunds-v1-2
       - architecture/restaurant-item-returns-v1-3
+      - architecture/restaurant-item-returns-ui-v1-3-1
 
 permissions:
   contents: read
@@ -54,7 +55,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          npx vitest run tests/integration/restaurant-item-returns-v1-3.test.ts 2>&1 | tee restaurant-v1-3-test.log
+          npx vitest run tests/integration/restaurant-item-returns-v1-3.test.ts tests/integration/restaurant-return-reversal-v1-4.test.ts 2>&1 | tee restaurant-v1-3-test.log
       - name: Full unit and database-backed regression suite
         id: regression_tests
         continue-on-error: true
