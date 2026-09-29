@@ -22,8 +22,7 @@ CREATE TABLE IF NOT EXISTS "restaurant_payments" (
   "voidedAt" timestamptz,
   "voidedById" text,
   "voidReason" text,
-  "createdAt" timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT "restaurant_payments_post_void_exclusive" CHECK (NOT ("postedAt" IS NOT NULL AND "voidedAt" IS NOT NULL))
+  "createdAt" timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS "restaurant_payments_workspace_order_idx"
   ON "restaurant_payments"("workspaceId", "restaurantOrderId", "createdAt");
