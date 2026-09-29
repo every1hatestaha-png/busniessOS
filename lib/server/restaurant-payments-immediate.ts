@@ -18,6 +18,14 @@ const PAYMENT_METHODS = new Set<PaymentMethod>([
   "EASYPAISA",
   "OTHER",
 ]);
+const NON_CASH_METHODS = new Set<PaymentMethod>([
+  "BANK_TRANSFER",
+  "CHEQUE",
+  "CREDIT_CARD",
+  "MOBILE_WALLET",
+  "JAZZCASH",
+  "EASYPAISA",
+]);
 
 function cleanOptional(value: string | undefined, max: number) {
   const clean = value?.trim();
@@ -103,9 +111,27 @@ export async function recordRestaurantPaymentAtCollection(
 
     const cashBank = await tx.cashBankAccount.findFirst({
       where: { id: input.cashBankAccountId, workspaceId: context.workspaceId, isActive: true },
-      select: { id: true },
+      select: { id: true, isBank: true },
     });
     if (!cashBank) throw new IndustryDomainError("NOT_FOUND", "Cash or bank account is unavailable in this workspace.");
+    if (input.method === "CASH" && cashBank.isBank) {
+      throw new IndustryDomainError("INVALID_STATE", "Cash restaurant payments must use a physical cash account.");
+    }
+    if (NON_CASH_METHODS.has(input.method) && !cashBank.isBank) {
+      throw new IndustryDomainError("INVALID_STATE", "Non-cash restaurant payments must use a bank or non-cash settlement account.");
+    }
+    if (input.method === "CASH") {
+      const openShift = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"::text AS "id"
+        FROM "cash_shifts"
+        WHERE "workspaceId"=${context.workspaceId}::uuid AND "status"='OPEN'
+        LIMIT 1
+        FOR SHARE
+      `;
+      if (!openShift[0]) {
+        throw new IndustryDomainError("INVALID_STATE", "Open a restaurant cash shift before collecting a cash payment.");
+      }
+    }
 
     if (idempotencyKey) {
       const existing = await tx.$queryRaw<Array<{
@@ -218,6 +244,7 @@ export async function recordRestaurantPaymentAtCollection(
         orderNumber: order.orderNumber,
         amount: amount.toFixed(2),
         method: input.method,
+        settlementAccountType: cashBank.isBank ? "NON_CASH" : "PHYSICAL_CASH",
         postedAt: postedAt.toISOString(),
         accountingPosted: true,
         collectionTiming: "IMMEDIATE",
