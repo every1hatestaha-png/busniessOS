@@ -46,14 +46,14 @@ export function resolveVerticalDashboard(vertical: WorkspaceVertical): string | 
 }
 
 export function requiredModuleForRoute(path: string): VerticalModule | null {
-  for (const module of ["manufacturing", "restaurant", "services"] as const) {
-    if (path === `/${module}` || path.startsWith(`/${module}/`)) return module;
+  for (const moduleKey of ["manufacturing", "restaurant", "services"] as const) {
+    if (path === `/${moduleKey}` || path.startsWith(`/${moduleKey}/`)) return moduleKey;
   }
   return null;
 }
 
 export function canOpenVerticalRoute(vertical: WorkspaceVertical, path: string, enabledModules: readonly string[] = []): boolean {
   if (!isAvailableVertical(vertical)) return false;
-  const module = requiredModuleForRoute(path);
-  return module ? canUseVerticalCapability(vertical, module, enabledModules) : true;
+  const moduleKey = requiredModuleForRoute(path);
+  return moduleKey ? canUseVerticalCapability(vertical, moduleKey, enabledModules) : true;
 }

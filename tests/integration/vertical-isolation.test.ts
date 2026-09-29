@@ -49,7 +49,7 @@ describe("vertical boundaries with isolated PostgreSQL", () => {
     memberUser = (await db.user.create({ data: { clerkId: `vertical-member-${runId}`, email: `vertical-member-${runId}@example.invalid` } })).id;
     outsiderUser = (await db.user.create({ data: { clerkId: `vertical-outsider-${runId}`, email: `vertical-outsider-${runId}@example.invalid` } })).id;
     for (const [name,vertical] of Object.entries({ trading: "TRADING", manufacturing: "MANUFACTURING", legacy: "LEGACY", restaurant: "RESTAURANT", property: "PROPERTY", services: "SERVICES" } as const)) {
-      const ws = await db.workspace.create({ data: { name: `vertical-${name}-${runId}`, businessType: name === "legacy" ? "OTHER" : "WHOLESALER", vertical } });
+      const ws = await db.workspace.create({ data: { name: `vertical-${name}-${runId}`, businessType: name === "legacy" ? "OTHER" : "WHOLESALER", vertical, currency: name === "manufacturing" ? "USD" : "PKR", timezone: name === "manufacturing" ? "Etc/UTC" : "Asia/Karachi" } });
       workspaces[name] = ws.id;
       await db.workspaceMember.create({ data: { workspaceId: ws.id, userId: memberUser, role: name === "manufacturing" ? "STAFF" : "OWNER" } });
       const customer = await db.customer.create({ data: { workspaceId: ws.id, name: `unique-${name}-${runId}` } });
@@ -57,7 +57,7 @@ describe("vertical boundaries with isolated PostgreSQL", () => {
       await db.product.create({ data: { workspaceId: ws.id, name: `unique-product-${name}-${runId}`, sku: `V-${name}-${runId}`, stockQuantity: 1 } });
       if (["trading", "manufacturing", "legacy"].includes(name)) {
         const modules = name === "legacy" ? ["restaurant", "services"] : name === "trading" ? ["manufacturing"] : ["manufacturing"];
-        for (const module of modules) await db.$executeRaw`INSERT INTO "workspace_modules" ("workspaceId","moduleKey",enabled) VALUES (${ws.id}::uuid, ${module}, true)`;
+        for (const moduleKey of modules) await db.$executeRaw`INSERT INTO "workspace_modules" ("workspaceId","moduleKey",enabled) VALUES (${ws.id}::uuid, ${moduleKey}, true)`;
       }
     }
     session.userId = memberUser;
@@ -76,6 +76,7 @@ describe("vertical boundaries with isolated PostgreSQL", () => {
       expect((await switchTo(workspaces[name])).status).toBe(200);
       const ctx = await requireApiContext("business.read");
       expect(ctx).toMatchObject({ workspaceId: workspaces[name], vertical: name.toUpperCase(), role: name === "manufacturing" ? "STAFF" : "OWNER" });
+      expect(ctx.workspace).toMatchObject({ name: `vertical-${name}-${runId}`, currency: name === "manufacturing" ? "USD" : "PKR", timezone: name === "manufacturing" ? "Etc/UTC" : "Asia/Karachi" });
       const listing = await listWithQuery(new Request(`http://localhost/api/v1/customers?workspaceId=${workspaces.legacy}`));
       expect(listing.status).toBe(200);
       const body = JSON.stringify(await listing.json());
@@ -104,6 +105,7 @@ describe("vertical boundaries with isolated PostgreSQL", () => {
 
   it("scopes global search and preserves LEGACY industry entitlements", async () => {
     const result = await search(new NextRequest(`http://localhost/api/search?q=unique&workspaceId=${workspaces.legacy}`));
+    expect(result.headers.get("Cache-Control")).toBe("private, no-store");
     const payload = await result.json();
     const text = JSON.stringify(payload);
     expect(text).toContain(`unique-trading-${runId}`);

@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
 
   const { workspaceId, vertical } = await requireWorkspace();
   const q = request.nextUrl.searchParams.get("q")?.trim() ?? "";
-  if (q.length < 2) return NextResponse.json({ results: [] satisfies SearchResult[] });
+  if (q.length < 2) return NextResponse.json({ results: [] satisfies SearchResult[] }, { headers: { "Cache-Control": "private, no-store" } });
 
   const term = q.slice(0, 80);
   const customerNameMatch = {
@@ -35,5 +35,5 @@ export async function GET(request: NextRequest) {
     ...invoices.map((x) => ({ id: x.id, type: "Invoice" as const, title: x.invoiceNumber, detail: `${x.customer.companyName ?? x.customer.name} · Rs ${Number(x.amount).toLocaleString("en-PK")}`, href: `/invoices/${x.id}` })),
   ];
   const types = getSearchTypes(vertical);
-  return NextResponse.json({ results: results.filter((result) => types.includes(result.type)).sort((a, b) => types.indexOf(a.type) - types.indexOf(b.type)).slice(0, 12) });
+  return NextResponse.json({ results: results.filter((result) => types.includes(result.type)).sort((a, b) => types.indexOf(a.type) - types.indexOf(b.type)).slice(0, 12) }, { headers: { "Cache-Control": "private, no-store" } });
 }
