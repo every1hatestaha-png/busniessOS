@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 
 import { OnboardingForm } from "@/app/onboarding/onboarding-form";
@@ -34,18 +33,17 @@ export default async function OnboardingPage({
     <>
       <PendingWorkspaceInvitations invitations={pendingInvitations} />
       <OnboardingForm
-        createAdditional={createAdditional}
-        provisioningRequestId={randomUUID()}
-        initialValues={{
-          email: user.email,
-          ownerName: [user.firstName, user.lastName].filter(Boolean).join(" "),
-        }}
-        provisioning={{
-          builderBusiness,
-          modules,
-          billing,
-          businessType: onboardingBusinessTypeForBuilder(builderBusiness),
-        }}
+      createAdditional={createAdditional}
+      initialValues={{
+        email: user.email,
+        ownerName: [user.firstName, user.lastName].filter(Boolean).join(" "),
+      }}
+      provisioning={{
+        builderBusiness,
+        modules,
+        billing,
+        businessType: onboardingBusinessTypeForBuilder(builderBusiness),
+      }}
       />
     </>
   );
