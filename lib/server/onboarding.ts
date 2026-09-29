@@ -155,8 +155,8 @@ async function findProvisionedWorkspace(
     FROM "audit_logs" a
     INNER JOIN "workspace_members" m
       ON m."workspaceId" = a."entityId"::uuid
-      AND m."userId" = ${userId}::uuid
-    WHERE a."actorId" = ${userId}::uuid
+      AND m."userId" = ${userId}
+    WHERE a."actorId" = ${userId}
       AND a."action" = 'workspace.provisioned'
       AND a."entityType" = 'Workspace'
       AND a."metadata"->>'provisioningRequestId' = ${provisioningRequestId}
@@ -187,7 +187,7 @@ export async function createInitialWorkspace(
 
   return withSerializableRetry(async (tx) => {
     const lockedUsers = await tx.$queryRaw<Array<{ id: string }>>`
-      SELECT "id"::text AS "id" FROM "users" WHERE "id" = ${userId}::uuid FOR UPDATE
+      SELECT "id" FROM "users" WHERE "id" = ${userId} FOR UPDATE
     `;
     if (!lockedUsers[0]) throw new Error("User not found.");
 
