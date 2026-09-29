@@ -20,7 +20,7 @@ export default async function DashboardLayout({
     listWorkspaceModules(workspace.id),
   ]);
   const enabledModules = workspaceModules.filter((module) => module.enabled).map((module) => module.moduleKey);
-  const vertical = resolveWorkspaceVertical(workspace.businessType);
+  const vertical = resolveWorkspaceVertical(workspace);
 
   return (
     <div className="flex min-h-dvh w-full min-w-0 bg-background text-foreground print:block print:min-h-0 print:bg-white">

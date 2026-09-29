@@ -43,13 +43,8 @@ export function BusinessProfileForm({
             <Input name="name" defaultValue={workspace.name} minLength={2} maxLength={120} required />
           </Field>
           <Field label="Business type">
-            <select name="businessType" defaultValue={workspace.businessType} className="h-9 w-full rounded-md border bg-white px-3 text-sm">
-              <option value="RETAILER">Retail</option>
-              <option value="WHOLESALER">Wholesale</option>
-              <option value="DISTRIBUTOR">Distribution</option>
-              <option value="MANUFACTURER">Manufacturing</option>
-              <option value="OTHER">Restaurant / Services / Other</option>
-            </select>
+            <input type="hidden" name="businessType" value={workspace.businessType} />
+            <p className="flex h-9 items-center rounded-md border bg-slate-50 px-3 text-sm">{workspace.businessType}</p>
           </Field>
           <Field label="Phone">
             <Input name="phone" defaultValue={workspace.phone ?? ""} maxLength={30} placeholder="0300 1234567" />

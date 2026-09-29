@@ -17,7 +17,7 @@ const businessTypes = [
   { value: "WHOLESALER" as const, title: "Wholesale", description: "Bulk sales, credit and stock", icon: PackageCheck },
   { value: "DISTRIBUTOR" as const, title: "Distribution", description: "Supply and dealer network", icon: ShoppingBag },
   { value: "MANUFACTURER" as const, title: "Manufacturing", description: "Production and raw materials", icon: Factory },
-  { value: "OTHER" as const, title: "Restaurant / Services", description: "Restaurant, workshop or services", icon: Wrench },
+  { value: "OTHER" as const, title: "Other business", description: "Continue with the existing ERP experience", icon: Wrench },
 ];
 
 const citySuggestions = ["Lahore", "Karachi", "Islamabad", "Rawalpindi", "Faisalabad", "Multan", "Gujranwala", "Sialkot", "Peshawar", "Quetta"];

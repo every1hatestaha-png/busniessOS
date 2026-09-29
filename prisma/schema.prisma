@@ -25,6 +25,15 @@ enum BusinessType {
   OTHER
 }
 
+enum WorkspaceVertical {
+  TRADING
+  MANUFACTURING
+  LEGACY
+  RESTAURANT
+  PROPERTY
+  SERVICES
+}
+
 enum ProductUnit {
   PIECE
   BOX
@@ -240,6 +249,7 @@ model Workspace {
   currency     String       @default("PKR")
   timezone     String       @default("Asia/Karachi")
   businessType BusinessType @default(WHOLESALER)
+  vertical     WorkspaceVertical @default(LEGACY)
   ntn          String?
   strn         String?
   province     String?

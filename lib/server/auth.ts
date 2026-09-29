@@ -7,6 +7,7 @@ import { cookies, headers } from "next/headers";
 
 import { db } from "@/lib/server/db";
 import { getSupabaseAuthUser } from "@/lib/supabase/server";
+import { isAvailableVertical, resolveWorkspaceVertical } from "@/lib/verticals/registry";
 
 const CLERK_SERVER_CONFIGURED = Boolean(process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
@@ -176,11 +177,15 @@ export const getCurrentWorkspace = cache(async () => {
   const membership = memberships.find((entry) => entry.workspaceId === activeWorkspaceId) ?? memberships[0];
   if (!membership) return null;
 
+  const vertical = resolveWorkspaceVertical(membership.workspace);
+  if (!isAvailableVertical(vertical)) redirect("/workspace-unavailable");
+
   return {
     user,
     workspace: membership.workspace,
     workspaceId: membership.workspaceId,
     role: membership.role,
+    vertical,
   };
 });
 

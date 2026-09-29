@@ -38,7 +38,6 @@ const modules: Array<{
   price: number;
 }> = [
   { key: "inventory", name: "Inventory & Warehouse", description: "Stock, purchasing, receiving, returns and warehouse visibility.", price: 1500 },
-  { key: "restaurant", name: "Restaurant Operations", description: "Tables, orders, kitchen workflow, recipes and cash closing.", price: 4000 },
   { key: "wholesale", name: "Wholesale & Distribution", description: "GRN, credit sales, supplier flows, allocations and distribution workflows.", price: 2000 },
   { key: "manufacturing", name: "Manufacturing", description: "Raw materials, BOMs, production, wastage and finished goods.", price: 6000 },
   { key: "accounting", name: "Advanced Accounting", description: "GST, WHT, receivables, payables, journals and advanced financial reporting.", price: 1500 },
@@ -55,10 +54,8 @@ const businessTypes: Array<{
   recommended: ModuleKey[];
 }> = [
   { key: "retail", name: "Retail Shop", subtitle: "Stores, pharmacies, showrooms and general retail", icon: Store, recommended: ["inventory"] },
-  { key: "restaurant", name: "Restaurant", subtitle: "Restaurants, cafes, bakeries and food businesses", icon: UtensilsCrossed, recommended: ["inventory", "restaurant"] },
   { key: "wholesale", name: "Wholesale / Distribution", subtitle: "Trading, auto parts, distributors and wholesalers", icon: PackageCheck, recommended: ["inventory", "wholesale", "accounting"] },
   { key: "manufacturing", name: "Manufacturing / Factory", subtitle: "Factories, production units and engineering businesses", icon: Factory, recommended: ["inventory", "wholesale", "manufacturing", "accounting"] },
-  { key: "services", name: "Services", subtitle: "Agencies, workshops and service businesses", icon: Wrench, recommended: ["accounting"] },
 ];
 
 const coreFeatures = ["Sales & purchases", "Customers & suppliers", "Khata & payments", "Expenses", "Professional documents", "Basic business reports", "Roles & permissions"];
