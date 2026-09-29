@@ -72,14 +72,22 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  SELECT COUNT(*)::int, MIN(w."id")
-    INTO warehouse_count, warehouse_id
+  SELECT COUNT(*)::int
+    INTO warehouse_count
   FROM "warehouses" w
   WHERE w."workspaceId" = NEW."workspaceId"
     AND w."isActive" = true
     AND w."isDefault" = true;
 
-  IF warehouse_count <> 1 THEN
+  IF warehouse_count = 1 THEN
+    SELECT w."id"
+      INTO warehouse_id
+    FROM "warehouses" w
+    WHERE w."workspaceId" = NEW."workspaceId"
+      AND w."isActive" = true
+      AND w."isDefault" = true
+    LIMIT 1;
+  ELSE
     warehouse_id := NULL;
   END IF;
 
