@@ -302,10 +302,10 @@ describe("restaurant workspace v1.3 item return integrity", () => {
       INSERT INTO "restaurant_returns" (
         "id", "workspaceId", "restaurantOrderId", "returnNumber", "reason",
         "subtotal", "discountAmount", "taxAmount", "total", "inventoryCost",
-        "requestFingerprint"
+        "requestFingerprint", "createdById"
       ) VALUES (
         ${returnId}::uuid, ${workspaceA}::uuid, ${order.id}::uuid, ${`RR-CROSS-${runId}`},
-        'Cross tenant guard setup', 200, 0, 0, 200, 0, ${runId}
+        'Cross tenant guard setup', 200, 0, 0, 200, 0, ${runId}, ${userA}
       )
     `;
     await db.$executeRaw`
