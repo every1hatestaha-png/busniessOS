@@ -50,7 +50,7 @@ export function TopNav({ workspaceName, workspaceId, workspaces, role, enabledMo
           />
         )}
         <span className="max-w-40 truncate text-base font-bold tracking-tight lg:hidden" title={workspaceName}>{workspaceName}</span>
-        <GlobalSearch className="hidden min-w-0 max-w-[520px] flex-1 lg:block" />
+        <GlobalSearch key={`desktop-${workspaceId}`} className="hidden min-w-0 max-w-[520px] flex-1 lg:block" />
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <WorkspaceSwitcher activeId={workspaceId} workspaces={workspaces} />
@@ -60,7 +60,7 @@ export function TopNav({ workspaceName, workspaceId, workspaces, role, enabledMo
           {isDesktop ? <DesktopClerkAccountMenu /> : <WebAccountMenu />}
         </div>
       </div>
-      {mobileSearchOpen && <GlobalSearch autoFocus onNavigate={() => setMobileSearchOpen(false)} className="mt-3 w-full lg:hidden" />}
+      {mobileSearchOpen && <GlobalSearch key={`mobile-${workspaceId}`} autoFocus onNavigate={() => setMobileSearchOpen(false)} className="mt-3 w-full lg:hidden" />}
     </header>
   );
 }

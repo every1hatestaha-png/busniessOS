@@ -54,6 +54,7 @@ describe("vertical boundaries with isolated PostgreSQL", () => {
       await db.workspaceMember.create({ data: { workspaceId: ws.id, userId: memberUser, role: name === "manufacturing" ? "STAFF" : "OWNER" } });
       const customer = await db.customer.create({ data: { workspaceId: ws.id, name: `unique-${name}-${runId}` } });
       customers[name] = customer.id;
+      await db.product.create({ data: { workspaceId: ws.id, name: `unique-product-${name}-${runId}`, sku: `V-${name}-${runId}`, stockQuantity: 1 } });
       if (["trading", "manufacturing", "legacy"].includes(name)) {
         const modules = name === "legacy" ? ["restaurant", "services"] : name === "trading" ? ["manufacturing"] : ["manufacturing"];
         for (const module of modules) await db.$executeRaw`INSERT INTO "workspace_modules" ("workspaceId","moduleKey",enabled) VALUES (${ws.id}::uuid, ${module}, true)`;
@@ -103,9 +104,15 @@ describe("vertical boundaries with isolated PostgreSQL", () => {
 
   it("scopes global search and preserves LEGACY industry entitlements", async () => {
     const result = await search(new NextRequest(`http://localhost/api/search?q=unique&workspaceId=${workspaces.legacy}`));
-    const text = JSON.stringify(await result.json());
+    const payload = await result.json();
+    const text = JSON.stringify(payload);
     expect(text).toContain(`unique-trading-${runId}`);
     expect(text).not.toContain(`unique-legacy-${runId}`);
+    expect(payload.results[0].type).toBe("Customer");
+    session.activeId = workspaces.manufacturing;
+    const manufacturingSearch = await search(new NextRequest("http://localhost/api/search?q=unique"));
+    expect((await manufacturingSearch.json()).results[0].type).toBe("Product");
+    session.activeId = workspaces.trading;
     await requireWorkspaceModule(workspaces.trading, "manufacturing");
     await requireWorkspaceModule(workspaces.legacy, "restaurant");
     await requireWorkspaceModule(workspaces.legacy, "services");

@@ -1,6 +1,7 @@
 import { ArrowUpRight, BookOpen, Boxes, FileText, HandCoins, Landmark, PackageSearch, ReceiptText, ShoppingCart, Truck, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { requirePermission } from "@/lib/server/authorization";
+import { getReportSectionOrder } from "@/lib/verticals/experience";
 
 const sections = [
   { title: "Financial", reports: [
@@ -27,11 +28,13 @@ const sections = [
 ] as const;
 
 export default async function ReportsPage() {
-  await requirePermission("financial.manage");
+  const { vertical } = await requirePermission("financial.manage");
+  const order = getReportSectionOrder(vertical);
+  const visibleSections = order.map((title) => sections.find((section) => section.title === title)).filter((section): section is (typeof sections)[number] => Boolean(section));
   return (
     <div className="mx-auto max-w-[1600px] space-y-7">
       <header className="border-b border-neutral-200 pb-5"><p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Financial control</p><h1 className="mt-1 text-3xl font-bold tracking-tight">Reports Center</h1><p className="mt-1 text-sm text-neutral-500">Filter, review, and print reports generated from posted workspace records.</p></header>
-      {sections.map((section) => <section key={section.title} className="space-y-3"><h2 className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">{section.title}</h2><div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">{section.reports.map(({ href, title, description, icon: Icon }) => (
+      {visibleSections.map((section) => <section key={section.title} className="space-y-3"><h2 className="text-xs font-bold uppercase tracking-[0.16em] text-neutral-500">{section.title}</h2><div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">{section.reports.map(({ href, title, description, icon: Icon }) => (
         <Link key={href} href={href} className="group min-h-32 border border-neutral-200 bg-white p-4 transition hover:border-neutral-500 hover:bg-neutral-50">
           <div className="flex items-start justify-between"><span className="bg-neutral-950 p-2 text-white"><Icon className="h-4 w-4" /></span><ArrowUpRight className="h-4 w-4 text-neutral-300 transition group-hover:text-neutral-900" /></div>
           <h3 className="mt-4 font-semibold text-neutral-950">{title}</h3><p className="mt-1 text-sm leading-5 text-neutral-500">{description}</p>
