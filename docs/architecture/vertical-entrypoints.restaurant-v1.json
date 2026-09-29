@@ -138,5 +138,15 @@
     "methods": [],
     "boundary": "requireWorkspace in dashboard layout",
     "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/api/v1/restaurant/returns/route.ts",
+    "symbol": null,
+    "url": "/api/v1/restaurant/returns",
+    "kind": "API",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": ["POST"],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
   }
 ]
