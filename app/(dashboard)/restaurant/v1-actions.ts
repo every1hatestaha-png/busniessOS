@@ -3,6 +3,7 @@
 import type { PaymentMethod } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 
+import type { RestaurantV1ActionState } from "@/app/(dashboard)/restaurant/v1-action-state";
 import { requireWorkspace } from "@/lib/server/auth";
 import { IndustryDomainError } from "@/lib/server/industry-modules";
 import {
@@ -20,13 +21,6 @@ import {
   type RestaurantOrderLineInput,
   type RestaurantOrderStatus,
 } from "@/lib/server/restaurant-workspace";
-
-export type RestaurantV1ActionState = {
-  status: "idle" | "success" | "error";
-  message: string;
-};
-
-export const initialRestaurantV1ActionState: RestaurantV1ActionState = { status: "idle", message: "" };
 
 function fail(message: string): RestaurantV1ActionState {
   return { status: "error", message };
