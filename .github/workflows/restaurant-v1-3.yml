@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - architecture/restaurant-refunds-v1-2
+      - architecture/restaurant-item-returns-v1-3
 
 permissions:
   contents: read
