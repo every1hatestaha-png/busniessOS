@@ -3,10 +3,10 @@
 import { useActionState } from "react";
 import { CheckCircle2, CircleOff } from "lucide-react";
 
+import { initialRestaurantV1ActionState } from "@/app/(dashboard)/restaurant/v1-action-state";
 import {
   createMenuCategoryAction,
   createMenuItemAction,
-  initialRestaurantV1ActionState,
   setMenuItemAvailabilityAction,
 } from "@/app/(dashboard)/restaurant/v1-actions";
 import { Button } from "@/components/ui/button";
