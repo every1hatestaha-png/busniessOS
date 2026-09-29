@@ -7,9 +7,10 @@ import {
   transitionRestaurantOrderAction,
 } from "@/app/(dashboard)/restaurant/v1-actions";
 import { PageHeader } from "@/components/business/page-header";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
+import { cn } from "@/lib/utils";
 import { listRestaurantOrders, type RestaurantOrderStatus } from "@/lib/server/restaurant-workspace";
 
 const columns: Array<{ status: RestaurantOrderStatus; label: string }> = [
@@ -35,7 +36,10 @@ export default async function RestaurantOrdersPage() {
   return (
     <div className="mx-auto max-w-[1800px] space-y-6">
       <PageHeader title="Restaurant Orders" description="One operational queue for POS and WhatsApp orders. WhatsApp orders stay pending until staff explicitly confirms them." />
-      <div className="flex flex-wrap gap-2"><Button asChild><Link href="/restaurant/pos"><Plus className="mr-1 size-4" />New POS order</Link></Button><Button asChild variant="outline"><Link href="/restaurant/whatsapp"><MessageCircleMore className="mr-1 size-4" />WhatsApp inbox</Link></Button></div>
+      <div className="flex flex-wrap gap-2">
+        <Link href="/restaurant/pos" className={cn(buttonVariants())}><Plus className="mr-1 size-4" />New POS order</Link>
+        <Link href="/restaurant/whatsapp" className={cn(buttonVariants({ variant: "outline" }))}><MessageCircleMore className="mr-1 size-4" />WhatsApp inbox</Link>
+      </div>
 
       <div className="grid gap-4 xl:grid-cols-4">
         {columns.map((column) => {
