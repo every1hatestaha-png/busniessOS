@@ -3,7 +3,8 @@
 import { useActionState, useMemo, useState } from "react";
 import { Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
 
-import { createPosOrderAction, initialRestaurantV1ActionState } from "@/app/(dashboard)/restaurant/v1-actions";
+import { initialRestaurantV1ActionState } from "@/app/(dashboard)/restaurant/v1-action-state";
+import { createPosOrderAction } from "@/app/(dashboard)/restaurant/v1-actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
