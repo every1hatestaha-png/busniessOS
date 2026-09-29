@@ -3,14 +3,16 @@
 import { revalidatePath } from "next/cache";
 
 import { requireWorkspace } from "@/lib/server/auth";
-import { closeRestaurantCashShiftFromLedger } from "@/lib/server/restaurant-cash-shifts";
+import {
+  closeRestaurantCashShiftFromLedger,
+  openRestaurantCashShiftSafely,
+} from "@/lib/server/restaurant-cash-shifts";
 import { updateLegacyKitchenTicketStatusSafely } from "@/lib/server/restaurant-legacy-kot";
 import {
   createKitchenTicket,
   createRecipe,
   createRestaurantTable,
   IndustryDomainError,
-  openCashShift,
 } from "@/lib/server/industry-modules";
 
 export type RestaurantActionState = {
@@ -66,7 +68,7 @@ export async function openCashShiftAction(
 
   const { workspaceId, role, user } = await requireWorkspace();
   try {
-    await openCashShift({ workspaceId, role, userId: user.id }, openingCash, notes || undefined);
+    await openRestaurantCashShiftSafely({ workspaceId, role, userId: user.id }, openingCash, notes || undefined);
     revalidatePath("/restaurant");
     return { status: "success", message: "Cash shift opened." };
   } catch (error) {
