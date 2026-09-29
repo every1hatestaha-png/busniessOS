@@ -1,6 +1,9 @@
 name: Vertical architecture native PostgreSQL gate
 
 on:
+  push:
+    branches:
+      - verification/restaurant-refunds-native-pg
   pull_request:
     branches:
       - architecture/vertical-dashboard-navigation
