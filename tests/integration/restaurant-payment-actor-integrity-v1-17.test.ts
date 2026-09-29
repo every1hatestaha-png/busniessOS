@@ -119,7 +119,7 @@ describe("restaurant V1.17 payment actor membership", () => {
     });
     const payment = await recordRestaurantPaymentAtCollection(staff(), {
       orderId: order.id,
-      cashBankAccountId,
+      cashBankAccountId: cashAccountId,
       method: "CASH",
       amount: 200,
       idempotencyKey: `payactor:${runId}:valid`,
@@ -141,7 +141,7 @@ describe("restaurant V1.17 payment actor membership", () => {
 
     await expect(recordRestaurantPaymentAtCollection(forgedStaff(), {
       orderId: order.id,
-      cashBankAccountId,
+      cashBankAccountId: cashAccountId,
       method: "CASH",
       amount: 200,
       idempotencyKey: `payactor:${runId}:forged`,
