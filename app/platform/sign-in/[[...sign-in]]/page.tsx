@@ -6,8 +6,14 @@ import { redirect } from "next/navigation";
 
 import { getVerifiedPlatformOwnerIdentity, markPlatformPasswordVerified } from "@/lib/server/platform-security";
 
+function platformClerkConfigured() {
+  return Boolean(process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+}
+
 async function verifyPlatformPassword(formData: FormData) {
   "use server";
+
+  if (!platformClerkConfigured()) redirect("/platform/sign-in?error=unavailable");
 
   const password = String(formData.get("password") ?? "");
   if (!password) redirect("/platform/sign-in?reauth=1&error=missing");
@@ -45,10 +51,29 @@ function BrandHeader() {
   );
 }
 
+function PlatformAuthUnavailable() {
+  return (
+    <main className="grid min-h-dvh place-items-center bg-[#fafaf8] px-4 py-10 text-[#0f172a]">
+      <div className="w-full max-w-md">
+        <BrandHeader />
+        <div className="rounded-2xl border border-[#e2e8e5] bg-white p-6 text-center shadow-[0_10px_30px_rgba(15,23,42,0.06)] sm:p-7">
+          <p className="text-sm font-semibold text-slate-900">Platform administration is unavailable on this deployment.</p>
+          <p className="mt-2 text-sm text-slate-500">Customer sign-in and normal MunshiOS workspaces are not affected.</p>
+          <Link href="/sign-in" className="mt-5 inline-flex h-10 items-center justify-center rounded-xl bg-[#059669] px-4 text-sm font-semibold text-white transition hover:bg-[#047857]">
+            Go to customer sign in
+          </Link>
+        </div>
+      </div>
+    </main>
+  );
+}
+
 export default async function PlatformSignInPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  const params = await searchParams;
+  if (!platformClerkConfigured() || params.error === "unavailable") return <PlatformAuthUnavailable />;
+
   const session = await auth({ acceptsToken: ["session_token", "oauth_token"] });
   const userId = "userId" in session ? session.userId : null;
-  const params = await searchParams;
 
   if (!userId) {
     return (
