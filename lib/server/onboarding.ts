@@ -1,6 +1,6 @@
 import "server-only";
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { Prisma, type BusinessType } from "@prisma/client";
 
@@ -20,6 +20,7 @@ type ProvisioningInput = {
 type WorkspaceCreationOptions = {
   allowAdditional?: boolean;
   provisioningRequestId?: string;
+  dedupeRecentMatch?: boolean;
 };
 
 function defaultModulesForBusinessType(businessType: BusinessType): ProvisioningModuleKey[] {
@@ -37,11 +38,29 @@ function defaultModulesForBusinessType(businessType: BusinessType): Provisioning
   }
 }
 
+function effectiveModules(businessType: BusinessType, provisioning?: ProvisioningInput) {
+  return provisioning?.modules.length ? provisioning.modules : defaultModulesForBusinessType(businessType);
+}
+
 function sanitizeProvisioningRequestId(value?: string) {
   const requestId = value?.trim();
   if (!requestId) return randomUUID();
   if (!/^[A-Za-z0-9:_-]{8,128}$/.test(requestId)) throw new Error("Invalid workspace provisioning request.");
   return requestId;
+}
+
+function provisioningFingerprint(
+  data: OnboardingInput,
+  provisioning: ProvisioningInput | undefined,
+  allowAdditional: boolean,
+) {
+  return createHash("sha256").update(JSON.stringify({
+    data,
+    modules: [...effectiveModules(data.businessType, provisioning)].sort(),
+    billing: provisioning?.billing ?? null,
+    builderBusiness: provisioning?.builderBusiness ?? null,
+    allowAdditional,
+  })).digest("hex");
 }
 
 async function ensureWorkspaceSubscriptionInTransaction(tx: Prisma.TransactionClient, workspaceId: string) {
@@ -77,10 +96,7 @@ async function ensureWorkspaceModulesInTransaction(
   const hasExplicitSelection = Boolean(provisioning?.modules.length);
   if ((existing[0]?.count ?? 0) > 0 && !hasExplicitSelection) return;
 
-  const enabled = new Set<ProvisioningModuleKey>(
-    hasExplicitSelection ? provisioning!.modules : defaultModulesForBusinessType(businessType),
-  );
-
+  const enabled = new Set<ProvisioningModuleKey>(effectiveModules(businessType, provisioning));
   for (const moduleKey of PROVISIONING_MODULE_KEYS) {
     await tx.$executeRaw`
       INSERT INTO "workspace_modules" ("workspaceId", "moduleKey", "enabled", "config", "updatedAt")
@@ -134,8 +150,8 @@ async function findProvisionedWorkspace(
   userId: string,
   provisioningRequestId: string,
 ) {
-  const rows = await tx.$queryRaw<Array<{ workspaceId: string }>>`
-    SELECT a."entityId" AS "workspaceId"
+  const rows = await tx.$queryRaw<Array<{ workspaceId: string; fingerprint: string | null }>>`
+    SELECT a."entityId" AS "workspaceId", a."metadata"->>'fingerprint' AS "fingerprint"
     FROM "audit_logs" a
     INNER JOIN "workspace_members" m
       ON m."workspaceId" = a."entityId"::uuid
@@ -147,7 +163,7 @@ async function findProvisionedWorkspace(
     ORDER BY a."createdAt" DESC
     LIMIT 1
   `;
-  return rows[0]?.workspaceId ?? null;
+  return rows[0] ?? null;
 }
 
 export async function createInitialWorkspace(
@@ -163,19 +179,25 @@ export async function createInitialWorkspace(
   }
 
   const provisioningRequestId = sanitizeProvisioningRequestId(options.provisioningRequestId);
+  const fingerprint = provisioningFingerprint(data, provisioning, Boolean(options.allowAdditional));
+  const selectedModules = effectiveModules(data.businessType, provisioning);
   const nameParts = data.ownerName.split(/\s+/);
   const firstName = nameParts.shift() ?? data.ownerName;
   const lastName = nameParts.join(" ") || null;
 
   return withSerializableRetry(async (tx) => {
-    // Serialize provisioning for one user so double submits cannot create two workspaces.
     const lockedUsers = await tx.$queryRaw<Array<{ id: string }>>`
       SELECT "id"::text AS "id" FROM "users" WHERE "id" = ${userId}::uuid FOR UPDATE
     `;
     if (!lockedUsers[0]) throw new Error("User not found.");
 
     const alreadyProvisioned = await findProvisionedWorkspace(tx, userId, provisioningRequestId);
-    if (alreadyProvisioned) return { workspaceId: alreadyProvisioned };
+    if (alreadyProvisioned) {
+      if (alreadyProvisioned.fingerprint && alreadyProvisioned.fingerprint !== fingerprint) {
+        throw new Error("Idempotency key was already used for a different workspace provisioning request.");
+      }
+      return { workspaceId: alreadyProvisioned.workspaceId };
+    }
 
     const existing = await tx.workspaceMember.findFirst({ where: { userId }, select: { workspaceId: true } });
     if (existing && !options.allowAdditional) {
@@ -183,6 +205,28 @@ export async function createInitialWorkspace(
       await ensureWorkspaceSubscriptionInTransaction(tx, existing.workspaceId);
       if (workspace) await ensureWorkspaceModulesInTransaction(tx, existing.workspaceId, workspace.businessType, provisioning);
       return existing;
+    }
+
+    if (options.allowAdditional && options.dedupeRecentMatch) {
+      const recentMatch = await tx.workspaceMember.findFirst({
+        where: {
+          userId,
+          role: "OWNER",
+          workspace: {
+            name: data.businessName,
+            phone: data.phone,
+            email: data.email,
+            address: data.address,
+            city: data.city,
+            country: data.country,
+            businessType: data.businessType,
+            createdAt: { gte: new Date(Date.now() - 5 * 60_000) },
+          },
+        },
+        select: { workspaceId: true },
+        orderBy: { workspace: { createdAt: "desc" } },
+      });
+      if (recentMatch) return recentMatch;
     }
 
     const workspace = await tx.workspace.create({
@@ -214,9 +258,10 @@ export async function createInitialWorkspace(
       entityId: workspace.id,
       metadata: {
         provisioningRequestId,
+        fingerprint,
         vertical: workspace.vertical,
         businessType: data.businessType,
-        modules: provisioning?.modules ?? defaultModulesForBusinessType(data.businessType),
+        modules: selectedModules,
         billing: provisioning?.billing ?? null,
         builderBusiness: provisioning?.builderBusiness ?? null,
         source: provisioning ? "get-your-munshi" : "onboarding",
