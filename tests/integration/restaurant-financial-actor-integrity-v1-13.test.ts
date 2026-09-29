@@ -40,7 +40,7 @@ async function complete(orderId: string) {
 async function pay(orderId: string, key: string) {
   return recordRestaurantPaymentAtCollection(owner(), {
     orderId,
-    cashBankAccountId,
+    cashBankAccountId: cashAccountId,
     method: "CASH",
     amount: 200,
     idempotencyKey: key,
