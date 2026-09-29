@@ -4,36 +4,36 @@ import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/server/db";
 import type { GoodsReceiptInput } from "@/lib/validation/purchase";
 
+export const goodsReceiptRequestSelect = {
+  id: true,
+  grnNumber: true,
+  purchaseOrderId: true,
+  receiptDate: true,
+  notes: true,
+  receivedBy: true,
+  checkedBy: true,
+  warehouseId: true,
+  idempotencyKey: true,
+  items: {
+    select: {
+      purchaseOrderItemId: true,
+      receivedQuantity: true,
+      acceptedQuantity: true,
+      unitCost: true,
+      receivedWeightKg: true,
+      acceptedWeightKg: true,
+      ratePerKg: true,
+    },
+  },
+} satisfies Prisma.GoodReceivedNoteSelect;
+
+type StoredGoodsReceiptRequest = Prisma.GoodReceivedNoteGetPayload<{ select: typeof goodsReceiptRequestSelect }>;
+
 function optionalDecimalMatches(stored: Prisma.Decimal | null, requested: number | undefined) {
   return requested === undefined ? stored === null : Boolean(stored?.equals(requested));
 }
 
-export async function goodsReceiptMatchesRequest(workspaceId: string, grnId: string, input: GoodsReceiptInput) {
-  const stored = await db.goodReceivedNote.findFirst({
-    where: { id: grnId, workspaceId },
-    select: {
-      purchaseOrderId: true,
-      receiptDate: true,
-      notes: true,
-      receivedBy: true,
-      checkedBy: true,
-      warehouseId: true,
-      idempotencyKey: true,
-      items: {
-        select: {
-          purchaseOrderItemId: true,
-          receivedQuantity: true,
-          acceptedQuantity: true,
-          unitCost: true,
-          receivedWeightKg: true,
-          acceptedWeightKg: true,
-          ratePerKg: true,
-        },
-      },
-    },
-  });
-  if (!stored) return false;
-
+export function goodsReceiptStoredRequestMatches(stored: StoredGoodsReceiptRequest, input: GoodsReceiptInput) {
   const sameHeader = stored.purchaseOrderId === input.purchaseOrderId
     && stored.idempotencyKey === (input.idempotencyKey ?? null)
     && (stored.notes ?? "") === (input.notes ?? "")
@@ -56,4 +56,12 @@ export async function goodsReceiptMatchesRequest(workspaceId: string, grnId: str
       && optionalDecimalMatches(item.acceptedWeightKg, requested.acceptedWeightKg)
       && optionalDecimalMatches(item.ratePerKg, requested.ratePerKg));
   });
+}
+
+export async function goodsReceiptMatchesRequest(workspaceId: string, grnId: string, input: GoodsReceiptInput) {
+  const stored = await db.goodReceivedNote.findFirst({
+    where: { id: grnId, workspaceId },
+    select: goodsReceiptRequestSelect,
+  });
+  return stored ? goodsReceiptStoredRequestMatches(stored, input) : false;
 }
