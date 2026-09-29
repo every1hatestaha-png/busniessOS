@@ -8,6 +8,7 @@ on:
       - architecture/restaurant-item-returns-ui-v1-3-1
       - architecture/restaurant-return-reversal-v1-4
       - architecture/restaurant-cash-shift-integrity-v1-5
+      - architecture/restaurant-legacy-kot-hardening-v1-6
 
 permissions:
   contents: read
@@ -57,7 +58,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          npx vitest run tests/integration/restaurant-item-returns-v1-3.test.ts tests/integration/restaurant-return-reversal-v1-4.test.ts tests/integration/restaurant-cash-shift-v1-5.test.ts tests/integration/restaurant-legacy-kot-v1-6.test.ts tests/integration/restaurant-legacy-kot-db-guard-v1-6.test.ts tests/integration/restaurant-table-occupancy-v1-6.test.ts 2>&1 | tee restaurant-v1-3-test.log
+          npx vitest run tests/integration/restaurant-item-returns-v1-3.test.ts tests/integration/restaurant-return-reversal-v1-4.test.ts tests/integration/restaurant-cash-shift-v1-5.test.ts tests/integration/restaurant-legacy-kot-v1-6.test.ts tests/integration/restaurant-legacy-kot-db-guard-v1-6.test.ts tests/integration/restaurant-table-occupancy-v1-6.test.ts tests/integration/restaurant-payment-timing-v1-7.test.ts 2>&1 | tee restaurant-v1-3-test.log
       - name: Full unit and database-backed regression suite
         id: regression_tests
         continue-on-error: true
