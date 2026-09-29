@@ -10,7 +10,7 @@ import { canPerformAction, type Permission } from "@/lib/server/authorization";
 import { getOptionalCurrentUser } from "@/lib/server/auth";
 import { db } from "@/lib/server/db";
 import { getWorkspaceAccess } from "@/lib/server/subscriptions";
-import { resolveWorkspaceVertical, type WorkspaceVertical } from "@/lib/verticals/registry";
+import { isAvailableVertical, resolveWorkspaceVertical, type WorkspaceVertical } from "@/lib/verticals/registry";
 
 export type ApiContext = {
   user: {
@@ -89,6 +89,11 @@ export async function requireApiContext(permission?: Permission): Promise<ApiCon
     }
   }
 
+  const vertical = resolveWorkspaceVertical(membership.workspace);
+  if (!isAvailableVertical(vertical)) {
+    throw new ApiError(403, "VERTICAL_UNAVAILABLE", "This workspace experience is not available yet.");
+  }
+
   return {
     user: {
       id: localUser.id,
@@ -99,7 +104,7 @@ export async function requireApiContext(permission?: Permission): Promise<ApiCon
     workspace: membership.workspace,
     workspaceId: membership.workspaceId,
     role: membership.role,
-    vertical: resolveWorkspaceVertical(membership.workspace.businessType),
+    vertical,
   };
 }
 

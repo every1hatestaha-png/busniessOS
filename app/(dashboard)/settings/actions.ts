@@ -7,6 +7,7 @@ import { fetchFbrProvinces } from "@/lib/fbr/reference";
 import { requirePermission } from "@/lib/server/authorization";
 import { encryptFbrBearerToken, FbrCredentialError } from "@/lib/server/fbr-credentials";
 import { db } from "@/lib/server/db";
+import { canSaveBusinessType } from "@/lib/verticals/registry";
 
 const workspaceProfileSchema = z.object({
   name: z.string().trim().min(2, "Business name is required.").max(120),
@@ -33,6 +34,10 @@ export async function updateWorkspaceProfileAction(
     return { status: "error", message: parsed.error.issues[0]?.message ?? "Check the business details and try again." };
   }
 
+  if (!canSaveBusinessType(context.workspace.businessType, parsed.data.businessType)) {
+    return { status: "error", message: "Business type cannot be changed from Settings. Contact support for a reviewed workspace transition." };
+  }
+
   await db.workspace.update({
     where: { id: context.workspaceId },
     data: {
@@ -42,7 +47,6 @@ export async function updateWorkspaceProfileAction(
       address: parsed.data.address || null,
       city: parsed.data.city,
       country: parsed.data.country,
-      businessType: parsed.data.businessType,
       ntn: parsed.data.ntn || null,
       strn: parsed.data.strn || null,
       province: parsed.data.province || null,

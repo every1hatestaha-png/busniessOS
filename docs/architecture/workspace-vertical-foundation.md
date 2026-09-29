@@ -56,3 +56,59 @@ currently changes the resolved presentation; freeze or audit that operation
 before introducing a persisted explicit vertical. Current module checks alone
 are insufficient to secure future vertical routes, so neither placeholder is
 provisionable or exposed to customers.
+
+## Phase 2 persisted identity and security boundary
+
+The `Workspace.vertical` enum stores TRADING, MANUFACTURING, LEGACY,
+RESTAURANT, PROPERTY, and SERVICES. It defaults to LEGACY for any creation path
+that does not explicitly choose a supported experience. Onboarding explicitly
+sets it from the submitted legacy business classification. The migration adds
+one non-null column, then maps MANUFACTURER to MANUFACTURING, WHOLESALER,
+DISTRIBUTOR, and RETAILER to TRADING, and OTHER to LEGACY. It does not inspect
+module flags or subscription event metadata. All existing workspaces retain
+ERP navigation, pages, and their existing module entitlements. No RESTAURANT,
+PROPERTY, or SERVICES identity is created by onboarding or migration.
+
+The central resolver reads the persisted field from the workspace record
+selected through authenticated membership. `businessType` remains a legacy
+classification for existing workflows and no longer controls resolution.
+Settings displays it read-only. The server action rejects changed or forged
+values and does not update it. Vertical transitions require a separately
+reviewed operation with authorization, audit, data compatibility, and rollback.
+
+The dashboard and mobile sidebar receive vertical context from the selected
+membership. API context resolves the same persisted field. Unavailable
+verticals are denied by the web workspace resolver and API context. A dedicated
+page allows switching away from an unavailable workspace; the switch endpoint
+checks the target membership directly, even when the current vertical is
+unavailable. Manufacturing, restaurant, and services route segments use a
+server guard that checks the selected workspace and enabled module, including
+nested pages. Industry server methods check persisted vertical availability
+and module entitlement. Server actions relying on `requireWorkspace` and
+`requireWorkspaceModule` therefore cannot bypass the boundary by changing
+browser inputs. Global search uses `requireWorkspace` and tenant-scoped queries;
+reports use the same workspace context. Ordinary ERP routes remain available
+for TRADING, MANUFACTURING, and LEGACY to preserve live behavior.
+
+Vertical identity controls the experience. Modules remain optional entitlements
+for legacy ERP capabilities. A TRADING workspace with manufacturing enabled
+continues to use it; a LEGACY workspace with restaurant or services enabled
+continues to use those existing ERP modules. Neither flag changes identity.
+Permissions still come from the membership of the active workspace. All data
+queries must continue to scope by the authenticated workspace ID.
+
+The registry declares dashboard destinations and navigation modes; all three
+active legacy identities still resolve to the existing ERP dashboard and
+navigation. Separate experiences require a reviewed provisioning flow,
+vertical-specific route coverage for every page/action/API, dedicated
+navigation/dashboard/search/report composition, customer requirements, and
+isolated database-backed tenant tests. Restaurant, Property, and Services stay
+unavailable until that work is complete. The schema migration and these changes
+must be verified together in a nonproduction environment before merge.
+
+New builder and onboarding screens no longer advertise Restaurant or Services as
+new workspace experiences. The server creation path rejects forged restaurant
+or services module selections, including direct API requests. Existing
+restaurant and services module entitlements remain usable in existing ERP
+workspaces. The OTHER classification remains selectable as a legacy ERP
+business and is never interpreted as either industry.

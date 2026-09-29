@@ -2,6 +2,7 @@ import "server-only";
 
 import { Prisma, type Role } from "@prisma/client";
 import { db } from "@/lib/server/db";
+import { canUseVerticalCapability, resolveWorkspaceVertical } from "@/lib/verticals/registry";
 import { writeAudit } from "@/lib/server/audit";
 import { applyManagedWarehouseStockDelta, getWarehouseStockModeInTransaction, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
 import {
@@ -99,12 +100,17 @@ export async function setWorkspaceModule(context: IndustryContext, moduleKey: In
 }
 
 export async function requireWorkspaceModule(workspaceId: string, moduleKey: IndustryModuleKey) {
+  const workspace = await db.workspace.findUnique({ where: { id: workspaceId }, select: { vertical: true } });
+  if (!workspace) throw new IndustryDomainError("NOT_FOUND", "Workspace was not found.");
   const rows = await db.$queryRaw<Array<{ enabled: boolean }>>`
     SELECT "enabled" FROM "workspace_modules"
     WHERE "workspaceId" = ${workspaceId}::uuid AND "moduleKey" = ${moduleKey}
     LIMIT 1
   `;
-  if (!rows[0]?.enabled) throw new IndustryDomainError("MODULE_DISABLED", `${moduleKey} is not enabled for this workspace.`);
+  if (!rows[0]?.enabled || !canUseVerticalCapability(resolveWorkspaceVertical(workspace),
+    moduleKey === "manufacturing" || moduleKey === "restaurant" || moduleKey === "services" ? moduleKey : "trading", [moduleKey])) {
+    throw new IndustryDomainError("MODULE_DISABLED", `${moduleKey} is not enabled for this workspace.`);
+  }
 }
 
 export const INDUSTRY_TEMPLATES: Record<string, IndustryModuleKey[]> = {
