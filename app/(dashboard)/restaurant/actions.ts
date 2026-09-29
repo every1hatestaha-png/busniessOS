@@ -4,13 +4,13 @@ import { revalidatePath } from "next/cache";
 
 import { requireWorkspace } from "@/lib/server/auth";
 import { closeRestaurantCashShiftFromLedger } from "@/lib/server/restaurant-cash-shifts";
+import { updateLegacyKitchenTicketStatusSafely } from "@/lib/server/restaurant-legacy-kot";
 import {
   createKitchenTicket,
   createRecipe,
   createRestaurantTable,
   IndustryDomainError,
   openCashShift,
-  updateKitchenTicketStatus,
 } from "@/lib/server/industry-modules";
 
 export type RestaurantActionState = {
@@ -106,7 +106,6 @@ export async function closeCashShiftAction(
   }
 }
 
-
 type RecipeItemInput = { ingredientProductId?: unknown; quantity?: unknown; wastagePercent?: unknown };
 
 export async function createRecipeAction(
@@ -153,7 +152,7 @@ export async function createRecipeAction(
       { finishedProductId, yieldQuantity, notes: notes || undefined, items },
     );
     revalidatePath("/restaurant");
-    return { status: "success", message: "Recipe saved and connected to inventory consumption." };
+    return { status: "success", message: "Recipe saved for restaurant-native inventory consumption." };
   } catch (error) {
     return fail(messageFor(error, "We could not save this recipe. Check the selected products and try again."));
   }
@@ -185,7 +184,7 @@ export async function createKitchenTicketAction(
       },
     );
     revalidatePath("/restaurant");
-    return { status: "success", message: `Kitchen ticket ${ticketNumber} queued.` };
+    return { status: "success", message: `Legacy kitchen ticket ${ticketNumber} queued in status-only compatibility mode.` };
   } catch (error) {
     return fail(messageFor(error, "We could not create this kitchen ticket. Check the ticket number, sale, and table."));
   }
@@ -202,13 +201,13 @@ export async function updateKitchenTicketStatusAction(
 
   const { workspaceId, role, user } = await requireWorkspace();
   try {
-    await updateKitchenTicketStatus(
+    await updateLegacyKitchenTicketStatusSafely(
       { workspaceId, role, userId: user.id },
       ticketId,
       status as "PREPARING" | "READY" | "SERVED" | "CANCELLED",
     );
     revalidatePath("/restaurant");
-    return { status: "success", message: `Kitchen ticket moved to ${status.toLowerCase()}.` };
+    return { status: "success", message: `Legacy kitchen ticket moved to ${status.toLowerCase()} without posting inventory.` };
   } catch (error) {
     return fail(messageFor(error, "We could not update this kitchen ticket."));
   }
