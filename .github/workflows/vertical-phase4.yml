@@ -6,6 +6,7 @@ on:
       - architecture/vertical-dashboard-navigation
       - architecture/vertical-operational-readiness
       - architecture/vertical-provisioning-transaction
+      - architecture/restaurant-workspace-v1
 
 permissions:
   contents: read
