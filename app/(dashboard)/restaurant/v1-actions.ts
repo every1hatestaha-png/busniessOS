@@ -7,11 +7,11 @@ import type { RestaurantV1ActionState } from "@/app/(dashboard)/restaurant/v1-ac
 import { requireWorkspace } from "@/lib/server/auth";
 import { IndustryDomainError } from "@/lib/server/industry-modules";
 import {
-  recordRestaurantPayment,
   transitionRestaurantOrderWithIntegrity,
   voidRestaurantPayment,
 } from "@/lib/server/restaurant-integrity";
 import { createRestaurantItemReturn } from "@/lib/server/restaurant-item-returns";
+import { recordRestaurantPaymentAtCollection } from "@/lib/server/restaurant-payments-immediate";
 import { prepareRestaurantSingleItemReturn } from "@/lib/server/restaurant-return-ui";
 import {
   confirmRestaurantOrder,
@@ -200,7 +200,7 @@ export async function recordRestaurantPaymentAction(formData: FormData) {
   const notes = String(formData.get("notes") ?? "").trim();
   const idempotencyKey = String(formData.get("paymentRequestId") ?? "").trim();
   const workspace = await requireWorkspace();
-  await recordRestaurantPayment(contextFrom(workspace), {
+  await recordRestaurantPaymentAtCollection(contextFrom(workspace), {
     orderId,
     cashBankAccountId,
     method,
