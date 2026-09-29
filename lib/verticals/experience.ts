@@ -6,6 +6,7 @@ const overview = ["/dashboard"];
 const tradingOperations = ["/sales", "/purchases", "/goods-receipts", "/inventory", "/customers", "/suppliers", "/supplier-returns"];
 const finance = ["/khata", "/invoices", "/collections", "/receivables", "/accounting/cash-bank", "/accounting/expenses", "/accounting/notes", "/payables", "/reports"];
 const workspace = ["/ai", "/settings"];
+const restaurantOperations = ["/restaurant", "/restaurant/pos", "/restaurant/orders", "/restaurant/kitchen", "/restaurant/menu", "/restaurant/whatsapp"];
 
 // Composition is independent per experience. A module flag only controls whether
 // an optional entry appears; it never changes the workspace's vertical.
@@ -32,7 +33,14 @@ const navigation: Record<WorkspaceVertical, readonly NavigationSection[]> = {
     { label: "Finance", routes: finance },
     { label: "Workspace", routes: workspace },
   ],
-  RESTAURANT: [], PROPERTY: [], SERVICES: [],
+  RESTAURANT: [
+    { label: "Restaurant", routes: restaurantOperations },
+    { label: "Stock & purchasing", routes: ["/inventory", "/purchases", "/goods-receipts", "/suppliers"] },
+    { label: "Customers", routes: ["/customers"] },
+    { label: "Finance", routes: ["/accounting/cash-bank", "/accounting/expenses", "/reports"] },
+    { label: "Workspace", routes: ["/settings"] },
+  ],
+  PROPERTY: [], SERVICES: [],
 };
 
 export type DashboardComposition = { title: string; lead: "trade" | "production"; sharedErpPanels: boolean };
@@ -47,14 +55,14 @@ const reportOrders: Record<WorkspaceVertical, readonly string[]> = {
   TRADING: ["Financial", "Sales & Purchasing", "Accounts", "Inventory"],
   MANUFACTURING: ["Inventory", "Sales & Purchasing", "Financial", "Accounts"],
   LEGACY: ["Financial", "Sales & Purchasing", "Accounts", "Inventory"],
-  RESTAURANT: [], PROPERTY: [], SERVICES: [],
+  RESTAURANT: ["Financial", "Inventory", "Sales & Purchasing", "Accounts"], PROPERTY: [], SERVICES: [],
 };
 
 const searchTypes: Record<WorkspaceVertical, readonly string[]> = {
   TRADING: ["Customer", "Product", "Order", "Invoice"],
   MANUFACTURING: ["Product", "Order", "Customer", "Invoice"],
   LEGACY: ["Customer", "Product", "Order", "Invoice"],
-  RESTAURANT: [], PROPERTY: [], SERVICES: [],
+  RESTAURANT: ["Product", "Customer", "Order", "Invoice"], PROPERTY: [], SERVICES: [],
 };
 
 export function getVerticalNavigation(vertical: WorkspaceVertical) { return navigation[vertical]; }
