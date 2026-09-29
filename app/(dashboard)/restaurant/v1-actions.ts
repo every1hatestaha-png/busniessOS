@@ -1,0 +1,186 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+
+import type { RestaurantV1ActionState } from "@/app/(dashboard)/restaurant/v1-action-state";
+import { requireWorkspace } from "@/lib/server/auth";
+import { IndustryDomainError } from "@/lib/server/industry-modules";
+import {
+  confirmRestaurantOrder,
+  createPosRestaurantOrder,
+  createRestaurantMenuCategory,
+  createRestaurantMenuItem,
+  setRestaurantMenuItemAvailability,
+  setRestaurantOrderPaymentStatus,
+  transitionRestaurantOrder,
+  type RestaurantFulfillmentType,
+  type RestaurantOrderLineInput,
+  type RestaurantOrderStatus,
+  type RestaurantPaymentStatus,
+} from "@/lib/server/restaurant-workspace";
+
+function fail(message: string): RestaurantV1ActionState {
+  return { status: "error", message };
+}
+
+function messageFor(error: unknown, fallback: string) {
+  return error instanceof IndustryDomainError || error instanceof Error ? error.message : fallback;
+}
+
+function refreshRestaurant() {
+  for (const path of [
+    "/restaurant",
+    "/restaurant/pos",
+    "/restaurant/orders",
+    "/restaurant/kitchen",
+    "/restaurant/menu",
+    "/restaurant/whatsapp",
+  ]) revalidatePath(path);
+}
+
+function contextFrom(workspace: Awaited<ReturnType<typeof requireWorkspace>>) {
+  return { workspaceId: workspace.workspaceId, role: workspace.role, userId: workspace.user.id };
+}
+
+export async function createMenuCategoryAction(
+  _previous: RestaurantV1ActionState,
+  formData: FormData,
+): Promise<RestaurantV1ActionState> {
+  const name = String(formData.get("name") ?? "").trim();
+  const sortOrder = Number(formData.get("sortOrder") ?? 0);
+  if (!name || name.length > 80) return fail("Category name must be 1-80 characters.");
+  if (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > 10_000) return fail("Category order is invalid.");
+  const workspace = await requireWorkspace();
+  try {
+    await createRestaurantMenuCategory(contextFrom(workspace), { name, sortOrder });
+    refreshRestaurant();
+    return { status: "success", message: `${name} added to the menu.` };
+  } catch (error) {
+    return fail(messageFor(error, "We could not create this menu category."));
+  }
+}
+
+export async function createMenuItemAction(
+  _previous: RestaurantV1ActionState,
+  formData: FormData,
+): Promise<RestaurantV1ActionState> {
+  const categoryId = String(formData.get("categoryId") ?? "").trim();
+  const productId = String(formData.get("productId") ?? "").trim();
+  const name = String(formData.get("name") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim();
+  const price = Number(formData.get("price") ?? NaN);
+  const sortOrder = Number(formData.get("sortOrder") ?? 0);
+  if (!categoryId) return fail("Choose a menu category.");
+  if (!name || name.length > 120) return fail("Menu item name must be 1-120 characters.");
+  if (!Number.isFinite(price) || price < 0) return fail("Enter a valid menu price.");
+  if (description.length > 500) return fail("Description must be 500 characters or fewer.");
+  if (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > 10_000) return fail("Menu item order is invalid.");
+  const workspace = await requireWorkspace();
+  try {
+    await createRestaurantMenuItem(contextFrom(workspace), {
+      categoryId,
+      productId: productId || undefined,
+      name,
+      description: description || undefined,
+      price,
+      sortOrder,
+    });
+    refreshRestaurant();
+    return { status: "success", message: `${name} added to the menu.` };
+  } catch (error) {
+    return fail(messageFor(error, "We could not create this menu item."));
+  }
+}
+
+export async function setMenuItemAvailabilityAction(formData: FormData) {
+  const menuItemId = String(formData.get("menuItemId") ?? "").trim();
+  const isAvailable = String(formData.get("isAvailable") ?? "") === "true";
+  const workspace = await requireWorkspace();
+  await setRestaurantMenuItemAvailability(contextFrom(workspace), menuItemId, isAvailable);
+  refreshRestaurant();
+}
+
+type RawCartLine = { menuItemId?: unknown; quantity?: unknown; notes?: unknown; modifiers?: unknown };
+
+function parseCart(formData: FormData): RestaurantOrderLineInput[] {
+  let raw: RawCartLine[];
+  try {
+    const parsed = JSON.parse(String(formData.get("itemsJson") ?? "[]"));
+    if (!Array.isArray(parsed)) throw new Error();
+    raw = parsed;
+  } catch {
+    throw new Error("The order cart is invalid.");
+  }
+  return raw.map((line) => ({
+    menuItemId: String(line.menuItemId ?? "").trim(),
+    quantity: Number(line.quantity ?? 0),
+    notes: typeof line.notes === "string" ? line.notes : undefined,
+    modifiers: Array.isArray(line.modifiers) ? line.modifiers.map(String) : undefined,
+  }));
+}
+
+export async function createPosOrderAction(
+  _previous: RestaurantV1ActionState,
+  formData: FormData,
+): Promise<RestaurantV1ActionState> {
+  let items: RestaurantOrderLineInput[];
+  try {
+    items = parseCart(formData);
+  } catch (error) {
+    return fail(messageFor(error, "The order cart is invalid."));
+  }
+  const fulfillmentType = String(formData.get("fulfillmentType") ?? "TAKEAWAY") as RestaurantFulfillmentType;
+  if (!["DINE_IN", "TAKEAWAY", "DELIVERY"].includes(fulfillmentType)) return fail("Order type is invalid.");
+  const restaurantTableId = String(formData.get("restaurantTableId") ?? "").trim();
+  const customerName = String(formData.get("customerName") ?? "").trim();
+  const customerPhone = String(formData.get("customerPhone") ?? "").trim();
+  const deliveryAddress = String(formData.get("deliveryAddress") ?? "").trim();
+  const notes = String(formData.get("notes") ?? "").trim();
+  const discountAmount = Number(formData.get("discountAmount") ?? 0);
+  const taxAmount = Number(formData.get("taxAmount") ?? 0);
+  const workspace = await requireWorkspace();
+  try {
+    const order = await createPosRestaurantOrder(contextFrom(workspace), {
+      fulfillmentType,
+      restaurantTableId: restaurantTableId || undefined,
+      customerName: customerName || undefined,
+      customerPhone: customerPhone || undefined,
+      deliveryAddress: deliveryAddress || undefined,
+      notes: notes || undefined,
+      discountAmount,
+      taxAmount,
+      items,
+    });
+    refreshRestaurant();
+    return { status: "success", message: `${order.orderNumber} confirmed and sent to the kitchen.` };
+  } catch (error) {
+    return fail(messageFor(error, "We could not create this restaurant order."));
+  }
+}
+
+export async function confirmRestaurantOrderAction(formData: FormData) {
+  const orderId = String(formData.get("orderId") ?? "").trim();
+  const workspace = await requireWorkspace();
+  await confirmRestaurantOrder(contextFrom(workspace), orderId);
+  refreshRestaurant();
+}
+
+export async function transitionRestaurantOrderAction(formData: FormData) {
+  const orderId = String(formData.get("orderId") ?? "").trim();
+  const nextStatus = String(formData.get("nextStatus") ?? "") as RestaurantOrderStatus;
+  if (!["PENDING_REVIEW", "CONFIRMED", "PREPARING", "READY", "COMPLETED", "CANCELLED"].includes(nextStatus)) {
+    throw new Error("Restaurant order status is invalid.");
+  }
+  const workspace = await requireWorkspace();
+  await transitionRestaurantOrder(contextFrom(workspace), orderId, nextStatus);
+  refreshRestaurant();
+}
+
+export async function setRestaurantOrderPaymentStatusAction(formData: FormData) {
+  const orderId = String(formData.get("orderId") ?? "").trim();
+  const paymentStatus = String(formData.get("paymentStatus") ?? "") as RestaurantPaymentStatus;
+  if (!["UNPAID", "PARTIALLY_PAID", "PAID"].includes(paymentStatus)) throw new Error("Payment status is invalid.");
+  const workspace = await requireWorkspace();
+  await setRestaurantOrderPaymentStatus(contextFrom(workspace), orderId, paymentStatus);
+  refreshRestaurant();
+}

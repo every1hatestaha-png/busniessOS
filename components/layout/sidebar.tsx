@@ -25,6 +25,8 @@ import {
   UtensilsCrossed,
   Factory,
   BriefcaseBusiness,
+  ChefHat,
+  ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getWorkspaceBranding } from "@/lib/workspace-branding";
@@ -49,6 +51,11 @@ const routes: SidebarRoute[] = [
     { href: "/suppliers", label: "Suppliers", icon: Truck },
     { href: "/supplier-returns", label: "Supplier Returns", icon: Truck, financial: true },
     { href: "/restaurant", label: "Restaurant", icon: UtensilsCrossed, module: "restaurant" },
+    { href: "/restaurant/pos", label: "POS", icon: ShoppingCart, module: "restaurant" },
+    { href: "/restaurant/orders", label: "Orders", icon: ClipboardList, module: "restaurant" },
+    { href: "/restaurant/kitchen", label: "Kitchen", icon: ChefHat, module: "restaurant" },
+    { href: "/restaurant/menu", label: "Menu", icon: BookOpen, module: "restaurant" },
+    { href: "/restaurant/whatsapp", label: "WhatsApp Orders", icon: MessageCircleMore, module: "restaurant" },
     { href: "/manufacturing", label: "Manufacturing", icon: Factory, module: "manufacturing" },
     { href: "/services", label: "Services", icon: BriefcaseBusiness, module: "services" },
     { href: "/khata", label: "Khata", icon: BookOpen },
@@ -125,7 +132,8 @@ export function Sidebar({
               <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{section.label}</p>
               <div className="space-y-1">
                 {visibleRoutes.map((route) => {
-                  const isActive = pathname === route.href || pathname?.startsWith(`${route.href}/`);
+                  const isRootRestaurant = route.href === "/restaurant";
+                  const isActive = isRootRestaurant ? pathname === route.href : pathname === route.href || pathname?.startsWith(`${route.href}/`);
                   return (
                     <Link
                       key={route.href}
