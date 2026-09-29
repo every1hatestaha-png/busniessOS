@@ -120,6 +120,26 @@
     "scope": "dashboard layout plus entry point"
   },
   {
+    "file": "app/(dashboard)/restaurant/v1-actions.ts",
+    "symbol": "recordRestaurantPaymentAction",
+    "url": "/restaurant",
+    "kind": "SERVER_ACTION",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/restaurant/v1-actions.ts",
+    "symbol": "voidRestaurantPaymentAction",
+    "url": "/restaurant",
+    "kind": "SERVER_ACTION",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
     "file": "app/(dashboard)/restaurant/whatsapp/page.tsx",
     "symbol": null,
     "url": "/restaurant/whatsapp",
