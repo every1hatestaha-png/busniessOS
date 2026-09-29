@@ -48,7 +48,21 @@ jobs:
           npx prisma migrate deploy
           npx prisma migrate status
       - name: Restaurant item return integration suite
-        run: npx vitest run tests/integration/restaurant-item-returns-v1-3.test.ts
+        id: restaurant_return_tests
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npx vitest run tests/integration/restaurant-item-returns-v1-3.test.ts 2>&1 | tee restaurant-v1-3-test.log
+      - name: Upload restaurant V1.3 diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: restaurant-v1-3-diagnostics
+          path: restaurant-v1-3-test.log
+      - name: Fail if restaurant item return suite failed
+        if: steps.restaurant_return_tests.outcome == 'failure'
+        run: exit 1
       - name: Full unit and database-backed regression suite
         run: npm test
       - name: Finance scenario suite
