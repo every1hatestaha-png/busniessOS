@@ -154,7 +154,7 @@ async function findProvisionedWorkspace(
     SELECT a."entityId" AS "workspaceId", a."metadata"->>'fingerprint' AS "fingerprint"
     FROM "audit_logs" a
     INNER JOIN "workspace_members" m
-      ON m."workspaceId" = a."entityId"::uuid
+      ON m."workspaceId" = a."entityId"
       AND m."userId" = ${userId}
     WHERE a."actorId" = ${userId}
       AND a."action" = 'workspace.provisioned'
