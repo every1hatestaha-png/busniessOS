@@ -24,8 +24,6 @@ function provisioningRequestId(input: {
   builderBusiness: string | null;
   createAdditional: boolean;
 }) {
-  // A five-minute bucket makes browser double submits idempotent without preventing
-  // a deliberate later workspace with identical profile data.
   const bucket = Math.floor(Date.now() / (5 * 60_000));
   const digest = createHash("sha256").update(JSON.stringify({ ...input, bucket })).digest("hex").slice(0, 40);
   return `onboarding:${digest}`;
@@ -79,6 +77,7 @@ export async function createWorkspace(
     }, {
       allowAdditional: createAdditional,
       provisioningRequestId: requestId,
+      dedupeRecentMatch: createAdditional,
     });
     (await cookies()).set("businessos_workspace", result.workspaceId, {
       httpOnly: true,
