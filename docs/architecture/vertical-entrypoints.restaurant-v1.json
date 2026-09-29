@@ -20,6 +20,16 @@
     "scope": "dashboard layout plus entry point"
   },
   {
+    "file": "app/(dashboard)/restaurant/orders/[id]/return/page.tsx",
+    "symbol": null,
+    "url": "/restaurant/orders/[id]/return",
+    "kind": "PAGE",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
     "file": "app/(dashboard)/restaurant/orders/page.tsx",
     "symbol": null,
     "url": "/restaurant/orders",
@@ -122,6 +132,16 @@
   {
     "file": "app/(dashboard)/restaurant/v1-actions.ts",
     "symbol": "voidRestaurantPaymentAction",
+    "url": "/restaurant",
+    "kind": "SERVER_ACTION",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/restaurant/v1-actions.ts",
+    "symbol": "createRestaurantItemReturnAction",
     "url": "/restaurant",
     "kind": "SERVER_ACTION",
     "category": "LEGACY_COMPATIBILITY",

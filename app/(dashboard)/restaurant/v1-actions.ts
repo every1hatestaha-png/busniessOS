@@ -11,6 +11,8 @@ import {
   transitionRestaurantOrderWithIntegrity,
   voidRestaurantPayment,
 } from "@/lib/server/restaurant-integrity";
+import { createRestaurantItemReturn } from "@/lib/server/restaurant-item-returns";
+import { prepareRestaurantSingleItemReturn } from "@/lib/server/restaurant-return-ui";
 import {
   confirmRestaurantOrder,
   createPosRestaurantOrder,
@@ -30,7 +32,7 @@ function messageFor(error: unknown, fallback: string) {
   return error instanceof IndustryDomainError || error instanceof Error ? error.message : fallback;
 }
 
-function refreshRestaurant() {
+function refreshRestaurant(orderId?: string) {
   for (const path of [
     "/restaurant",
     "/restaurant/pos",
@@ -39,6 +41,7 @@ function refreshRestaurant() {
     "/restaurant/menu",
     "/restaurant/whatsapp",
   ]) revalidatePath(path);
+  if (orderId) revalidatePath(`/restaurant/orders/${orderId}/return`);
 }
 
 function contextFrom(workspace: Awaited<ReturnType<typeof requireWorkspace>>) {
@@ -184,8 +187,6 @@ export async function transitionRestaurantOrderAction(formData: FormData) {
   refreshRestaurant();
 }
 
-/** Compatibility export retained so older rendered forms fail closed instead of
- * mutating accounting state through a manual status selector. */
 export async function setRestaurantOrderPaymentStatusAction() {
   throw new Error("Manual payment status changes are disabled. Record an actual restaurant payment instead.");
 }
@@ -217,4 +218,31 @@ export async function voidRestaurantPaymentAction(formData: FormData) {
   const workspace = await requireWorkspace();
   await voidRestaurantPayment(contextFrom(workspace), paymentId, reason);
   refreshRestaurant();
+}
+
+export async function createRestaurantItemReturnAction(formData: FormData) {
+  const orderId = String(formData.get("orderId") ?? "").trim();
+  const orderItemId = String(formData.get("orderItemId") ?? "").trim();
+  const returnQuantity = Number(formData.get("returnQuantity") ?? NaN);
+  const reason = String(formData.get("reason") ?? "").trim();
+  const restock = String(formData.get("restock") ?? "") === "true";
+  const requestId = String(formData.get("returnRequestId") ?? "").trim();
+  const workspace = await requireWorkspace();
+  if (!canManageRestaurant(workspace.role)) throw new Error("Manager access is required for restaurant returns.");
+
+  const context = contextFrom(workspace);
+  const prepared = await prepareRestaurantSingleItemReturn(context, {
+    orderId,
+    orderItemId,
+    quantity: returnQuantity,
+  });
+
+  await createRestaurantItemReturn(context, {
+    orderId,
+    reason,
+    idempotencyKey: requestId || undefined,
+    items: [{ orderItemId, quantity: returnQuantity, restock }],
+    paymentAllocations: prepared.paymentAllocations,
+  });
+  refreshRestaurant(orderId);
 }
