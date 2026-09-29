@@ -6,6 +6,7 @@ import {
   Banknote,
   Boxes,
   Check,
+  Factory,
   Landmark,
   PackageCheck,
   PackagePlus,
@@ -19,6 +20,7 @@ import {
 
 import { StatusBadge } from "@/components/business/status-badge";
 import { DailyActionCenter } from "@/components/dashboard/daily-action-center";
+import { ManufacturingOverview } from "@/components/dashboard/manufacturing-overview";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getFinancialDashboard } from "@/lib/server/accounting";
@@ -28,6 +30,9 @@ import { getDailyActionCenter } from "@/lib/server/daily-action-center";
 import { getDashboardActivity } from "@/lib/server/dashboard";
 import { getWorkspaceAccess } from "@/lib/server/subscriptions";
 import { formatDate, formatPKR, getStockStatus } from "@/lib/utils";
+import { getDashboardComposition } from "@/lib/verticals/experience";
+import { listWorkspaceModules } from "@/lib/server/industry-modules";
+import { notFound } from "next/navigation";
 
 function KpiCard({ href, label, value, detail, icon: Icon }: { href: string; label: string; value: string; detail: string; icon: LucideIcon }) {
   return (
@@ -80,13 +85,16 @@ function SetupStep({ complete, href, title, detail, icon: Icon }: { complete: bo
 }
 
 export default async function DashboardPage() {
-  const { user, workspace, role } = await requireWorkspace();
+  const { user, workspace, role, vertical } = await requireWorkspace();
+  const composition = getDashboardComposition(vertical);
+  if (!composition) notFound();
   const canViewFinancials = canPerformAction(role, "financial.manage");
-  const [financials, activity, dailyActions, subscription] = await Promise.all([
+  const [financials, activity, dailyActions, subscription, modules] = await Promise.all([
     canViewFinancials ? getFinancialDashboard(workspace.id) : Promise.resolve(null),
     getDashboardActivity(workspace.id),
     getDailyActionCenter(workspace.id, { canViewFinancials, timeZone: workspace.timezone || "Asia/Karachi" }),
     getWorkspaceAccess(workspace.id),
+    listWorkspaceModules(workspace.id),
   ]);
   const currentDate = new Intl.DateTimeFormat("en-PK", { timeZone: workspace.timezone || "Asia/Karachi", weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date());
   const setupSteps = [activity.setup.customerCount > 0, activity.setup.productCount > 0, activity.setup.saleCount > 0];
@@ -97,13 +105,15 @@ export default async function DashboardPage() {
       <header className="flex flex-col items-start gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500"><span>{workspace.name}</span><span aria-hidden="true">/</span><span>{currentDate}</span></div>
-          <h1 className="mt-1 text-xl font-semibold tracking-tight text-foreground">Dashboard</h1>
+          <h1 className="mt-1 text-xl font-semibold tracking-tight text-foreground">{composition.title}</h1>
           <p className="mt-0.5 text-xs text-slate-500">Welcome back, {user.firstName ?? "team"}. Here is today&apos;s operating view.</p>
         </div>
         <Link href="/sales/new" className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30">
           <Plus className="size-3.5" />New sales order
         </Link>
       </header>
+
+      {composition.lead === "production" && modules.some((module) => module.moduleKey === "manufacturing" && module.enabled) && <ManufacturingOverview workspaceId={workspace.id} />}
 
       {subscription.reason === "trial" && (
         <section className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -176,7 +186,8 @@ export default async function DashboardPage() {
         <Card className="gap-0 rounded-md border py-0 shadow-none ring-0">
           <PanelHeading title="Quick Actions" description="Common workspace tasks" />
           <CardContent className="grid gap-2 p-3">
-            <QuickAction href="/sales/new" label="New sales order" detail="Create a customer order" icon={ShoppingCart} primary />
+            {composition.lead === "production" && modules.some((module) => module.moduleKey === "manufacturing" && module.enabled) && <QuickAction href="/manufacturing" label="Production overview" detail="Review runs and materials" icon={Factory} primary />}
+            <QuickAction href="/sales/new" label="New sales order" detail="Create a customer order" icon={ShoppingCart} primary={composition.lead === "trade"} />
             {canViewFinancials && <QuickAction href="/purchases/new" label="New purchase order" detail="Order from a supplier" icon={Truck} />}
             <QuickAction href="/customers" label="Customer accounts" detail="Review balances and activity" icon={Users} />
             <QuickAction href="/inventory" label="Inventory" detail="Review products and stock" icon={Boxes} />

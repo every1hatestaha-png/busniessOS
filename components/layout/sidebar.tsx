@@ -28,7 +28,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getWorkspaceBranding } from "@/lib/workspace-branding";
-import { VERTICALS, type WorkspaceVertical } from "@/lib/verticals/registry";
+import type { WorkspaceVertical } from "@/lib/verticals/registry";
+import { getVerticalNavigation } from "@/lib/verticals/experience";
 
 type SidebarRoute = {
   href: string;
@@ -38,16 +39,8 @@ type SidebarRoute = {
   module?: "restaurant" | "manufacturing" | "services";
 };
 
-type SidebarSection = {
-  label: string;
-  routes: SidebarRoute[];
-};
-
-const sections: SidebarSection[] = [
-  { label: "Overview", routes: [
+const routes: SidebarRoute[] = [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  ] },
-  { label: "Operations", routes: [
     { href: "/sales", label: "Sales", icon: ShoppingCart },
     { href: "/purchases", label: "Purchases", icon: FileText },
     { href: "/goods-receipts", label: "Goods Receipts", icon: PackageCheck },
@@ -55,13 +48,9 @@ const sections: SidebarSection[] = [
     { href: "/customers", label: "Customers", icon: Users },
     { href: "/suppliers", label: "Suppliers", icon: Truck },
     { href: "/supplier-returns", label: "Supplier Returns", icon: Truck, financial: true },
-  ] },
-  { label: "Industry", routes: [
     { href: "/restaurant", label: "Restaurant", icon: UtensilsCrossed, module: "restaurant" },
     { href: "/manufacturing", label: "Manufacturing", icon: Factory, module: "manufacturing" },
     { href: "/services", label: "Services", icon: BriefcaseBusiness, module: "services" },
-  ] },
-  { label: "Finance", routes: [
     { href: "/khata", label: "Khata", icon: BookOpen },
     { href: "/invoices", label: "Invoices", icon: Receipt },
     { href: "/collections", label: "Smart Collections", icon: MessageCircleMore, financial: true },
@@ -71,12 +60,10 @@ const sections: SidebarSection[] = [
     { href: "/accounting/notes", label: "Credit & Debit Notes", icon: FileText, financial: true },
     { href: "/payables", label: "Payables", icon: Landmark, financial: true },
     { href: "/reports", label: "Reports", icon: ChartNoAxesCombined, financial: true },
-  ] },
-  { label: "Workspace", routes: [
     { href: "/ai", label: "AI Assistant", icon: Sparkles },
     { href: "/settings", label: "Settings", icon: Settings },
-  ] },
 ];
+const routeByHref = new Map(routes.map((route) => [route.href, route]));
 
 export function Sidebar({
   workspaceName,
@@ -90,9 +77,7 @@ export function Sidebar({
   vertical: WorkspaceVertical;
 }) {
   const pathname = usePathname();
-  // Existing module entitlements remain authoritative for legacy workspaces.
-  // Unavailable verticals have no ERP navigation even if a module flag exists.
-  const enabled = new Set(VERTICALS[vertical].status === "active" ? enabledModules : []);
+  const enabled = new Set(enabledModules);
   const branding = getWorkspaceBranding(workspaceName);
 
   return (
@@ -129,8 +114,8 @@ export function Sidebar({
       </div>
       <div className="flex-1 overflow-y-auto px-2.5 py-3">
         <nav aria-label="Primary navigation" className="space-y-4">
-          {(VERTICALS[vertical].status === "active" ? sections : []).map((section) => {
-            const visibleRoutes = section.routes.filter((route) => {
+          {getVerticalNavigation(vertical).map((section) => {
+            const visibleRoutes = section.routes.map((href) => routeByHref.get(href)).filter((route): route is SidebarRoute => Boolean(route)).filter((route) => {
               if (role === "STAFF" && route.financial) return false;
               if (route.module && !enabled.has(route.module)) return false;
               return true;

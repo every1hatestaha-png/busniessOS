@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SearchResult } from "@/lib/search";
+import { getSearchTypes } from "@/lib/verticals/experience";
 
 export async function GET(request: NextRequest) {
   // Defer server-only modules until request execution so Vercel can collect
@@ -10,7 +11,7 @@ export async function GET(request: NextRequest) {
     import("@/lib/server/db"),
   ]);
 
-  const { workspaceId } = await requireWorkspace();
+  const { workspaceId, vertical } = await requireWorkspace();
   const q = request.nextUrl.searchParams.get("q")?.trim() ?? "";
   if (q.length < 2) return NextResponse.json({ results: [] satisfies SearchResult[] });
 
@@ -33,5 +34,6 @@ export async function GET(request: NextRequest) {
     ...sales.map((x) => ({ id: x.id, type: "Order" as const, title: x.orderNumber, detail: `${x.customer.companyName ?? x.customer.name} · Rs ${Number(x.total).toLocaleString("en-PK")}`, href: `/sales/${x.id}` })),
     ...invoices.map((x) => ({ id: x.id, type: "Invoice" as const, title: x.invoiceNumber, detail: `${x.customer.companyName ?? x.customer.name} · Rs ${Number(x.amount).toLocaleString("en-PK")}`, href: `/invoices/${x.id}` })),
   ];
-  return NextResponse.json({ results: results.slice(0, 12) });
+  const types = getSearchTypes(vertical);
+  return NextResponse.json({ results: results.filter((result) => types.includes(result.type)).sort((a, b) => types.indexOf(a.type) - types.indexOf(b.type)).slice(0, 12) });
 }
