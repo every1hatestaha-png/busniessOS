@@ -1,0 +1,132 @@
+[
+  {
+    "file": "app/(dashboard)/restaurant/kitchen/page.tsx",
+    "symbol": null,
+    "url": "/restaurant/kitchen",
+    "kind": "PAGE",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/restaurant/menu/page.tsx",
+    "symbol": null,
+    "url": "/restaurant/menu",
+    "kind": "PAGE",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/restaurant/orders/page.tsx",
+    "symbol": null,
+    "url": "/restaurant/orders",
+    "kind": "PAGE",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/restaurant/pos/page.tsx",
+    "symbol": null,
+    "url": "/restaurant/pos",
+    "kind": "PAGE",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/restaurant/v1-actions.ts",
+    "symbol": "initialRestaurantV1ActionState",
+    "url": "/restaurant",
+    "kind": "SERVER_ACTION",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/restaurant/v1-actions.ts",
+    "symbol": "createMenuCategoryAction",
+    "url": "/restaurant",
+    "kind": "SERVER_ACTION",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/restaurant/v1-actions.ts",
+    "symbol": "createMenuItemAction",
+    "url": "/restaurant",
+    "kind": "SERVER_ACTION",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/restaurant/v1-actions.ts",
+    "symbol": "setMenuItemAvailabilityAction",
+    "url": "/restaurant",
+    "kind": "SERVER_ACTION",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/restaurant/v1-actions.ts",
+    "symbol": "createPosOrderAction",
+    "url": "/restaurant",
+    "kind": "SERVER_ACTION",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/restaurant/v1-actions.ts",
+    "symbol": "confirmRestaurantOrderAction",
+    "url": "/restaurant",
+    "kind": "SERVER_ACTION",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/restaurant/v1-actions.ts",
+    "symbol": "transitionRestaurantOrderAction",
+    "url": "/restaurant",
+    "kind": "SERVER_ACTION",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/restaurant/v1-actions.ts",
+    "symbol": "setRestaurantOrderPaymentStatusAction",
+    "url": "/restaurant",
+    "kind": "SERVER_ACTION",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/restaurant/whatsapp/page.tsx",
+    "symbol": null,
+    "url": "/restaurant/whatsapp",
+    "kind": "PAGE",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  }
+]
