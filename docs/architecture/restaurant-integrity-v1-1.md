@@ -19,15 +19,23 @@ A restaurant order can post inventory and accounting only when it is READY. The 
 
 ## Payments
 
-Restaurant payment status is derived from active payment rows. The manual payment-status mutation is disabled in this phase.
+Restaurant payment status is derived from active payment rows. The manual payment-status mutation is disabled in the server action path.
 
 Payments are tenant-scoped, tied to an active cash/bank account, reject overpayment, accept an idempotency request ID, and can be split across multiple methods/accounts. A posted payment void creates general-ledger reversal entries and reverses the cash/bank balance before the payment is marked void.
 
 Orders with active payments cannot be cancelled until those payments are voided or refunded.
 
+A PostgreSQL guard now enforces the derived-payment invariant at the database boundary. Any insert or update that would leave `restaurant_orders.paymentStatus` inconsistent with the sum of active, non-voided restaurant payments is rejected. This prevents a legacy or future internal caller from marking an unpaid order as PAID without a corresponding payment record.
+
 ## Tenant isolation
 
 The domain layer resolves orders and cash/bank accounts inside the authenticated workspace. A PostgreSQL trigger provides defense in depth by rejecting restaurant payment rows whose order or cash/bank account belongs to another workspace.
+
+## Verification
+
+The dedicated Restaurant integrity suite covers recipe stock and COGS, completion idempotency, insufficient-stock rollback, split payments, payment idempotency, overpayment rejection, posted-payment reversal, cancellation guards, cross-workspace payment isolation, and direct payment-status tampering.
+
+The stacked phase must pass the native PostgreSQL migration chain, full regression suite, finance suite, TypeScript typecheck, production build, and entrypoint validation before merge or deployment.
 
 ## Deliberate boundaries
 
