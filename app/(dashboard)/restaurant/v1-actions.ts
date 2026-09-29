@@ -1,21 +1,24 @@
 "use server";
 
+import type { PaymentMethod } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 
 import { requireWorkspace } from "@/lib/server/auth";
 import { IndustryDomainError } from "@/lib/server/industry-modules";
+import {
+  recordRestaurantPayment,
+  transitionRestaurantOrderWithIntegrity,
+  voidRestaurantPayment,
+} from "@/lib/server/restaurant-integrity";
 import {
   confirmRestaurantOrder,
   createPosRestaurantOrder,
   createRestaurantMenuCategory,
   createRestaurantMenuItem,
   setRestaurantMenuItemAvailability,
-  setRestaurantOrderPaymentStatus,
-  transitionRestaurantOrder,
   type RestaurantFulfillmentType,
   type RestaurantOrderLineInput,
   type RestaurantOrderStatus,
-  type RestaurantPaymentStatus,
 } from "@/lib/server/restaurant-workspace";
 
 export type RestaurantV1ActionState = {
@@ -46,6 +49,10 @@ function refreshRestaurant() {
 
 function contextFrom(workspace: Awaited<ReturnType<typeof requireWorkspace>>) {
   return { workspaceId: workspace.workspaceId, role: workspace.role, userId: workspace.user.id };
+}
+
+function canManageRestaurant(role: string) {
+  return role === "OWNER" || role === "ADMIN" || role === "MANAGER";
 }
 
 export async function createMenuCategoryAction(
@@ -102,6 +109,7 @@ export async function setMenuItemAvailabilityAction(formData: FormData) {
   const menuItemId = String(formData.get("menuItemId") ?? "").trim();
   const isAvailable = String(formData.get("isAvailable") ?? "") === "true";
   const workspace = await requireWorkspace();
+  if (!canManageRestaurant(workspace.role)) throw new Error("Manager access is required to change menu availability.");
   await setRestaurantMenuItemAvailability(contextFrom(workspace), menuItemId, isAvailable);
   refreshRestaurant();
 }
@@ -178,15 +186,41 @@ export async function transitionRestaurantOrderAction(formData: FormData) {
     throw new Error("Restaurant order status is invalid.");
   }
   const workspace = await requireWorkspace();
-  await transitionRestaurantOrder(contextFrom(workspace), orderId, nextStatus);
+  await transitionRestaurantOrderWithIntegrity(contextFrom(workspace), orderId, nextStatus);
   refreshRestaurant();
 }
 
-export async function setRestaurantOrderPaymentStatusAction(formData: FormData) {
+/** Compatibility export retained so older rendered forms fail closed instead of
+ * mutating accounting state through a manual status selector. */
+export async function setRestaurantOrderPaymentStatusAction() {
+  throw new Error("Manual payment status changes are disabled. Record an actual restaurant payment instead.");
+}
+
+export async function recordRestaurantPaymentAction(formData: FormData) {
   const orderId = String(formData.get("orderId") ?? "").trim();
-  const paymentStatus = String(formData.get("paymentStatus") ?? "") as RestaurantPaymentStatus;
-  if (!["UNPAID", "PARTIALLY_PAID", "PAID"].includes(paymentStatus)) throw new Error("Payment status is invalid.");
+  const cashBankAccountId = String(formData.get("cashBankAccountId") ?? "").trim();
+  const method = String(formData.get("method") ?? "CASH") as PaymentMethod;
+  const amount = Number(formData.get("amount") ?? NaN);
+  const reference = String(formData.get("reference") ?? "").trim();
+  const notes = String(formData.get("notes") ?? "").trim();
+  const idempotencyKey = String(formData.get("paymentRequestId") ?? "").trim();
   const workspace = await requireWorkspace();
-  await setRestaurantOrderPaymentStatus(contextFrom(workspace), orderId, paymentStatus);
+  await recordRestaurantPayment(contextFrom(workspace), {
+    orderId,
+    cashBankAccountId,
+    method,
+    amount,
+    reference: reference || undefined,
+    notes: notes || undefined,
+    idempotencyKey: idempotencyKey || undefined,
+  });
+  refreshRestaurant();
+}
+
+export async function voidRestaurantPaymentAction(formData: FormData) {
+  const paymentId = String(formData.get("paymentId") ?? "").trim();
+  const reason = String(formData.get("reason") ?? "").trim();
+  const workspace = await requireWorkspace();
+  await voidRestaurantPayment(contextFrom(workspace), paymentId, reason);
   refreshRestaurant();
 }
