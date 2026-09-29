@@ -6,6 +6,7 @@ on:
       - architecture/restaurant-refunds-v1-2
       - architecture/restaurant-item-returns-v1-3
       - architecture/restaurant-item-returns-ui-v1-3-1
+      - architecture/restaurant-return-reversal-v1-4
 
 permissions:
   contents: read
@@ -49,13 +50,13 @@ jobs:
           set -euo pipefail
           npx prisma migrate deploy
           npx prisma migrate status
-      - name: Restaurant item return integration suite
+      - name: Restaurant integrity integration suite
         id: restaurant_return_tests
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
-          npx vitest run tests/integration/restaurant-item-returns-v1-3.test.ts tests/integration/restaurant-return-reversal-v1-4.test.ts 2>&1 | tee restaurant-v1-3-test.log
+          npx vitest run tests/integration/restaurant-item-returns-v1-3.test.ts tests/integration/restaurant-return-reversal-v1-4.test.ts tests/integration/restaurant-cash-shift-v1-5.test.ts 2>&1 | tee restaurant-v1-3-test.log
       - name: Full unit and database-backed regression suite
         id: regression_tests
         continue-on-error: true

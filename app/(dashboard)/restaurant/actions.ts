@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 
 import { requireWorkspace } from "@/lib/server/auth";
+import { closeRestaurantCashShiftFromLedger } from "@/lib/server/restaurant-cash-shifts";
 import {
-  closeCashShift,
   createKitchenTicket,
   createRecipe,
   createRestaurantTable,
@@ -90,11 +90,16 @@ export async function closeCashShiftAction(
 
   const { workspaceId, role, user } = await requireWorkspace();
   try {
-    const result = await closeCashShift({ workspaceId, role, userId: user.id }, shiftId, closingCash, notes || undefined);
+    const result = await closeRestaurantCashShiftFromLedger(
+      { workspaceId, role, userId: user.id },
+      shiftId,
+      closingCash,
+      notes || undefined,
+    );
     revalidatePath("/restaurant");
     return {
       status: "success",
-      message: `Shift closed. Cash variance: Rs ${result.variance.toLocaleString()}.`,
+      message: `Shift closed. Expected Rs ${result.expectedCash.toLocaleString()}, variance Rs ${result.variance.toLocaleString()}.`,
     };
   } catch (error) {
     return fail(messageFor(error, "We could not close the cash shift. Refresh the page and try again."));
@@ -163,7 +168,7 @@ export async function createKitchenTicketAction(
   const restaurantTableId = String(formData.get("restaurantTableId") ?? "").trim();
   const notes = String(formData.get("notes") ?? "").trim();
 
-  if (ticketNumber.length < 1 || ticketNumber.length > 80) return fail("Ticket number must be 1–80 characters.");
+  if (ticketNumber.length < 1 || ticketNumber.length > 80) return fail("Ticket number must be 1-80 characters.");
   if (salesOrderId && !/^[0-9a-f-]{36}$/i.test(salesOrderId)) return fail("Choose a valid sales order.");
   if (restaurantTableId && !/^[0-9a-f-]{36}$/i.test(restaurantTableId)) return fail("Choose a valid restaurant table.");
   if (notes.length > 500) return fail("Notes must be 500 characters or fewer.");
