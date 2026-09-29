@@ -103,7 +103,7 @@ BEGIN
       INTO recipe_row
     FROM "recipes" r
     WHERE r."workspaceId" = NEW."workspaceId"
-      AND r."finishedProductId" = line."productId"
+      AND r."finishedProductId"::text = line."productId"
       AND r."isActive" = true
     LIMIT 1;
 
@@ -113,7 +113,7 @@ BEGIN
       )
       SELECT NEW."workspaceId", NEW."id", line.order_item_id, p."id", warehouse_id, line."quantity", p."costPrice"
       FROM "products" p
-      WHERE p."id" = line."productId" AND p."workspaceId" = NEW."workspaceId"
+      WHERE p."id" = line."productId" AND p."workspaceId" = NEW."workspaceId"::text
       ON CONFLICT ("restaurantOrderItemId", "productId") DO NOTHING;
     ELSE
       factor := line."quantity" / recipe_row."yieldQuantity";
@@ -128,7 +128,7 @@ BEGIN
         SELECT NEW."workspaceId", NEW."id", line.order_item_id, p."id", warehouse_id,
                ingredient."quantity" * factor * (1 + ingredient."wastagePercent" / 100), p."costPrice"
         FROM "products" p
-        WHERE p."id" = ingredient."ingredientProductId" AND p."workspaceId" = NEW."workspaceId"
+        WHERE p."id" = ingredient."ingredientProductId"::text AND p."workspaceId" = NEW."workspaceId"::text
         ON CONFLICT ("restaurantOrderItemId", "productId") DO NOTHING;
       END LOOP;
     END IF;
