@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 14224)
-Total output lines: 1194
-
 import "server-only";
 
 import { Prisma, type Role } from "@prisma/client";
@@ -458,7 +455,134 @@ export async function transferWarehouseStock(context: IndustryContext, input: { 
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
-export async function createBom(context: IndustryContext, input: { name: string; finishedProductId: string; outputQuan…2224 tokens truncated…reference: `PRODUCTION:${productionRunId}` } });
+export async function createBom(context: IndustryContext, input: { name: string; finishedProductId: string; outputQuantity?: number; version?: number; notes?: string; items: Array<{ materialProductId: string; quantity: number; wastagePercent?: number }> }) {
+  assertManager(context);
+  await requireWorkspaceModule(context.workspaceId, "manufacturing");
+  if (!input.items.length) throw new IndustryDomainError("INVALID_STATE", "A BOM needs at least one material.");
+  const outputQuantity = input.outputQuantity ?? 1;
+  const version = input.version ?? 1;
+  return db.$transaction(async (tx) => {
+    const ids = [input.finishedProductId, ...input.items.map((item) => item.materialProductId)];
+    const products = await tx.product.count({ where: { workspaceId: context.workspaceId, id: { in: ids } } });
+    if (products !== new Set(ids).size) throw new IndustryDomainError("NOT_FOUND", "One or more BOM products do not belong to this workspace.");
+    const rows = await tx.$queryRaw<Array<{ id: string }>>`
+      INSERT INTO "boms" ("workspaceId", "finishedProductId", "name", "version", "outputQuantity", "notes")
+      VALUES (${context.workspaceId}::uuid, ${input.finishedProductId}::uuid, ${input.name.trim()}, ${version}, ${outputQuantity}, ${input.notes?.trim() || null})
+      RETURNING "id"
+    `;
+    const bom = rows[0]!;
+    for (const item of input.items) {
+      if (item.quantity <= 0) throw new IndustryDomainError("INVALID_STATE", "BOM material quantity must be positive.");
+      const wastage = item.wastagePercent ?? 0;
+      await tx.$executeRaw`INSERT INTO "bom_items" ("bomId", "materialProductId", "quantity", "wastagePercent") VALUES (${bom.id}::uuid, ${item.materialProductId}::uuid, ${item.quantity}, ${wastage})`;
+    }
+    return bom;
+  });
+}
+
+export async function createProductionRun(context: IndustryContext, input: { bomId: string; runNumber: string; plannedOutput: number; notes?: string }) {
+  await requireWorkspaceModule(context.workspaceId, "manufacturing");
+  if (input.plannedOutput <= 0) throw new IndustryDomainError("INVALID_STATE", "Planned output must be positive.");
+  const bom = await db.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "boms" WHERE "id"=${input.bomId}::uuid AND "workspaceId"=${context.workspaceId}::uuid AND "isActive"=true`;
+  if (!bom[0]) throw new IndustryDomainError("NOT_FOUND", "BOM was not found.");
+  const rows = await db.$queryRaw<Array<{ id: string; status: string }>>`
+    INSERT INTO "production_runs" ("workspaceId", "bomId", "runNumber", "plannedOutput", "notes")
+    VALUES (${context.workspaceId}::uuid, ${input.bomId}::uuid, ${input.runNumber.trim()}, ${input.plannedOutput}, ${input.notes?.trim() || null})
+    RETURNING "id", "status"
+  `;
+  return rows[0]!;
+}
+
+export async function approveProductionRun(context: IndustryContext, productionRunId: string) {
+  assertManager(context);
+  await requireWorkspaceModule(context.workspaceId, "manufacturing");
+  const changed = await db.$executeRaw`
+    UPDATE "production_runs" SET "status"='APPROVED', "approvedById"=${context.userId ?? null}::uuid, "approvedAt"=now(), "updatedAt"=now()
+    WHERE "id"=${productionRunId}::uuid AND "workspaceId"=${context.workspaceId}::uuid AND "status"='DRAFT'
+  `;
+  if (!changed) throw new IndustryDomainError("INVALID_STATE", "Only draft production runs can be approved.");
+  return { id: productionRunId, status: "APPROVED" as const };
+}
+
+export async function cancelProductionRun(context: IndustryContext, productionRunId: string) {
+  assertManager(context);
+  await requireWorkspaceModule(context.workspaceId, "manufacturing");
+
+  return db.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<Array<{ id: string; status: ProductionRunStatus }>>`
+      SELECT "id", "status"
+      FROM "production_runs"
+      WHERE "id"=${productionRunId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
+      FOR UPDATE
+    `;
+    const run = rows[0];
+    if (!run) throw new IndustryDomainError("NOT_FOUND", "Production run was not found.");
+    if (run.status === "CANCELLED") return { id: productionRunId, status: "CANCELLED" as const };
+    if (!canTransitionProductionRun(run.status, "CANCELLED")) {
+      throw new IndustryDomainError("INVALID_STATE", "Posted production runs cannot be cancelled. Use a controlled reversal workflow instead.");
+    }
+
+    await tx.$executeRaw`
+      UPDATE "production_runs"
+      SET "status"='CANCELLED', "updatedAt"=now()
+      WHERE "id"=${productionRunId}::uuid
+        AND "workspaceId"=${context.workspaceId}::uuid
+        AND "status"=${run.status}
+    `;
+    return { id: productionRunId, status: "CANCELLED" as const };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+export async function postProductionRun(context: IndustryContext, productionRunId: string, actualOutput?: number, wastageQuantity = 0) {
+  assertManager(context);
+  await requireWorkspaceModule(context.workspaceId, "manufacturing");
+  return db.$transaction(async (tx) => {
+    const warehouseId = await resolveIndustryWarehouseId(tx, context.workspaceId);
+    const runs = await tx.$queryRaw<Array<{ id: string; status: string; plannedOutput: Prisma.Decimal; bomId: string }>>`
+      SELECT "id", "status", "plannedOutput", "bomId" FROM "production_runs"
+      WHERE "id"=${productionRunId}::uuid AND "workspaceId"=${context.workspaceId}::uuid FOR UPDATE
+    `;
+    const run = runs[0];
+    if (!run) throw new IndustryDomainError("NOT_FOUND", "Production run was not found.");
+    if (!canTransitionProductionRun(run.status as ProductionRunStatus, "POSTED")) throw new IndustryDomainError("INVALID_STATE", "Production run must be approved before posting.");
+    const output = actualOutput ?? Number(run.plannedOutput);
+    if (output <= 0 || wastageQuantity < 0) throw new IndustryDomainError("INVALID_STATE", "Actual output must be positive and wastage cannot be negative.");
+
+    const boms = await tx.$queryRaw<Array<{ finishedProductId: string; outputQuantity: Prisma.Decimal }>>`
+      SELECT "finishedProductId", "outputQuantity" FROM "boms" WHERE "id"=${run.bomId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
+    `;
+    const bom = boms[0];
+    if (!bom) throw new IndustryDomainError("NOT_FOUND", "BOM was not found.");
+    const items = await tx.$queryRaw<Array<{ materialProductId: string; quantity: Prisma.Decimal; wastagePercent: Prisma.Decimal }>>`
+      SELECT "materialProductId", "quantity", "wastagePercent" FROM "bom_items" WHERE "bomId"=${run.bomId}::uuid
+    `;
+    const factor = output / Number(bom.outputQuantity);
+    let materialCost = 0;
+    for (const item of items) {
+      const planned = Number(item.quantity) * factor;
+      const required = planned * (1 + Number(item.wastagePercent) / 100);
+      const product = await tx.product.findFirst({ where: { id: item.materialProductId, workspaceId: context.workspaceId }, select: { id: true, stockQuantity: true, costPrice: true } });
+      if (!product) throw new IndustryDomainError("NOT_FOUND", "A BOM material no longer exists.");
+      if (Number(product.stockQuantity) < required) throw new IndustryDomainError("INSUFFICIENT_STOCK", `Insufficient stock for production material ${product.id}.`);
+      await tx.product.update({ where: { id: product.id }, data: { stockQuantity: { decrement: required } } });
+      await applyIndustryWarehouseDelta(tx, { workspaceId: context.workspaceId, warehouseId, productId: product.id, delta: -required });
+      await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: product.id, type: "ADJUSTMENT", quantityChanged: -required, unitCost: product.costPrice, reference: `PRODUCTION:${productionRunId}` } });
+      await tx.$executeRaw`
+        INSERT INTO "production_consumptions" ("productionRunId", "productId", "plannedQuantity", "actualQuantity", "unitCost")
+        VALUES (${productionRunId}::uuid, ${product.id}::uuid, ${planned}, ${required}, ${Number(product.costPrice)})
+      `;
+      materialCost += required * Number(product.costPrice);
+    }
+
+    const finished = await tx.product.findFirst({ where: { id: bom.finishedProductId, workspaceId: context.workspaceId }, select: { id: true, stockQuantity: true, costPrice: true } });
+    if (!finished) throw new IndustryDomainError("NOT_FOUND", "Finished product no longer exists.");
+    const unitCost = materialCost / output;
+    const oldQty = Number(finished.stockQuantity);
+    const newQty = oldQty + output;
+    const weightedCost = newQty > 0 ? ((oldQty * Number(finished.costPrice)) + materialCost) / newQty : unitCost;
+    await tx.product.update({ where: { id: finished.id }, data: { stockQuantity: { increment: output }, costPrice: weightedCost } });
+    await applyIndustryWarehouseDelta(tx, { workspaceId: context.workspaceId, warehouseId, productId: finished.id, delta: output });
+    await tx.inventoryTransaction.create({ data: { workspaceId: context.workspaceId, productId: finished.id, type: "ADJUSTMENT", quantityChanged: output, unitCost, reference: `PRODUCTION:${productionRunId}` } });
     await tx.$executeRaw`
       UPDATE "production_runs" SET "status"='POSTED', "actualOutput"=${output}, "wastageQuantity"=${wastageQuantity}, "postedById"=${context.userId ?? null}::uuid, "postedAt"=now(), "updatedAt"=now()
       WHERE "id"=${productionRunId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
