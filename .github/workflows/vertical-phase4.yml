@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - architecture/vertical-dashboard-navigation
+      - architecture/vertical-operational-readiness
 
 permissions:
   contents: read
