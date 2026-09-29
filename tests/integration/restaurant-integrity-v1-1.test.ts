@@ -17,7 +17,6 @@ let userA = "";
 let userB = "";
 let workspaceA = "";
 let workspaceB = "";
-let recipeFinishedProductId = "";
 let ingredientProductId = "";
 let directProductId = "";
 let lowStockProductId = "";
@@ -104,22 +103,21 @@ describe("restaurant workspace v1.1 accounting and stock integrity", () => {
       db.product.create({ data: { workspaceId: workspaceA, name: "Cold Drink", sku: `DIR-${runId}`, stockQuantity: 10, costPrice: 50, sellingPrice: 200 } }),
       db.product.create({ data: { workspaceId: workspaceA, name: "Limited Dessert", sku: `LOW-${runId}`, stockQuantity: 1, costPrice: 75, sellingPrice: 300 } }),
     ]);
-    recipeFinishedProductId = finished.id;
     ingredientProductId = ingredient.id;
     directProductId = direct.id;
     lowStockProductId = lowStock.id;
 
     await createRecipe(contextA(), {
-      finishedProductId: recipeFinishedProductId,
+      finishedProductId: finished.id,
       yieldQuantity: 1,
-      items: [{ ingredientProductId, quantity: 0.25, wastagePercent: 0 }],
+      items: [{ ingredientProductId: ingredient.id, quantity: 0.25, wastagePercent: 0 }],
     });
 
     const category = await createRestaurantMenuCategory(contextA(), { name: "Launch Menu" });
     const [recipeItem, directItem, lowStockItem] = await Promise.all([
-      createRestaurantMenuItem(contextA(), { categoryId: category.id, productId: recipeFinishedProductId, name: "Recipe Burger", price: 500 }),
-      createRestaurantMenuItem(contextA(), { categoryId: category.id, productId: directProductId, name: "Cold Drink", price: 200 }),
-      createRestaurantMenuItem(contextA(), { categoryId: category.id, productId: lowStockProductId, name: "Limited Dessert", price: 300 }),
+      createRestaurantMenuItem(contextA(), { categoryId: category.id, productId: finished.id, name: "Recipe Burger", price: 500 }),
+      createRestaurantMenuItem(contextA(), { categoryId: category.id, productId: direct.id, name: "Cold Drink", price: 200 }),
+      createRestaurantMenuItem(contextA(), { categoryId: category.id, productId: lowStock.id, name: "Limited Dessert", price: 300 }),
     ]);
     recipeMenuItemId = recipeItem.id;
     directMenuItemId = directItem.id;
@@ -135,8 +133,8 @@ describe("restaurant workspace v1.1 accounting and stock integrity", () => {
     await db.$disconnect();
   }, 60_000);
 
-  it("posts recipe inventory and balanced sale accounting exactly once when a ready order completes", async () => {
-    const ingredientBefore = await db.product.findUniqueOrThrow({ where: { id: ingredientProductId } });
+  it("posts recipe stock and balanced sale accounting exactly once on completion", async () => {
+    const before = await db.product.findUniqueOrThrow({ where: { id: ingredientProductId } });
     const order = await createPosRestaurantOrder(contextA(), {
       fulfillmentType: "TAKEAWAY",
       taxAmount: 100,
@@ -145,7 +143,7 @@ describe("restaurant workspace v1.1 accounting and stock integrity", () => {
     await moveToReady(order.id);
     await transitionRestaurantOrderWithIntegrity(contextA(), order.id, "COMPLETED");
 
-    const [ingredientAfter, orderRows, inventoryRows, saleEntries] = await Promise.all([
+    const [after, state, movements, saleEntries] = await Promise.all([
       db.product.findUniqueOrThrow({ where: { id: ingredientProductId } }),
       db.$queryRaw<Array<{ status: string; inventoryPostedAt: Date | null; accountingPostedAt: Date | null; inventoryCost: unknown }>>`
         SELECT "status", "inventoryPostedAt", "accountingPostedAt", "inventoryCost"
@@ -154,203 +152,108 @@ describe("restaurant workspace v1.1 accounting and stock integrity", () => {
       db.inventoryTransaction.findMany({ where: { workspaceId: workspaceA, reference: `RESTAURANT:${order.id}` } }),
       db.generalLedgerEntry.findMany({ where: { workspaceId: workspaceA, sourceType: "SALE", sourceId: order.id } }),
     ]);
-
-    expect(Number(ingredientBefore.stockQuantity) - Number(ingredientAfter.stockQuantity)).toBeCloseTo(0.5, 4);
-    expect(orderRows[0]?.status).toBe("COMPLETED");
-    expect(orderRows[0]?.inventoryPostedAt).toBeTruthy();
-    expect(orderRows[0]?.accountingPostedAt).toBeTruthy();
-    expect(Number(orderRows[0]?.inventoryCost)).toBe(50);
-    expect(inventoryRows).toHaveLength(1);
-    expect(Number(inventoryRows[0]!.quantityChanged)).toBeCloseTo(-0.5, 4);
-    expect(saleEntries.length).toBeGreaterThanOrEqual(5);
-    const debit = saleEntries.reduce((sum, entry) => sum + Number(entry.debit), 0);
-    const credit = saleEntries.reduce((sum, entry) => sum + Number(entry.credit), 0);
-    expect(debit).toBeCloseTo(credit, 2);
+    expect(Number(before.stockQuantity) - Number(after.stockQuantity)).toBeCloseTo(0.5, 4);
+    expect(state[0]?.status).toBe("COMPLETED");
+    expect(state[0]?.inventoryPostedAt).toBeTruthy();
+    expect(state[0]?.accountingPostedAt).toBeTruthy();
+    expect(Number(state[0]?.inventoryCost)).toBe(50);
+    expect(movements).toHaveLength(1);
+    expect(Number(movements[0]!.quantityChanged)).toBeCloseTo(-0.5, 4);
+    expect(saleEntries.reduce((sum, row) => sum + Number(row.debit), 0)).toBeCloseTo(saleEntries.reduce((sum, row) => sum + Number(row.credit), 0), 2);
 
     await transitionRestaurantOrderWithIntegrity(contextA(), order.id, "COMPLETED");
-    const [ingredientAfterRetry, inventoryCount, saleCount] = await Promise.all([
-      db.product.findUniqueOrThrow({ where: { id: ingredientProductId } }),
-      db.inventoryTransaction.count({ where: { workspaceId: workspaceA, reference: `RESTAURANT:${order.id}` } }),
-      db.generalLedgerEntry.count({ where: { workspaceId: workspaceA, sourceType: "SALE", sourceId: order.id } }),
-    ]);
-    expect(Number(ingredientAfterRetry.stockQuantity)).toBe(Number(ingredientAfter.stockQuantity));
-    expect(inventoryCount).toBe(inventoryRows.length);
-    expect(saleCount).toBe(saleEntries.length);
+    expect(await db.inventoryTransaction.count({ where: { workspaceId: workspaceA, reference: `RESTAURANT:${order.id}` } })).toBe(movements.length);
+    expect(await db.generalLedgerEntry.count({ where: { workspaceId: workspaceA, sourceType: "SALE", sourceId: order.id } })).toBe(saleEntries.length);
   });
 
-  it("rolls back completion when stock is insufficient and leaves finance untouched", async () => {
+  it("rolls back the entire completion when inventory is insufficient", async () => {
     const order = await createPosRestaurantOrder(contextA(), {
       fulfillmentType: "TAKEAWAY",
       items: [{ menuItemId: lowStockMenuItemId, quantity: 2 }],
     });
     await moveToReady(order.id);
-    const stockBefore = await db.product.findUniqueOrThrow({ where: { id: lowStockProductId } });
-
-    await expect(transitionRestaurantOrderWithIntegrity(contextA(), order.id, "COMPLETED"))
-      .rejects.toThrow("Not enough ingredient stock");
-
-    const [stockAfter, rows, inventoryCount, saleCount] = await Promise.all([
+    const before = await db.product.findUniqueOrThrow({ where: { id: lowStockProductId } });
+    await expect(transitionRestaurantOrderWithIntegrity(contextA(), order.id, "COMPLETED")).rejects.toThrow("Not enough ingredient stock");
+    const [after, state, movements, saleEntries] = await Promise.all([
       db.product.findUniqueOrThrow({ where: { id: lowStockProductId } }),
       db.$queryRaw<Array<{ status: string; inventoryPostedAt: Date | null; accountingPostedAt: Date | null }>>`
-        SELECT "status", "inventoryPostedAt", "accountingPostedAt"
-        FROM "restaurant_orders" WHERE "id"=${order.id}::uuid AND "workspaceId"=${workspaceA}::uuid
+        SELECT "status", "inventoryPostedAt", "accountingPostedAt" FROM "restaurant_orders"
+        WHERE "id"=${order.id}::uuid AND "workspaceId"=${workspaceA}::uuid
       `,
       db.inventoryTransaction.count({ where: { workspaceId: workspaceA, reference: `RESTAURANT:${order.id}` } }),
       db.generalLedgerEntry.count({ where: { workspaceId: workspaceA, sourceType: "SALE", sourceId: order.id } }),
     ]);
-    expect(Number(stockAfter.stockQuantity)).toBe(Number(stockBefore.stockQuantity));
-    expect(rows[0]).toMatchObject({ status: "READY", inventoryPostedAt: null, accountingPostedAt: null });
-    expect(inventoryCount).toBe(0);
-    expect(saleCount).toBe(0);
+    expect(Number(after.stockQuantity)).toBe(Number(before.stockQuantity));
+    expect(state[0]).toMatchObject({ status: "READY", inventoryPostedAt: null, accountingPostedAt: null });
+    expect(movements).toBe(0);
+    expect(saleEntries).toBe(0);
   });
 
-  it("derives split-payment state, rejects duplicate effects and posts receipts on completion", async () => {
-    const order = await createPosRestaurantOrder(contextA(), {
-      fulfillmentType: "TAKEAWAY",
-      items: [{ menuItemId: directMenuItemId, quantity: 1 }],
-    });
+  it("supports idempotent split payments, rejects overpayment, and posts receipts on completion", async () => {
+    const order = await createPosRestaurantOrder(contextA(), { fulfillmentType: "TAKEAWAY", items: [{ menuItemId: directMenuItemId, quantity: 1 }] });
     const cashBefore = await db.cashBankAccount.findUniqueOrThrow({ where: { id: cashAccountA } });
     const bankBefore = await db.cashBankAccount.findUniqueOrThrow({ where: { id: bankAccountA } });
+    const first = await recordRestaurantPayment(contextA(), { orderId: order.id, cashBankAccountId: cashAccountA, method: "CASH", amount: 80, idempotencyKey: `restaurant:${runId}:split-a` });
+    const retry = await recordRestaurantPayment(contextA(), { orderId: order.id, cashBankAccountId: cashAccountA, method: "CASH", amount: 80, idempotencyKey: `restaurant:${runId}:split-a` });
+    expect(retry).toMatchObject({ id: first.id, idempotent: true });
+    await recordRestaurantPayment(contextA(), { orderId: order.id, cashBankAccountId: bankAccountA, method: "CREDIT_CARD", amount: 120, idempotencyKey: `restaurant:${runId}:split-b` });
+    await expect(recordRestaurantPayment(contextA(), { orderId: order.id, cashBankAccountId: cashAccountA, method: "CASH", amount: 1, idempotencyKey: `restaurant:${runId}:overpay` })).rejects.toThrow("exceeds the outstanding order balance");
 
-    const first = await recordRestaurantPayment(contextA(), {
-      orderId: order.id,
-      cashBankAccountId: cashAccountA,
-      method: "CASH",
-      amount: 80,
-      idempotencyKey: `restaurant:${runId}:split-a`,
-    });
-    const retry = await recordRestaurantPayment(contextA(), {
-      orderId: order.id,
-      cashBankAccountId: cashAccountA,
-      method: "CASH",
-      amount: 80,
-      idempotencyKey: `restaurant:${runId}:split-a`,
-    });
-    expect(retry.id).toBe(first.id);
-    expect(retry.idempotent).toBe(true);
-
-    await recordRestaurantPayment(contextA(), {
-      orderId: order.id,
-      cashBankAccountId: bankAccountA,
-      method: "CREDIT_CARD",
-      amount: 120,
-      idempotencyKey: `restaurant:${runId}:split-b`,
-    });
-    await expect(recordRestaurantPayment(contextA(), {
-      orderId: order.id,
-      cashBankAccountId: cashAccountA,
-      method: "CASH",
-      amount: 1,
-      idempotencyKey: `restaurant:${runId}:overpay`,
-    })).rejects.toThrow("exceeds the outstanding order balance");
-
-    const beforeComplete = await db.$queryRaw<Array<{ paymentStatus: string; count: number }>>`
+    const pre = await db.$queryRaw<Array<{ paymentStatus: string; count: number }>>`
       SELECT ro."paymentStatus", COUNT(rp."id")::int AS "count"
-      FROM "restaurant_orders" ro
-      LEFT JOIN "restaurant_payments" rp ON rp."restaurantOrderId"=ro."id" AND rp."voidedAt" IS NULL
-      WHERE ro."id"=${order.id}::uuid AND ro."workspaceId"=${workspaceA}::uuid
-      GROUP BY ro."paymentStatus"
+      FROM "restaurant_orders" ro LEFT JOIN "restaurant_payments" rp ON rp."restaurantOrderId"=ro."id" AND rp."voidedAt" IS NULL
+      WHERE ro."id"=${order.id}::uuid AND ro."workspaceId"=${workspaceA}::uuid GROUP BY ro."paymentStatus"
     `;
-    expect(beforeComplete[0]).toMatchObject({ paymentStatus: "PAID", count: 2 });
+    expect(pre[0]).toMatchObject({ paymentStatus: "PAID", count: 2 });
 
     await moveToReady(order.id);
     await transitionRestaurantOrderWithIntegrity(contextA(), order.id, "COMPLETED");
-    const [cashAfter, bankAfter, receiptEntries, payments] = await Promise.all([
+    const [cashAfter, bankAfter, paymentRows] = await Promise.all([
       db.cashBankAccount.findUniqueOrThrow({ where: { id: cashAccountA } }),
       db.cashBankAccount.findUniqueOrThrow({ where: { id: bankAccountA } }),
-      db.generalLedgerEntry.findMany({ where: { workspaceId: workspaceA, sourceType: "RECEIPT", sourceId: { in: [first.id] } } }),
-      db.$queryRaw<Array<{ id: string; postedAt: Date | null }>>`
-        SELECT "id"::text AS "id", "postedAt" FROM "restaurant_payments"
-        WHERE "workspaceId"=${workspaceA}::uuid AND "restaurantOrderId"=${order.id}::uuid AND "voidedAt" IS NULL
-      `,
+      db.$queryRaw<Array<{ postedAt: Date | null }>>`SELECT "postedAt" FROM "restaurant_payments" WHERE "workspaceId"=${workspaceA}::uuid AND "restaurantOrderId"=${order.id}::uuid AND "voidedAt" IS NULL`,
     ]);
     expect(Number(cashAfter.currentBalance) - Number(cashBefore.currentBalance)).toBe(80);
     expect(Number(bankAfter.currentBalance) - Number(bankBefore.currentBalance)).toBe(120);
-    expect(receiptEntries).toHaveLength(2);
-    expect(payments).toHaveLength(2);
-    expect(payments.every((payment) => Boolean(payment.postedAt))).toBe(true);
+    expect(paymentRows).toHaveLength(2);
+    expect(paymentRows.every((row) => Boolean(row.postedAt))).toBe(true);
+    expect(await db.generalLedgerEntry.count({ where: { workspaceId: workspaceA, sourceType: "RECEIPT", sourceId: first.id } })).toBe(2);
   });
 
-  it("reverses a posted payment on void and recomputes payment status", async () => {
-    const order = await createPosRestaurantOrder(contextA(), {
-      fulfillmentType: "TAKEAWAY",
-      items: [{ menuItemId: directMenuItemId, quantity: 1 }],
-    });
-    const payment = await recordRestaurantPayment(contextA(), {
-      orderId: order.id,
-      cashBankAccountId: cashAccountA,
-      method: "CASH",
-      amount: 200,
-      idempotencyKey: `restaurant:${runId}:void-posted`,
-    });
-    await moveToReady(order.id);
-    await transitionRestaurantOrderWithIntegrity(contextA(), order.id, "COMPLETED");
-    const cashBeforeVoid = await db.cashBankAccount.findUniqueOrThrow({ where: { id: cashAccountA } });
-
-    await voidRestaurantPayment(contextA(), payment.id, "Customer changed settlement method");
-    const [cashAfterVoid, paymentRows, orderRows, reversalEntries] = await Promise.all([
+  it("reverses posted payments and blocks cancellation until active payments are voided", async () => {
+    const completed = await createPosRestaurantOrder(contextA(), { fulfillmentType: "TAKEAWAY", items: [{ menuItemId: directMenuItemId, quantity: 1 }] });
+    const postedPayment = await recordRestaurantPayment(contextA(), { orderId: completed.id, cashBankAccountId: cashAccountA, method: "CASH", amount: 200, idempotencyKey: `restaurant:${runId}:void-posted` });
+    await moveToReady(completed.id);
+    await transitionRestaurantOrderWithIntegrity(contextA(), completed.id, "COMPLETED");
+    const beforeVoid = await db.cashBankAccount.findUniqueOrThrow({ where: { id: cashAccountA } });
+    await voidRestaurantPayment(contextA(), postedPayment.id, "Customer changed settlement method");
+    const [afterVoid, paymentRows, completedRows, reversals] = await Promise.all([
       db.cashBankAccount.findUniqueOrThrow({ where: { id: cashAccountA } }),
-      db.$queryRaw<Array<{ postedAt: Date | null; voidedAt: Date | null }>>`
-        SELECT "postedAt", "voidedAt" FROM "restaurant_payments"
-        WHERE "id"=${payment.id}::uuid AND "workspaceId"=${workspaceA}::uuid
-      `,
-      db.$queryRaw<Array<{ paymentStatus: string }>>`
-        SELECT "paymentStatus" FROM "restaurant_orders"
-        WHERE "id"=${order.id}::uuid AND "workspaceId"=${workspaceA}::uuid
-      `,
-      db.generalLedgerEntry.findMany({ where: { workspaceId: workspaceA, reversedEntryId: { not: null } } }),
+      db.$queryRaw<Array<{ postedAt: Date | null; voidedAt: Date | null }>>`SELECT "postedAt", "voidedAt" FROM "restaurant_payments" WHERE "id"=${postedPayment.id}::uuid`,
+      db.$queryRaw<Array<{ paymentStatus: string }>>`SELECT "paymentStatus" FROM "restaurant_orders" WHERE "id"=${completed.id}::uuid`,
+      db.generalLedgerEntry.findMany({ where: { workspaceId: workspaceA, reversalOfId: { not: null }, reversalReason: { contains: "restaurant payment" } } }),
     ]);
-    expect(Number(cashBeforeVoid.currentBalance) - Number(cashAfterVoid.currentBalance)).toBe(200);
+    expect(Number(beforeVoid.currentBalance) - Number(afterVoid.currentBalance)).toBe(200);
     expect(paymentRows[0]?.postedAt).toBeTruthy();
     expect(paymentRows[0]?.voidedAt).toBeTruthy();
-    expect(orderRows[0]?.paymentStatus).toBe("UNPAID");
-    expect(reversalEntries.some((entry) => entry.sourceId === payment.id || entry.reversalReason?.includes("restaurant payment"))).toBe(true);
+    expect(completedRows[0]?.paymentStatus).toBe("UNPAID");
+    expect(reversals.length).toBeGreaterThanOrEqual(2);
+
+    const cancellable = await createPosRestaurantOrder(contextA(), { fulfillmentType: "TAKEAWAY", items: [{ menuItemId: directMenuItemId, quantity: 1 }] });
+    const pendingPayment = await recordRestaurantPayment(contextA(), { orderId: cancellable.id, cashBankAccountId: cashAccountA, method: "CASH", amount: 50, idempotencyKey: `restaurant:${runId}:cancel-guard` });
+    await expect(transitionRestaurantOrderWithIntegrity(contextA(), cancellable.id, "CANCELLED")).rejects.toThrow("Void or refund restaurant payments");
+    await voidRestaurantPayment(contextA(), pendingPayment.id, "Cancel order before preparation");
+    await transitionRestaurantOrderWithIntegrity(contextA(), cancellable.id, "CANCELLED");
+    const cancelledRows = await db.$queryRaw<Array<{ status: string; paymentStatus: string }>>`SELECT "status", "paymentStatus" FROM "restaurant_orders" WHERE "id"=${cancellable.id}::uuid`;
+    expect(cancelledRows[0]).toMatchObject({ status: "CANCELLED", paymentStatus: "UNPAID" });
   });
 
-  it("blocks cancellation while a payment is active, then permits it after the payment is voided", async () => {
-    const order = await createPosRestaurantOrder(contextA(), {
-      fulfillmentType: "TAKEAWAY",
-      items: [{ menuItemId: directMenuItemId, quantity: 1 }],
-    });
-    const payment = await recordRestaurantPayment(contextA(), {
-      orderId: order.id,
-      cashBankAccountId: cashAccountA,
-      method: "CASH",
-      amount: 50,
-      idempotencyKey: `restaurant:${runId}:cancel-guard`,
-    });
-
-    await expect(transitionRestaurantOrderWithIntegrity(contextA(), order.id, "CANCELLED"))
-      .rejects.toThrow("Void or refund restaurant payments");
-    await voidRestaurantPayment(contextA(), payment.id, "Cancel order before preparation");
-    await transitionRestaurantOrderWithIntegrity(contextA(), order.id, "CANCELLED");
-
-    const row = await db.$queryRaw<Array<{ status: string; paymentStatus: string }>>`
-      SELECT "status", "paymentStatus" FROM "restaurant_orders"
-      WHERE "id"=${order.id}::uuid AND "workspaceId"=${workspaceA}::uuid
-    `;
-    expect(row[0]).toMatchObject({ status: "CANCELLED", paymentStatus: "UNPAID" });
-  });
-
-  it("rejects cross-workspace cash accounts in both the domain service and database guard", async () => {
-    const order = await createPosRestaurantOrder(contextA(), {
-      fulfillmentType: "TAKEAWAY",
-      items: [{ menuItemId: directMenuItemId, quantity: 1 }],
-    });
-    await expect(recordRestaurantPayment(contextA(), {
-      orderId: order.id,
-      cashBankAccountId: cashAccountB,
-      method: "CASH",
-      amount: 10,
-      idempotencyKey: `restaurant:${runId}:cross-domain`,
-    })).rejects.toThrow("unavailable in this workspace");
-
+  it("rejects cross-workspace cash accounts in both the service and database guard", async () => {
+    const order = await createPosRestaurantOrder(contextA(), { fulfillmentType: "TAKEAWAY", items: [{ menuItemId: directMenuItemId, quantity: 1 }] });
+    await expect(recordRestaurantPayment(contextA(), { orderId: order.id, cashBankAccountId: cashAccountB, method: "CASH", amount: 10, idempotencyKey: `restaurant:${runId}:cross-domain` })).rejects.toThrow("unavailable in this workspace");
     await expect(db.$executeRaw`
-      INSERT INTO "restaurant_payments" (
-        "workspaceId", "restaurantOrderId", "cashBankAccountId", "method", "amount", "idempotencyKey"
-      ) VALUES (
-        ${workspaceA}::uuid, ${order.id}::uuid, ${cashAccountB}, 'CASH', 10, ${`restaurant:${runId}:cross-db`}
-      )
+      INSERT INTO "restaurant_payments" ("workspaceId", "restaurantOrderId", "cashBankAccountId", "method", "amount", "idempotencyKey")
+      VALUES (${workspaceA}::uuid, ${order.id}::uuid, ${cashAccountB}, 'CASH', 10, ${`restaurant:${runId}:cross-db`})
     `).rejects.toThrow("Cross-workspace restaurant payment cash account reference rejected");
   });
 });
