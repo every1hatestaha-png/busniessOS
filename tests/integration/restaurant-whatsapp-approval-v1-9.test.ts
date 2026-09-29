@@ -18,7 +18,7 @@ const owner = () => ({ workspaceId, role: "OWNER" as const, userId: ownerId });
 const manager = () => ({ workspaceId, role: "MANAGER" as const, userId: managerId });
 const staff = () => ({ workspaceId, role: "STAFF" as const, userId: staffId });
 
-describe("restaurant V1.9 WhatsApp discount approval boundary", () => {
+describe("restaurant V1.9 WhatsApp financial approval boundary", () => {
   beforeAll(async () => {
     const { config } = await import("dotenv");
     config({ path: ".env.local", quiet: true });
@@ -88,15 +88,16 @@ describe("restaurant V1.9 WhatsApp discount approval boundary", () => {
     });
 
     await expect(confirmRestaurantOrder(staff(), order.id))
-      .rejects.toThrow("Manager approval is required to confirm a discounted WhatsApp order");
+      .rejects.toThrow("Manager approval is required to confirm a WhatsApp order with financial overrides");
 
     let rows = await db.$queryRaw<Array<{ status: string; confirmedById: string | null }>>`
       SELECT "status", "confirmedById"::text AS "confirmedById" FROM "restaurant_orders" WHERE "id"=${order.id}::uuid
     `;
     expect(rows[0]).toMatchObject({ status: "PENDING_REVIEW", confirmedById: null });
-    expect(await db.$queryRaw<Array<{ count: number }>>`
+    const beforeTickets = await db.$queryRaw<Array<{ count: number }>>`
       SELECT COUNT(*)::int AS "count" FROM "kitchen_tickets" WHERE "restaurantOrderId"=${order.id}::uuid
-    `).resolves.toMatchObject([{ count: 0 }]);
+    `;
+    expect(beforeTickets[0]?.count).toBe(0);
 
     await confirmRestaurantOrder(manager(), order.id);
     rows = await db.$queryRaw<Array<{ status: string; confirmedById: string | null }>>`
@@ -109,7 +110,28 @@ describe("restaurant V1.9 WhatsApp discount approval boundary", () => {
     expect(tickets[0]?.count).toBe(1);
   });
 
-  it("still allows staff confirmation when the WhatsApp order has no discount", async () => {
+  it("also blocks staff when WhatsApp intake carries a nonzero tax override", async () => {
+    const order = await ingestWhatsappRestaurantOrder(workspaceId, {
+      externalMessageId: `wa-tax-${runId}`,
+      messageBody: "One meal with external tax",
+      customerPhone: "+923009999999",
+      customerName: "Tax Customer",
+      fulfillmentType: "TAKEAWAY",
+      taxAmount: 75,
+      items: [{ menuItemId, quantity: 1 }],
+    });
+
+    await expect(confirmRestaurantOrder(staff(), order.id))
+      .rejects.toThrow("Manager approval is required to confirm a WhatsApp order with financial overrides");
+    await confirmRestaurantOrder(manager(), order.id);
+
+    const rows = await db.$queryRaw<Array<{ status: string; confirmedById: string | null }>>`
+      SELECT "status", "confirmedById"::text AS "confirmedById" FROM "restaurant_orders" WHERE "id"=${order.id}::uuid
+    `;
+    expect(rows[0]).toMatchObject({ status: "CONFIRMED", confirmedById: managerId });
+  });
+
+  it("still allows staff confirmation when the WhatsApp order has no financial override", async () => {
     const order = await ingestWhatsappRestaurantOrder(workspaceId, {
       externalMessageId: `wa-normal-${runId}`,
       messageBody: "One regular meal",
