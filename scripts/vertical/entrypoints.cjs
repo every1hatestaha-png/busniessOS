@@ -36,9 +36,15 @@ for (const file of files) {
   for (const symbol of symbols) inventory.push({ file, symbol, url, kind, category: category(url), methods, boundary, scope });
 }
 inventory.sort((a,b) => a.file.localeCompare(b.file));
-if (process.argv.includes('--write')) fs.writeFileSync(path.join(root, 'docs/architecture/vertical-entrypoints.json'), JSON.stringify(inventory, null, 2) + '\n');
-else {
-  const expected = JSON.parse(fs.readFileSync(path.join(root, 'docs/architecture/vertical-entrypoints.json')));
+if (process.argv.includes('--write')) {
+  fs.writeFileSync(path.join(root, 'docs/architecture/vertical-entrypoints.json'), JSON.stringify(inventory, null, 2) + '\n');
+} else {
+  const manifests = [
+    'docs/architecture/vertical-entrypoints.json',
+    'docs/architecture/vertical-entrypoints.restaurant-v1.json',
+  ].filter(relative => fs.existsSync(path.join(root, relative)));
+  const expected = manifests.flatMap(relative => JSON.parse(fs.readFileSync(path.join(root, relative), 'utf8')));
+  expected.sort((a,b) => a.file.localeCompare(b.file));
   if (JSON.stringify(inventory) !== JSON.stringify(expected)) throw new Error('Route inventory changed. Review and regenerate with node scripts/vertical/entrypoints.cjs --write');
 }
 console.log(`Inventoried ${inventory.length} pages, API routes, and server action files`);
