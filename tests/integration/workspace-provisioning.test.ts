@@ -4,12 +4,13 @@ import { afterAll, describe, expect, it } from "vitest";
 import { PROVISIONING_MODULE_KEYS } from "@/lib/saas/provisioning-selection";
 import { db } from "@/lib/server/db";
 import { createInitialWorkspace } from "@/lib/server/onboarding";
+import type { OnboardingInput } from "@/lib/validation/onboarding";
 
 const runId = randomUUID();
 const userIds: string[] = [];
 const workspaceIds: string[] = [];
 
-const input = {
+const input: OnboardingInput = {
   businessName: `Provisioning Test ${runId}`,
   ownerName: "Synthetic Owner",
   phone: "03001234567",
@@ -19,7 +20,7 @@ const input = {
   country: "Pakistan",
   currency: "PKR",
   timezone: "Asia/Karachi",
-  businessType: "WHOLESALER" as const,
+  businessType: "WHOLESALER",
 };
 
 describe("workspace provisioning transaction", () => {
