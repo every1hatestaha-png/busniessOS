@@ -12,8 +12,9 @@ import { DesktopClerkAccountMenu } from "@/components/layout/desktop-clerk-accou
 import { WebAccountMenu } from "@/components/layout/web-account-menu";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { getWorkspaceBranding } from "@/lib/workspace-branding";
+import type { WorkspaceVertical } from "@/lib/verticals/registry";
 
-export function TopNav({ workspaceName, workspaceId, workspaces, role, enabledModules }: { workspaceName: string; workspaceId: string; workspaces: Array<{ workspaceId: string; workspace: { name: string } }>; role: Role; enabledModules: string[] }) {
+export function TopNav({ workspaceName, workspaceId, workspaces, role, enabledModules, vertical }: { workspaceName: string; workspaceId: string; workspaces: Array<{ workspaceId: string; workspace: { name: string } }>; role: Role; enabledModules: string[]; vertical: WorkspaceVertical }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const branding = getWorkspaceBranding(workspaceName);
@@ -34,7 +35,7 @@ export function TopNav({ workspaceName, workspaceId, workspaces, role, enabledMo
             if ((event.target as HTMLElement).closest("a")) setMobileMenuOpen(false);
           }}>
             <SheetTitle className="sr-only">Navigation menu</SheetTitle>
-            <Sidebar workspaceName={workspaceName} role={role} enabledModules={enabledModules} />
+            <Sidebar workspaceName={workspaceName} role={role} enabledModules={enabledModules} vertical={vertical} />
           </SheetContent>
         </Sheet>
 

@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { Role } from "@prisma/client";
+import type { BusinessType, Role } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
@@ -10,6 +10,7 @@ import { canPerformAction, type Permission } from "@/lib/server/authorization";
 import { getOptionalCurrentUser } from "@/lib/server/auth";
 import { db } from "@/lib/server/db";
 import { getWorkspaceAccess } from "@/lib/server/subscriptions";
+import { resolveWorkspaceVertical, type WorkspaceVertical } from "@/lib/verticals/registry";
 
 export type ApiContext = {
   user: {
@@ -28,12 +29,13 @@ export type ApiContext = {
     country: string;
     currency: string;
     timezone: string;
-    businessType: string;
+    businessType: BusinessType;
     createdAt: Date;
     updatedAt: Date;
   };
   workspaceId: string;
   role: Role;
+  vertical: WorkspaceVertical;
 };
 
 export class ApiError extends Error {
@@ -97,6 +99,7 @@ export async function requireApiContext(permission?: Permission): Promise<ApiCon
     workspace: membership.workspace,
     workspaceId: membership.workspaceId,
     role: membership.role,
+    vertical: resolveWorkspaceVertical(membership.workspace.businessType),
   };
 }
 
