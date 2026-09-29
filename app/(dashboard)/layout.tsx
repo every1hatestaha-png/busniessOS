@@ -6,6 +6,7 @@ import { PrintShortcutRouter } from "@/components/documents/print-shortcut-route
 import { listCurrentUserWorkspaces, requireWorkspace } from "@/lib/server/auth";
 import { listWorkspaceModules } from "@/lib/server/industry-modules";
 import { getWorkspaceAccess } from "@/lib/server/subscriptions";
+import { resolveWorkspaceVertical } from "@/lib/verticals/registry";
 
 export default async function DashboardLayout({
   children,
@@ -19,15 +20,16 @@ export default async function DashboardLayout({
     listWorkspaceModules(workspace.id),
   ]);
   const enabledModules = workspaceModules.filter((module) => module.enabled).map((module) => module.moduleKey);
+  const vertical = resolveWorkspaceVertical(workspace.businessType);
 
   return (
     <div className="flex min-h-dvh w-full min-w-0 bg-background text-foreground print:block print:min-h-0 print:bg-white">
       <PrintShortcutRouter />
       <div className="sticky top-0 hidden h-dvh shrink-0 print:hidden lg:block">
-        <Sidebar workspaceName={workspace.name} role={role} enabledModules={enabledModules} />
+        <Sidebar workspaceName={workspace.name} role={role} enabledModules={enabledModules} vertical={vertical} />
       </div>
       <div className="min-w-0 flex-1 print:block">
-        <TopNav workspaceName={workspace.name} workspaceId={workspace.id} workspaces={workspaces} role={role} enabledModules={enabledModules} />
+        <TopNav workspaceName={workspace.name} workspaceId={workspace.id} workspaces={workspaces} role={role} enabledModules={enabledModules} vertical={vertical} />
         {!subscription.allowed && (
           <div className="border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-950 print:hidden sm:px-5 lg:px-6">
             <div className="flex flex-wrap items-center justify-between gap-2">

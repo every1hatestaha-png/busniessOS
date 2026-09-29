@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getWorkspaceBranding } from "@/lib/workspace-branding";
+import { VERTICALS, type WorkspaceVertical } from "@/lib/verticals/registry";
 
 type SidebarRoute = {
   href: string;
@@ -81,13 +82,17 @@ export function Sidebar({
   workspaceName,
   role,
   enabledModules,
+  vertical,
 }: {
   workspaceName: string;
   role: Role;
   enabledModules: string[];
+  vertical: WorkspaceVertical;
 }) {
   const pathname = usePathname();
-  const enabled = new Set(enabledModules);
+  // Existing module entitlements remain authoritative for legacy workspaces.
+  // Unavailable verticals have no ERP navigation even if a module flag exists.
+  const enabled = new Set(VERTICALS[vertical].status === "active" ? enabledModules : []);
   const branding = getWorkspaceBranding(workspaceName);
 
   return (
@@ -124,7 +129,7 @@ export function Sidebar({
       </div>
       <div className="flex-1 overflow-y-auto px-2.5 py-3">
         <nav aria-label="Primary navigation" className="space-y-4">
-          {sections.map((section) => {
+          {(VERTICALS[vertical].status === "active" ? sections : []).map((section) => {
             const visibleRoutes = section.routes.filter((route) => {
               if (role === "STAFF" && route.financial) return false;
               if (route.module && !enabled.has(route.module)) return false;
