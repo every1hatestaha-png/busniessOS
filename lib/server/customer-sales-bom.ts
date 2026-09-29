@@ -3,6 +3,7 @@ import "server-only";
 import { Prisma, type Role } from "@prisma/client";
 
 import { writeAudit } from "@/lib/server/audit";
+import { preserveSupersededSaleMovements } from "@/lib/server/sale-movement-history";
 import { db } from "@/lib/server/db";
 import { applyManagedWarehouseStockDelta, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
 
@@ -410,9 +411,7 @@ export async function restoreSaleBomComponents(
     }
   }
   if (input.mode === "EDIT") {
-    await tx.inventoryTransaction.deleteMany({
-      where: { workspaceId: input.workspaceId, type: "SALE", reference: `BOM:${input.orderNumber}` },
-    });
+    await preserveSupersededSaleMovements(tx, input.workspaceId, `BOM:${input.orderNumber}`);
     await tx.$executeRaw`
       DELETE FROM "sales_order_component_snapshots"
       WHERE "workspaceId"=${input.workspaceId}::uuid AND "salesOrderId"=${input.salesOrderId}::uuid

@@ -12,7 +12,7 @@ describe("customer receipt WHT presentation", () => {
   });
 
   it("keeps WHT account queries sequential inside the interactive transaction", () => {
-    const source = readFileSync("lib/server/payments.ts", "utf8");
+    const source = readFileSync("lib/server/payments-core.ts", "utf8");
     expect(source).toContain("const accountsReceivable = await tx.account.findUnique");
     expect(source).toContain("const withholdingTaxReceivable = await tx.account.upsert");
   });

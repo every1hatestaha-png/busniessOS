@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import type { ProductDTO } from "@/lib/server/products";
 import { cn, formatPKR, getStockStatus } from "@/lib/utils";
 
-export function InventoryTable({ products, canCreate = false }: { products: ProductDTO[]; canCreate?: boolean }) {
+export function InventoryTable({ products, canCreate = false, canViewFinancials = true }: { products: ProductDTO[]; canCreate?: boolean; canViewFinancials?: boolean }) {
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
@@ -20,6 +20,7 @@ export function InventoryTable({ products, canCreate = false }: { products: Prod
     const matchesQuery = `${product.name} ${product.sku} ${product.category}`.toLowerCase().includes(deferredQuery);
     return matchesQuery && (categoryFilter === "ALL" || product.category === categoryFilter);
   });
+  const columnCount = canViewFinancials ? 7 : 6;
 
   if (products.length === 0) {
     return (
@@ -44,8 +45,8 @@ export function InventoryTable({ products, canCreate = false }: { products: Prod
         </div>
       </CardHeader>
       <CardContent className="p-0">
-        <div className="overflow-x-auto"><Table className="min-w-[860px]">
-          <TableHeader className="bg-neutral-50/80"><TableRow><TableHead className="pl-4">Product</TableHead><TableHead>Category</TableHead><TableHead className="text-right">Stock</TableHead><TableHead className="text-right">Cost</TableHead><TableHead className="text-right">Selling</TableHead><TableHead>Status</TableHead><TableHead className="w-12"><span className="sr-only">Open</span></TableHead></TableRow></TableHeader>
+        <div className="overflow-x-auto"><Table className={canViewFinancials ? "min-w-[860px]" : "min-w-[760px]"}>
+          <TableHeader className="bg-neutral-50/80"><TableRow><TableHead className="pl-4">Product</TableHead><TableHead>Category</TableHead><TableHead className="text-right">Stock</TableHead>{canViewFinancials && <TableHead className="text-right">Cost</TableHead>}<TableHead className="text-right">Selling</TableHead><TableHead>Status</TableHead><TableHead className="w-12"><span className="sr-only">Open</span></TableHead></TableRow></TableHeader>
           <TableBody>
             {visibleProducts.map((product) => {
               const stockStatus = getStockStatus(product.stockQuantity, product.reorderLevel);
@@ -54,14 +55,14 @@ export function InventoryTable({ products, canCreate = false }: { products: Prod
                   <TableCell className="pl-4"><Link prefetch={false} href={`/inventory/${product.id}`} className="font-medium text-neutral-950 hover:underline">{product.name}</Link><p className="mt-0.5 font-mono text-xs text-neutral-500">{product.sku}</p></TableCell>
                   <TableCell className="text-neutral-600">{product.category}</TableCell>
                   <TableCell className="text-right"><span className="font-semibold tabular-nums">{product.stockQuantity}</span><span className="ml-1 text-xs text-neutral-500">{product.unit.toLowerCase()}</span></TableCell>
-                  <TableCell className="text-right tabular-nums text-neutral-600">{formatPKR(product.costPrice)}</TableCell>
+                  {canViewFinancials && <TableCell className="text-right tabular-nums text-neutral-600">{formatPKR(product.costPrice)}</TableCell>}
                   <TableCell className="text-right font-medium tabular-nums">{formatPKR(product.sellingPrice)}</TableCell>
                   <TableCell><div className="flex flex-wrap gap-1"><StatusBadge status={product.status} /><StatusBadge status={stockStatus} /></div></TableCell>
                   <TableCell className="pr-3 text-right"><Link prefetch={false} href={`/inventory/${product.id}`} aria-label={`View ${product.name}`} className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "inline-flex")}><ArrowUpRight className="h-4 w-4" /></Link></TableCell>
                 </TableRow>
               );
             })}
-            {visibleProducts.length === 0 && <TableRow><TableCell colSpan={7} className="h-28 text-center text-neutral-500">No products match the current filters.</TableCell></TableRow>}
+            {visibleProducts.length === 0 && <TableRow><TableCell colSpan={columnCount} className="h-28 text-center text-neutral-500">No products match the current filters.</TableCell></TableRow>}
           </TableBody>
         </Table></div>
       </CardContent>

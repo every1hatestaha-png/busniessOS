@@ -4,7 +4,7 @@ import { getPurchase, updatePurchase, deletePurchase, PurchaseDomainError } from
 import { updatePurchaseSchema } from "@/lib/validation/purchase";
 
 export const GET = apiHandler(async (_request: Request, { params }: { params: Promise<{ id: string }> }) => {
-  const context = await requireApiContext("business.read");
+  const context = await requireApiContext("purchases.create");
   const { id } = z.object({ id: z.uuid() }).parse(await params);
   const purchase = await getPurchase(context.workspaceId, id);
   if (!purchase) throw new ApiError(404, "NOT_FOUND", "Purchase not found.");

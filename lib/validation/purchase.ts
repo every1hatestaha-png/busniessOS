@@ -17,6 +17,10 @@ export const purchaseSchema = z.object({
   pricingMode: z.enum(["UNIT", "WEIGHT"]).optional(),
   idempotencyKey: z.string().trim().min(8).max(200),
 }).superRefine((purchase, context) => {
+  const productIds = purchase.items.map((item) => item.productId);
+  if (new Set(productIds).size !== productIds.length) {
+    context.addIssue({ code: "custom", path: ["items"], message: "Combine duplicate products into one purchase line." });
+  }
   if (purchase.pricingMode !== "WEIGHT") return;
   purchase.items.forEach((item, index) => {
     if (!item.unitWeight || !item.perKgRate) {
@@ -45,6 +49,10 @@ export const goodsReceiptSchema = z.object({
   })).min(1).max(100),
   idempotencyKey: z.string().trim().min(8).max(200).optional(),
 }).superRefine((receipt, context) => {
+  const itemIds = receipt.items.map((item) => item.purchaseOrderItemId);
+  if (new Set(itemIds).size !== itemIds.length) {
+    context.addIssue({ code: "custom", path: ["items"], message: "Duplicate purchase order items are not allowed on a GRN." });
+  }
   receipt.items.forEach((item, index) => {
     if (item.acceptedQuantity > item.receivedQuantity) context.addIssue({ code: "custom", path: ["items", index, "acceptedQuantity"], message: "Accepted quantity cannot exceed received quantity." });
     if (item.receivedWeightKg !== undefined && item.acceptedWeightKg !== undefined && item.acceptedWeightKg > item.receivedWeightKg) {
@@ -84,6 +92,12 @@ export const updateGoodsReceiptSchema = z.object({
     ratePerKg: z.coerce.number().nonnegative().optional(),
   })).min(1).max(100).optional(),
 }).superRefine((receipt, context) => {
+  if (receipt.items) {
+    const itemIds = receipt.items.map((item) => item.purchaseOrderItemId);
+    if (new Set(itemIds).size !== itemIds.length) {
+      context.addIssue({ code: "custom", path: ["items"], message: "Duplicate purchase order items are not allowed on a GRN." });
+    }
+  }
   receipt.items?.forEach((item, index) => {
     if (item.acceptedQuantity > item.receivedQuantity) context.addIssue({ code: "custom", path: ["items", index, "acceptedQuantity"], message: "Accepted quantity cannot exceed received quantity." });
     if (item.receivedWeightKg !== undefined && item.acceptedWeightKg !== undefined && item.acceptedWeightKg > item.receivedWeightKg) {

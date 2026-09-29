@@ -2,8 +2,8 @@ import { z } from "zod";
 import { ApiError, apiData, apiHandler, requireApiContext } from "@/lib/server/api";
 import { db } from "@/lib/server/db";
 
-export const GET = apiHandler(async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
-  const context = await requireApiContext("business.read");
+export const GET = apiHandler(async (_request: Request, { params }: { params: Promise<{ id: string }> }) => {
+  const context = await requireApiContext("purchases.create");
   const { id } = z.object({ id: z.uuid() }).parse(await params);
 
   const supplier = await db.supplier.findFirst({ where: { id, workspaceId: context.workspaceId }, select: { id: true } });

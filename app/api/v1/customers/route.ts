@@ -1,10 +1,17 @@
 import { createCustomer, listCustomers } from "@/lib/server/customers";
 import { apiData, apiHandler, parseApiBody, requireApiContext } from "@/lib/server/api";
+import { canPerformAction } from "@/lib/server/authorization";
 import { customerSchema } from "@/lib/validation/customer";
 
 export const GET = apiHandler(async () => {
-  const { workspaceId } = await requireApiContext("business.read");
-  return apiData(await listCustomers(workspaceId));
+  const context = await requireApiContext("business.read");
+  const customers = await listCustomers(context.workspaceId);
+
+  if (canPerformAction(context.role, "financial.manage")) {
+    return apiData(customers);
+  }
+
+  return apiData(customers.map(({ creditDays: _creditDays, creditLimit: _creditLimit, currentBalance: _currentBalance, ...customer }) => customer));
 });
 
 export const POST = apiHandler(async (request: Request) => {

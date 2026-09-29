@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { ApiError, apiData, apiHandler, parseApiBody, requireApiContext, requireIdempotencyKey } from "@/lib/server/api";
+import { goodsReceiptMatchesRequest } from "@/lib/server/grn-idempotency";
 import { createGoodsReceipt, listGoodsReceipts, PurchaseDomainError } from "@/lib/server/purchases";
 import { goodsReceiptSchema } from "@/lib/validation/purchase";
 
 export const GET = apiHandler(async (request: Request) => {
-  const context = await requireApiContext("business.read");
+  const context = await requireApiContext("grn.create");
   const url = new URL(request.url);
   const purchaseOrderId = url.searchParams.get("purchaseOrderId");
   if (!purchaseOrderId) throw new ApiError(422, "VALIDATION_ERROR", "purchaseOrderId query parameter is required.");
@@ -25,7 +26,11 @@ export const POST = apiHandler(async (request: Request) => {
     goodsReceiptSchema,
   );
   try {
-    return apiData(await createGoodsReceipt({ ...context, userId: context.user.id }, input), 201);
+    const result = await createGoodsReceipt({ ...context, userId: context.user.id }, input);
+    if (!await goodsReceiptMatchesRequest(context.workspaceId, result.id, input)) {
+      throw new ApiError(422, "IDEMPOTENCY_CONFLICT", "This idempotency key was already used for a different goods receipt request.");
+    }
+    return apiData(result, 201);
   } catch (error) {
     if (error instanceof PurchaseDomainError) throw new ApiError(422, error.code, error.message);
     throw error;

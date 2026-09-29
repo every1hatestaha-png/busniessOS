@@ -1,14 +1,17 @@
+import { notFound } from "next/navigation";
 import { CircleDollarSign, FileText, TriangleAlert } from "lucide-react";
 
 import { MetricCard } from "@/components/business/metric-card";
 import { PageHeader } from "@/components/business/page-header";
 import { InvoiceList } from "@/components/invoices/invoice-list";
+import { canPerformAction } from "@/lib/server/authorization";
 import { requireWorkspace } from "@/lib/server/auth";
 import { listInvoices } from "@/lib/server/invoices";
 import { formatPKR } from "@/lib/utils";
 
 export default async function InvoicesPage() {
-  const { workspaceId } = await requireWorkspace();
+  const { workspaceId, role } = await requireWorkspace();
+  if (!canPerformAction(role, "financial.manage")) notFound();
   const invoices = await listInvoices(workspaceId);
   const billed = invoices.reduce((sum, invoice) => sum + invoice.total, 0);
   const outstanding = invoices.reduce((sum, invoice) => sum + invoice.balance, 0);

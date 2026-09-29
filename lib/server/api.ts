@@ -10,6 +10,7 @@ import { canPerformAction, type Permission } from "@/lib/server/authorization";
 import { getOptionalCurrentUser } from "@/lib/server/auth";
 import { db } from "@/lib/server/db";
 import { getWorkspaceAccess } from "@/lib/server/subscriptions";
+import { reportServerFailure } from "@/lib/server/error-monitoring";
 
 export type ApiContext = {
   user: {
@@ -63,7 +64,22 @@ export async function requireApiContext(permission?: Permission): Promise<ApiCon
     select: {
       workspaceId: true,
       role: true,
-      workspace: true,
+      workspace: {
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          email: true,
+          address: true,
+          city: true,
+          country: true,
+          currency: true,
+          timezone: true,
+          businessType: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      },
     },
   });
 
@@ -148,6 +164,7 @@ export function apiError(error: unknown) {
     }
   }
 
+  reportServerFailure("api", error);
   return NextResponse.json(
     { error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred." } },
     { status: 500 },

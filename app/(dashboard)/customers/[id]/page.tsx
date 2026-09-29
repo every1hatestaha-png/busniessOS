@@ -15,6 +15,7 @@ import { canPerformAction } from "@/lib/server/authorization";
 import { formatPKR, getCreditStatus } from "@/lib/utils";
 import { RemoveCustomerButton } from "@/components/customers/remove-customer-button";
 import { getCreditPresentation } from "@/lib/customer-credit";
+import { splitContactPhones } from "@/lib/contact-phones";
 
 export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -27,6 +28,31 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     canRecordPayments ? getCashBankAccounts(workspaceId) : Promise.resolve([]),
   ]);
   if (!customer) notFound();
+
+  if (!canViewFinancials) {
+    const phones = splitContactPhones(customer.phone);
+    return (
+      <div className="mx-auto min-w-0 max-w-[1200px] space-y-6">
+        <div className="min-w-0">
+          <Link href="/customers" className="mb-2 inline-flex items-center gap-1 text-xs text-neutral-500 hover:text-neutral-900"><ChevronLeft className="h-3.5 w-3.5" />Customers</Link>
+          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h1 className="min-w-0 break-words text-xl font-semibold tracking-tight">{customer.companyName}</h1><StatusBadge status={customer.status} /></div><p className="mt-0.5 break-words text-xs text-neutral-500">{customer.name}, {customer.city}</p></div>
+          </div>
+        </div>
+        <div className="rounded-xl border border-neutral-200 bg-white p-5 sm:p-6">
+          <h2 className="font-semibold">Contact information</h2>
+          <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2">
+            <div><dt className="text-neutral-500">Contact person</dt><dd className="font-medium">{customer.name}</dd></div>
+            <div><dt className="text-neutral-500">Status</dt><dd className="mt-1"><StatusBadge status={customer.status} /></dd></div>
+            <div><dt className="text-neutral-500">Phone / WhatsApp</dt><dd className="font-medium">{phones.length ? phones.join(", ") : "No phone saved"}</dd></div>
+            <div><dt className="text-neutral-500">Email</dt><dd className="break-all font-medium">{customer.email || "No email saved"}</dd></div>
+            <div className="sm:col-span-2"><dt className="text-neutral-500">Address</dt><dd className="font-medium">{customer.address || "No address saved"}</dd></div>
+          </dl>
+        </div>
+      </div>
+    );
+  }
+
   const openingBalances = canRecordPayments
     ? await getCustomerOpeningBalanceOutstanding(workspaceId, [customer.id])
     : new Map<string, number>();
@@ -38,7 +64,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     <div className="mx-auto min-w-0 max-w-[1600px] space-y-6">
       <div className="min-w-0">
          <Link href="/customers" className="mb-2 inline-flex items-center gap-1 text-xs text-neutral-500 hover:text-neutral-900"><ChevronLeft className="h-3.5 w-3.5" />Customers</Link>
-         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h1 className="min-w-0 break-words text-xl font-semibold tracking-tight">{customer.companyName}</h1><StatusBadge status={customer.status} /><StatusBadge status={getCreditStatus(customer.currentBalance, customer.creditLimit)} /></div><p className="mt-0.5 break-words text-xs text-neutral-500">{customer.name}, {customer.city}</p></div><div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">{canViewFinancials && <Link href={ledgerHref} className={buttonVariants({ variant: "outline", size: "sm" })}><BookOpenText className="h-3.5 w-3.5" />Full ledger</Link>}{canViewFinancials && <Link href={`${ledgerHref}&print=1`} className={buttonVariants({ variant: "outline", size: "sm" })}><Printer className="h-3.5 w-3.5" />Print ledger</Link>}{canEditCustomer && <><Link href={`/customers/${customer.id}/pricing`} className={buttonVariants({ variant: "outline", size: "sm" })}>Pricing</Link><Link href={`/customers/${customer.id}/edit`} className={buttonVariants({ variant: "outline", size: "sm" })}><Pencil className="h-3.5 w-3.5" />Edit</Link><RemoveCustomerButton customerId={customer.id} customerName={customer.companyName || customer.name} /></>}</div></div>
+         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h1 className="min-w-0 break-words text-xl font-semibold tracking-tight">{customer.companyName}</h1><StatusBadge status={customer.status} /><StatusBadge status={getCreditStatus(customer.currentBalance, customer.creditLimit)} /></div><p className="mt-0.5 break-words text-xs text-neutral-500">{customer.name}, {customer.city}</p></div><div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end"><Link href={ledgerHref} className={buttonVariants({ variant: "outline", size: "sm" })}><BookOpenText className="h-3.5 w-3.5" />Full ledger</Link><Link href={`${ledgerHref}&print=1`} className={buttonVariants({ variant: "outline", size: "sm" })}><Printer className="h-3.5 w-3.5" />Print ledger</Link>{canEditCustomer && <><Link href={`/customers/${customer.id}/pricing`} className={buttonVariants({ variant: "outline", size: "sm" })}>Pricing</Link><Link href={`/customers/${customer.id}/edit`} className={buttonVariants({ variant: "outline", size: "sm" })}><Pencil className="h-3.5 w-3.5" />Edit</Link><RemoveCustomerButton customerId={customer.id} customerName={customer.companyName || customer.name} /></>}</div></div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
         <MetricCard label="Outstanding balance" value={formatPKR(customer.currentBalance)} detail="Amount currently receivable" icon={CircleDollarSign} />

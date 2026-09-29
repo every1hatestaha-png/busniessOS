@@ -3,6 +3,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 
 import { writeAudit } from "@/lib/server/audit";
+import { canPerformAction } from "@/lib/server/authorization";
 import { db } from "@/lib/server/db";
 import type { ServiceContext } from "@/lib/server/sales";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
@@ -16,12 +17,24 @@ function invoiceStatus(amount: Prisma.Decimal, settled: Prisma.Decimal) {
 }
 
 export async function allocateCustomerCredit(context: ServiceContext, input: CustomerCreditAllocationInput) {
+  if (!canPerformAction(context.role, "financial.manage")) throw new CustomerCreditDomainError("Unauthorized");
   const data = customerCreditAllocationSchema.parse(input);
   const amount = new Prisma.Decimal(data.amount);
   return withSerializableRetry(async (tx) => {
     if (data.idempotencyKey) {
-      const existing = await tx.customerCreditAllocation.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey }, select: { id: true } });
-      if (existing) return existing;
+      const existing = await tx.customerCreditAllocation.findFirst({
+        where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey },
+        select: { id: true, creditNoteId: true, invoiceId: true, amount: true },
+      });
+      if (existing) {
+        const sameRequest = existing.creditNoteId === data.creditNoteId
+          && existing.invoiceId === data.invoiceId
+          && existing.amount.equals(amount);
+        if (!sameRequest) {
+          throw new CustomerCreditDomainError("This idempotency key was already used for a different customer credit allocation request.");
+        }
+        return { id: existing.id };
+      }
     }
 
     const credit = await tx.creditNote.findFirst({ where: { id: data.creditNoteId, workspaceId: context.workspaceId, status: { not: "CANCELLED" } }, select: { id: true, customerId: true, amount: true, appliedAmount: true, remainingAmount: true } });
