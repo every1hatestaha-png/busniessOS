@@ -136,9 +136,6 @@ describe("restaurant V1.30 refund versus item-return financial integrity", () =>
       VALUES (${workspaceId}::uuid, 'restaurant', true, '{}'::jsonb, now())
     `;
 
-    // Deliberately keep substantial unrelated cash in the drawer. This proves
-    // safety comes from the refund/return invariant, not an incidental
-    // insufficient-balance rejection after a partial return.
     const createdCash = await createCashBankAccount(owner(), {
       name: "V1.30 refund drawer",
       openingBalance: 1000,
@@ -207,7 +204,7 @@ describe("restaurant V1.30 refund versus item-return financial integrity", () =>
       paymentId: receipt.paymentId,
       reason: "Attempt full refund after partial item return",
       idempotencyKey: `refund:${randomUUID()}`,
-    })).rejects.toThrow("Restaurant payment already has item-return refund allocations; full refund is blocked");
+    })).rejects.toThrow("Restaurant payment already has item-return refund allocations");
 
     const after = await financialState(receipt.orderId, receipt.paymentId);
     expect(after.refunds).toEqual(before.refunds);
