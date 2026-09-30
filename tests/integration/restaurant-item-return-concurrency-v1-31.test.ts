@@ -53,8 +53,8 @@ async function returnState(orderId: string, paymentId: string, orderItemId: stri
       WHERE "workspaceId"=${workspaceId}::uuid AND "restaurantOrderId"=${orderId}::uuid
       ORDER BY "createdAt", "id"
     `,
-    db.$queryRaw<Array<{ quantity: string; lineTotal: string; restock: boolean }>>`
-      SELECT rri."quantity"::text AS "quantity", rri."lineTotal"::text AS "lineTotal", rri."restock"
+    db.$queryRaw<Array<{ quantity: string; total: string; restocked: boolean }>>`
+      SELECT rri."quantity"::text AS "quantity", rri."total"::text AS "total", rri."restocked"
       FROM "restaurant_return_items" rri
       INNER JOIN "restaurant_returns" rr ON rr."id"=rri."restaurantReturnId"
       WHERE rr."workspaceId"=${workspaceId}::uuid
