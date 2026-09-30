@@ -1,6 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
-    "deploymentEnabled": true
+    "deploymentEnabled": {
+      "architecture/restaurant-return-conservation-regression-v1-55": false
+    }
   }
 }

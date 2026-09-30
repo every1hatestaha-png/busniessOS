@@ -112,28 +112,9 @@ describe("restaurant V1.37 inventory consumption insert origin", () => {
   }, 60_000);
 
   afterAll(async () => {
-    if (!db) return;
-    await db.generalLedgerEntry.deleteMany({ where: { workspaceId } });
-    await db.$executeRaw`DELETE FROM "restaurant_return_payment_allocations" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.$executeRaw`DELETE FROM "restaurant_return_items" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.$executeRaw`DELETE FROM "restaurant_returns" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.$executeRaw`DELETE FROM "restaurant_refunds" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.$executeRaw`DELETE FROM "restaurant_payments" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.$executeRaw`DELETE FROM "restaurant_inventory_consumptions" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.$executeRaw`DELETE FROM "kitchen_tickets" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.$executeRaw`DELETE FROM "restaurant_orders" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.$executeRaw`DELETE FROM "restaurant_order_sequences" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.$executeRaw`DELETE FROM "restaurant_menu_items" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.$executeRaw`DELETE FROM "restaurant_menu_categories" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.inventoryTransaction.deleteMany({ where: { workspaceId } });
-    await db.product.deleteMany({ where: { workspaceId } });
-    await db.cashBankAccount.deleteMany({ where: { workspaceId } });
-    await db.account.deleteMany({ where: { workspaceId } });
-    await db.$executeRaw`DELETE FROM "workspace_modules" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.auditLog.deleteMany({ where: { workspaceId } });
-    await db.workspace.delete({ where: { id: workspaceId } });
-    await db.user.delete({ where: { id: userId } });
-    await db.$disconnect();
+    // Immutable financial fixtures live until the isolated test database is discarded.
+    // Never delete their parents or disable history guards during teardown.
+    if (db) await db.$disconnect();
   }, 60_000);
 
   it("allows only completion-trigger snapshots and blocks same-tenant forged consumption rows", async () => {
