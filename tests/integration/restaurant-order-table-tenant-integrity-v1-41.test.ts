@@ -156,7 +156,7 @@ describe("restaurant V1.41 order table tenant integrity", () => {
         "workspaceId", "orderNumber", "source", "fulfillmentType", "status", "paymentStatus",
         "restaurantTableId", "subtotal", "discountAmount", "taxAmount", "total"
       ) VALUES (
-        ${workspaceA}::uuid, ${forgedNumber}, 'WHATSAPP', 'DINE_IN', 'PENDING_REVIEW', 'UNPAID',
+        ${workspaceA}::uuid, ${forgedNumber}, 'WHATSAPP', 'DINE_IN', 'PENDING_REVIEW', 'PAID',
         ${tableB}::uuid, 0, 0, 0, 0
       )
     `).rejects.toThrow("Restaurant order table must belong to the same workspace");
