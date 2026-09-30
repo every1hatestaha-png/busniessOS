@@ -48,29 +48,6 @@ async function getOrderItemId(orderId: string) {
   return rows[0]!.id;
 }
 
-async function cleanupWorkspace(workspaceId: string) {
-  await db.generalLedgerEntry.deleteMany({ where: { workspaceId } });
-  await db.$executeRaw`DELETE FROM "restaurant_return_payment_allocations" WHERE "workspaceId"=${workspaceId}::uuid`;
-  await db.$executeRaw`DELETE FROM "restaurant_return_items" WHERE "workspaceId"=${workspaceId}::uuid`;
-  await db.$executeRaw`DELETE FROM "restaurant_returns" WHERE "workspaceId"=${workspaceId}::uuid`;
-  await db.$executeRaw`DELETE FROM "restaurant_refunds" WHERE "workspaceId"=${workspaceId}::uuid`;
-  await db.$executeRaw`DELETE FROM "restaurant_inventory_consumptions" WHERE "workspaceId"=${workspaceId}::uuid`;
-  await db.$executeRaw`DELETE FROM "restaurant_payments" WHERE "workspaceId"=${workspaceId}::uuid`;
-  await db.$executeRaw`DELETE FROM "restaurant_whatsapp_messages" WHERE "workspaceId"=${workspaceId}::uuid`;
-  await db.$executeRaw`DELETE FROM "kitchen_tickets" WHERE "workspaceId"=${workspaceId}::uuid`;
-  await db.$executeRaw`DELETE FROM "restaurant_order_items" WHERE "restaurantOrderId" IN (SELECT "id" FROM "restaurant_orders" WHERE "workspaceId"=${workspaceId}::uuid)`;
-  await db.$executeRaw`DELETE FROM "restaurant_orders" WHERE "workspaceId"=${workspaceId}::uuid`;
-  await db.$executeRaw`DELETE FROM "restaurant_order_sequences" WHERE "workspaceId"=${workspaceId}::uuid`;
-  await db.$executeRaw`DELETE FROM "restaurant_menu_items" WHERE "workspaceId"=${workspaceId}::uuid`;
-  await db.$executeRaw`DELETE FROM "restaurant_menu_categories" WHERE "workspaceId"=${workspaceId}::uuid`;
-  await db.inventoryTransaction.deleteMany({ where: { workspaceId } });
-  await db.cashBankAccount.deleteMany({ where: { workspaceId } });
-  await db.account.deleteMany({ where: { workspaceId } });
-  await db.product.deleteMany({ where: { workspaceId } });
-  await db.$executeRaw`DELETE FROM "workspace_modules" WHERE "workspaceId"=${workspaceId}::uuid`;
-  await db.auditLog.deleteMany({ where: { workspaceId } });
-}
-
 describe("restaurant workspace v1.3 item return integrity", () => {
   beforeAll(async () => {
     const { config } = await import("dotenv");
@@ -130,12 +107,9 @@ describe("restaurant workspace v1.3 item return integrity", () => {
   }, 60_000);
 
   afterAll(async () => {
-    if (!db) return;
-    await cleanupWorkspace(workspaceA);
-    await cleanupWorkspace(workspaceB);
-    await db.workspace.deleteMany({ where: { id: { in: [workspaceA, workspaceB] } } });
-    await db.user.deleteMany({ where: { id: { in: [userA, userB] } } });
-    await db.$disconnect();
+    // Immutable financial fixtures live until the isolated test database is discarded.
+    // Never delete their parents or disable history guards during teardown.
+    if (db) await db.$disconnect();
   }, 60_000);
 
   it("partially returns a completed order, refunds cash, and keeps net payment status paid", async () => {
