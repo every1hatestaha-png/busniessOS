@@ -26,8 +26,8 @@ async function order(workspaceId: string) {
   return rows[0]!.id;
 }
 
-async function receipt() {
-  const orderId = await order(workspaceA);
+async function receipt(existingOrderId?: string) {
+  const orderId = existingOrderId ?? await order(workspaceA);
   const idempotencyKey = `receipt:${randomUUID()}`;
   const input = { orderId, cashBankAccountId: cashA, method: "CASH" as const, amount: 200, idempotencyKey };
   const payment = await recordRestaurantPaymentAtCollection(actor(), input);
@@ -77,7 +77,14 @@ describe("restaurant V1.23 immutable receipt financial identity", () => {
       await db.generalLedgerEntry.deleteMany({ where: { workspaceId } });
       await db.$executeRaw`DELETE FROM "restaurant_refunds" WHERE "workspaceId"=${workspaceId}::uuid`;
       await db.$executeRaw`DELETE FROM "restaurant_payments" WHERE "workspaceId"=${workspaceId}::uuid`;
+      await db.$executeRaw`DELETE FROM "restaurant_inventory_consumptions" WHERE "workspaceId"=${workspaceId}::uuid`;
+      await db.$executeRaw`DELETE FROM "kitchen_tickets" WHERE "workspaceId"=${workspaceId}::uuid`;
       await db.$executeRaw`DELETE FROM "restaurant_orders" WHERE "workspaceId"=${workspaceId}::uuid`;
+      await db.$executeRaw`DELETE FROM "restaurant_order_sequences" WHERE "workspaceId"=${workspaceId}::uuid`;
+      await db.$executeRaw`DELETE FROM "restaurant_menu_items" WHERE "workspaceId"=${workspaceId}::uuid`;
+      await db.$executeRaw`DELETE FROM "restaurant_menu_categories" WHERE "workspaceId"=${workspaceId}::uuid`;
+      await db.inventoryTransaction.deleteMany({ where: { workspaceId } });
+      await db.product.deleteMany({ where: { workspaceId } });
       await db.cashBankAccount.deleteMany({ where: { workspaceId } });
       await db.account.deleteMany({ where: { workspaceId } });
       await db.$executeRaw`DELETE FROM "workspace_modules" WHERE "workspaceId"=${workspaceId}::uuid`;
@@ -117,7 +124,13 @@ describe("restaurant V1.23 immutable receipt financial identity", () => {
   }
 
   it("preserves idempotent collection, unchanged snapshot updates, notes and real refund reversal", async () => {
-    const payment = await receipt();
+    const { createRestaurantMenuCategory, createRestaurantMenuItem, createPosRestaurantOrder } = await import("@/lib/server/restaurant-workspace");
+    const { transitionRestaurantOrderWithIntegrity } = await import("@/lib/server/restaurant-integrity");
+    const product = await db.product.create({ data: { workspaceId: workspaceA, name: "Refund meal", sku: `V123-${runId}`, stockQuantity: 20, costPrice: 100, sellingPrice: 500 } });
+    const category = await createRestaurantMenuCategory(actor(), { name: "Refund menu" });
+    const item = await createRestaurantMenuItem(actor(), { categoryId: category.id, productId: product.id, name: "Refund meal", price: 500 });
+    const posOrder = await createPosRestaurantOrder(actor(), { fulfillmentType: "TAKEAWAY", items: [{ menuItemId: item.id, quantity: 1 }] });
+    const payment = await receipt(posOrder.id);
     const before = await stored(payment.id);
     const count = await db.generalLedgerEntry.count({ where: { sourceId: payment.id } });
     const retry = await recordRestaurantPaymentAtCollection(actor(), payment.input);
@@ -127,6 +140,9 @@ describe("restaurant V1.23 immutable receipt financial identity", () => {
       UPDATE "restaurant_payments" SET "workspaceId"=${workspaceA}::uuid, "amount"=200, "notes"='Receipt note corrected' WHERE "id"=${payment.id}::uuid
     `;
     expect(await stored(payment.id)).toEqual(before);
+    for (const status of ["PREPARING", "READY", "COMPLETED"] as const) {
+      await transitionRestaurantOrderWithIntegrity(actor(), payment.orderId, status);
+    }
     const refund = await refundRestaurantPayment(actor(), { paymentId: payment.id, reason: "Customer requested refund", idempotencyKey: `refund:${randomUUID()}` });
     expect(refund).toBeDefined();
     const after = await stored(payment.id);
