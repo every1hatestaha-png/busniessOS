@@ -67,6 +67,7 @@ describe("restaurant V1.59 Product parent/reference concurrency", () => {
       where: { id: f.productId },
       data: { workspaceId: f.workspaceB },
     }))();
+    void parentMove.catch(() => {});
     await waitForLockWait();
     gate.release();
     await child;
@@ -92,6 +93,7 @@ describe("restaurant V1.59 Product parent/reference concurrency", () => {
     await gate.signal;
     const staleChild = (async () => db.$executeRaw`INSERT INTO "recipes" ("id", "workspaceId", "finishedProductId", "yieldQuantity")
       VALUES (${recipeId}::uuid, ${f.workspaceA}::uuid, ${f.productId}::uuid, 1)`)();
+    void staleChild.catch(() => {});
     await waitForLockWait();
     gate.release();
     await parent;
@@ -117,6 +119,7 @@ describe("restaurant V1.59 Product parent/reference concurrency", () => {
 
     await gate.signal;
     const deletion = (async () => db.product.delete({ where: { id: f.productId } }))();
+    void deletion.catch(() => {});
     await waitForLockWait();
     gate.release();
     await child;
@@ -139,6 +142,7 @@ describe("restaurant V1.59 Product parent/reference concurrency", () => {
     await gate.signal;
     const staleChild = (async () => db.$executeRaw`INSERT INTO "recipes" ("id", "workspaceId", "finishedProductId", "yieldQuantity")
       VALUES (${recipeId}::uuid, ${f.workspaceA}::uuid, ${f.productId}::uuid, 1)`)();
+    void staleChild.catch(() => {});
     await waitForLockWait();
     gate.release();
     await parent;
