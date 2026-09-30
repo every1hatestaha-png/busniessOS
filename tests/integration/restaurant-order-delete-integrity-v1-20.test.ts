@@ -95,8 +95,11 @@ describe("restaurant V1.20 order and item delete integrity", () => {
 
     await db.$executeRawUnsafe(`CREATE ROLE ${appRole} NOLOGIN`);
     await db.$executeRawUnsafe(`GRANT USAGE ON SCHEMA public TO ${appRole}`);
+    // The trigger intentionally takes FOR KEY SHARE on the parent so a concurrent
+    // confirmation cannot race an item delete. PostgreSQL requires UPDATE privilege
+    // for that row-lock clause, matching the DML privileges held by a real app role.
     await db.$executeRawUnsafe(
-      `GRANT SELECT, DELETE ON TABLE "restaurant_orders", "restaurant_order_items" TO ${appRole}`,
+      `GRANT SELECT, UPDATE, DELETE ON TABLE "restaurant_orders", "restaurant_order_items" TO ${appRole}`,
     );
   }, 60_000);
 
