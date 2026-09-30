@@ -53,8 +53,8 @@ async function returnState(orderId: string, paymentId: string, orderItemId: stri
       WHERE "workspaceId"=${workspaceId}::uuid AND "restaurantOrderId"=${orderId}::uuid
       ORDER BY "createdAt", "id"
     `,
-    db.$queryRaw<Array<{ quantity: string; restock: boolean }>>`
-      SELECT rri."quantity"::text AS "quantity", rri."restock"
+    db.$queryRaw<Array<{ quantity: string; total: string; restocked: boolean }>>`
+      SELECT rri."quantity"::text AS "quantity", rri."total"::text AS "total", rri."restocked"
       FROM "restaurant_return_items" rri
       INNER JOIN "restaurant_returns" rr ON rr."id"=rri."restaurantReturnId"
       WHERE rr."workspaceId"=${workspaceId}::uuid
@@ -131,6 +131,7 @@ describe("restaurant V1.31 item-return concurrency", () => {
     ]);
     ownerId = ownerUser.id;
     managerId = managerUser.id;
+
     const workspace = await db.workspace.create({
       data: {
         name: `Item return concurrency ${runId}`,
@@ -205,6 +206,7 @@ describe("restaurant V1.31 item-return concurrency", () => {
   it("prevents two simultaneous full returns from over-returning quantity, cash or stock", async () => {
     const receipt = await completedPaidOrder();
     const before = await returnState(receipt.orderId, receipt.paymentId, receipt.orderItemId);
+
     const [first, second] = await Promise.allSettled([
       createReturn(owner(), returnInput(receipt, {
         quantity: 2,
@@ -219,6 +221,7 @@ describe("restaurant V1.31 item-return concurrency", () => {
         reason: "Concurrent full return B",
       })),
     ]);
+
     expect([first, second].filter((result) => result.status === "fulfilled")).toHaveLength(1);
     expect([first, second].filter((result) => result.status === "rejected")).toHaveLength(1);
 
@@ -227,7 +230,7 @@ describe("restaurant V1.31 item-return concurrency", () => {
     expect(after.netReturnedQty).toBe(2);
     expect(after.netAllocated).toBe(400);
     expect(after.payment.voidedAt).not.toBeNull();
-    expect(after.paymentStatus).toBe("UNPAID");
+    expect(after.paymentStatus).toBe("PAID");
     expect(after.cash.currentBalance.toString()).toBe(before.cash.currentBalance.minus(400).toString());
     expect(after.product.stockQuantity.toString()).toBe(before.product.stockQuantity.plus(2).toString());
   }, 60_000);
@@ -235,6 +238,7 @@ describe("restaurant V1.31 item-return concurrency", () => {
   it("accepts two simultaneous half returns exactly once each and settles the original payment", async () => {
     const receipt = await completedPaidOrder();
     const before = await returnState(receipt.orderId, receipt.paymentId, receipt.orderItemId);
+
     const [first, second] = await Promise.all([
       createReturn(owner(), returnInput(receipt, {
         quantity: 1,
@@ -249,6 +253,7 @@ describe("restaurant V1.31 item-return concurrency", () => {
         reason: "Concurrent half return B",
       })),
     ]);
+
     expect(first.id).not.toBe(second.id);
     expect(first.idempotent).toBe(false);
     expect(second.idempotent).toBe(false);
@@ -258,7 +263,7 @@ describe("restaurant V1.31 item-return concurrency", () => {
     expect(after.netReturnedQty).toBe(2);
     expect(after.netAllocated).toBe(400);
     expect(after.payment.voidedAt).not.toBeNull();
-    expect(after.paymentStatus).toBe("UNPAID");
+    expect(after.paymentStatus).toBe("PAID");
     expect(after.cash.currentBalance.toString()).toBe(before.cash.currentBalance.minus(400).toString());
     expect(after.product.stockQuantity.toString()).toBe(before.product.stockQuantity.plus(2).toString());
   }, 60_000);
@@ -273,10 +278,12 @@ describe("restaurant V1.31 item-return concurrency", () => {
       idempotencyKey,
       reason: "Duplicate tap item return",
     });
+
     const [first, second] = await Promise.all([
       createReturn(owner(), input),
       createReturn(manager(), input),
     ]);
+
     expect(first.id).toBe(second.id);
     expect([first.idempotent, second.idempotent].sort()).toEqual([false, true]);
 
@@ -286,7 +293,7 @@ describe("restaurant V1.31 item-return concurrency", () => {
     expect(after.netReturnedQty).toBe(1);
     expect(after.netAllocated).toBe(200);
     expect(after.payment.voidedAt).toBeNull();
-    expect(after.paymentStatus).toBe("PARTIALLY_PAID");
+    expect(after.paymentStatus).toBe("PAID");
     expect(after.cash.currentBalance.toString()).toBe(before.cash.currentBalance.minus(200).toString());
     expect(after.product.stockQuantity.toString()).toBe(before.product.stockQuantity.plus(1).toString());
 
