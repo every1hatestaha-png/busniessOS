@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 let db: typeof import("@/lib/server/db")["db"];
 let ensureDefaultAccounts: typeof import("@/lib/server/accounting")["ensureDefaultAccounts"];
@@ -15,7 +15,6 @@ let reverseItemReturn: typeof import("@/lib/server/restaurant-return-reversals")
 const runId = randomUUID();
 let ownerId = "";
 let workspaceId = "";
-let recipeId = "";
 let ingredientProductId = "";
 let menuItemId = "";
 let cashBankAccountId = "";
@@ -65,42 +64,12 @@ describe("restaurant V1.54 return inventory conservation", () => {
     ]);
     ingredientProductId = ingredientProduct.id;
     const recipeRows = await db.$queryRaw<Array<{ id: string }>>`INSERT INTO "recipes" ("workspaceId", "finishedProductId", "yieldQuantity", "isActive") VALUES (${workspaceId}::uuid, ${finishedProduct.id}::uuid, 3.0000, true) RETURNING "id"::text AS "id"`;
-    recipeId = recipeRows[0]!.id;
+    const recipeId = recipeRows[0]!.id;
     await db.$executeRaw`INSERT INTO "recipe_items" ("recipeId", "ingredientProductId", "quantity", "wastagePercent") VALUES (${recipeId}::uuid, ${ingredientProductId}::uuid, 1.0000, 0)`;
 
     const category = await createCategory(owner(), { name: `V154 ${runId}` });
     const menuItem = await createMenuItem(owner(), { categoryId: category.id, productId: finishedProduct.id, name: "V154 fractional meal", price: 100 });
     menuItemId = menuItem.id;
-  }, 60_000);
-
-  afterAll(async () => {
-    if (!db || !workspaceId) return;
-    await db.$executeRaw`DELETE FROM "restaurant_return_inventory_movements" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.$executeRaw`DELETE FROM "restaurant_return_payment_allocations" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.$executeRaw`DELETE FROM "restaurant_return_items" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.$executeRaw`DELETE FROM "restaurant_returns" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.generalLedgerEntry.deleteMany({ where: { workspaceId } });
-    await db.$executeRaw`DELETE FROM "restaurant_refunds" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.$executeRaw`DELETE FROM "restaurant_payments" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.$executeRaw`DELETE FROM "restaurant_inventory_consumptions" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.$executeRaw`DELETE FROM "kitchen_tickets" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.$executeRaw`DELETE FROM "restaurant_orders" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.$executeRaw`DELETE FROM "restaurant_order_sequences" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.$executeRaw`DELETE FROM "restaurant_menu_items" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.$executeRaw`DELETE FROM "restaurant_menu_categories" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.inventoryTransaction.deleteMany({ where: { workspaceId } });
-    if (recipeId) {
-      await db.$executeRaw`DELETE FROM "recipe_items" WHERE "recipeId"=${recipeId}::uuid`;
-      await db.$executeRaw`DELETE FROM "recipes" WHERE "id"=${recipeId}::uuid`;
-    }
-    await db.product.deleteMany({ where: { workspaceId } });
-    await db.cashBankAccount.deleteMany({ where: { workspaceId } });
-    await db.account.deleteMany({ where: { workspaceId } });
-    await db.$executeRaw`DELETE FROM "workspace_modules" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.auditLog.deleteMany({ where: { workspaceId } });
-    await db.workspace.delete({ where: { id: workspaceId } });
-    if (ownerId) await db.user.delete({ where: { id: ownerId } });
-    await db.$disconnect();
   }, 60_000);
 
   it("conserves 4dp stock across repeated partial restocks and reverses the exact posted movement", async () => {
