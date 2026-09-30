@@ -30,6 +30,17 @@ async function waitForLockWait() {
   throw new Error("Expected a PostgreSQL lock wait");
 }
 
+function controlledHold() {
+  let release!: () => void;
+  let ready!: () => void;
+  return {
+    hold: new Promise<void>(resolve => { release = resolve; }),
+    signal: new Promise<void>(resolve => { ready = resolve; }),
+    release: () => release(),
+    ready: () => ready(),
+  };
+}
+
 describe("restaurant V1.59 Product parent/reference concurrency", () => {
   beforeAll(async () => {
     ({ db } = await import("@/lib/server/db"));
@@ -42,22 +53,19 @@ describe("restaurant V1.59 Product parent/reference concurrency", () => {
   it("rejects a Product workspace move that races behind a newly committed recipe reference", async () => {
     const f = await fixture();
     const recipeId = randomUUID();
-    let release!: () => void;
-    let inserted!: () => void;
-    const hold = new Promise<void>(resolve => { release = resolve; });
-    const ready = new Promise<void>(resolve => { inserted = resolve; });
+    const gate = controlledHold();
 
     const child = db.$transaction(async tx => {
       await tx.$executeRaw`INSERT INTO "recipes" ("id", "workspaceId", "finishedProductId", "yieldQuantity")
         VALUES (${recipeId}::uuid, ${f.workspaceA}::uuid, ${f.productId}::uuid, 1)`;
-      inserted();
-      await hold;
+      gate.ready();
+      await gate.hold;
     }, { timeout: 20_000 });
 
-    await ready;
+    await gate.signal;
     const parentMove = db.product.update({ where: { id: f.productId }, data: { workspaceId: f.workspaceB } });
     await waitForLockWait();
-    release();
+    gate.release();
     await child;
 
     await expect(parentMove).rejects.toThrow("Restaurant-linked product identity and workspace are immutable");
@@ -70,22 +78,19 @@ describe("restaurant V1.59 Product parent/reference concurrency", () => {
   it("rejects a stale recipe reference that races behind a committed Product workspace move", async () => {
     const f = await fixture();
     const recipeId = randomUUID();
-    let release!: () => void;
-    let moved!: () => void;
-    const hold = new Promise<void>(resolve => { release = resolve; });
-    const ready = new Promise<void>(resolve => { moved = resolve; });
+    const gate = controlledHold();
 
     const parent = db.$transaction(async tx => {
       await tx.product.update({ where: { id: f.productId }, data: { workspaceId: f.workspaceB } });
-      moved();
-      await hold;
+      gate.ready();
+      await gate.hold;
     }, { timeout: 20_000 });
 
-    await ready;
+    await gate.signal;
     const staleChild = db.$executeRaw`INSERT INTO "recipes" ("id", "workspaceId", "finishedProductId", "yieldQuantity")
       VALUES (${recipeId}::uuid, ${f.workspaceA}::uuid, ${f.productId}::uuid, 1)`;
     await waitForLockWait();
-    release();
+    gate.release();
     await parent;
 
     await expect(staleChild).rejects.toThrow("Restaurant recipe finished product must belong to the same workspace");
@@ -93,5 +98,49 @@ describe("restaurant V1.59 Product parent/reference concurrency", () => {
     const rows = await db.$queryRaw<Array<{ count: number }>>`
       SELECT COUNT(*)::int AS "count" FROM "recipes" WHERE "id"=${recipeId}::uuid`;
     expect(rows[0]!.count).toBe(0);
+  }, 30_000);
+
+  it("rejects Product deletion that races behind a newly committed recipe reference", async () => {
+    const f = await fixture();
+    const recipeId = randomUUID();
+    const gate = controlledHold();
+
+    const child = db.$transaction(async tx => {
+      await tx.$executeRaw`INSERT INTO "recipes" ("id", "workspaceId", "finishedProductId", "yieldQuantity")
+        VALUES (${recipeId}::uuid, ${f.workspaceA}::uuid, ${f.productId}::uuid, 1)`;
+      gate.ready();
+      await gate.hold;
+    }, { timeout: 20_000 });
+
+    await gate.signal;
+    const deletion = db.product.delete({ where: { id: f.productId } });
+    await waitForLockWait();
+    gate.release();
+    await child;
+
+    await expect(deletion).rejects.toThrow("Restaurant-linked product cannot be deleted while referenced by a recipe");
+    expect(await db.product.findUnique({ where: { id: f.productId } })).not.toBeNull();
+  }, 30_000);
+
+  it("rejects a stale recipe reference that races behind a committed Product deletion", async () => {
+    const f = await fixture();
+    const recipeId = randomUUID();
+    const gate = controlledHold();
+
+    const parent = db.$transaction(async tx => {
+      await tx.product.delete({ where: { id: f.productId } });
+      gate.ready();
+      await gate.hold;
+    }, { timeout: 20_000 });
+
+    await gate.signal;
+    const staleChild = db.$executeRaw`INSERT INTO "recipes" ("id", "workspaceId", "finishedProductId", "yieldQuantity")
+      VALUES (${recipeId}::uuid, ${f.workspaceA}::uuid, ${f.productId}::uuid, 1)`;
+    await waitForLockWait();
+    gate.release();
+    await parent;
+
+    await expect(staleChild).rejects.toThrow("Restaurant recipe finished product must belong to the same workspace");
+    expect(await db.product.findUnique({ where: { id: f.productId } })).toBeNull();
   }, 30_000);
 });
