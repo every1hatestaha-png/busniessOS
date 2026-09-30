@@ -2,7 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
     "deploymentEnabled": {
-      "architecture/restaurant-return-conservation-regression-v1-55": false
+      "architecture/restaurant-return-conservation-regression-v1-55": false,
+      "architecture/restaurant-stock-concurrency-v1-56": false
     }
   }
 }
