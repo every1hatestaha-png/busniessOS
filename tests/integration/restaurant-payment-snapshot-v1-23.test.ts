@@ -143,8 +143,15 @@ describe("restaurant V1.23 immutable receipt financial identity", () => {
     for (const status of ["PREPARING", "READY", "COMPLETED"] as const) {
       await transitionRestaurantOrderWithIntegrity(actor(), payment.orderId, status);
     }
-    const refund = await refundRestaurantPayment(actor(), { paymentId: payment.id, reason: "Customer requested refund", idempotencyKey: `refund:${randomUUID()}` });
-    expect(refund).toBeDefined();
+    const balanceBeforeRefund = await db.cashBankAccount.findUniqueOrThrow({ where: { id: cashA } });
+    const refundInput = { paymentId: payment.id, reason: "Customer requested refund", idempotencyKey: `refund:${randomUUID()}` };
+    const refund = await refundRestaurantPayment(actor(), refundInput);
+    const ledgerAfterRefund = await db.generalLedgerEntry.count({ where: { workspaceId: workspaceA } });
+    const balanceAfterRefund = await db.cashBankAccount.findUniqueOrThrow({ where: { id: cashA } });
+    expect(balanceAfterRefund.currentBalance.toString()).toBe(balanceBeforeRefund.currentBalance.minus(200).toString());
+    expect(await refundRestaurantPayment(actor(), refundInput)).toMatchObject({ id: refund.id, idempotent: true });
+    expect(await db.generalLedgerEntry.count({ where: { workspaceId: workspaceA } })).toBe(ledgerAfterRefund);
+    expect((await db.cashBankAccount.findUniqueOrThrow({ where: { id: cashA } })).currentBalance.toString()).toBe(balanceAfterRefund.currentBalance.toString());
     const after = await stored(payment.id);
     expect(after[0]).toMatchObject({ ...before[0], voidedAt: expect.any(Date) });
     const status = await db.$queryRaw<Array<{ paymentStatus: string }>>`SELECT "paymentStatus" FROM "restaurant_orders" WHERE "id"=${payment.orderId}::uuid`;
