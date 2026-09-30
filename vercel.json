@@ -17,7 +17,8 @@
       "architecture/restaurant-table-concurrency-v1-67": false,
       "architecture/restaurant-menu-category-parent-v1-68": false,
       "architecture/restaurant-menu-category-concurrency-v1-69": false,
-      "architecture/restaurant-menu-item-parent-v1-70": false
+      "architecture/restaurant-menu-item-parent-v1-70": false,
+      "architecture/restaurant-menu-item-concurrency-v1-71": false
     }
   }
 }
