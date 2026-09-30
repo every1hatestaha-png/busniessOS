@@ -63,7 +63,10 @@ describe("restaurant V1.59 Product parent/reference concurrency", () => {
     }, { timeout: 20_000 });
 
     await gate.signal;
-    const parentMove = db.product.update({ where: { id: f.productId }, data: { workspaceId: f.workspaceB } });
+    const parentMove = (async () => db.product.update({
+      where: { id: f.productId },
+      data: { workspaceId: f.workspaceB },
+    }))();
     await waitForLockWait();
     gate.release();
     await child;
@@ -87,8 +90,8 @@ describe("restaurant V1.59 Product parent/reference concurrency", () => {
     }, { timeout: 20_000 });
 
     await gate.signal;
-    const staleChild = db.$executeRaw`INSERT INTO "recipes" ("id", "workspaceId", "finishedProductId", "yieldQuantity")
-      VALUES (${recipeId}::uuid, ${f.workspaceA}::uuid, ${f.productId}::uuid, 1)`;
+    const staleChild = (async () => db.$executeRaw`INSERT INTO "recipes" ("id", "workspaceId", "finishedProductId", "yieldQuantity")
+      VALUES (${recipeId}::uuid, ${f.workspaceA}::uuid, ${f.productId}::uuid, 1)`)();
     await waitForLockWait();
     gate.release();
     await parent;
@@ -113,7 +116,7 @@ describe("restaurant V1.59 Product parent/reference concurrency", () => {
     }, { timeout: 20_000 });
 
     await gate.signal;
-    const deletion = db.product.delete({ where: { id: f.productId } });
+    const deletion = (async () => db.product.delete({ where: { id: f.productId } }))();
     await waitForLockWait();
     gate.release();
     await child;
@@ -134,8 +137,8 @@ describe("restaurant V1.59 Product parent/reference concurrency", () => {
     }, { timeout: 20_000 });
 
     await gate.signal;
-    const staleChild = db.$executeRaw`INSERT INTO "recipes" ("id", "workspaceId", "finishedProductId", "yieldQuantity")
-      VALUES (${recipeId}::uuid, ${f.workspaceA}::uuid, ${f.productId}::uuid, 1)`;
+    const staleChild = (async () => db.$executeRaw`INSERT INTO "recipes" ("id", "workspaceId", "finishedProductId", "yieldQuantity")
+      VALUES (${recipeId}::uuid, ${f.workspaceA}::uuid, ${f.productId}::uuid, 1)`)();
     await waitForLockWait();
     gate.release();
     await parent;
