@@ -110,6 +110,36 @@ describe("restaurant V1.72 WhatsApp message snapshot", () => {
     `);
   });
 
+  it("rejects a direct attempt to clear the linked order while the parent still exists", async () => {
+    const f = await fixture();
+    await expectImmutable(f, db.$executeRaw`
+      UPDATE "restaurant_whatsapp_messages"
+      SET "restaurantOrderId"=NULL
+      WHERE "id"=${f.messageId}::uuid
+    `);
+  });
+
+  it("preserves message evidence while allowing an approved uncommitted parent delete to clear its FK", async () => {
+    const f = await fixture();
+    await expect(db.$executeRaw`
+      DELETE FROM "restaurant_orders"
+      WHERE "id"=${f.orderA}::uuid
+    `).resolves.toBe(1);
+
+    const message = await readMessage(f);
+    expect(message).toEqual({
+      id: f.messageId,
+      workspaceId: f.workspaceA,
+      externalMessageId: f.externalMessageId,
+      customerPhone: "+923001234567",
+      customerName: "V172 Customer",
+      body: "one zinger burger",
+      restaurantOrderId: null,
+      receivedAt: f.receivedAt,
+      createdAt: f.createdAt,
+    });
+  });
+
   it("freezes message identity and chronology", async () => {
     const f = await fixture();
     await expectImmutable(f, db.$executeRaw`
