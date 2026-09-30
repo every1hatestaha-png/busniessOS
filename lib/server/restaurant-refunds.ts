@@ -117,35 +117,62 @@ export async function refundRestaurantPayment(
       }
     }
 
-    const rows = await tx.$queryRaw<Array<{
+    // Payment ownership is an immutable financial snapshot (V1.23), so reading
+    // its parent first is safe. Lock the order before the payment to match the
+    // item-return workflow and avoid refund-vs-return lock inversion deadlocks.
+    const parentRows = await tx.$queryRaw<Array<{ restaurantOrderId: string }>>`
+      SELECT "restaurantOrderId"::text AS "restaurantOrderId"
+      FROM "restaurant_payments"
+      WHERE "id"=${input.paymentId}::uuid
+        AND "workspaceId"=${context.workspaceId}::uuid
+      LIMIT 1
+    `;
+    const parent = parentRows[0];
+    if (!parent) throw new IndustryDomainError("NOT_FOUND", "Restaurant payment was not found.");
+
+    const orderRows = await tx.$queryRaw<Array<{
+      orderNumber: string;
+      orderStatus: string;
+      orderTotal: Prisma.Decimal;
+    }>>`
+      SELECT "orderNumber", "status" AS "orderStatus", "total" AS "orderTotal"
+      FROM "restaurant_orders"
+      WHERE "id"=${parent.restaurantOrderId}::uuid
+        AND "workspaceId"=${context.workspaceId}::uuid
+      FOR UPDATE
+    `;
+    const order = orderRows[0];
+    if (!order) throw new IndustryDomainError("NOT_FOUND", "Restaurant payment order was not found.");
+
+    const paymentRows = await tx.$queryRaw<Array<{
       paymentId: string;
       restaurantOrderId: string;
       cashBankAccountId: string;
       amount: Prisma.Decimal;
       postedAt: Date | null;
       voidedAt: Date | null;
-      orderNumber: string;
-      orderStatus: string;
-      orderTotal: Prisma.Decimal;
     }>>`
-      SELECT rp."id"::text AS "paymentId",
-             rp."restaurantOrderId"::text AS "restaurantOrderId",
-             rp."cashBankAccountId",
-             rp."amount",
-             rp."postedAt",
-             rp."voidedAt",
-             ro."orderNumber",
-             ro."status" AS "orderStatus",
-             ro."total" AS "orderTotal"
-      FROM "restaurant_payments" rp
-      INNER JOIN "restaurant_orders" ro
-        ON ro."id"=rp."restaurantOrderId" AND ro."workspaceId"=rp."workspaceId"
-      WHERE rp."id"=${input.paymentId}::uuid
-        AND rp."workspaceId"=${context.workspaceId}::uuid
-      FOR UPDATE OF rp, ro
+      SELECT "id"::text AS "paymentId",
+             "restaurantOrderId"::text AS "restaurantOrderId",
+             "cashBankAccountId",
+             "amount",
+             "postedAt",
+             "voidedAt"
+      FROM "restaurant_payments"
+      WHERE "id"=${input.paymentId}::uuid
+        AND "workspaceId"=${context.workspaceId}::uuid
+        AND "restaurantOrderId"=${parent.restaurantOrderId}::uuid
+      FOR UPDATE
     `;
-    const payment = rows[0];
-    if (!payment) throw new IndustryDomainError("NOT_FOUND", "Restaurant payment was not found.");
+    const paymentRow = paymentRows[0];
+    if (!paymentRow) throw new IndustryDomainError("NOT_FOUND", "Restaurant payment was not found.");
+
+    const payment = {
+      ...paymentRow,
+      orderNumber: order.orderNumber,
+      orderStatus: order.orderStatus,
+      orderTotal: order.orderTotal,
+    };
     if (payment.orderStatus !== "COMPLETED") {
       throw new IndustryDomainError("INVALID_STATE", "Only payments on completed restaurant orders can be refunded. Void the payment before completion instead.");
     }
