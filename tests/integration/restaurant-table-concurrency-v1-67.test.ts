@@ -6,22 +6,24 @@ type RawExecutor = Pick<typeof db, "$executeRaw">;
 
 async function fixture() {
   const id = randomUUID();
+  const user = await db.user.create({ data: { clerkId: `v167-${id}`, email: `v167-${id}@example.invalid` } });
   const [workspace, otherWorkspace] = await Promise.all([
     db.workspace.create({ data: { name: `V167 ${id}`, vertical: "LEGACY" } }),
     db.workspace.create({ data: { name: `V167 other ${id}`, vertical: "LEGACY" } }),
   ]);
+  await db.workspaceMember.create({ data: { workspaceId: workspace.id, userId: user.id, role: "OWNER" } });
   const tableId = randomUUID();
   await db.$executeRaw`INSERT INTO "restaurant_tables" ("id", "workspaceId", "name", "capacity", "status")
     VALUES (${tableId}::uuid, ${workspace.id}::uuid, ${`V167 ${id}`}, 4, 'AVAILABLE')`;
-  return { id, workspaceId: workspace.id, otherWorkspaceId: otherWorkspace.id, tableId };
+  return { id, workspaceId: workspace.id, otherWorkspaceId: otherWorkspace.id, tableId, userId: user.id };
 }
 
 async function insertOrder(tx: RawExecutor, f: Awaited<ReturnType<typeof fixture>>) {
   const orderId = randomUUID();
   await tx.$executeRaw`INSERT INTO "restaurant_orders" (
-    "id", "workspaceId", "orderNumber", "source", "fulfillmentType", "status", "restaurantTableId"
+    "id", "workspaceId", "orderNumber", "source", "fulfillmentType", "status", "restaurantTableId", "createdById"
   ) VALUES (
-    ${orderId}::uuid, ${f.workspaceId}::uuid, ${`V167-O-${orderId.slice(0, 8)}`}, 'POS', 'DINE_IN', 'CONFIRMED', ${f.tableId}::uuid
+    ${orderId}::uuid, ${f.workspaceId}::uuid, ${`V167-O-${orderId.slice(0, 8)}`}, 'POS', 'DINE_IN', 'CONFIRMED', ${f.tableId}::uuid, ${f.userId}
   )`;
   return orderId;
 }
