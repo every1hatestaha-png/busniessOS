@@ -11,20 +11,9 @@ let userId = "";
 let workspaceA = "";
 let workspaceB = "";
 let cashA = "";
-let alternateCashA = "";
+let secondManagerId = "";
 let cashB = "";
-let alternateOrderA = "";
-let alternateOrderB = "";
 const actor = (workspaceId = workspaceA) => ({ workspaceId, userId, role: "OWNER" as const });
-
-async function order(workspaceId: string) {
-  const rows = await db.$queryRaw<Array<{ id: string }>>`
-    INSERT INTO "restaurant_orders" ("workspaceId", "orderNumber", "source", "fulfillmentType", "status", "createdById", "subtotal", "total")
-    VALUES (${workspaceId}::uuid, ${randomUUID()}, 'MANUAL', 'TAKEAWAY', 'CONFIRMED', ${userId}, 500, 500)
-    RETURNING "id"::text AS "id"
-  `;
-  return rows[0]!.id;
-}
 
 describe("restaurant V1.25 immutable refund financial identity", () => {
   beforeAll(async () => {
@@ -34,10 +23,12 @@ describe("restaurant V1.25 immutable refund financial identity", () => {
     ({ refundRestaurantPayment } = await import("@/lib/server/restaurant-refunds"));
     const user = await db.user.create({ data: { clerkId: `v125-${runId}`, email: `v125-${runId}@example.invalid` } });
     userId = user.id;
+    secondManagerId = (await db.user.create({ data: { clerkId: `v125-manager-${runId}`, email: `v125-manager-${runId}@example.invalid` } })).id;
     const workspaces = await Promise.all(["A", "B"].map((suffix) => db.workspace.create({
-      data: { name: `Receipt snapshot ${suffix} ${runId}`, vertical: "LEGACY", members: { create: { userId, role: "OWNER" } } },
+      data: { name: `Refund snapshot ${suffix} ${runId}`, vertical: "LEGACY", members: { create: { userId, role: "OWNER" } } },
     })));
     [workspaceA, workspaceB] = workspaces.map((w) => w.id);
+    await db.workspaceMember.create({ data: { workspaceId: workspaceA, userId: secondManagerId, role: "MANAGER" } });
     for (const workspaceId of [workspaceA, workspaceB]) {
       await db.$executeRaw`
         INSERT INTO "workspace_modules" ("workspaceId", "moduleKey", "enabled", "config", "updatedAt")
@@ -45,14 +36,12 @@ describe("restaurant V1.25 immutable refund financial identity", () => {
       `;
     }
     const cashIds: string[] = [];
-    for (const [workspaceId, name] of [[workspaceA, "Original drawer"], [workspaceA, "Alternate drawer"], [workspaceB, "Other tenant drawer"]]) {
+    for (const [workspaceId, name] of [[workspaceA, "Original drawer"], [workspaceB, "Other tenant drawer"]]) {
       const created = await createCashBankAccount(actor(workspaceId), { name, openingBalance: 0, isBank: false, bankName: "", accountTitle: "", accountNumber: "", notes: "" });
       const accounts = await getCashBankAccounts(workspaceId);
       cashIds.push(accounts.find((a) => a.id === created.id)!.cashBankAccountId);
     }
-    [cashA, alternateCashA, cashB] = cashIds;
-    alternateOrderA = await order(workspaceA);
-    alternateOrderB = await order(workspaceB);
+    [cashA, cashB] = cashIds;
   }, 60_000);
 
   afterAll(async () => {
@@ -75,7 +64,7 @@ describe("restaurant V1.25 immutable refund financial identity", () => {
       await db.auditLog.deleteMany({ where: { workspaceId } });
     }
     await db.workspace.deleteMany({ where: { id: { in: [workspaceA, workspaceB] } } });
-    await db.user.delete({ where: { id: userId } });
+    await db.user.deleteMany({ where: { id: { in: [userId, secondManagerId] } } });
     await db.$disconnect();
   }, 60_000);
 
@@ -105,6 +94,7 @@ describe("restaurant V1.25 immutable refund financial identity", () => {
   it("rejects refund snapshot rewrites and preserves real reversal and idempotent retry", async () => {
     const original = await completedReceipt();
     const replacement = await completedReceipt(workspaceB, cashB);
+    const sameTenant = await completedReceipt();
     const input = { paymentId: original.paymentId, reason: "Customer requested refund", idempotencyKey: `refund:${randomUUID()}` };
     const cashBefore = await db.cashBankAccount.findUniqueOrThrow({ where: { id: cashA } });
     const refund = await refundRestaurantPayment(actor(), input);
@@ -112,6 +102,8 @@ describe("restaurant V1.25 immutable refund financial identity", () => {
     expect((await db.cashBankAccount.findUniqueOrThrow({ where: { id: cashA } })).currentBalance.toString()).toBe(cashBefore.currentBalance.minus(200).toString());
     const before = await snapshot();
     const mutations = [
+      () => db.$executeRaw`UPDATE "restaurant_refunds" SET "createdById"=${secondManagerId} WHERE "id"=${refund.id}::uuid`,
+      () => db.$executeRaw`UPDATE "restaurant_refunds" SET "restaurantOrderId"=${sameTenant.orderId}::uuid, "restaurantPaymentId"=${sameTenant.paymentId}::uuid WHERE "id"=${refund.id}::uuid`,
       () => db.$executeRaw`UPDATE "restaurant_refunds" SET "amount"=100 WHERE "id"=${refund.id}::uuid`,
       () => db.$executeRaw`UPDATE "restaurant_refunds" SET "id"=${randomUUID()}::uuid WHERE "id"=${refund.id}::uuid`,
       () => db.$executeRaw`UPDATE "restaurant_refunds" SET "idempotencyKey"=${randomUUID()} WHERE "id"=${refund.id}::uuid`,
