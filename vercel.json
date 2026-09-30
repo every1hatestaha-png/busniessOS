@@ -15,7 +15,8 @@
       "architecture/restaurant-warehouse-concurrency-v1-65": false,
       "architecture/restaurant-table-parent-v1-66": false,
       "architecture/restaurant-table-concurrency-v1-67": false,
-      "architecture/restaurant-menu-category-parent-v1-68": false
+      "architecture/restaurant-menu-category-parent-v1-68": false,
+      "architecture/restaurant-menu-category-concurrency-v1-69": false
     }
   }
 }
