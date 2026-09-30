@@ -245,6 +245,19 @@ export async function createRestaurantItemReturn(context: IndustryContext, input
     `;
     const priorByItem = new Map(priorQuantities.map((row) => [row.restaurantOrderItemId, new Prisma.Decimal(row.quantity)]));
 
+    const priorRestockedQuantities = await tx.$queryRaw<Array<{ restaurantOrderItemId: string; quantity: Prisma.Decimal }>>`
+      SELECT rri."restaurantOrderItemId"::text AS "restaurantOrderItemId", COALESCE(SUM(rri."quantity"), 0)::numeric AS "quantity"
+      FROM "restaurant_return_items" rri
+      INNER JOIN "restaurant_returns" rr ON rr."id"=rri."restaurantReturnId"
+      WHERE rr."workspaceId"=${context.workspaceId}::uuid
+        AND rr."restaurantOrderId"=${order.id}::uuid
+        AND rri."restocked"=true
+      GROUP BY rri."restaurantOrderItemId"
+    `;
+    const priorRestockedByItem = new Map(
+      priorRestockedQuantities.map((row) => [row.restaurantOrderItemId, new Prisma.Decimal(row.quantity)]),
+    );
+
     const requestedByItem = new Map(normalizedItems.map((item) => [item.orderItemId, item]));
     for (const requested of normalizedItems) {
       const original = itemById.get(requested.orderItemId)!;
@@ -437,9 +450,20 @@ export async function createRestaurantItemReturn(context: IndustryContext, input
           );
         }
 
-        const fraction = line.returnQuantity.div(line.originalQuantity);
+        const priorRestockedQuantity = priorRestockedByItem.get(line.orderItemId) ?? ZERO;
+        const nextRestockedQuantity = priorRestockedQuantity.plus(line.returnQuantity);
+        if (nextRestockedQuantity.gt(line.originalQuantity)) {
+          throw new IndustryDomainError("INVALID_STATE", `Restocked return quantity exceeds the original quantity for ${line.itemName}.`);
+        }
+
         for (const consumption of consumptions) {
-          const restoreQuantity = quantity(new Prisma.Decimal(consumption.quantity).mul(fraction));
+          const beforeTarget = quantity(
+            new Prisma.Decimal(consumption.quantity).mul(priorRestockedQuantity).div(line.originalQuantity),
+          );
+          const afterTarget = quantity(
+            new Prisma.Decimal(consumption.quantity).mul(nextRestockedQuantity).div(line.originalQuantity),
+          );
+          const restoreQuantity = quantity(afterTarget.minus(beforeTarget));
           if (restoreQuantity.lte(0)) continue;
 
           const product = await tx.product.findFirst({
@@ -480,6 +504,14 @@ export async function createRestaurantItemReturn(context: IndustryContext, input
               reference: `RESTAURANT_RETURN:${returnId}`,
             },
           });
+          await tx.$executeRaw`
+            INSERT INTO "restaurant_return_inventory_movements" (
+              "workspaceId", "restaurantReturnId", "restaurantOrderItemId", "productId", "warehouseId", "quantity", "unitCost"
+            ) VALUES (
+              ${context.workspaceId}::uuid, ${returnId}::uuid, ${line.orderItemId}::uuid, ${product.id},
+              ${consumption.warehouseId}::uuid, ${restoreQuantity}, ${consumption.unitCost}
+            )
+          `;
           lineInventoryCost = lineInventoryCost.plus(restoreQuantity.mul(consumption.unitCost));
         }
       }

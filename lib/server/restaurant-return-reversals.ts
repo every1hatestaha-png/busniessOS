@@ -30,10 +30,6 @@ function cleanReason(value: string) {
   return reason;
 }
 
-function quantity(value: Prisma.Decimal.Value) {
-  return new Prisma.Decimal(value).toDecimalPlaces(4, Prisma.Decimal.ROUND_HALF_UP);
-}
-
 export async function reverseRestaurantItemReturn(
   context: IndustryContext,
   restaurantReturnId: string,
@@ -90,11 +86,9 @@ export async function reverseRestaurantItemReturn(
       total: Prisma.Decimal;
       inventoryCost: Prisma.Decimal;
       restocked: boolean;
-      originalOrderQuantity: Prisma.Decimal;
     }>>`
       SELECT rri."restaurantOrderItemId"::text AS "restaurantOrderItemId", rri."quantity", rri."subtotal",
-             rri."discountAmount", rri."taxAmount", rri."total", rri."inventoryCost", rri."restocked",
-             roi."quantity" AS "originalOrderQuantity"
+             rri."discountAmount", rri."taxAmount", rri."total", rri."inventoryCost", rri."restocked"
       FROM "restaurant_return_items" rri
       INNER JOIN "restaurant_order_items" roi ON roi."id"=rri."restaurantOrderItemId"
       WHERE rri."workspaceId"=${context.workspaceId}::uuid
@@ -130,6 +124,29 @@ export async function reverseRestaurantItemReturn(
       throw new IndustryDomainError("INVALID_STATE", "Restaurant return has no payment allocations and cannot be reversed safely.");
     }
 
+    const inventoryMovements = await tx.$queryRaw<Array<{
+      restaurantOrderItemId: string;
+      productId: string;
+      warehouseId: string | null;
+      quantity: Prisma.Decimal;
+      unitCost: Prisma.Decimal;
+    }>>`
+      SELECT "restaurantOrderItemId"::text AS "restaurantOrderItemId", "productId",
+             "warehouseId"::text AS "warehouseId", "quantity", "unitCost"
+      FROM "restaurant_return_inventory_movements"
+      WHERE "workspaceId"=${context.workspaceId}::uuid
+        AND "restaurantReturnId"=${original.id}::uuid
+      ORDER BY "restaurantOrderItemId", "productId"
+      FOR SHARE
+    `;
+    const restockedItems = items.filter((item) => item.restocked);
+    if (restockedItems.length && !inventoryMovements.length) {
+      throw new IndustryDomainError(
+        "INVALID_STATE",
+        "Historical return inventory movement is unavailable. Automatic restaurant return reversal is unsafe.",
+      );
+    }
+
     const expectedAutoVoidReason = `Fully refunded through restaurant item returns (${original.returnNumber})`;
     for (const allocation of allocations) {
       if (!allocation.postedAt) {
@@ -152,84 +169,61 @@ export async function reverseRestaurantItemReturn(
       }
     }
 
-    for (const item of items) {
-      if (!item.restocked) continue;
-      const fraction = new Prisma.Decimal(item.quantity).div(item.originalOrderQuantity);
-      const consumptions = await tx.$queryRaw<Array<{
-        productId: string;
-        warehouseId: string | null;
-        quantity: Prisma.Decimal;
-        unitCost: Prisma.Decimal;
-      }>>`
-        SELECT "productId", "warehouseId"::text AS "warehouseId", "quantity", "unitCost"
-        FROM "restaurant_inventory_consumptions"
-        WHERE "workspaceId"=${context.workspaceId}::uuid
-          AND "restaurantOrderId"=${original.restaurantOrderId}::uuid
-          AND "restaurantOrderItemId"=${item.restaurantOrderItemId}::uuid
-        ORDER BY "productId"
-        FOR SHARE
+    for (const movement of inventoryMovements) {
+      const consumeQuantity = new Prisma.Decimal(movement.quantity);
+      if (consumeQuantity.lte(0)) {
+        throw new IndustryDomainError("INVALID_STATE", "Historical return inventory movement has invalid polarity.");
+      }
+      const products = await tx.$queryRaw<Array<{ id: string; stockQuantity: Prisma.Decimal }>>`
+        SELECT "id", "stockQuantity"
+        FROM "products"
+        WHERE "id"=${movement.productId} AND "workspaceId"=${context.workspaceId}
+        FOR UPDATE
       `;
-      if (!consumptions.length) {
+      const product = products[0];
+      if (!product) throw new IndustryDomainError("NOT_FOUND", "A historically restored restaurant product no longer exists.");
+      if (new Prisma.Decimal(product.stockQuantity).lt(consumeQuantity)) {
         throw new IndustryDomainError(
           "INVALID_STATE",
-          "Historical inventory consumption is unavailable. Automatic restaurant return reversal is unsafe.",
+          "Restocked inventory from this return has already been consumed. Restore sufficient stock before reversing the return.",
         );
       }
 
-      for (const consumption of consumptions) {
-        const consumeQuantity = quantity(new Prisma.Decimal(consumption.quantity).mul(fraction));
-        if (consumeQuantity.lte(0)) continue;
-        const products = await tx.$queryRaw<Array<{ id: string; stockQuantity: Prisma.Decimal }>>`
-          SELECT "id", "stockQuantity"
-          FROM "products"
-          WHERE "id"=${consumption.productId} AND "workspaceId"=${context.workspaceId}
-          FOR UPDATE
-        `;
-        const product = products[0];
-        if (!product) throw new IndustryDomainError("NOT_FOUND", "A historically restored restaurant product no longer exists.");
-        if (new Prisma.Decimal(product.stockQuantity).lt(consumeQuantity)) {
-          throw new IndustryDomainError(
-            "INVALID_STATE",
-            "Restocked inventory from this return has already been consumed. Restore sufficient stock before reversing the return.",
-          );
-        }
-
-        await tx.product.update({
-          where: { id: product.id, workspaceId: context.workspaceId },
-          data: { stockQuantity: { decrement: consumeQuantity } },
-        });
-        if (consumption.warehouseId) {
-          try {
-            await applyManagedWarehouseStockDelta(tx, {
-              workspaceId: context.workspaceId,
-              warehouseId: consumption.warehouseId,
-              productId: product.id,
-              delta: consumeQuantity.negated(),
-            });
-          } catch (error) {
-            if (error instanceof ManagedWarehouseStockError) {
-              if (error.code === "NEGATIVE_WAREHOUSE_STOCK") {
-                throw new IndustryDomainError(
-                  "INVALID_STATE",
-                  "Restocked warehouse inventory from this return has already been consumed. Restore sufficient stock before reversing the return.",
-                );
-              }
-              throw new IndustryDomainError("INVALID_STATE", error.message);
-            }
-            throw error;
-          }
-        }
-        await tx.inventoryTransaction.create({
-          data: {
+      await tx.product.update({
+        where: { id: product.id, workspaceId: context.workspaceId },
+        data: { stockQuantity: { decrement: consumeQuantity } },
+      });
+      if (movement.warehouseId) {
+        try {
+          await applyManagedWarehouseStockDelta(tx, {
             workspaceId: context.workspaceId,
+            warehouseId: movement.warehouseId,
             productId: product.id,
-            type: "ADJUSTMENT",
-            quantityChanged: consumeQuantity.negated(),
-            unitCost: consumption.unitCost,
-            reference: `RESTAURANT_RETURN_REVERSAL:${original.id}`,
-          },
-        });
+            delta: consumeQuantity.negated(),
+          });
+        } catch (error) {
+          if (error instanceof ManagedWarehouseStockError) {
+            if (error.code === "NEGATIVE_WAREHOUSE_STOCK") {
+              throw new IndustryDomainError(
+                "INVALID_STATE",
+                "Restocked warehouse inventory from this return has already been consumed. Restore sufficient stock before reversing the return.",
+              );
+            }
+            throw new IndustryDomainError("INVALID_STATE", error.message);
+          }
+          throw error;
+        }
       }
+      await tx.inventoryTransaction.create({
+        data: {
+          workspaceId: context.workspaceId,
+          productId: product.id,
+          type: "ADJUSTMENT",
+          quantityChanged: consumeQuantity.negated(),
+          unitCost: movement.unitCost,
+          reference: `RESTAURANT_RETURN_REVERSAL:${original.id}`,
+        },
+      });
     }
 
     const reversalId = randomUUID();
@@ -264,6 +258,17 @@ export async function reverseRestaurantItemReturn(
           ${new Prisma.Decimal(item.discountAmount).negated()}, ${new Prisma.Decimal(item.taxAmount).negated()},
           ${new Prisma.Decimal(item.total).negated()}, ${new Prisma.Decimal(item.inventoryCost).negated()},
           ${item.restocked}, true
+        )
+      `;
+    }
+
+    for (const movement of inventoryMovements) {
+      await tx.$executeRaw`
+        INSERT INTO "restaurant_return_inventory_movements" (
+          "workspaceId", "restaurantReturnId", "restaurantOrderItemId", "productId", "warehouseId", "quantity", "unitCost"
+        ) VALUES (
+          ${context.workspaceId}::uuid, ${reversalId}::uuid, ${movement.restaurantOrderItemId}::uuid,
+          ${movement.productId}, ${movement.warehouseId}::uuid, ${new Prisma.Decimal(movement.quantity).negated()}, ${movement.unitCost}
         )
       `;
     }
@@ -311,7 +316,7 @@ export async function reverseRestaurantItemReturn(
         reason,
         total: original.total.toString(),
         inventoryCost: original.inventoryCost.toString(),
-        restockedItems: items.filter((item) => item.restocked).length,
+        restockedItems: restockedItems.length,
         paymentAllocations: allocations.map((allocation) => ({
           paymentId: allocation.restaurantPaymentId,
           amount: allocation.amount.toString(),
