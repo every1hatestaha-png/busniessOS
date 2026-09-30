@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 let db: typeof import("@/lib/server/db")["db"];
@@ -94,9 +95,7 @@ async function assertSingleRefundOutcome(params: {
   expect(state.payment).toHaveLength(1);
   expect(state.payment[0]!.voidedAt).not.toBeNull();
   expect(state.order).toEqual([{ paymentStatus: "UNPAID" }]);
-  expect(state.cash.currentBalance.toString()).toBe(
-    (await import("@prisma/client")).Prisma.Decimal(params.cashBefore).minus(200).toString(),
-  );
+  expect(state.cash.currentBalance.toString()).toBe(new Prisma.Decimal(params.cashBefore).minus(200).toString());
   expect(state.ledgerCount - params.ledgerBefore).toBe(2);
   return state;
 }
