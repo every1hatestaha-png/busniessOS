@@ -13,7 +13,8 @@
       "architecture/restaurant-settlement-ledger-concurrency-v1-63": false,
       "architecture/restaurant-warehouse-parent-v1-64": false,
       "architecture/restaurant-warehouse-concurrency-v1-65": false,
-      "architecture/restaurant-table-parent-v1-66": false
+      "architecture/restaurant-table-parent-v1-66": false,
+      "architecture/restaurant-table-concurrency-v1-67": false
     }
   }
 }
