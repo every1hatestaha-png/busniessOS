@@ -21,9 +21,9 @@ async function fixture() {
 async function insertOrder(tx: RawExecutor, f: Awaited<ReturnType<typeof fixture>>) {
   const orderId = randomUUID();
   await tx.$executeRaw`INSERT INTO "restaurant_orders" (
-    "id", "workspaceId", "orderNumber", "source", "fulfillmentType", "status", "restaurantTableId", "createdById"
+    "id", "workspaceId", "orderNumber", "source", "fulfillmentType", "status", "paymentStatus", "restaurantTableId", "createdById"
   ) VALUES (
-    ${orderId}::uuid, ${f.workspaceId}::uuid, ${`V167-O-${orderId.slice(0, 8)}`}, 'POS', 'DINE_IN', 'CONFIRMED', ${f.tableId}::uuid, ${f.userId}
+    ${orderId}::uuid, ${f.workspaceId}::uuid, ${`V167-O-${orderId.slice(0, 8)}`}, 'POS', 'DINE_IN', 'CONFIRMED', 'PAID', ${f.tableId}::uuid, ${f.userId}
   )`;
   return orderId;
 }
