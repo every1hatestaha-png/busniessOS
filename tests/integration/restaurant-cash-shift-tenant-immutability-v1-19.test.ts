@@ -79,7 +79,12 @@ describe("restaurant V1.19 cash shift tenant immutability", () => {
     expect(rows[0]).toMatchObject({ workspaceId: workspaceAId, openedById: userId, status: "OPEN" });
 
     const closed = await closeRestaurantCashShiftFromLedger(actorA(), shift.id, 300, "Normal close after rejected tenant rewrite");
-    expect(closed.status).toBe("CLOSED");
-    expect(closed.workspaceId).toBe(workspaceAId);
+    expect(closed).toMatchObject({ id: shift.id, closedById: userId, expectedCash: 300, closingCash: 300, variance: 0 });
+    const persisted = await db.$queryRaw<Array<{ workspaceId: string; status: string; closedById: string | null }>>`
+      SELECT "workspaceId"::text AS "workspaceId", "status", "closedById"::text AS "closedById"
+      FROM "cash_shifts"
+      WHERE "id"=${shift.id}::uuid
+    `;
+    expect(persisted).toEqual([{ workspaceId: workspaceAId, status: "CLOSED", closedById: userId }]);
   });
 });
