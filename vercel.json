@@ -6,7 +6,8 @@
       "architecture/restaurant-stock-concurrency-v1-56": false,
       "architecture/restaurant-return-reversal-order-conservation-v1-57": false,
       "architecture/restaurant-parent-identity-integrity-v1-58": false,
-      "architecture/restaurant-product-reference-concurrency-v1-59": false
+      "architecture/restaurant-product-reference-concurrency-v1-59": false,
+      "architecture/restaurant-settlement-account-parent-v1-60": false
     }
   }
 }
