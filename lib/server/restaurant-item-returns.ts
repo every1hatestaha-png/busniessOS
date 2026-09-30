@@ -457,14 +457,29 @@ export async function createRestaurantItemReturn(context: IndustryContext, input
         }
 
         for (const consumption of consumptions) {
-          const beforeTarget = quantity(
-            new Prisma.Decimal(consumption.quantity).mul(priorRestockedQuantity).div(line.originalQuantity),
-          );
+          // Reversals undo the exact historical allocation, which can differ by
+          // one quantum from the rounded target for the remaining item count.
+          // Subtract actual net stock movements, never a recomputed prior target.
+          const priorMovements = await tx.$queryRaw<Array<{ quantity: Prisma.Decimal }>>`
+            SELECT COALESCE(SUM(rim."quantity"), 0)::numeric AS "quantity"
+            FROM "restaurant_return_inventory_movements" rim
+            INNER JOIN "restaurant_returns" rr ON rr."id"=rim."restaurantReturnId"
+              AND rr."workspaceId"=rim."workspaceId"
+            WHERE rim."workspaceId"=${context.workspaceId}::uuid
+              AND rr."restaurantOrderId"=${order.id}::uuid
+              AND rim."restaurantOrderItemId"=${line.orderItemId}::uuid
+              AND rim."productId"=${consumption.productId}
+              AND rim."warehouseId" IS NOT DISTINCT FROM ${consumption.warehouseId}::uuid
+          `;
+          const previouslyRestored = new Prisma.Decimal(priorMovements[0]?.quantity ?? 0);
           const afterTarget = quantity(
             new Prisma.Decimal(consumption.quantity).mul(nextRestockedQuantity).div(line.originalQuantity),
           );
-          const restoreQuantity = quantity(afterTarget.minus(beforeTarget));
-          if (restoreQuantity.lte(0)) continue;
+          const restoreQuantity = quantity(afterTarget.minus(previouslyRestored));
+          if (previouslyRestored.lt(0) || restoreQuantity.lt(0)) {
+            throw new IndustryDomainError("INVALID_STATE", "Historical restaurant restock movements exceed the conserved inventory target.");
+          }
+          if (restoreQuantity.isZero()) continue;
 
           const product = await tx.product.findFirst({
             where: { id: consumption.productId, workspaceId: context.workspaceId },
