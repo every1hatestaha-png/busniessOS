@@ -146,16 +146,16 @@ describe("restaurant V1.47 KDS identity integrity", () => {
       status: "QUEUED",
     });
 
-    const rewrites = [
-      db.$executeRaw`UPDATE "kitchen_tickets" SET "workspaceId"=${workspaceB}::uuid WHERE "id"=${ticket.id}::uuid`,
-      db.$executeRaw`UPDATE "kitchen_tickets" SET "salesOrderId"=${salesOrderB}::uuid WHERE "id"=${ticket.id}::uuid`,
-      db.$executeRaw`UPDATE "kitchen_tickets" SET "restaurantOrderId"=${localRestaurantOrderId}::uuid WHERE "id"=${ticket.id}::uuid`,
-      db.$executeRaw`UPDATE "kitchen_tickets" SET "restaurantTableId"=NULL WHERE "id"=${ticket.id}::uuid`,
-      db.$executeRaw`UPDATE "kitchen_tickets" SET "ticketNumber"=${`${before.ticketNumber}-FORGED`} WHERE "id"=${ticket.id}::uuid`,
-      db.$executeRaw`UPDATE "kitchen_tickets" SET "createdAt"="createdAt" + interval '1 minute' WHERE "id"=${ticket.id}::uuid`,
+    const rewrites: Array<() => Promise<unknown>> = [
+      () => db.$executeRaw`UPDATE "kitchen_tickets" SET "workspaceId"=${workspaceB}::uuid WHERE "id"=${ticket.id}::uuid`,
+      () => db.$executeRaw`UPDATE "kitchen_tickets" SET "salesOrderId"=${salesOrderB}::uuid WHERE "id"=${ticket.id}::uuid`,
+      () => db.$executeRaw`UPDATE "kitchen_tickets" SET "restaurantOrderId"=${localRestaurantOrderId}::uuid WHERE "id"=${ticket.id}::uuid`,
+      () => db.$executeRaw`UPDATE "kitchen_tickets" SET "restaurantTableId"=NULL WHERE "id"=${ticket.id}::uuid`,
+      () => db.$executeRaw`UPDATE "kitchen_tickets" SET "ticketNumber"=${`${before.ticketNumber}-FORGED`} WHERE "id"=${ticket.id}::uuid`,
+      () => db.$executeRaw`UPDATE "kitchen_tickets" SET "createdAt"="createdAt" + interval '1 minute' WHERE "id"=${ticket.id}::uuid`,
     ];
     for (const rewrite of rewrites) {
-      await expect(rewrite).rejects.toThrow("Restaurant kitchen ticket identity snapshot is immutable");
+      await expect(rewrite()).rejects.toThrow("Restaurant kitchen ticket identity snapshot is immutable");
       expect(await snapshot(ticket.id)).toEqual(before);
     }
 
