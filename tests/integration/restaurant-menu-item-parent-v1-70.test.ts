@@ -61,13 +61,17 @@ async function fixture() {
   };
 }
 
-async function expectIdentityFailure(f: Fixture, sql: Promise<unknown>) {
-  await expect(sql).rejects.toThrow("Restaurant-linked menu item identity, tenant, category and product mapping are immutable");
+async function expectPreserved(f: Fixture) {
   const rows = await db.$queryRaw<Array<{ workspaceId: string; categoryId: string; productId: string | null }>>`
     SELECT "workspaceId"::text AS "workspaceId", "categoryId"::text AS "categoryId", "productId"
     FROM "restaurant_menu_items"
     WHERE "id"=${f.menuItemId}::uuid`;
   expect(rows).toEqual([{ workspaceId: f.workspaceId, categoryId: f.categoryAId, productId: f.productAId }]);
+}
+
+async function expectIdentityFailure(f: Fixture, sql: Promise<unknown>) {
+  await expect(sql).rejects.toThrow("Restaurant-linked menu item identity, tenant, category and product mapping are immutable");
+  await expectPreserved(f);
 }
 
 describe("restaurant V1.70 menu item parent identity", () => {
@@ -80,13 +84,14 @@ describe("restaurant V1.70 menu item parent identity", () => {
     if (db) await db.$disconnect();
   });
 
-  it("rejects moving a referenced menu item to another workspace", async () => {
+  it("rejects moving a referenced menu item to another workspace and preserves the parent", async () => {
     const f = await fixture();
-    await expectIdentityFailure(f, db.$executeRaw`
+    await expect(db.$executeRaw`
       UPDATE "restaurant_menu_items"
       SET "workspaceId"=${f.otherWorkspaceId}::uuid
       WHERE "id"=${f.menuItemId}::uuid
-    `);
+    `).rejects.toThrow("Restaurant menu product must belong to the same workspace");
+    await expectPreserved(f);
   });
 
   it("rejects rewriting a referenced menu item identity", async () => {
