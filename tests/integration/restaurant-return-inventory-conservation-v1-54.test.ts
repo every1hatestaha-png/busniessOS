@@ -52,7 +52,11 @@ describe("restaurant V1.54 return inventory conservation", () => {
 
     await ensureDefaultAccounts(workspaceId);
     const cashGl = await db.account.findUniqueOrThrow({ where: { workspaceId_systemCode: { workspaceId, systemCode: "CASH_IN_HAND" } } });
-    const cashBank = await db.cashBankAccount.create({ data: { workspaceId, accountId: cashGl.id, name: `V154 cash ${runId}`, openingBalance: 1000, currentBalance: 1000, isBank: false, isActive: true } });
+    const cashBank = await db.cashBankAccount.findFirstOrThrow({ where: { workspaceId, accountId: cashGl.id } });
+    await db.cashBankAccount.update({
+      where: { id: cashBank.id, workspaceId },
+      data: { openingBalance: 1000, currentBalance: 1000, isActive: true },
+    });
     cashBankAccountId = cashBank.id;
 
     const [finishedProduct, ingredientProduct] = await Promise.all([
@@ -70,7 +74,7 @@ describe("restaurant V1.54 return inventory conservation", () => {
   }, 60_000);
 
   afterAll(async () => {
-    if (!db) return;
+    if (!db || !workspaceId) return;
     await db.$executeRaw`DELETE FROM "restaurant_return_inventory_movements" WHERE "workspaceId"=${workspaceId}::uuid`;
     await db.$executeRaw`DELETE FROM "restaurant_return_payment_allocations" WHERE "workspaceId"=${workspaceId}::uuid`;
     await db.$executeRaw`DELETE FROM "restaurant_return_items" WHERE "workspaceId"=${workspaceId}::uuid`;
@@ -85,15 +89,17 @@ describe("restaurant V1.54 return inventory conservation", () => {
     await db.$executeRaw`DELETE FROM "restaurant_menu_items" WHERE "workspaceId"=${workspaceId}::uuid`;
     await db.$executeRaw`DELETE FROM "restaurant_menu_categories" WHERE "workspaceId"=${workspaceId}::uuid`;
     await db.inventoryTransaction.deleteMany({ where: { workspaceId } });
-    await db.$executeRaw`DELETE FROM "recipe_items" WHERE "recipeId"=${recipeId}::uuid`;
-    await db.$executeRaw`DELETE FROM "recipes" WHERE "id"=${recipeId}::uuid`;
+    if (recipeId) {
+      await db.$executeRaw`DELETE FROM "recipe_items" WHERE "recipeId"=${recipeId}::uuid`;
+      await db.$executeRaw`DELETE FROM "recipes" WHERE "id"=${recipeId}::uuid`;
+    }
     await db.product.deleteMany({ where: { workspaceId } });
     await db.cashBankAccount.deleteMany({ where: { workspaceId } });
     await db.account.deleteMany({ where: { workspaceId } });
     await db.$executeRaw`DELETE FROM "workspace_modules" WHERE "workspaceId"=${workspaceId}::uuid`;
     await db.auditLog.deleteMany({ where: { workspaceId } });
     await db.workspace.delete({ where: { id: workspaceId } });
-    await db.user.delete({ where: { id: ownerId } });
+    if (ownerId) await db.user.delete({ where: { id: ownerId } });
     await db.$disconnect();
   }, 60_000);
 
