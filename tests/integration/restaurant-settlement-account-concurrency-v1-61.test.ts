@@ -8,6 +8,8 @@ let createRestaurantMenuCategory: typeof import("@/lib/server/restaurant-workspa
 let createRestaurantMenuItem: typeof import("@/lib/server/restaurant-workspace")["createRestaurantMenuItem"];
 let createPosRestaurantOrder: typeof import("@/lib/server/restaurant-workspace")["createPosRestaurantOrder"];
 
+type RawExecutor = Pick<typeof db, "$executeRaw">;
+
 async function fixture() {
   const id = randomUUID();
   const user = await db.user.create({ data: { clerkId: `v161-${id}`, email: `v161-${id}@example.invalid` } });
@@ -39,7 +41,7 @@ async function fixture() {
 }
 
 async function insertCashPayment(
-  tx: typeof db,
+  tx: RawExecutor,
   f: Awaited<ReturnType<typeof fixture>>,
   key: string,
 ) {
@@ -93,7 +95,7 @@ describe("restaurant V1.61 settlement-account reference concurrency", () => {
     const f = await fixture();
     const gate = controlledHold();
     const child = db.$transaction(async tx => {
-      await insertCashPayment(tx as typeof db, f, `v161:${randomUUID()}`);
+      await insertCashPayment(tx, f, `v161:${randomUUID()}`);
       gate.ready();
       await gate.hold;
     }, { timeout: 20_000 });
