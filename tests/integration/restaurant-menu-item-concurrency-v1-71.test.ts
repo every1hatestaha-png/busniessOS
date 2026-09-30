@@ -34,7 +34,7 @@ async function fixture() {
     "subtotal", "discountAmount", "taxAmount", "total"
   ) VALUES (
     ${orderId}::uuid, ${workspaceA.id}::uuid, ${`V171-${id}`}, 'WHATSAPP', 'TAKEAWAY',
-    'PENDING_REVIEW', 'PAID', 50, 0, 0, 50
+    'PENDING_REVIEW', 'UNPAID', 50, 0, 0, 50
   )`;
 
   return {
