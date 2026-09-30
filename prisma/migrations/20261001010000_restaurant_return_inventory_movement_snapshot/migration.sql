@@ -3,14 +3,13 @@
 -- Return/restock quantities are stored at numeric(15,4). Recomputing each partial
 -- return independently from the original consumption snapshot can make several
 -- legitimate partial returns restore more or less inventory than the completed
--- order consumed. Persist the exact movement applied by each return item/product
+-- order consumed. Persist the exact movement applied by each return/order-item/product
 -- so cumulative allocation and later compensating reversal can be exact.
 
 CREATE TABLE "restaurant_return_inventory_movements" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "workspaceId" uuid NOT NULL,
   "restaurantReturnId" uuid NOT NULL REFERENCES "restaurant_returns"("id") ON DELETE RESTRICT,
-  "restaurantReturnItemId" uuid NOT NULL REFERENCES "restaurant_return_items"("id") ON DELETE RESTRICT,
   "restaurantOrderItemId" uuid NOT NULL REFERENCES "restaurant_order_items"("id") ON DELETE RESTRICT,
   "productId" text NOT NULL,
   "warehouseId" uuid,
@@ -19,7 +18,8 @@ CREATE TABLE "restaurant_return_inventory_movements" (
   "createdAt" timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT "restaurant_return_inventory_movements_quantity_nonzero" CHECK ("quantity" <> 0),
   CONSTRAINT "restaurant_return_inventory_movements_unit_cost_nonnegative" CHECK ("unitCost" >= 0),
-  CONSTRAINT "restaurant_return_inventory_movements_item_product_unique" UNIQUE ("restaurantReturnItemId", "productId")
+  CONSTRAINT "restaurant_return_inventory_movements_item_product_unique"
+    UNIQUE ("restaurantReturnId", "restaurantOrderItemId", "productId")
 );
 
 CREATE INDEX "restaurant_return_inventory_movements_return_idx"
@@ -32,13 +32,12 @@ CREATE INDEX "restaurant_return_inventory_movements_order_item_product_idx"
 -- quantity with opposite polarity. This preserves historical truth rather than
 -- retroactively reallocating old movements.
 INSERT INTO "restaurant_return_inventory_movements" (
-  "workspaceId", "restaurantReturnId", "restaurantReturnItemId",
-  "restaurantOrderItemId", "productId", "warehouseId", "quantity", "unitCost", "createdAt"
+  "workspaceId", "restaurantReturnId", "restaurantOrderItemId",
+  "productId", "warehouseId", "quantity", "unitCost", "createdAt"
 )
 SELECT
   rri."workspaceId",
   rri."restaurantReturnId",
-  rri."id",
   rri."restaurantOrderItemId",
   ric."productId",
   ric."warehouseId",
@@ -61,28 +60,30 @@ INNER JOIN "restaurant_inventory_consumptions" ric
  AND ric."restaurantOrderItemId" = rri."restaurantOrderItemId"
 WHERE rri."restocked" = true
   AND ROUND(ric."quantity" * (ABS(rri."quantity") / roi."quantity"), 4) > 0
-ON CONFLICT ("restaurantReturnItemId", "productId") DO NOTHING;
+ON CONFLICT ("restaurantReturnId", "restaurantOrderItemId", "productId") DO NOTHING;
 
 CREATE OR REPLACE FUNCTION enforce_restaurant_return_inventory_movement_parent()
 RETURNS trigger AS $$
 DECLARE
   parent_workspace uuid;
-  parent_return uuid;
-  parent_order_item uuid;
-  parent_reversal boolean;
   parent_order uuid;
+  parent_reversal boolean;
 BEGIN
-  SELECT rri."workspaceId", rri."restaurantReturnId", rri."restaurantOrderItemId", rri."isReversal", rr."restaurantOrderId"
-    INTO parent_workspace, parent_return, parent_order_item, parent_reversal, parent_order
-  FROM "restaurant_return_items" rri
-  INNER JOIN "restaurant_returns" rr ON rr."id" = rri."restaurantReturnId"
-  WHERE rri."id" = NEW."restaurantReturnItemId";
+  SELECT rr."workspaceId", rr."restaurantOrderId", rr."isReversal"
+    INTO parent_workspace, parent_order, parent_reversal
+  FROM "restaurant_returns" rr
+  WHERE rr."id" = NEW."restaurantReturnId";
 
-  IF parent_workspace IS NULL
-     OR parent_workspace IS DISTINCT FROM NEW."workspaceId"
-     OR parent_return IS DISTINCT FROM NEW."restaurantReturnId"
-     OR parent_order_item IS DISTINCT FROM NEW."restaurantOrderItemId" THEN
+  IF parent_workspace IS NULL OR parent_workspace IS DISTINCT FROM NEW."workspaceId" THEN
     RAISE EXCEPTION 'Restaurant return inventory movement parent is invalid';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM "restaurant_order_items" roi
+    WHERE roi."id" = NEW."restaurantOrderItemId"
+      AND roi."restaurantOrderId" = parent_order
+  ) THEN
+    RAISE EXCEPTION 'Restaurant return inventory movement order item is invalid';
   END IF;
 
   IF (NOT parent_reversal AND NEW."quantity" <= 0)
