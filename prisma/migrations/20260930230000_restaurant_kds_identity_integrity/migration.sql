@@ -2,6 +2,8 @@
 -- tenant/document/table identity later can detach historical KDS evidence from the
 -- order/table that produced it. Legacy sales-linked tickets also need an explicit
 -- same-workspace parent guard because salesOrderId is not a composite tenant FK.
+-- Legacy sales_orders uses text IDs/workspace IDs, while kitchen_tickets stores
+-- these parent references as uuid, so compare with explicit casts.
 
 CREATE OR REPLACE FUNCTION enforce_restaurant_kitchen_ticket_identity_integrity()
 RETURNS trigger AS $$
@@ -25,8 +27,8 @@ BEGIN
      AND NOT EXISTS (
        SELECT 1
        FROM "sales_orders" so
-       WHERE so."id" = NEW."salesOrderId"
-         AND so."workspaceId" = NEW."workspaceId"
+       WHERE so."id"::uuid = NEW."salesOrderId"
+         AND so."workspaceId"::uuid = NEW."workspaceId"
      ) THEN
     RAISE EXCEPTION 'Restaurant kitchen ticket sales order must belong to the same workspace';
   END IF;
