@@ -4,7 +4,8 @@
     "deploymentEnabled": {
       "architecture/restaurant-return-conservation-regression-v1-55": false,
       "architecture/restaurant-stock-concurrency-v1-56": false,
-      "architecture/restaurant-return-reversal-order-conservation-v1-57": false
+      "architecture/restaurant-return-reversal-order-conservation-v1-57": false,
+      "architecture/restaurant-parent-identity-integrity-v1-58": false
     }
   }
 }
