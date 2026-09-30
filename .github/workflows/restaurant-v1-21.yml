@@ -1,6 +1,9 @@
 name: Restaurant V1.21 order tenant immutability gate
 
 on:
+  push:
+    branches:
+      - architecture/restaurant-order-tenant-immutability-v1-21
   pull_request:
     branches:
       - architecture/restaurant-order-delete-integrity-v1-20
