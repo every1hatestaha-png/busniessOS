@@ -93,7 +93,6 @@ describe("restaurant V1.20 order and item delete integrity", () => {
       WHERE "id"=${committedOrderId}::uuid
     `;
 
-    await db.$executeRawUnsafe(`DROP ROLE IF EXISTS ${appRole}`);
     await db.$executeRawUnsafe(`CREATE ROLE ${appRole} NOLOGIN`);
     await db.$executeRawUnsafe(`GRANT USAGE ON SCHEMA public TO ${appRole}`);
     await db.$executeRawUnsafe(
@@ -113,7 +112,8 @@ describe("restaurant V1.20 order and item delete integrity", () => {
     await db.auditLog.deleteMany({ where: { workspaceId } });
     await db.workspace.delete({ where: { id: workspaceId } });
     await db.user.delete({ where: { id: userId } });
-    await db.$executeRawUnsafe(`DROP ROLE IF EXISTS ${appRole}`);
+    await db.$executeRawUnsafe(`DROP OWNED BY ${appRole}`);
+    await db.$executeRawUnsafe(`DROP ROLE ${appRole}`);
     await db.$disconnect();
   }, 60_000);
 
