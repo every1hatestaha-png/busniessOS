@@ -9,22 +9,30 @@ const orderTableId = randomUUID();
 const kitchenTableId = randomUUID();
 const freeTableId = randomUUID();
 const orderId = randomUUID();
+let userId = "";
 
 describe("restaurant V1.66 table parent identity", () => {
   beforeAll(async () => {
     ({ db } = await import("@/lib/server/db"));
+    const user = await db.user.create({
+      data: { clerkId: `v166-${orderId}`, email: `v166-${orderId}@example.invalid` },
+    });
+    userId = user.id;
     await db.workspace.createMany({ data: [
       { id: workspaceA, name: `V166 A ${workspaceA}`, vertical: "LEGACY" },
       { id: workspaceB, name: `V166 B ${workspaceB}`, vertical: "LEGACY" },
     ] });
+    await db.workspaceMember.create({
+      data: { workspaceId: workspaceA, userId, role: "OWNER" },
+    });
     await db.$executeRaw`INSERT INTO "restaurant_tables" ("id", "workspaceId", "name", "capacity", "area", "status") VALUES
       (${orderTableId}::uuid, ${workspaceA}::uuid, 'V166 Order Table', 4, 'Hall', 'OCCUPIED'),
       (${kitchenTableId}::uuid, ${workspaceA}::uuid, 'V166 Kitchen Table', 2, 'Patio', 'OCCUPIED'),
       (${freeTableId}::uuid, ${workspaceA}::uuid, 'V166 Free Table', 2, 'Hall', 'AVAILABLE')`;
     await db.$executeRaw`INSERT INTO "restaurant_orders" (
-      "id", "workspaceId", "orderNumber", "source", "fulfillmentType", "status", "restaurantTableId"
+      "id", "workspaceId", "orderNumber", "source", "fulfillmentType", "status", "restaurantTableId", "createdById"
     ) VALUES (
-      ${orderId}::uuid, ${workspaceA}::uuid, ${`V166-${orderId.slice(0, 8)}`}, 'POS', 'DINE_IN', 'PREPARING', ${orderTableId}::uuid
+      ${orderId}::uuid, ${workspaceA}::uuid, ${`V166-${orderId.slice(0, 8)}`}, 'POS', 'DINE_IN', 'PREPARING', ${orderTableId}::uuid, ${userId}
     )`;
     await db.$executeRaw`INSERT INTO "kitchen_tickets" (
       "workspaceId", "restaurantTableId", "ticketNumber", "status"
