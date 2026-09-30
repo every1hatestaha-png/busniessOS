@@ -10,7 +10,8 @@
       "architecture/restaurant-settlement-account-parent-v1-60": false,
       "architecture/restaurant-settlement-account-concurrency-v1-61": false,
       "architecture/restaurant-settlement-ledger-parent-v1-62": false,
-      "architecture/restaurant-settlement-ledger-concurrency-v1-63": false
+      "architecture/restaurant-settlement-ledger-concurrency-v1-63": false,
+      "architecture/restaurant-warehouse-parent-v1-64": false
     }
   }
 }
