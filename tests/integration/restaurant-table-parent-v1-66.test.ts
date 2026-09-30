@@ -30,9 +30,9 @@ describe("restaurant V1.66 table parent identity", () => {
       (${kitchenTableId}::uuid, ${workspaceA}::uuid, 'V166 Kitchen Table', 2, 'Patio', 'OCCUPIED'),
       (${freeTableId}::uuid, ${workspaceA}::uuid, 'V166 Free Table', 2, 'Hall', 'AVAILABLE')`;
     await db.$executeRaw`INSERT INTO "restaurant_orders" (
-      "id", "workspaceId", "orderNumber", "source", "fulfillmentType", "status", "restaurantTableId", "createdById"
+      "id", "workspaceId", "orderNumber", "source", "fulfillmentType", "status", "paymentStatus", "restaurantTableId", "createdById"
     ) VALUES (
-      ${orderId}::uuid, ${workspaceA}::uuid, ${`V166-${orderId.slice(0, 8)}`}, 'POS', 'DINE_IN', 'PREPARING', ${orderTableId}::uuid, ${userId}
+      ${orderId}::uuid, ${workspaceA}::uuid, ${`V166-${orderId.slice(0, 8)}`}, 'POS', 'DINE_IN', 'PREPARING', 'PAID', ${orderTableId}::uuid, ${userId}
     )`;
     await db.$executeRaw`INSERT INTO "kitchen_tickets" (
       "workspaceId", "restaurantTableId", "ticketNumber", "status"
