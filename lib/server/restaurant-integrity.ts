@@ -25,6 +25,7 @@ import {
   type RestaurantOrderStatus,
   type RestaurantPaymentStatus,
 } from "@/lib/server/restaurant-workspace";
+import { resolveRestaurantPaymentCashShift } from "@/lib/server/restaurant-payment-cash-shift";
 import { releaseRestaurantTableIfSettled } from "@/lib/server/restaurant-table-settlement";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 
@@ -497,6 +498,8 @@ export async function recordRestaurantPayment(
     });
     if (!cashBank) throw new IndustryDomainError("NOT_FOUND", "Cash or bank account is unavailable in this workspace.");
 
+    const cashShiftId = await resolveRestaurantPaymentCashShift(tx, context.workspaceId, input.method);
+
     const currentlyPaid = await activePaymentTotal(tx, context.workspaceId, order.id);
     if (currentlyPaid.plus(amount).gt(order.total)) {
       throw new IndustryDomainError("INVALID_STATE", "Restaurant payment exceeds the outstanding order balance.");
@@ -504,10 +507,11 @@ export async function recordRestaurantPayment(
 
     const rows = await tx.$queryRaw<Array<{ id: string }>>`
       INSERT INTO "restaurant_payments" (
-        "workspaceId", "restaurantOrderId", "cashBankAccountId", "method", "amount", "reference", "notes", "idempotencyKey", "createdById"
+        "workspaceId", "restaurantOrderId", "cashBankAccountId", "method", "amount", "reference", "notes", "idempotencyKey", "createdById", "cashShiftId"
       ) VALUES (
         ${context.workspaceId}::uuid, ${order.id}::uuid, ${cashBank.id}, ${input.method}, ${amount},
-        ${cleanOptional(input.reference, 120)}, ${cleanOptional(input.notes, 500)}, ${idempotencyKey}, ${context.userId ?? null}
+        ${cleanOptional(input.reference, 120)}, ${cleanOptional(input.notes, 500)}, ${idempotencyKey}, ${context.userId ?? null},
+        ${cashShiftId}::uuid
       )
       RETURNING "id"::text AS "id"
     `;
