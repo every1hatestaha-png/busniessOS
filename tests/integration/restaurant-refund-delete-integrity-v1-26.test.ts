@@ -43,6 +43,9 @@ describe("restaurant V1.26 refund delete integrity", () => {
       cashIds.push(accounts.find((a) => a.id === created.id)!.cashBankAccountId);
     }
     [cashA, cashB] = cashIds;
+    const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+    await openRestaurantCashShiftSafely(actor(workspaceA), 0, "V1.84 refund delete shift A");
+    await openRestaurantCashShiftSafely(actor(workspaceB), 0, "V1.84 refund delete shift B");
     await db.$executeRawUnsafe(`CREATE ROLE ${appRole} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT`);
     await db.$executeRawUnsafe(`GRANT USAGE ON SCHEMA public TO ${appRole}`);
     await db.$executeRawUnsafe(`GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${appRole}`);
