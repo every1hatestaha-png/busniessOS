@@ -42,6 +42,9 @@ describe("restaurant V1.25 immutable refund financial identity", () => {
       cashIds.push(accounts.find((a) => a.id === created.id)!.cashBankAccountId);
     }
     [cashA, cashB] = cashIds;
+    const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+    await openRestaurantCashShiftSafely(actor(workspaceA), 0, "V1.84 refund snapshot shift A");
+    await openRestaurantCashShiftSafely(actor(workspaceB), 0, "V1.84 refund snapshot shift B");
   }, 60_000);
 
   afterAll(async () => {
