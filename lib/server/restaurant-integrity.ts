@@ -549,6 +549,7 @@ export async function recordRestaurantPayment(
         method: input.method,
         paymentStatus: nextPayment.status,
         accountingPosted: Boolean(order.accountingPostedAt),
+        cashShiftId,
       },
     });
     return { id: payment.id, idempotent: false as const };
