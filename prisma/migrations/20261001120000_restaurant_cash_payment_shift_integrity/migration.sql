@@ -48,7 +48,7 @@ BEGIN
 
   RETURN NEW;
 END;
-$;
+$$;
 
 DROP TRIGGER IF EXISTS "restaurant_payments_cash_shift_guard" ON "restaurant_payments";
 CREATE TRIGGER "restaurant_payments_cash_shift_guard"
