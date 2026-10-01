@@ -128,8 +128,13 @@ export async function closeRestaurantCashShiftFromLedger(
        AND cba."accountId"=gle."accountId"
       WHERE gle."workspaceId"=${context.workspaceId}
         AND cba."isBank"=false
-        AND gle."createdAt">=${shift.openedAt}
-        AND gle."createdAt"<=CURRENT_TIMESTAMP
+        AND gle."createdAt">=(
+          SELECT cs."openedAt" AT TIME ZONE current_setting('TimeZone')
+          FROM "cash_shifts" cs
+          WHERE cs."id"=${shift.id}::uuid
+            AND cs."workspaceId"=${context.workspaceId}::uuid
+        )
+        AND gle."createdAt"<=(CURRENT_TIMESTAMP AT TIME ZONE current_setting('TimeZone'))
     `;
     const ledger = ledgerRows[0]!;
     const openingCash = money(shift.openingCash);
