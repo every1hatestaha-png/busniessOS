@@ -148,6 +148,7 @@ export async function reverseRestaurantItemReturn(
     }
 
     const expectedAutoVoidReason = `Fully refunded through restaurant item returns (${original.returnNumber})`;
+    const paymentIdsToReactivate: string[] = [];
     for (const allocation of allocations) {
       if (!allocation.postedAt) {
         throw new IndustryDomainError("INVALID_STATE", "An original restaurant payment is no longer posted. Automatic reversal is unsafe.");
@@ -159,13 +160,7 @@ export async function reverseRestaurantItemReturn(
             "An original restaurant payment was voided for another reason. Restore that payment state before reversing this return.",
           );
         }
-        await tx.$executeRaw`
-          UPDATE "restaurant_payments"
-          SET "voidedAt"=NULL, "voidedById"=NULL, "voidReason"=NULL
-          WHERE "id"=${allocation.restaurantPaymentId}::uuid
-            AND "workspaceId"=${context.workspaceId}::uuid
-            AND "voidReason"=${expectedAutoVoidReason}
-        `;
+        paymentIdsToReactivate.push(allocation.restaurantPaymentId);
       }
     }
 
@@ -300,6 +295,19 @@ export async function reverseRestaurantItemReturn(
           ${context.workspaceId}::uuid, ${reversalId}::uuid, ${allocation.restaurantPaymentId}::uuid,
           ${new Prisma.Decimal(allocation.amount).negated()}, true
         )
+      `;
+    }
+
+    // Reactivate automatically-voided receipts only after the compensating return
+    // and allocation evidence exists in this transaction. The database guard uses
+    // those immutable rows to distinguish this workflow from an unaudited reopen.
+    for (const paymentId of paymentIdsToReactivate) {
+      await tx.$executeRaw`
+        UPDATE "restaurant_payments"
+        SET "voidedAt"=NULL, "voidedById"=NULL, "voidReason"=NULL
+        WHERE "id"=${paymentId}::uuid
+          AND "workspaceId"=${context.workspaceId}::uuid
+          AND "voidReason"=${expectedAutoVoidReason}
       `;
     }
 

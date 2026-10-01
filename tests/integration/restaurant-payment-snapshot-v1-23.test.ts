@@ -123,7 +123,7 @@ describe("restaurant V1.23 immutable receipt financial identity", () => {
     });
   }
 
-  it("preserves idempotent collection, unchanged snapshot updates, notes and real refund reversal", async () => {
+  it("preserves idempotent collection, unchanged snapshot updates and real refund reversal", async () => {
     const { createRestaurantMenuCategory, createRestaurantMenuItem, createPosRestaurantOrder } = await import("@/lib/server/restaurant-workspace");
     const { transitionRestaurantOrderWithIntegrity } = await import("@/lib/server/restaurant-integrity");
     const product = await db.product.create({ data: { workspaceId: workspaceA, name: "Refund meal", sku: `V123-${runId}`, stockQuantity: 20, costPrice: 100, sellingPrice: 500 } });
@@ -136,9 +136,9 @@ describe("restaurant V1.23 immutable receipt financial identity", () => {
     const retry = await recordRestaurantPaymentAtCollection(actor(), payment.input);
     expect(retry).toMatchObject({ id: payment.id, idempotent: true });
     expect(await db.generalLedgerEntry.count({ where: { sourceId: payment.id } })).toBe(count);
-    await db.$executeRaw`
+    await expect(db.$executeRaw`
       UPDATE "restaurant_payments" SET "workspaceId"=${workspaceA}::uuid, "amount"=200, "notes"='Receipt note corrected' WHERE "id"=${payment.id}::uuid
-    `;
+    `).rejects.toThrow("Restaurant payment evidence snapshot is immutable");
     expect(await stored(payment.id)).toEqual(before);
     for (const status of ["PREPARING", "READY", "COMPLETED"] as const) {
       await transitionRestaurantOrderWithIntegrity(actor(), payment.orderId, status);
