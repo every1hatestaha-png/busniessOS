@@ -48,9 +48,11 @@ jobs:
       - name: Confirmed blocker and cash-shift regressions
         run: >
           npx vitest run
+          tests/integration/restaurant-cash-payment-shift-v1-84.test.ts
           tests/integration/restaurant-adversarial-reproduction-v1-80.test.ts
           tests/integration/restaurant-payment-account-integrity-v1-12.test.ts
           tests/integration/restaurant-payment-terminal-concurrency-v1-29.test.ts
+          tests/integration/restaurant-payment-timing-v1-7.test.ts
           tests/integration/restaurant-cash-shift-v1-5.test.ts
           tests/integration/restaurant-cash-shift-auth-v1-8.test.ts
           tests/integration/restaurant-cash-shift-actor-integrity-v1-18.test.ts
