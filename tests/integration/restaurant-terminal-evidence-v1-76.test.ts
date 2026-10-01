@@ -103,10 +103,12 @@ describe("restaurant V1.76 terminal evidence", () => {
     for (const rewrite of [
       () => db.$executeRaw`UPDATE "kitchen_tickets" SET "notes"='rewritten' WHERE "id"=${ticket.id}::uuid`,
       () => db.$executeRaw`UPDATE "kitchen_tickets" SET "updatedAt"=now() + interval '1 second' WHERE "id"=${ticket.id}::uuid`,
-      () => db.$executeRaw`UPDATE "kitchen_tickets" SET "status"='READY' WHERE "id"=${ticket.id}::uuid`,
     ]) {
       await expect(rewrite()).rejects.toThrow("Terminal restaurant kitchen ticket snapshot is immutable");
     }
+    await expect(db.$executeRaw`
+      UPDATE "kitchen_tickets" SET "status"='READY' WHERE "id"=${ticket.id}::uuid
+    `).rejects.toThrow("Invalid restaurant kitchen ticket status transition from SERVED to READY");
 
     await expect(db.$transaction(async (tx) => {
       await tx.$executeRawUnsafe("SET LOCAL ROLE restaurant_v176_app");

@@ -37,7 +37,7 @@ describe("restaurant V1.66 table parent identity", () => {
     await db.$executeRaw`INSERT INTO "kitchen_tickets" (
       "workspaceId", "restaurantTableId", "ticketNumber", "status"
     ) VALUES (
-      ${workspaceA}::uuid, ${kitchenTableId}::uuid, ${`V166-K-${kitchenTableId.slice(0, 8)}`}, 'PREPARING'
+      ${workspaceA}::uuid, ${kitchenTableId}::uuid, ${`V166-K-${kitchenTableId.slice(0, 8)}`}, 'QUEUED'
     )`;
   });
 

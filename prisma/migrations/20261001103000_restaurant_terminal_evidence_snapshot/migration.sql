@@ -36,7 +36,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS "kitchen_tickets_01_evidence_snapshot_guard" ON "kitchen_tickets";
-CREATE TRIGGER "kitchen_tickets_01_evidence_snapshot_guard"
+DROP TRIGGER IF EXISTS "kitchen_tickets_zz_evidence_snapshot_guard" ON "kitchen_tickets";
+CREATE TRIGGER "kitchen_tickets_zz_evidence_snapshot_guard"
 BEFORE INSERT OR UPDATE ON "kitchen_tickets"
 FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_kitchen_ticket_evidence_snapshot();
 
