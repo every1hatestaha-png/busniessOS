@@ -47,6 +47,7 @@ jobs:
       - name: Restaurant convergence focused integration
         run: >
           npx vitest run
+          tests/integration/restaurant-routing-snapshot-v1-43.test.ts
           tests/integration/restaurant-kds-lifecycle-v1-44.test.ts
           tests/integration/restaurant-kds-timestamp-integrity-v1-45.test.ts
           tests/integration/restaurant-kds-terminal-table-release-v1-46.test.ts
