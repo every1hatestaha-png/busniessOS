@@ -156,6 +156,8 @@ describe("restaurant V1.31 item-return concurrency", () => {
       notes: "",
     });
     cashId = (await getCashBankAccounts(workspaceId)).find((account) => account.id === createdCash.id)!.cashBankAccountId;
+    const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+    await openRestaurantCashShiftSafely(owner(), 0, "V1.84 item-return concurrency shift");
 
     const product = await db.product.create({
       data: {
