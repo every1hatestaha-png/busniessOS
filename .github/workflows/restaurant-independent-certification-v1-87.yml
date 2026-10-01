@@ -205,3 +205,35 @@ jobs:
       - run: npm ci
       - name: Historical pre V1.82 and pre V1.84 upgrade rehearsal
         run: node scripts/restaurant-upgrade-rehearsal-v1-86.cjs
+
+
+  query-plan-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_restaurant_perf
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_restaurant_perf"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_restaurant_perf?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci
+      - name: Deploy migration chain
+        run: npx prisma migrate deploy
+      - name: Synthetic Restaurant query-plan evidence
+        run: node scripts/restaurant-query-plan-audit-v1-87.cjs
