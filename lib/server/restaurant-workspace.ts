@@ -533,12 +533,13 @@ export async function getRestaurantOrder(workspaceId: string, orderId: string) {
   const orders = await db.$queryRaw<Array<{
     id: string; orderNumber: string; source: RestaurantOrderSource; fulfillmentType: RestaurantFulfillmentType; status: RestaurantOrderStatus;
     paymentStatus: RestaurantPaymentStatus; customerName: string | null; customerPhone: string | null; deliveryAddress: string | null;
-    notes: string | null; subtotal: Prisma.Decimal; discountAmount: Prisma.Decimal; taxAmount: Prisma.Decimal; total: Prisma.Decimal; createdAt: Date;
+    tableName: string | null; notes: string | null; subtotal: Prisma.Decimal; discountAmount: Prisma.Decimal; taxAmount: Prisma.Decimal; total: Prisma.Decimal; createdAt: Date;
   }>>`
-    SELECT "id", "orderNumber", "source", "fulfillmentType", "status", "paymentStatus", "customerName", "customerPhone",
-           "deliveryAddress", "notes", "subtotal", "discountAmount", "taxAmount", "total", "createdAt"
-    FROM "restaurant_orders"
-    WHERE "id"=${orderId}::uuid AND "workspaceId"=${workspaceId}::uuid
+    SELECT ro."id", ro."orderNumber", ro."source", ro."fulfillmentType", ro."status", ro."paymentStatus", ro."customerName", ro."customerPhone",
+           ro."deliveryAddress", rt."name" AS "tableName", ro."notes", ro."subtotal", ro."discountAmount", ro."taxAmount", ro."total", ro."createdAt"
+    FROM "restaurant_orders" ro
+    LEFT JOIN "restaurant_tables" rt ON rt."id"=ro."restaurantTableId" AND rt."workspaceId"=ro."workspaceId"
+    WHERE ro."id"=${orderId}::uuid AND ro."workspaceId"=${workspaceId}::uuid
     LIMIT 1
   `;
   const order = orders[0];

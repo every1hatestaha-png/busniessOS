@@ -1,0 +1,91 @@
+name: Restaurant V1.89 print operations gate
+
+on:
+  pull_request:
+    branches:
+      - architecture/restaurant-query-performance-v1-88
+
+permissions:
+  contents: read
+
+jobs:
+  certification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_restaurant_v189
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_restaurant_v189"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_restaurant_v189?sslmode=disable
+      RUN_INTEGRATION_TESTS: "true"
+      NODE_ENV: test
+      V188_BASE: 0af50879ae6295efdad2ad57faa54cbf55ff2289
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - name: Release safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$V188_BASE" HEAD
+          git diff --check "$V188_BASE...HEAD"
+          git diff --quiet "$V188_BASE...HEAD" -- .github/workflows/main_munshios.yml
+          node <<'NODE'
+          const fs=require("node:fs");
+          const cfg=JSON.parse(fs.readFileSync("vercel.json","utf8"));
+          if (cfg.git?.deploymentEnabled?.["architecture/restaurant-print-operations-v1-89"] !== false) {
+            throw new Error("V1.89 Vercel deployment must remain disabled.");
+          }
+          NODE
+      - run: npm ci
+      - run: npm audit --audit-level=moderate
+      - run: npx prisma validate
+      - name: Migration chain
+        run: |
+          npx prisma migrate deploy
+          npx prisma migrate status
+      - name: Print operations contracts
+        run: npx vitest run tests/unit/restaurant-print-operations-v1-89.test.ts tests/unit/thermal-print.test.ts tests/unit/print-routing.test.ts tests/unit/print-ux-contract.test.ts
+      - name: Tenant and Restaurant regressions
+        run: >
+          npx vitest run
+          tests/integration/restaurant-order-table-tenant-integrity-v1-41.test.ts
+          tests/integration/restaurant-kitchen-ticket-order-tenant-integrity-v1-42.test.ts
+          tests/integration/restaurant-kitchen-ticket-table-tenant-integrity-v1-43.test.ts
+          tests/integration/restaurant-*.test.ts
+          tests/unit/restaurant-*.test.ts
+      - name: Full application suite
+        run: npm test
+      - name: Finance
+        run: npm run test:finance
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Changed-file lint
+        run: >
+          npx eslint
+          "app/(dashboard)/restaurant/orders/page.tsx"
+          "app/(dashboard)/restaurant/orders/[id]/receipt/print/page.tsx"
+          "app/(dashboard)/restaurant/orders/[id]/kot/print/page.tsx"
+          components/documents/print-on-load.tsx
+          lib/server/restaurant-workspace.ts
+          tests/unit/restaurant-print-operations-v1-89.test.ts
+      - name: Production web build
+        env:
+          NODE_ENV: production
+        run: npm run build:web
