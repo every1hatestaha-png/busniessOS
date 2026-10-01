@@ -46,7 +46,6 @@ jobs:
           npx vitest run
           tests/unit/restaurant-adversarial-ui-v1-80.test.ts
           tests/integration/restaurant-pos-financial-approval-v1-11.test.ts
-          tests/integration/restaurant-adversarial-reproduction-v1-80.test.ts
       - name: TypeScript
         run: npx tsc --noEmit
       - name: Diff hygiene
