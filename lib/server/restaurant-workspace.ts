@@ -174,7 +174,7 @@ async function insertRestaurantOrder(
       ${cleanOptional(input.deliveryAddress, 500)}, ${cleanOptional(input.notes, 500)}, ${subtotal}, ${discountAmount}, ${taxAmount}, ${total},
       ${options.externalReference ?? null}, ${options.actorId ?? null},
       ${options.initialStatus === "CONFIRMED" ? options.actorId ?? null : null},
-      ${options.initialStatus === "CONFIRMED" ? new Date() : null}
+      CASE WHEN ${options.initialStatus === "CONFIRMED"} THEN CURRENT_TIMESTAMP ELSE NULL END
     )
     RETURNING "id", "orderNumber", "status", "total"
   `;
