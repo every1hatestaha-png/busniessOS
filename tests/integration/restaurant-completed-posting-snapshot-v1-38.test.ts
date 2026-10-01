@@ -75,6 +75,8 @@ describe("restaurant V1.38 completed posting snapshot", () => {
       notes: "",
     });
     cashId = (await getCashBankAccounts(workspaceId)).find((row) => row.id === cash.id)!.cashBankAccountId;
+    const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+    await openRestaurantCashShiftSafely(actor(), 0, "V1.84 completed-posting shift");
 
     const product = await db.product.create({
       data: {
