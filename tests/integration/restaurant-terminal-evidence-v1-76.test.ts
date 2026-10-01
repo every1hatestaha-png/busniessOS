@@ -69,7 +69,7 @@ describe("restaurant V1.76 terminal evidence", () => {
       END
       $$
     `);
-    await db.$executeRawUnsafe('GRANT DELETE ON TABLE "kitchen_tickets" TO restaurant_v176_app');
+    await db.$executeRawUnsafe('GRANT SELECT, DELETE ON TABLE "kitchen_tickets" TO restaurant_v176_app');
   }, 60_000);
 
   afterAll(async () => {
