@@ -18,7 +18,7 @@ export default async function RestaurantPosPage() {
         categories={menu.categories.filter((category) => category.isActive)}
         items={menu.items.filter((item) => item.isActive)}
         tables={tables.filter((table) => table.status !== "INACTIVE").map((table) => ({ id: table.id, name: table.name, status: table.status }))}
-        canDiscount={role === "OWNER" || role === "ADMIN" || role === "MANAGER"}
+        canFinancialOverride={role === "OWNER" || role === "ADMIN" || role === "MANAGER"}
       />
     </div>
   );

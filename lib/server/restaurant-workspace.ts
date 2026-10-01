@@ -316,8 +316,9 @@ export async function setRestaurantMenuItemAvailability(context: IndustryContext
 
 export async function createPosRestaurantOrder(context: IndustryContext, input: RestaurantOrderInput) {
   await requireWorkspaceModule(context.workspaceId, "restaurant");
-  if ((input.discountAmount ?? 0) > 0 && !managerRoles.has(context.role)) {
-    throw new IndustryDomainError("PERMISSION_DENIED", "Manager approval is required for restaurant discounts.");
+  const hasFinancialOverride = (input.discountAmount ?? 0) > 0 || (input.taxAmount ?? 0) > 0;
+  if (hasFinancialOverride && !managerRoles.has(context.role)) {
+    throw new IndustryDomainError("PERMISSION_DENIED", "Manager approval is required for POS financial overrides");
   }
   return db.$transaction(async (tx) => {
     const order = await insertRestaurantOrder(tx, context.workspaceId, "POS", input, {
