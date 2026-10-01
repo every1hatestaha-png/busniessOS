@@ -50,7 +50,7 @@ RETURNS boolean AS $$
     )
     ELSE false
   END;
-$$ LANGUAGE sql STABLE;
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public;
 
 CREATE OR REPLACE FUNCTION enforce_restaurant_general_ledger_evidence_snapshot()
 RETURNS trigger AS $$
@@ -120,7 +120,7 @@ RETURNS boolean AS $$
     )
     ELSE false
   END;
-$$ LANGUAGE sql STABLE;
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public;
 
 CREATE OR REPLACE FUNCTION enforce_restaurant_inventory_evidence_snapshot()
 RETURNS trigger AS $$
