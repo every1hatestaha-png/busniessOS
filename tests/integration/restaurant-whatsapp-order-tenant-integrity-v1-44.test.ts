@@ -44,7 +44,12 @@ describe("restaurant V1.44 WhatsApp message order tenant integrity", () => {
 
   afterAll(async () => {
     if (!db) return;
-    await db.$executeRaw`DELETE FROM "restaurant_whatsapp_messages" WHERE "externalMessageId" LIKE ${`V144-%-${runId}`}`;
+    // Test-only teardown: production keeps WhatsApp intake evidence append-only.
+    // Bypass user triggers only inside this isolated cleanup transaction.
+    await db.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL session_replication_role = replica");
+      await tx.$executeRaw`DELETE FROM "restaurant_whatsapp_messages" WHERE "externalMessageId" LIKE ${`V144-%-${runId}`}`;
+    });
     await db.$executeRaw`DELETE FROM "restaurant_orders" WHERE "id" IN (${orderA}::uuid, ${orderB}::uuid)`;
     await db.workspace.deleteMany({ where: { id: { in: [workspaceA, workspaceB] } } });
     await db.$disconnect();
