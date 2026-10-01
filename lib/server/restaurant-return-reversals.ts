@@ -8,6 +8,7 @@ import { writeAudit } from "@/lib/server/audit";
 import { IndustryDomainError, requireWorkspaceModule, type IndustryContext } from "@/lib/server/industry-modules";
 import { applyManagedWarehouseStockDelta, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
+import { resolveRestaurantCashMovementShift } from "@/lib/server/restaurant-payment-cash-shift";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MANAGER_ROLES = new Set(["OWNER", "ADMIN", "MANAGER"]);
@@ -268,6 +269,11 @@ export async function reverseRestaurantItemReturn(
       `;
     }
 
+    const cashShiftIds = new Set<string>();
+    for (const accountId of new Set(allocations.map((allocation) => allocation.cashBankAccountId))) {
+      const cashShiftId = await resolveRestaurantCashMovementShift(tx, context.workspaceId, accountId);
+      if (cashShiftId) cashShiftIds.add(cashShiftId);
+    }
     const now = new Date();
     await reverseGeneralLedgerEntries(tx, {
       workspaceId: context.workspaceId,
@@ -319,6 +325,7 @@ export async function reverseRestaurantItemReturn(
       entityId: reversalId,
       metadata: {
         reversalOfId: original.id,
+        cashShiftIds: [...cashShiftIds],
         originalReturnNumber: original.returnNumber,
         reversalNumber,
         reason,

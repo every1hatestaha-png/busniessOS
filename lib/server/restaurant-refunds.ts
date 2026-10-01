@@ -11,6 +11,7 @@ import {
   type IndustryContext,
 } from "@/lib/server/industry-modules";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
+import { resolveRestaurantCashMovementShift } from "@/lib/server/restaurant-payment-cash-shift";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MANAGER_ROLES = new Set(["OWNER", "ADMIN", "MANAGER"]);
@@ -208,6 +209,7 @@ export async function refundRestaurantPayment(
       );
     }
 
+    const cashShiftId = await resolveRestaurantCashMovementShift(tx, context.workspaceId, payment.cashBankAccountId);
     const refundRows = await tx.$queryRaw<Array<{ id: string }>>`
       INSERT INTO "restaurant_refunds" (
         "workspaceId", "restaurantOrderId", "restaurantPaymentId", "cashBankAccountId",
@@ -271,6 +273,7 @@ export async function refundRestaurantPayment(
         orderId: payment.restaurantOrderId,
         orderNumber: payment.orderNumber,
         paymentId: payment.paymentId,
+        cashShiftId,
         amount: payment.amount.toFixed(2),
         reason,
         paymentStatus: next.status,

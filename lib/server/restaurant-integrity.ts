@@ -25,7 +25,7 @@ import {
   type RestaurantOrderStatus,
   type RestaurantPaymentStatus,
 } from "@/lib/server/restaurant-workspace";
-import { assertRestaurantPaymentAccountKind, resolveRestaurantPaymentCashShift } from "@/lib/server/restaurant-payment-cash-shift";
+import { assertRestaurantPaymentAccountKind, resolveRestaurantPaymentCashShift, resolveRestaurantCashMovementShift } from "@/lib/server/restaurant-payment-cash-shift";
 import { releaseRestaurantTableIfSettled } from "@/lib/server/restaurant-table-settlement";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 
@@ -587,7 +587,20 @@ export async function voidRestaurantPayment(context: IndustryContext, paymentId:
     if (!payment) throw new IndustryDomainError("NOT_FOUND", "Restaurant payment was not found.");
     if (payment.voidedAt) return { id: payment.id, alreadyVoided: true as const };
 
+    const allocations = await tx.$queryRaw<Array<{ total: Prisma.Decimal }>>`
+      SELECT COALESCE(SUM("amount"), 0)::numeric AS "total"
+      FROM "restaurant_return_payment_allocations"
+      WHERE "workspaceId"=${context.workspaceId}::uuid
+        AND "restaurantPaymentId"=${payment.id}::uuid
+    `;
+    if (new Prisma.Decimal(allocations[0]?.total ?? 0).gt(0)) {
+      throw new IndustryDomainError("INVALID_STATE", "Reverse existing item-return refund allocations before voiding this payment.");
+    }
+
     const reversalDate = new Date();
+    const cashShiftId = payment.postedAt
+      ? await resolveRestaurantCashMovementShift(tx, context.workspaceId, payment.cashBankAccountId)
+      : null;
     if (payment.postedAt) {
       await reverseGeneralLedgerEntries(tx, {
         workspaceId: context.workspaceId,
@@ -621,6 +634,7 @@ export async function voidRestaurantPayment(context: IndustryContext, paymentId:
         amount: payment.amount.toString(),
         reason: cleanReason,
         reversedAccounting: Boolean(payment.postedAt),
+        cashShiftId,
         paymentStatus: nextPayment.status,
       },
     });

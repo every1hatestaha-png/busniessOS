@@ -11,6 +11,7 @@ const BANK_REQUIRED_METHODS = new Set<PaymentMethod>([
   "MOBILE_WALLET",
   "JAZZCASH",
   "EASYPAISA",
+  "OTHER",
 ]);
 
 export function assertRestaurantPaymentAccountKind(method: PaymentMethod, isBank: boolean) {
@@ -50,4 +51,21 @@ export async function resolveRestaurantPaymentCashShift(
     );
   }
   return shift.id;
+}
+
+/** Lock the current drawer for a refund, void, or compensating return event.
+ * Use account kind, including historical OTHER receipts, rather than its label.
+ * The original receipt's closed shift must never receive a new cash movement.
+ */
+export async function resolveRestaurantCashMovementShift(
+  tx: Prisma.TransactionClient,
+  workspaceId: string,
+  cashBankAccountId: string,
+) {
+  const account = await tx.cashBankAccount.findFirst({
+    where: { id: cashBankAccountId, workspaceId },
+    select: { isBank: true },
+  });
+  if (!account) throw new IndustryDomainError("NOT_FOUND", "Restaurant settlement account was not found.");
+  return resolveRestaurantPaymentCashShift(tx, workspaceId, account.isBank ? "BANK_TRANSFER" : "CASH");
 }

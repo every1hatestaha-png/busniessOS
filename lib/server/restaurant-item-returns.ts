@@ -16,6 +16,7 @@ import {
   ManagedWarehouseStockError,
 } from "@/lib/server/managed-warehouse-stock";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
+import { resolveRestaurantCashMovementShift } from "@/lib/server/restaurant-payment-cash-shift";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MANAGER_ROLES = new Set(["OWNER", "ADMIN", "MANAGER"]);
@@ -309,7 +310,7 @@ export async function createRestaurantItemReturn(context: IndustryContext, input
       return prior.plus(requested).equals(original.quantity);
     });
 
-    let returnSubtotal = money(lines.reduce((sum, line) => sum.plus(line.subtotal), ZERO));
+    const returnSubtotal = money(lines.reduce((sum, line) => sum.plus(line.subtotal), ZERO));
     let returnDiscount = money(lines.reduce((sum, line) => sum.plus(line.discountAmount), ZERO));
     let returnTax = money(lines.reduce((sum, line) => sum.plus(line.taxAmount), ZERO));
     if (exhaustsOrder && lines.length) {
@@ -399,7 +400,10 @@ export async function createRestaurantItemReturn(context: IndustryContext, input
       include: { account: true },
     });
     const cashById = new Map(cashAccounts.map((account) => [account.id, account]));
+    const cashShiftIds = new Set<string>();
     for (const [cashBankAccountId, needed] of cashNeeded) {
+      const cashShiftId = await resolveRestaurantCashMovementShift(tx, context.workspaceId, cashBankAccountId);
+      if (cashShiftId) cashShiftIds.add(cashShiftId);
       const account = cashById.get(cashBankAccountId);
       if (!account) throw new IndustryDomainError("NOT_FOUND", "An original restaurant cash or bank account is unavailable.");
       if (new Prisma.Decimal(account.currentBalance).lt(needed)) {
@@ -648,6 +652,7 @@ export async function createRestaurantItemReturn(context: IndustryContext, input
           paymentId: allocation.paymentId,
           amount: allocation.amount.toFixed(2),
         })),
+        cashShiftIds: [...cashShiftIds],
       },
     });
 
