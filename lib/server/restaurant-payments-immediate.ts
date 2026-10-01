@@ -231,6 +231,7 @@ export async function recordRestaurantPaymentAtCollection(
         postedAt: postedAt.toISOString(),
         accountingPosted: true,
         collectionTiming: "IMMEDIATE",
+        cashShiftId,
       },
     });
 
