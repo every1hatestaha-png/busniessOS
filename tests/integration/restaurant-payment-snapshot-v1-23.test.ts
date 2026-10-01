@@ -67,6 +67,9 @@ describe("restaurant V1.23 immutable receipt financial identity", () => {
       cashIds.push(accounts.find((a) => a.id === created.id)!.cashBankAccountId);
     }
     [cashA, alternateCashA, cashB] = cashIds;
+    const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+    await openRestaurantCashShiftSafely(actor(workspaceA), 0, "V1.84 payment snapshot shift A");
+    await openRestaurantCashShiftSafely(actor(workspaceB), 0, "V1.84 payment snapshot shift B");
     alternateOrderA = await order(workspaceA);
     alternateOrderB = await order(workspaceB);
   }, 60_000);
