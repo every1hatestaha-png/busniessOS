@@ -108,7 +108,7 @@ describe("restaurant V1.47 KDS identity integrity", () => {
         "workspaceId", "orderNumber", "source", "fulfillmentType", "status", "paymentStatus",
         "subtotal", "discountAmount", "taxAmount", "total"
       ) VALUES (
-        ${workspaceA}::uuid, ${`R-V147-${runId}`}, 'WHATSAPP', 'TAKEAWAY', 'PENDING_REVIEW', 'PAID',
+        ${workspaceA}::uuid, ${`R-V147-${runId}`}, 'WHATSAPP', 'TAKEAWAY', 'PENDING_REVIEW', 'UNPAID',
         0, 0, 0, 0
       ) RETURNING "id"::text
     `;
