@@ -25,7 +25,7 @@ import {
   type RestaurantOrderStatus,
   type RestaurantPaymentStatus,
 } from "@/lib/server/restaurant-workspace";
-import { resolveRestaurantPaymentCashShift } from "@/lib/server/restaurant-payment-cash-shift";
+import { assertRestaurantPaymentAccountKind, resolveRestaurantPaymentCashShift } from "@/lib/server/restaurant-payment-cash-shift";
 import { releaseRestaurantTableIfSettled } from "@/lib/server/restaurant-table-settlement";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 
@@ -494,9 +494,10 @@ export async function recordRestaurantPayment(
 
     const cashBank = await tx.cashBankAccount.findFirst({
       where: { id: input.cashBankAccountId, workspaceId: context.workspaceId, isActive: true },
-      select: { id: true },
+      select: { id: true, isBank: true },
     });
     if (!cashBank) throw new IndustryDomainError("NOT_FOUND", "Cash or bank account is unavailable in this workspace.");
+    assertRestaurantPaymentAccountKind(input.method, cashBank.isBank);
 
     const cashShiftId = await resolveRestaurantPaymentCashShift(tx, context.workspaceId, input.method);
 
