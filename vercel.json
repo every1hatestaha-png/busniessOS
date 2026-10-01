@@ -31,7 +31,8 @@
       "architecture/restaurant-pos-financial-override-v1-83": false,
       "architecture/restaurant-cash-shift-payment-integrity-v1-84": false,
       "architecture/restaurant-final-certification-v1-85": false,
-      "architecture/restaurant-independent-audit-v1-86": false
+      "architecture/restaurant-independent-audit-v1-86": false,
+      "architecture/restaurant-query-performance-v1-88": false
     }
   }
 }
