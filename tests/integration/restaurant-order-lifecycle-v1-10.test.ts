@@ -58,6 +58,8 @@ describe("restaurant V1.10 order lifecycle database guard", () => {
     const cash = await createCashBankAccount(owner(), { name: "Lifecycle Cash", openingBalance: 0, isBank: false, bankName: "", accountTitle: "", accountNumber: "", notes: "" });
     const accounts = await getCashBankAccounts(workspaceId);
     cashBankAccountId = accounts.find((account) => account.id === cash.id)!.cashBankAccountId;
+    const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+    await openRestaurantCashShiftSafely(owner(), 0, "V1.84 lifecycle shift");
     const product = await db.product.create({ data: { workspaceId, name: "Lifecycle Meal", sku: `LC-${runId}`, stockQuantity: 20, costPrice: 100, sellingPrice: 500 } });
     const category = await createRestaurantMenuCategory(owner(), { name: "Lifecycle Menu" });
     const menuItem = await createRestaurantMenuItem(owner(), { categoryId: category.id, productId: product.id, name: "Lifecycle Meal", price: 500 });
