@@ -96,6 +96,9 @@ describe("restaurant workspace v1.1 accounting and stock integrity", () => {
     cashAccountA = accountsA.find((account) => account.id === cashA.id)!.cashBankAccountId;
     bankAccountA = accountsA.find((account) => account.id === bankA.id)!.cashBankAccountId;
     cashAccountB = accountsB.find((account) => account.id === cashB.id)!.cashBankAccountId;
+    const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+    await openRestaurantCashShiftSafely(contextA(), 0, "V1.84 integrity shift A");
+    await openRestaurantCashShiftSafely(contextB(), 0, "V1.84 integrity shift B");
 
     const [finished, ingredient, direct, lowStock] = await Promise.all([
       db.product.create({ data: { workspaceId: workspaceA, name: "Recipe Burger", sku: `RCP-${runId}`, stockQuantity: 0, costPrice: 0, sellingPrice: 500 } }),
@@ -252,8 +255,9 @@ describe("restaurant workspace v1.1 accounting and stock integrity", () => {
     const order = await createPosRestaurantOrder(contextA(), { fulfillmentType: "TAKEAWAY", items: [{ menuItemId: directMenuItemId, quantity: 1 }] });
     await expect(recordRestaurantPayment(contextA(), { orderId: order.id, cashBankAccountId: cashAccountB, method: "CASH", amount: 10, idempotencyKey: `restaurant:${runId}:cross-domain` })).rejects.toThrow("unavailable in this workspace");
     await expect(db.$executeRaw`
-      INSERT INTO "restaurant_payments" ("workspaceId", "restaurantOrderId", "cashBankAccountId", "method", "amount", "idempotencyKey")
-      VALUES (${workspaceA}::uuid, ${order.id}::uuid, ${cashAccountB}, 'CASH', 10, ${`restaurant:${runId}:cross-db`})
+      INSERT INTO "restaurant_payments" ("workspaceId", "restaurantOrderId", "cashBankAccountId", "method", "amount", "idempotencyKey", "cashShiftId")
+      VALUES (${workspaceA}::uuid, ${order.id}::uuid, ${cashAccountB}, 'CASH', 10, ${`restaurant:${runId}:cross-db`},
+        (SELECT "id" FROM "cash_shifts" WHERE "workspaceId"=${workspaceA}::uuid AND "status"='OPEN' LIMIT 1))
     `).rejects.toThrow("Cross-workspace restaurant payment cash account reference rejected");
   });
 });
