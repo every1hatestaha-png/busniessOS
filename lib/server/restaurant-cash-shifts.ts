@@ -111,7 +111,6 @@ export async function closeRestaurantCashShiftFromLedger(
       throw new IndustryDomainError("PERMISSION_DENIED", "Staff can close only the restaurant cash shift they opened.");
     }
 
-    const closedAt = new Date();
     const ledgerRows = await tx.$queryRaw<Array<{
       debit: Prisma.Decimal;
       credit: Prisma.Decimal;
@@ -130,7 +129,7 @@ export async function closeRestaurantCashShiftFromLedger(
       WHERE gle."workspaceId"=${context.workspaceId}
         AND cba."isBank"=false
         AND gle."createdAt">=${shift.openedAt}
-        AND gle."createdAt"<=${closedAt}
+        AND gle."createdAt"<=CURRENT_TIMESTAMP
     `;
     const ledger = ledgerRows[0]!;
     const openingCash = money(shift.openingCash);
@@ -140,10 +139,10 @@ export async function closeRestaurantCashShiftFromLedger(
     const expectedCash = money(openingCash.plus(netCashMovement));
     const variance = money(closingCash.minus(expectedCash));
 
-    await tx.$executeRaw`
+    const closedRows = await tx.$queryRaw<Array<{ closedAt: Date }>>`
       UPDATE "cash_shifts"
       SET "status"='CLOSED',
-          "closedAt"=${closedAt},
+          "closedAt"=CURRENT_TIMESTAMP,
           "closedById"=${actorId}::uuid,
           "expectedCash"=${expectedCash},
           "closingCash"=${closingCash},
@@ -152,7 +151,10 @@ export async function closeRestaurantCashShiftFromLedger(
       WHERE "id"=${shift.id}::uuid
         AND "workspaceId"=${context.workspaceId}::uuid
         AND "status"='OPEN'
+      RETURNING "closedAt"
     `;
+    const closedAt = closedRows[0]?.closedAt;
+    if (!closedAt) throw new IndustryDomainError("CONFLICT", "Restaurant cash shift changed before it could be closed.");
 
     await writeAudit(tx, {
       workspaceId: context.workspaceId,
