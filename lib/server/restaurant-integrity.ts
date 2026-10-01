@@ -25,6 +25,7 @@ import {
   type RestaurantOrderStatus,
   type RestaurantPaymentStatus,
 } from "@/lib/server/restaurant-workspace";
+import { releaseRestaurantTableIfSettled } from "@/lib/server/restaurant-table-settlement";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -320,30 +321,6 @@ async function postRestaurantAccounting(
   `;
 }
 
-async function releaseTableIfIdle(
-  tx: Prisma.TransactionClient,
-  workspaceId: string,
-  orderId: string,
-  tableId: string | null,
-) {
-  if (!tableId) return;
-  const remaining = await tx.$queryRaw<Array<{ count: number }>>`
-    SELECT COUNT(*)::int AS "count"
-    FROM "restaurant_orders"
-    WHERE "workspaceId"=${workspaceId}::uuid
-      AND "restaurantTableId"=${tableId}::uuid
-      AND "id"<>${orderId}::uuid
-      AND "status" IN ('PENDING_REVIEW','CONFIRMED','PREPARING','READY')
-  `;
-  if ((remaining[0]?.count ?? 0) === 0) {
-    await tx.$executeRaw`
-      UPDATE "restaurant_tables"
-      SET "status"='AVAILABLE', "updatedAt"=now()
-      WHERE "id"=${tableId}::uuid AND "workspaceId"=${workspaceId}::uuid AND "status"='OCCUPIED'
-    `;
-  }
-}
-
 /**
  * PREPARING and READY retain the V1 lifecycle implementation. Terminal transitions
  * run here so stock, accounting, KOT, table state and audit commit atomically.
@@ -381,7 +358,10 @@ export async function transitionRestaurantOrderWithIntegrity(
     `;
     const order = rows[0];
     if (!order) throw new IndustryDomainError("NOT_FOUND", "Restaurant order was not found.");
-    if (order.status === nextStatus) return order;
+    if (order.status === nextStatus) {
+      await releaseRestaurantTableIfSettled(tx, context.workspaceId, order.restaurantTableId);
+      return order;
+    }
     if (nextStatus === "COMPLETED" && order.status !== "READY") {
       throw new IndustryDomainError("INVALID_STATE", `Cannot complete restaurant order from ${order.status}.`);
     }
@@ -420,8 +400,8 @@ export async function transitionRestaurantOrderWithIntegrity(
           "updatedAt"=now()
       WHERE "workspaceId"=${context.workspaceId}::uuid AND "restaurantOrderId"=${order.id}::uuid
     `;
-    await releaseTableIfIdle(tx, context.workspaceId, order.id, order.restaurantTableId);
     await syncPaymentStatus(tx, context.workspaceId, order.id, order.total);
+    await releaseRestaurantTableIfSettled(tx, context.workspaceId, order.restaurantTableId);
     await writeAudit(tx, {
       workspaceId: context.workspaceId,
       actorId: context.userId,
@@ -471,9 +451,10 @@ export async function recordRestaurantPayment(
       orderNumber: string;
       status: RestaurantOrderStatus;
       total: Prisma.Decimal;
+      restaurantTableId: string | null;
       accountingPostedAt: Date | null;
     }>>`
-      SELECT "id", "orderNumber", "status", "total", "accountingPostedAt"
+      SELECT "id", "orderNumber", "status", "total", "restaurantTableId", "accountingPostedAt"
       FROM "restaurant_orders"
       WHERE "id"=${input.orderId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
       FOR UPDATE
@@ -505,6 +486,7 @@ export async function recordRestaurantPayment(
           && new Prisma.Decimal(existingPayment.amount).equals(amount)
           && !existingPayment.voidedAt;
         if (!same) throw new IndustryDomainError("CONFLICT", "This restaurant payment request ID was already used for a different payment.");
+        await releaseRestaurantTableIfSettled(tx, context.workspaceId, order.restaurantTableId);
         return { id: existingPayment.id, idempotent: true as const };
       }
     }
@@ -548,6 +530,7 @@ export async function recordRestaurantPayment(
     }
 
     const nextPayment = await syncPaymentStatus(tx, context.workspaceId, order.id, order.total);
+    await releaseRestaurantTableIfSettled(tx, context.workspaceId, order.restaurantTableId);
     await writeAudit(tx, {
       workspaceId: context.workspaceId,
       actorId: context.userId,

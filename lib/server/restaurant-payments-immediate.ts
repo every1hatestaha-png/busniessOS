@@ -5,6 +5,7 @@ import { Prisma, type PaymentMethod } from "@prisma/client";
 import { ensureDefaultAccounts, postCustomerPaymentToGeneralLedger } from "@/lib/server/accounting";
 import { writeAudit } from "@/lib/server/audit";
 import { IndustryDomainError, requireWorkspaceModule, type IndustryContext } from "@/lib/server/industry-modules";
+import { releaseRestaurantTableIfSettled } from "@/lib/server/restaurant-table-settlement";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -91,8 +92,9 @@ export async function recordRestaurantPaymentAtCollection(
       orderNumber: string;
       status: string;
       total: Prisma.Decimal;
+      restaurantTableId: string | null;
     }>>`
-      SELECT "id"::text AS "id", "orderNumber", "status", "total"
+      SELECT "id"::text AS "id", "orderNumber", "status", "total", "restaurantTableId"
       FROM "restaurant_orders"
       WHERE "id"=${input.orderId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
       FOR UPDATE
@@ -149,6 +151,7 @@ export async function recordRestaurantPaymentAtCollection(
             metadata: { orderId: order.id, orderNumber: order.orderNumber, amount: amount.toFixed(2), postedAt: postedAt.toISOString() },
           });
         }
+        await releaseRestaurantTableIfSettled(tx, context.workspaceId, order.restaurantTableId);
         return { id: previous.id, idempotent: true as const };
       }
     }
@@ -206,6 +209,8 @@ export async function recordRestaurantPaymentAtCollection(
       amount,
       cashBankAccountId: cashBank.id,
     });
+
+    await releaseRestaurantTableIfSettled(tx, context.workspaceId, order.restaurantTableId);
 
     await writeAudit(tx, {
       workspaceId: context.workspaceId,

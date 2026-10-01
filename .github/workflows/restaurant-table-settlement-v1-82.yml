@@ -1,0 +1,63 @@
+name: Restaurant V1.82 table settlement gate
+
+on:
+  pull_request:
+    branches:
+      - architecture/restaurant-hardening-v1-81
+
+permissions:
+  contents: read
+
+jobs:
+  native-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_restaurant_v182
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_restaurant_v182"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_restaurant_v182?sslmode=disable
+      RUN_INTEGRATION_TESTS: "true"
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci
+      - run: npx prisma validate
+      - name: Deploy complete migration chain
+        run: |
+          set -euo pipefail
+          npx prisma migrate deploy
+          npx prisma migrate status
+      - name: Focused table settlement regressions
+        run: >
+          npx vitest run
+          tests/integration/restaurant-table-settlement-v1-82.test.ts
+          tests/integration/restaurant-table-occupancy-v1-6.test.ts
+          tests/integration/restaurant-kds-terminal-table-release-v1-46.test.ts
+          tests/integration/restaurant-table-concurrency-v1-67.test.ts
+          tests/integration/restaurant-payment-terminal-concurrency-v1-29.test.ts
+          tests/integration/restaurant-completion-exactly-once-v1-51.test.ts
+          tests/integration/restaurant-order-table-tenant-integrity-v1-41.test.ts
+          tests/integration/restaurant-refunds-v1-2.test.ts
+          tests/integration/restaurant-integrity-v1-1.test.ts
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Diff hygiene
+        run: git diff --check origin/architecture/restaurant-hardening-v1-81...HEAD

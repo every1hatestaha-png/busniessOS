@@ -5,6 +5,7 @@ import { Prisma, type Role } from "@prisma/client";
 import { writeAudit } from "@/lib/server/audit";
 import { db } from "@/lib/server/db";
 import { IndustryDomainError, requireWorkspaceModule, type IndustryContext } from "@/lib/server/industry-modules";
+import { releaseRestaurantTableIfSettled } from "@/lib/server/restaurant-table-settlement";
 
 export type RestaurantOrderSource = "POS" | "WHATSAPP" | "MANUAL";
 export type RestaurantFulfillmentType = "DINE_IN" | "TAKEAWAY" | "DELIVERY";
@@ -446,7 +447,10 @@ export async function transitionRestaurantOrder(context: IndustryContext, orderI
     `;
     const order = rows[0];
     if (!order) throw new IndustryDomainError("NOT_FOUND", "Restaurant order was not found.");
-    if (order.status === nextStatus) return order;
+    if (order.status === nextStatus) {
+      await releaseRestaurantTableIfSettled(tx, context.workspaceId, order.restaurantTableId);
+      return order;
+    }
     if (!transitions[order.status].includes(nextStatus)) {
       throw new IndustryDomainError("INVALID_STATE", `Cannot move restaurant order from ${order.status} to ${nextStatus}.`);
     }
@@ -474,19 +478,7 @@ export async function transitionRestaurantOrder(context: IndustryContext, orderI
     }
 
     if (order.restaurantTableId && (nextStatus === "COMPLETED" || nextStatus === "CANCELLED")) {
-      const remaining = await tx.$queryRaw<Array<{ count: number }>>`
-        SELECT COUNT(*)::int AS "count" FROM "restaurant_orders"
-        WHERE "workspaceId"=${context.workspaceId}::uuid
-          AND "restaurantTableId"=${order.restaurantTableId}::uuid
-          AND "id"<>${order.id}::uuid
-          AND "status" IN ('PENDING_REVIEW','CONFIRMED','PREPARING','READY')
-      `;
-      if ((remaining[0]?.count ?? 0) === 0) {
-        await tx.$executeRaw`
-          UPDATE "restaurant_tables" SET "status"='AVAILABLE', "updatedAt"=now()
-          WHERE "id"=${order.restaurantTableId}::uuid AND "workspaceId"=${context.workspaceId}::uuid AND "status"='OCCUPIED'
-        `;
-      }
+      await releaseRestaurantTableIfSettled(tx, context.workspaceId, order.restaurantTableId);
     }
 
     await writeAudit(tx, {
