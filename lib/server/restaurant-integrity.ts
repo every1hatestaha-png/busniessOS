@@ -642,10 +642,19 @@ export async function voidRestaurantPayment(context: IndustryContext, paymentId:
   });
 }
 
-export async function listRestaurantPayments(workspaceId: string, orderId?: string) {
+export async function listRestaurantPayments(workspaceId: string, orderIdOrIds?: string | string[]) {
   await requireWorkspaceModule(workspaceId, "restaurant");
-  if (orderId) assertUuid(orderId, "Restaurant order");
-  const orderFilter = orderId ? Prisma.sql`AND rp."restaurantOrderId"=${orderId}::uuid` : Prisma.empty;
+  let orderFilter = Prisma.empty;
+  if (Array.isArray(orderIdOrIds)) {
+    const orderIds = [...new Set(orderIdOrIds)].slice(0, 250);
+    if (!orderIds.length) return [];
+    for (const orderId of orderIds) assertUuid(orderId, "Restaurant order");
+    const scopedIds = Prisma.join(orderIds.map((orderId) => Prisma.sql`${orderId}::uuid`));
+    orderFilter = Prisma.sql`AND rp."restaurantOrderId" IN (${scopedIds})`;
+  } else if (orderIdOrIds) {
+    assertUuid(orderIdOrIds, "Restaurant order");
+    orderFilter = Prisma.sql`AND rp."restaurantOrderId"=${orderIdOrIds}::uuid`;
+  }
   const rows = await db.$queryRaw<Array<{
     id: string;
     restaurantOrderId: string;
