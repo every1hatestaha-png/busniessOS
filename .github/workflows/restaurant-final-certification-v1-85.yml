@@ -1,0 +1,213 @@
+name: Restaurant V1.85 final production certification
+
+on:
+  pull_request:
+    branches:
+      - architecture/restaurant-cash-shift-payment-integrity-v1-84
+
+permissions:
+  contents: read
+
+jobs:
+  utc-certification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_restaurant_v185
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_restaurant_v185"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_restaurant_v185?sslmode=disable
+      RUN_INTEGRATION_TESTS: "true"
+      NODE_ENV: test
+      CERTIFIED_BASELINE: 76f9c85d7b28bc8d8036300fff55b9876557d3ce
+      VERIFIED_V184: 3f80e69da52ee14d1676e66f6f1aab57640d407d
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - name: Verify cumulative ancestry and repository hygiene
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$CERTIFIED_BASELINE" HEAD
+          git merge-base --is-ancestor "$VERIFIED_V184" HEAD
+          git diff --check "$CERTIFIED_BASELINE...HEAD"
+          git diff --quiet "$CERTIFIED_BASELINE...HEAD" -- .github/workflows/main_munshios.yml
+
+          node <<'NODE'
+          const { execFileSync } = require("node:child_process");
+          const fs = require("node:fs");
+
+          const baseline = process.env.CERTIFIED_BASELINE;
+          const codeDiff = execFileSync(
+            "git",
+            ["diff", "--unified=0", `${baseline}...HEAD`, "--", "*.ts", "*.tsx", "*.js", "*.cjs", "*.mjs"],
+            { encoding: "utf8" },
+          );
+          if (/^\+.*\b(?:console\.(?:log|debug)|debugger)\b/m.test(codeDiff)) {
+            throw new Error("Added debug logging or debugger statement found in the certified lineage.");
+          }
+
+          const stackDiff = execFileSync(
+            "git",
+            ["diff", "--unified=0", `${baseline}...HEAD`, "--", ".", ":!package-lock.json"],
+            { encoding: "utf8" },
+          );
+          const secretPatterns = [
+            ["Stripe live key", new RegExp("sk" + "_live_" + "[A-Za-z0-9]+")],
+            ["GitHub token", new RegExp("gh" + "[pousr]_" + "[A-Za-z0-9]{30,}")],
+            ["AWS access key", new RegExp("AK" + "IA[A-Z0-9]{16}")],
+            ["private key", new RegExp("BEGIN (?:RSA|OPENSSH|EC|DSA) PRIVATE" + " KEY")],
+          ];
+          for (const [label, pattern] of secretPatterns) {
+            if (pattern.test(stackDiff)) throw new Error(`${label} pattern found in certified lineage.`);
+          }
+
+          const deployment = JSON.parse(fs.readFileSync("vercel.json", "utf8"));
+          const disabled = deployment.git?.deploymentEnabled ?? {};
+          const required = [
+            "architecture/restaurant-table-settlement-v1-82",
+            "architecture/restaurant-pos-financial-override-v1-83",
+            "architecture/restaurant-cash-shift-payment-integrity-v1-84",
+            "architecture/restaurant-final-certification-v1-85",
+          ];
+          for (const name of required) {
+            if (disabled[name] !== false) throw new Error(`Deployment must stay disabled for ${name}.`);
+          }
+          NODE
+
+      - run: npm ci
+
+      - name: Reject dependency advisories
+        run: npm audit --audit-level=moderate
+
+      - name: Prisma validate
+        run: npx prisma validate
+
+      - name: Verify vertical entrypoint inventory
+        run: node scripts/vertical/entrypoints.cjs
+
+      - name: Deploy complete migration chain to PostgreSQL 16
+        run: |
+          set -euo pipefail
+          npx prisma migrate deploy
+          npx prisma migrate status
+
+      - name: Verify UTC database timezone
+        run: |
+          set -euo pipefail
+          test "$(PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d munshios_restaurant_v185 -Atc 'SHOW timezone')" = "Etc/UTC"
+
+      - name: Full Restaurant integration and unit regression
+        run: >
+          npx vitest run
+          tests/integration/restaurant-*.test.ts
+          tests/unit/restaurant-*.test.ts
+          tests/integration/warehouse-stock-tenant-tuple-integrity-v1-50.test.ts
+          tests/integration/managed-warehouse-stock.test.ts
+
+      - name: Full application regression suite
+        run: npm test
+
+      - name: Finance scenario suite
+        run: npm run test:finance
+
+      - name: TypeScript typecheck
+        run: npx tsc --noEmit
+
+      - name: Production web build
+        env:
+          NODE_ENV: production
+        run: npm run build:web
+
+  karachi-timezone-certification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_restaurant_v185_karachi?sslmode=disable
+      RUN_INTEGRATION_TESTS: "true"
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Create isolated Asia Karachi database
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PGPASSWORD=postgres
+          psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1             -c 'CREATE DATABASE munshios_restaurant_v185_karachi'
+          psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1             -c "ALTER DATABASE munshios_restaurant_v185_karachi SET timezone TO 'Asia/Karachi'"
+
+      - name: Deploy migration chain under Asia Karachi database default
+        run: |
+          set -euo pipefail
+          npx prisma migrate deploy
+          npx prisma migrate status
+
+      - name: Assert non UTC session timezone
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PGPASSWORD=postgres
+          zone="$(psql -h 127.0.0.1 -U postgres -d munshios_restaurant_v185_karachi -Atc 'SHOW timezone')"
+          echo "Database timezone: $zone"
+          test "$zone" = "Asia/Karachi"
+
+      - name: Timezone-sensitive Restaurant regressions
+        run: >
+          npx vitest run
+          tests/integration/restaurant-timezone-invariance-v1-85.test.ts
+          tests/integration/restaurant-payment-evidence-v1-75.test.ts
+          tests/integration/restaurant-cash-shift-snapshot-v1-74.test.ts
+          tests/integration/restaurant-payment-timing-v1-7.test.ts
+          tests/integration/restaurant-cash-payment-shift-v1-84.test.ts
+          tests/integration/restaurant-refunds-v1-2.test.ts
+          tests/integration/restaurant-item-returns-v1-3.test.ts
+          tests/integration/restaurant-return-reversal-v1-4.test.ts
+
+      - name: Full Restaurant suite under Asia Karachi timezone
+        run: >
+          npx vitest run
+          tests/integration/restaurant-*.test.ts
+          tests/unit/restaurant-*.test.ts
+
+      - name: TypeScript typecheck
+        run: npx tsc --noEmit
