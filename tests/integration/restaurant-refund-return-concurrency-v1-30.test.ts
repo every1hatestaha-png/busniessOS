@@ -146,6 +146,8 @@ describe("restaurant V1.30 refund versus item-return financial integrity", () =>
       notes: "",
     });
     cashId = (await getCashBankAccounts(workspaceId)).find((account) => account.id === createdCash.id)!.cashBankAccountId;
+    const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+    await openRestaurantCashShiftSafely(owner(), 0, "V1.84 refund-return concurrency shift");
 
     const product = await db.product.create({
       data: {
