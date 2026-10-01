@@ -103,7 +103,7 @@ describe("restaurant V1.42 kitchen ticket order tenant integrity", () => {
       UPDATE "kitchen_tickets"
       SET "restaurantOrderId"=${orderB}::uuid
       WHERE "id"=${ticketA}::uuid
-    `).rejects.toThrow("Kitchen ticket order must belong to the same workspace");
+    `).rejects.toThrow("Restaurant kitchen ticket identity snapshot is immutable");
 
     expect(await ticketParent(ticketA)).toEqual({
       workspaceId: workspaceA,
