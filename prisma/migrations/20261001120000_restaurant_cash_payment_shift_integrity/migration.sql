@@ -19,6 +19,11 @@ DECLARE
   shift_workspace uuid;
   shift_status text;
 BEGIN
+  IF TG_OP = 'UPDATE'
+     AND NEW."cashShiftId" IS DISTINCT FROM OLD."cashShiftId" THEN
+    RAISE EXCEPTION 'Restaurant payment cash shift evidence is immutable';
+  END IF;
+
   IF NEW."method" = 'CASH' THEN
     IF NEW."cashShiftId" IS NULL THEN
       RAISE EXCEPTION 'An open restaurant cash shift is required before recording a cash payment';
@@ -41,14 +46,9 @@ BEGIN
     RAISE EXCEPTION 'Non-cash restaurant payments cannot reference a cash shift';
   END IF;
 
-  IF TG_OP = 'UPDATE'
-     AND NEW."cashShiftId" IS DISTINCT FROM OLD."cashShiftId" THEN
-    RAISE EXCEPTION 'Restaurant payment cash shift evidence is immutable';
-  END IF;
-
   RETURN NEW;
 END;
-$$;
+$;
 
 DROP TRIGGER IF EXISTS "restaurant_payments_cash_shift_guard" ON "restaurant_payments";
 CREATE TRIGGER "restaurant_payments_cash_shift_guard"
@@ -56,3 +56,34 @@ BEFORE INSERT OR UPDATE OF "method", "cashShiftId", "workspaceId"
 ON "restaurant_payments"
 FOR EACH ROW
 EXECUTE FUNCTION enforce_restaurant_payment_cash_shift();
+
+
+-- A shift may not close while a linked physical cash receipt is still unposted.
+-- This protects reconciliation even for lower-level callers that create a valid
+-- shift-bound payment before the Restaurant order itself is completed.
+CREATE OR REPLACE FUNCTION prevent_cash_shift_close_with_unposted_receipts()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF OLD."status" = 'OPEN' AND NEW."status" = 'CLOSED' AND EXISTS (
+    SELECT 1
+    FROM "restaurant_payments" rp
+    WHERE rp."workspaceId" = OLD."workspaceId"
+      AND rp."cashShiftId" = OLD."id"
+      AND rp."method" = 'CASH'
+      AND rp."voidedAt" IS NULL
+      AND rp."postedAt" IS NULL
+  ) THEN
+    RAISE EXCEPTION 'Restaurant cash shift cannot close while cash payments are still unposted';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS "cash_shifts_10_unposted_payment_guard" ON "cash_shifts";
+CREATE TRIGGER "cash_shifts_10_unposted_payment_guard"
+BEFORE UPDATE OF "status"
+ON "cash_shifts"
+FOR EACH ROW
+EXECUTE FUNCTION prevent_cash_shift_close_with_unposted_receipts();
