@@ -20,7 +20,13 @@
       "architecture/restaurant-menu-item-parent-v1-70": false,
       "architecture/restaurant-menu-item-concurrency-v1-71": false,
       "architecture/restaurant-whatsapp-message-snapshot-v1-72": false,
-      "architecture/restaurant-hardening-convergence-v1-73": false
+      "architecture/restaurant-hardening-convergence-v1-73": false,
+      "architecture/restaurant-cash-shift-snapshot-v1-74": false,
+      "architecture/restaurant-payment-evidence-v1-75": false,
+      "architecture/restaurant-terminal-evidence-v1-76": false,
+      "architecture/restaurant-posting-evidence-v1-77": false,
+      "architecture/restaurant-dependency-security-v1-78": false,
+      "architecture/restaurant-production-certification-v1-79": false
     }
   }
 }
