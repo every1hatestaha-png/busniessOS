@@ -10,6 +10,7 @@ let createRestaurantMenuItem: typeof import("@/lib/server/restaurant-workspace")
 let createPosRestaurantOrder: typeof import("@/lib/server/restaurant-workspace")["createPosRestaurantOrder"];
 let transitionRestaurantOrderWithIntegrity: typeof import("@/lib/server/restaurant-integrity")["transitionRestaurantOrderWithIntegrity"];
 let recordRestaurantPaymentAtCollection: typeof import("@/lib/server/restaurant-payments-immediate")["recordRestaurantPaymentAtCollection"];
+let refundRestaurantPayment: typeof import("@/lib/server/restaurant-refunds")["refundRestaurantPayment"];
 
 const runId = randomUUID();
 let workspaceId = "";
@@ -57,8 +58,8 @@ async function pay(orderId: string, amount: number) {
 }
 
 async function paymentStatus(orderId: string) {
-  const rows = await db.$queryRaw<Array<{ status: string; paymentStatus: string }>>`
-    SELECT "status", "paymentStatus"
+  const rows = await db.$queryRaw<Array<{ status: string; paymentStatus: string; tableReleasedAt: Date | null }>>`
+    SELECT "status", "paymentStatus", "tableReleasedAt"
     FROM "restaurant_orders"
     WHERE "id"=${orderId}::uuid AND "workspaceId"=${workspaceId}::uuid
   `;
@@ -73,6 +74,7 @@ describe("Restaurant V1.82 table settlement", () => {
     ({ createRestaurantMenuCategory, createRestaurantMenuItem, createPosRestaurantOrder } = await import("@/lib/server/restaurant-workspace"));
     ({ transitionRestaurantOrderWithIntegrity } = await import("@/lib/server/restaurant-integrity"));
     ({ recordRestaurantPaymentAtCollection } = await import("@/lib/server/restaurant-payments-immediate"));
+    ({ refundRestaurantPayment } = await import("@/lib/server/restaurant-refunds"));
 
     const user = await db.user.create({
       data: { clerkId: `v182-owner-${runId}`, email: `v182-owner-${runId}@example.invalid` },
@@ -163,7 +165,41 @@ describe("Restaurant V1.82 table settlement", () => {
 
     await pay(order.id, 1000);
 
-    expect(await paymentStatus(order.id)).toMatchObject({ status: "COMPLETED", paymentStatus: "PAID" });
+    const settled = await paymentStatus(order.id);
+    expect(settled).toMatchObject({ status: "COMPLETED", paymentStatus: "PAID" });
+    expect(settled.tableReleasedAt).not.toBeNull();
+    expect(await tableStatus(table.id)).toBe("AVAILABLE");
+
+    await expect(db.$executeRaw`
+      UPDATE "restaurant_orders"
+      SET "tableReleasedAt"=NULL
+      WHERE "id"=${order.id}::uuid AND "workspaceId"=${workspaceId}::uuid
+    `).rejects.toThrow(/table release evidence is immutable/i);
+  }, 60_000);
+
+  it("does not let a post-service refund poison later seating on the same table", async () => {
+    const table = await createRestaurantTable(owner(), { name: `V182-R-${runId.slice(0, 6)}`, capacity: 4 });
+    const first = await createDineIn(table.id);
+    const payment = await pay(first.id, 1000);
+    await complete(first.id);
+
+    expect(await tableStatus(table.id)).toBe("AVAILABLE");
+    expect((await paymentStatus(first.id)).tableReleasedAt).not.toBeNull();
+
+    await refundRestaurantPayment(owner(), {
+      paymentId: payment.id,
+      reason: "Post-service customer refund",
+      idempotencyKey: `v182:refund:${randomUUID()}`,
+    });
+
+    expect(await paymentStatus(first.id)).toMatchObject({ status: "COMPLETED", paymentStatus: "UNPAID" });
+    expect(await tableStatus(table.id)).toBe("AVAILABLE");
+
+    const second = await createDineIn(table.id);
+    await pay(second.id, 1000);
+    await complete(second.id);
+
+    expect(await paymentStatus(second.id)).toMatchObject({ status: "COMPLETED", paymentStatus: "PAID" });
     expect(await tableStatus(table.id)).toBe("AVAILABLE");
   }, 60_000);
 
