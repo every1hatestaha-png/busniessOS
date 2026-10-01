@@ -100,7 +100,12 @@ describe("restaurant V1.41 order table tenant integrity", () => {
 
   afterAll(async () => {
     if (!db) return;
-    await db.$executeRaw`DELETE FROM "restaurant_whatsapp_messages" WHERE "workspaceId" IN (${workspaceA}::uuid, ${workspaceB}::uuid)`;
+    // Test-only teardown: production keeps WhatsApp intake evidence append-only.
+    // Bypass user triggers only inside this isolated cleanup transaction.
+    await db.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL session_replication_role = replica");
+      await tx.$executeRaw`DELETE FROM "restaurant_whatsapp_messages" WHERE "workspaceId" IN (${workspaceA}::uuid, ${workspaceB}::uuid)`;
+    });
     await db.$executeRaw`DELETE FROM "kitchen_tickets" WHERE "workspaceId" IN (${workspaceA}::uuid, ${workspaceB}::uuid)`;
     await db.$executeRaw`DELETE FROM "restaurant_orders" WHERE "workspaceId" IN (${workspaceA}::uuid, ${workspaceB}::uuid)`;
     await db.$executeRaw`DELETE FROM "restaurant_order_sequences" WHERE "workspaceId" IN (${workspaceA}::uuid, ${workspaceB}::uuid)`;
