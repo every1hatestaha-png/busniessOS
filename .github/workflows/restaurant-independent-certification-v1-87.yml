@@ -1,0 +1,239 @@
+name: Restaurant V1.87 independent certification
+
+on:
+  pull_request:
+    branches:
+      - architecture/restaurant-independent-audit-v1-86
+
+permissions:
+  contents: read
+
+jobs:
+  utc-certification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_restaurant_v187
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_restaurant_v187"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_restaurant_v187?sslmode=disable
+      RUN_INTEGRATION_TESTS: "true"
+      NODE_ENV: test
+      AUDITED_BASE: 7fcf9e2687396f73f1f303b0ab8549ee3b564870
+      CERTIFIED_V185: 1d486e598668951aa5ff32251d225d9fec4aa3a0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - name: Verify ancestry and release safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$CERTIFIED_V185" HEAD
+          git merge-base --is-ancestor "$AUDITED_BASE" HEAD
+          git diff --check "$CERTIFIED_V185...HEAD"
+          git diff --quiet "$CERTIFIED_V185...HEAD" -- .github/workflows/main_munshios.yml
+          node <<'NODE'
+          const fs = require("node:fs");
+          const cfg = JSON.parse(fs.readFileSync("vercel.json","utf8"));
+          const disabled = cfg.git?.deploymentEnabled ?? {};
+          for (const branch of [
+            "architecture/restaurant-independent-audit-v1-86",
+            "architecture/restaurant-independent-certification-v1-87",
+          ]) {
+            if (disabled[branch] !== false) throw new Error("Deployment must stay disabled for " + branch);
+          }
+          NODE
+
+      - run: npm ci
+      - name: Dependency audit
+        run: npm audit --audit-level=moderate
+      - name: Prisma validate
+        run: npx prisma validate
+      - name: Vertical entrypoints
+        run: node scripts/vertical/entrypoints.cjs
+      - name: Full migration chain
+        run: |
+          set -euo pipefail
+          npx prisma migrate deploy
+          npx prisma migrate status
+      - name: Assert UTC database timezone
+        shell: bash
+        run: |
+          export PGPASSWORD=postgres
+          test "$(psql -h 127.0.0.1 -U postgres -d munshios_restaurant_v187 -Atc 'SHOW timezone')" = "Etc/UTC"
+      - name: V1.86 focused regressions
+        run: >
+          npx vitest run
+          tests/integration/restaurant-action-error-redaction-v1-86.test.ts
+          tests/integration/restaurant-cash-payment-shift-v1-84.test.ts
+          tests/integration/restaurant-timezone-invariance-v1-85.test.ts
+          tests/unit/finance-harness-line-endings.test.ts
+          tests/unit/production-release-workflow.test.ts
+      - name: Full Restaurant plus warehouse regressions
+        run: >
+          npx vitest run
+          tests/integration/restaurant-*.test.ts
+          tests/unit/restaurant-*.test.ts
+          tests/integration/warehouse-stock-tenant-tuple-integrity-v1-50.test.ts
+          tests/integration/managed-warehouse-stock.test.ts
+      - name: Full application regression
+        run: npm test
+      - name: Finance suite
+        run: npm run test:finance
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Lint V1.86 changed TypeScript
+        run: >
+          npx eslint
+          "app/(dashboard)/restaurant/v1-actions.ts"
+          lib/server/restaurant-integrity.ts
+          lib/server/restaurant-item-returns.ts
+          lib/server/restaurant-payment-cash-shift.ts
+          lib/server/restaurant-refunds.ts
+          lib/server/restaurant-return-reversals.ts
+          tests/finance-grade/harness-normalizer.ts
+          tests/integration/restaurant-action-error-redaction-v1-86.test.ts
+          tests/integration/restaurant-cash-payment-shift-v1-84.test.ts
+          tests/integration/restaurant-timezone-invariance-v1-85.test.ts
+          tests/unit/finance-harness-line-endings.test.ts
+          tests/unit/production-release-workflow.test.ts
+      - name: Production web build
+        env:
+          NODE_ENV: production
+        run: npm run build:web
+
+  karachi-certification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_restaurant_v187_karachi?sslmode=disable
+      RUN_INTEGRATION_TESTS: "true"
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci
+      - name: Create Asia Karachi database
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PGPASSWORD=postgres
+          psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE munshios_restaurant_v187_karachi'
+          psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -c "ALTER DATABASE munshios_restaurant_v187_karachi SET timezone TO 'Asia/Karachi'"
+      - name: Deploy full migration chain
+        run: |
+          npx prisma migrate deploy
+          npx prisma migrate status
+      - name: Assert Asia Karachi timezone
+        shell: bash
+        run: |
+          export PGPASSWORD=postgres
+          test "$(psql -h 127.0.0.1 -U postgres -d munshios_restaurant_v187_karachi -Atc 'SHOW timezone')" = "Asia/Karachi"
+      - name: Timezone and compensation regressions
+        run: >
+          npx vitest run
+          tests/integration/restaurant-timezone-invariance-v1-85.test.ts
+          tests/integration/restaurant-cash-payment-shift-v1-84.test.ts
+          tests/integration/restaurant-payment-timing-v1-7.test.ts
+          tests/integration/restaurant-refunds-v1-2.test.ts
+          tests/integration/restaurant-item-returns-v1-3.test.ts
+          tests/integration/restaurant-return-reversal-v1-4.test.ts
+      - name: Full Restaurant suite
+        run: >
+          npx vitest run
+          tests/integration/restaurant-*.test.ts
+          tests/unit/restaurant-*.test.ts
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+  historical-upgrade-rehearsal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci
+      - name: Historical pre V1.82 and pre V1.84 upgrade rehearsal
+        run: node scripts/restaurant-upgrade-rehearsal-v1-86.cjs
+
+
+  query-plan-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_restaurant_perf
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_restaurant_perf"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_restaurant_perf?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci
+      - name: Deploy migration chain
+        run: npx prisma migrate deploy
+      - name: Synthetic Restaurant query-plan evidence
+        run: node scripts/restaurant-query-plan-audit-v1-87.cjs
