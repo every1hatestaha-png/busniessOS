@@ -19,7 +19,8 @@
       "architecture/restaurant-menu-category-concurrency-v1-69": false,
       "architecture/restaurant-menu-item-parent-v1-70": false,
       "architecture/restaurant-menu-item-concurrency-v1-71": false,
-      "architecture/restaurant-whatsapp-message-snapshot-v1-72": false
+      "architecture/restaurant-whatsapp-message-snapshot-v1-72": false,
+      "architecture/restaurant-hardening-convergence-v1-73": false
     }
   }
 }
