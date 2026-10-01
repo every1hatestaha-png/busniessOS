@@ -74,6 +74,8 @@ describe("restaurant V1.17 payment actor membership", () => {
     });
     const accounts = await getCashBankAccounts(workspaceId);
     cashAccountId = accounts.find((account) => account.id === cash.id)!.cashBankAccountId;
+    const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+    await openRestaurantCashShiftSafely(owner(), 0, "V1.84 payment actor shift");
 
     const product = await db.product.create({
       data: { workspaceId, name: "Payment Actor Meal", sku: `PAY-${runId}`, stockQuantity: 20, costPrice: 100, sellingPrice: 500 },
@@ -162,9 +164,10 @@ describe("restaurant V1.17 payment actor membership", () => {
 
     await expect(db.$executeRaw`
       INSERT INTO "restaurant_payments" (
-        "workspaceId", "restaurantOrderId", "cashBankAccountId", "method", "amount", "createdById"
+        "workspaceId", "restaurantOrderId", "cashBankAccountId", "method", "amount", "createdById", "cashShiftId"
       ) VALUES (
-        ${workspaceId}::uuid, ${order.id}::uuid, ${cashAccountId}, 'CASH', 1, ${foreignId}
+        ${workspaceId}::uuid, ${order.id}::uuid, ${cashAccountId}, 'CASH', 1, ${foreignId},
+        (SELECT "id" FROM "cash_shifts" WHERE "workspaceId"=${workspaceId}::uuid AND "status"='OPEN' LIMIT 1)
       )
     `).rejects.toThrow("Restaurant payment creator must be a member of the same workspace");
   });

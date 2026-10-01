@@ -91,6 +91,9 @@ describe("restaurant workspace v1.2 refund integrity", () => {
     ]);
     cashAccountA = accountsA.find((account) => account.id === cashA.id)!.cashBankAccountId;
     cashAccountB = accountsB.find((account) => account.id === cashB.id)!.cashBankAccountId;
+    const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+    await openRestaurantCashShiftSafely(ownerA(), 0, "V1.84 refund shift A");
+    await openRestaurantCashShiftSafely({ workspaceId: workspaceB, role: "OWNER", userId: userB }, 0, "V1.84 refund shift B");
 
     const product = await db.product.create({
       data: {

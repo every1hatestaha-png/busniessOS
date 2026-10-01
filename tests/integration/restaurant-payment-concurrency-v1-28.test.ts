@@ -89,6 +89,8 @@ describe("restaurant V1.28 live payment concurrency", () => {
       notes: "",
     });
     cashId = (await getCashBankAccounts(workspaceId)).find((account) => account.id === created.id)!.cashBankAccountId;
+    const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+    await openRestaurantCashShiftSafely(owner(), 0, "V1.84 payment concurrency shift");
   }, 60_000);
 
   afterAll(async () => {

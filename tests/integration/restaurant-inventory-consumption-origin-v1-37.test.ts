@@ -76,6 +76,8 @@ describe("restaurant V1.37 inventory consumption insert origin", () => {
       notes: "",
     });
     cashId = (await getCashBankAccounts(workspaceId)).find((row) => row.id === cash.id)!.cashBankAccountId;
+    const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+    await openRestaurantCashShiftSafely(actor(), 0, "V1.84 consumption origin shift");
 
     const [primary, extra] = await Promise.all([
       db.product.create({

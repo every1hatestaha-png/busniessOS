@@ -79,6 +79,8 @@ describe("restaurant V1.75 payment evidence snapshot", () => {
       notes: "",
     });
     cashId = (await getCashBankAccounts(workspaceId)).find((row) => row.id === cash.id)!.cashBankAccountId;
+    const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+    await openRestaurantCashShiftSafely(actor(), 0, "Payment evidence test shift");
     const product = await db.product.create({
       data: {
         workspaceId,

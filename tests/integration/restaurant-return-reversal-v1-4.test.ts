@@ -63,6 +63,8 @@ describe("restaurant V1.4 immutable return reversal", () => {
     const cash = await createCashBankAccount(owner(), { name: "Reversal Cash", openingBalance: 0, isBank: false, bankName: "", accountTitle: "", accountNumber: "", notes: "" });
     const accounts = await getCashBankAccounts(workspaceId);
     cashBankAccountId = accounts.find((account) => account.id === cash.id)!.cashBankAccountId;
+    const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+    await openRestaurantCashShiftSafely(owner(), 0, "V1.84 return reversal shift");
 
     const product = await db.product.create({ data: { workspaceId, name: "Reversal Drink", sku: `REV-${runId}`, stockQuantity: 20, costPrice: 50, sellingPrice: 200 } });
     productId = product.id;

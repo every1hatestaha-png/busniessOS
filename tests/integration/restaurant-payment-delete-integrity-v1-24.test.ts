@@ -52,6 +52,8 @@ describe("restaurant V1.24 receipt history delete integrity", () => {
     `;
     const cash = await createCashBankAccount(actor(), { name: "Retention drawer", openingBalance: 0, isBank: false, bankName: "", accountTitle: "", accountNumber: "", notes: "" });
     cashId = (await getCashBankAccounts(workspaceId)).find((a) => a.id === cash.id)!.cashBankAccountId;
+    const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+    await openRestaurantCashShiftSafely(actor(), 0, "V1.84 payment delete shift");
     await db.$executeRawUnsafe(`CREATE ROLE ${appRole} NOLOGIN`);
     await db.$executeRawUnsafe(`GRANT USAGE ON SCHEMA public TO ${appRole}`);
     await db.$executeRawUnsafe(`GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${appRole}`);
@@ -88,8 +90,9 @@ describe("restaurant V1.24 receipt history delete integrity", () => {
   it("retains unposted historical receipts with NULL creator identity", async () => {
     const orderId = await order();
     const rows = await db.$queryRaw<Array<{ id: string }>>`
-      INSERT INTO "restaurant_payments" ("workspaceId", "restaurantOrderId", "cashBankAccountId", "method", "amount")
-      VALUES (${workspaceId}::uuid, ${orderId}::uuid, ${cashId}, 'CASH', 50)
+      INSERT INTO "restaurant_payments" ("workspaceId", "restaurantOrderId", "cashBankAccountId", "method", "amount", "cashShiftId")
+      VALUES (${workspaceId}::uuid, ${orderId}::uuid, ${cashId}, 'CASH', 50,
+        (SELECT "id" FROM "cash_shifts" WHERE "workspaceId"=${workspaceId}::uuid AND "status"='OPEN' LIMIT 1))
       RETURNING "id"::text AS "id"
     `;
     const paymentId = rows[0]!.id;

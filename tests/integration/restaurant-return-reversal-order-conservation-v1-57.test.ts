@@ -57,6 +57,8 @@ describe("restaurant V1.57 out-of-order reversal inventory conservation", () => 
       data: { openingBalance: 1000, currentBalance: 1000, isActive: true },
     });
     cashBankAccountId = cashBank.id;
+    const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+    await openRestaurantCashShiftSafely(owner(), 0, "V1.84 reversal conservation shift");
 
     const [finishedProduct, ingredientProduct] = await Promise.all([
       db.product.create({ data: { workspaceId, name: "V157 fractional meal", sku: `V157-F-${runId}`, stockQuantity: 0, costPrice: 0, sellingPrice: 100 } }),

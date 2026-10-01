@@ -5,6 +5,7 @@ import { Prisma, type PaymentMethod } from "@prisma/client";
 import { ensureDefaultAccounts, postCustomerPaymentToGeneralLedger } from "@/lib/server/accounting";
 import { writeAudit } from "@/lib/server/audit";
 import { IndustryDomainError, requireWorkspaceModule, type IndustryContext } from "@/lib/server/industry-modules";
+import { assertRestaurantPaymentAccountKind, resolveRestaurantPaymentCashShift } from "@/lib/server/restaurant-payment-cash-shift";
 import { releaseRestaurantTableIfSettled } from "@/lib/server/restaurant-table-settlement";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 
@@ -105,9 +106,10 @@ export async function recordRestaurantPaymentAtCollection(
 
     const cashBank = await tx.cashBankAccount.findFirst({
       where: { id: input.cashBankAccountId, workspaceId: context.workspaceId, isActive: true },
-      select: { id: true },
+      select: { id: true, isBank: true },
     });
     if (!cashBank) throw new IndustryDomainError("NOT_FOUND", "Cash or bank account is unavailable in this workspace.");
+    assertRestaurantPaymentAccountKind(input.method, cashBank.isBank);
 
     if (idempotencyKey) {
       const existing = await tx.$queryRaw<Array<{
@@ -156,6 +158,8 @@ export async function recordRestaurantPaymentAtCollection(
       }
     }
 
+    const cashShiftId = await resolveRestaurantPaymentCashShift(tx, context.workspaceId, input.method);
+
     const totals = await tx.$queryRaw<Array<{
       returnedTotal: Prisma.Decimal;
       activePaid: Prisma.Decimal;
@@ -194,10 +198,11 @@ export async function recordRestaurantPaymentAtCollection(
     const inserted = await tx.$queryRaw<Array<{ id: string }>>`
       INSERT INTO "restaurant_payments" (
         "workspaceId", "restaurantOrderId", "cashBankAccountId", "method", "amount",
-        "reference", "notes", "idempotencyKey", "createdById"
+        "reference", "notes", "idempotencyKey", "createdById", "cashShiftId"
       ) VALUES (
         ${context.workspaceId}::uuid, ${order.id}::uuid, ${cashBank.id}, ${input.method}, ${amount},
-        ${cleanOptional(input.reference, 120)}, ${cleanOptional(input.notes, 500)}, ${idempotencyKey}, ${context.userId ?? null}
+        ${cleanOptional(input.reference, 120)}, ${cleanOptional(input.notes, 500)}, ${idempotencyKey}, ${context.userId ?? null},
+        ${cashShiftId}::uuid
       )
       RETURNING "id"::text AS "id"
     `;
@@ -226,6 +231,7 @@ export async function recordRestaurantPaymentAtCollection(
         postedAt: postedAt.toISOString(),
         accountingPosted: true,
         collectionTiming: "IMMEDIATE",
+        cashShiftId,
       },
     });
 

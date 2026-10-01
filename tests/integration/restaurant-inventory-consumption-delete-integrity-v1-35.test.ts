@@ -67,6 +67,8 @@ describe("restaurant V1.35 inventory consumption delete integrity", () => {
       bankName: "", accountTitle: "", accountNumber: "", notes: "",
     });
     cashId = (await getCashBankAccounts(workspaceId)).find((row) => row.id === cash.id)!.cashBankAccountId;
+    const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+    await openRestaurantCashShiftSafely(actor(), 0, "V1.84 consumption delete shift");
 
     const product = await db.product.create({
       data: { workspaceId, name: "V1.35 meal", sku: `V135-${runId}`, stockQuantity: 100, costPrice: 50, sellingPrice: 200 },

@@ -37,6 +37,8 @@ async function fixture() {
   });
   const accounts = await getCashBankAccounts(workspaceId);
   const cashBankAccountId = accounts.find(account => account.id === ledger.id)!.cashBankAccountId;
+  const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+  const shift = await openRestaurantCashShiftSafely(context, 0, "V1.84 settlement ledger concurrency shift");
 
   const product = await db.product.create({ data: { workspaceId, name: `V163 Meal ${id}`, stockQuantity: 10, costPrice: 20, sellingPrice: 100 } });
   const category = await createRestaurantMenuCategory(context, { name: `V163 Menu ${id}` });
@@ -49,6 +51,7 @@ async function fixture() {
     userId: user.id,
     ledgerAccountId: ledger.id,
     cashBankAccountId,
+    cashShiftId: shift.id,
     orderId: order.id,
   };
 }
@@ -56,9 +59,9 @@ async function fixture() {
 async function insertCashPayment(tx: RawExecutor, f: Awaited<ReturnType<typeof fixture>>, key: string) {
   return tx.$executeRaw`
     INSERT INTO "restaurant_payments" (
-      "workspaceId", "restaurantOrderId", "cashBankAccountId", "method", "amount", "idempotencyKey", "createdById"
+      "workspaceId", "restaurantOrderId", "cashBankAccountId", "method", "amount", "idempotencyKey", "createdById", "cashShiftId"
     ) VALUES (
-      ${f.workspaceId}::uuid, ${f.orderId}::uuid, ${f.cashBankAccountId}, 'CASH', 10, ${key}, ${f.userId}
+      ${f.workspaceId}::uuid, ${f.orderId}::uuid, ${f.cashBankAccountId}, 'CASH', 10, ${key}, ${f.userId}, ${f.cashShiftId}::uuid
     )
   `;
 }

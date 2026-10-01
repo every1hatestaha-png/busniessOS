@@ -86,6 +86,8 @@ describe("restaurant V1.36 inventory consumption tenant integrity", () => {
       notes: "",
     });
     cashId = (await getCashBankAccounts(workspaceA)).find((row) => row.id === cash.id)!.cashBankAccountId;
+    const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+    await openRestaurantCashShiftSafely(actor(), 0, "V1.84 consumption tenant shift");
 
     const [aProduct, bProduct] = await Promise.all([
       db.product.create({

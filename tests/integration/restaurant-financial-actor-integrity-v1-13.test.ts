@@ -91,6 +91,8 @@ describe("restaurant V1.13 manager actor integrity", () => {
     });
     const accounts = await getCashBankAccounts(workspaceId);
     cashAccountId = accounts.find((account) => account.id === cash.id)!.cashBankAccountId;
+    const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+    await openRestaurantCashShiftSafely(owner(), 0, "V1.84 financial-actor shift");
 
     const product = await db.product.create({
       data: { workspaceId, name: "Actor Meal", sku: `ACT-${runId}`, stockQuantity: 20, costPrice: 50, sellingPrice: 200 },

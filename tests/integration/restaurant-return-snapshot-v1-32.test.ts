@@ -100,6 +100,8 @@ describe("restaurant V1.32 immutable return snapshots", () => {
       bankName: "", accountTitle: "", accountNumber: "", notes: "",
     });
     cashId = (await getCashBankAccounts(workspaceId)).find((row) => row.id === cash.id)!.cashBankAccountId;
+    const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+    await openRestaurantCashShiftSafely(actor(), 0, "V1.84 return-snapshot shift");
 
     const product = await db.product.create({
       data: { workspaceId, name: "V1.32 meal", sku: `V132-${runId}`, stockQuantity: 100, costPrice: 50, sellingPrice: 200 },

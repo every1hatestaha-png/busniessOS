@@ -68,6 +68,8 @@ describe("restaurant V1.60 settlement-account parent identity", () => {
     const accounts = await getCashBankAccounts(workspaceId);
     cashBankAccountId = accounts.find(account => account.id === cash.id)!.cashBankAccountId;
     unreferencedCashBankAccountId = accounts.find(account => account.id === spare.id)!.cashBankAccountId;
+    const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+    await openRestaurantCashShiftSafely(owner(), 0, "V1.84 settlement parent shift");
 
     const alternateLedger = await db.account.create({
       data: {

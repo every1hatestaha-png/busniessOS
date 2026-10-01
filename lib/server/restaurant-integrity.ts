@@ -25,6 +25,7 @@ import {
   type RestaurantOrderStatus,
   type RestaurantPaymentStatus,
 } from "@/lib/server/restaurant-workspace";
+import { assertRestaurantPaymentAccountKind, resolveRestaurantPaymentCashShift } from "@/lib/server/restaurant-payment-cash-shift";
 import { releaseRestaurantTableIfSettled } from "@/lib/server/restaurant-table-settlement";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 
@@ -493,9 +494,12 @@ export async function recordRestaurantPayment(
 
     const cashBank = await tx.cashBankAccount.findFirst({
       where: { id: input.cashBankAccountId, workspaceId: context.workspaceId, isActive: true },
-      select: { id: true },
+      select: { id: true, isBank: true },
     });
     if (!cashBank) throw new IndustryDomainError("NOT_FOUND", "Cash or bank account is unavailable in this workspace.");
+    assertRestaurantPaymentAccountKind(input.method, cashBank.isBank);
+
+    const cashShiftId = await resolveRestaurantPaymentCashShift(tx, context.workspaceId, input.method);
 
     const currentlyPaid = await activePaymentTotal(tx, context.workspaceId, order.id);
     if (currentlyPaid.plus(amount).gt(order.total)) {
@@ -504,10 +508,11 @@ export async function recordRestaurantPayment(
 
     const rows = await tx.$queryRaw<Array<{ id: string }>>`
       INSERT INTO "restaurant_payments" (
-        "workspaceId", "restaurantOrderId", "cashBankAccountId", "method", "amount", "reference", "notes", "idempotencyKey", "createdById"
+        "workspaceId", "restaurantOrderId", "cashBankAccountId", "method", "amount", "reference", "notes", "idempotencyKey", "createdById", "cashShiftId"
       ) VALUES (
         ${context.workspaceId}::uuid, ${order.id}::uuid, ${cashBank.id}, ${input.method}, ${amount},
-        ${cleanOptional(input.reference, 120)}, ${cleanOptional(input.notes, 500)}, ${idempotencyKey}, ${context.userId ?? null}
+        ${cleanOptional(input.reference, 120)}, ${cleanOptional(input.notes, 500)}, ${idempotencyKey}, ${context.userId ?? null},
+        ${cashShiftId}::uuid
       )
       RETURNING "id"::text AS "id"
     `;
@@ -544,6 +549,7 @@ export async function recordRestaurantPayment(
         method: input.method,
         paymentStatus: nextPayment.status,
         accountingPosted: Boolean(order.accountingPostedAt),
+        cashShiftId,
       },
     });
     return { id: payment.id, idempotent: false as const };
