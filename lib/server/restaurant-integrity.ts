@@ -587,13 +587,13 @@ export async function voidRestaurantPayment(context: IndustryContext, paymentId:
     if (!payment) throw new IndustryDomainError("NOT_FOUND", "Restaurant payment was not found.");
     if (payment.voidedAt) return { id: payment.id, alreadyVoided: true as const };
 
-    const now = new Date();
+    const reversalDate = new Date();
     if (payment.postedAt) {
       await reverseGeneralLedgerEntries(tx, {
         workspaceId: context.workspaceId,
         sources: [{ sourceType: "RECEIPT", sourceId: payment.id }],
         documentNo: `REV-RP-${payment.id.slice(0, 8).toUpperCase()}`,
-        date: now,
+        date: reversalDate,
         reason: `Voided restaurant payment: ${cleanReason}`,
         reversedById: context.userId,
       });
@@ -605,7 +605,7 @@ export async function voidRestaurantPayment(context: IndustryContext, paymentId:
 
     await tx.$executeRaw`
       UPDATE "restaurant_payments"
-      SET "voidedAt"=${now}, "voidedById"=${context.userId ?? null}, "voidReason"=${cleanReason}
+      SET "voidedAt"=CURRENT_TIMESTAMP, "voidedById"=${context.userId ?? null}, "voidReason"=${cleanReason}
       WHERE "id"=${payment.id}::uuid AND "workspaceId"=${context.workspaceId}::uuid
     `;
     const nextPayment = await syncPaymentStatus(tx, context.workspaceId, payment.restaurantOrderId, payment.orderTotal);
