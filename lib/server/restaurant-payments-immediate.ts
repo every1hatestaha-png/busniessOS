@@ -43,23 +43,26 @@ async function postPaymentNow(
   },
 ) {
   await ensureDefaultAccounts(input.workspaceId, tx);
-  const postedAt = new Date();
+  const accountingDate = new Date();
   await postCustomerPaymentToGeneralLedger(tx, {
     workspaceId: input.workspaceId,
     paymentId: input.paymentId,
     documentNo: `RP-${input.orderNumber}-${input.paymentId.slice(0, 8).toUpperCase()}`,
-    date: postedAt,
+    date: accountingDate,
     amount: input.amount,
     cashBankAccountId: input.cashBankAccountId,
   });
-  await tx.$executeRaw`
+  const postedRows = await tx.$queryRaw<Array<{ postedAt: Date }>>`
     UPDATE "restaurant_payments"
-    SET "postedAt"=${postedAt}
+    SET "postedAt"=CURRENT_TIMESTAMP
     WHERE "id"=${input.paymentId}::uuid
       AND "workspaceId"=${input.workspaceId}::uuid
       AND "voidedAt" IS NULL
       AND "postedAt" IS NULL
+    RETURNING "postedAt"
   `;
+  const postedAt = postedRows[0]?.postedAt;
+  if (!postedAt) throw new IndustryDomainError("CONFLICT", "Restaurant payment changed before accounting could be posted.");
   return postedAt;
 }
 

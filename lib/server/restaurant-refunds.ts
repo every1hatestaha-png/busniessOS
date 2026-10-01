@@ -226,12 +226,12 @@ export async function refundRestaurantPayment(
     `;
     const refund = refundRows[0]!;
 
-    const now = new Date();
+    const reversalDate = new Date();
     const reversal = await reverseGeneralLedgerEntries(tx, {
       workspaceId: context.workspaceId,
       sources: [{ sourceType: "RECEIPT", sourceId: payment.paymentId }],
       documentNo: `RF-${payment.orderNumber}-${refund.id.slice(0, 8).toUpperCase()}`,
-      date: now,
+      date: reversalDate,
       reason: `Restaurant refund: ${reason}`,
       reversedById: context.userId,
     });
@@ -246,7 +246,7 @@ export async function refundRestaurantPayment(
 
     await tx.$executeRaw`
       UPDATE "restaurant_payments"
-      SET "voidedAt"=${now},
+      SET "voidedAt"=CURRENT_TIMESTAMP,
           "voidedById"=${context.userId ?? null},
           "voidReason"=${`Refunded: ${reason}`}
       WHERE "id"=${payment.paymentId}::uuid

@@ -613,7 +613,7 @@ export async function createRestaurantItemReturn(context: IndustryContext, input
       if (money(prior.plus(allocation.amount)).equals(money(payment.amount))) {
         await tx.$executeRaw`
           UPDATE "restaurant_payments"
-          SET "voidedAt"=${now},
+          SET "voidedAt"=CURRENT_TIMESTAMP,
               "voidedById"=${context.userId ?? null},
               "voidReason"=${`Fully refunded through restaurant item returns (${returnNumber})`}
           WHERE "id"=${payment.id}::uuid
