@@ -36,11 +36,12 @@ type PaymentSummary = Awaited<ReturnType<typeof listRestaurantNetPaymentSummarie
 
 export default async function RestaurantOrdersPage() {
   const { workspaceId, role } = await requireWorkspace();
-  const [orders, cashAccounts, payments, paymentSummaries] = await Promise.all([
-    listRestaurantOrders(workspaceId, 200),
+  const orders = await listRestaurantOrders(workspaceId, 200);
+  const visibleOrderIds = orders.map((order) => order.id);
+  const [cashAccounts, payments, paymentSummaries] = await Promise.all([
     getCashBankAccounts(workspaceId),
-    listRestaurantPayments(workspaceId),
-    listRestaurantNetPaymentSummaries(workspaceId),
+    listRestaurantPayments(workspaceId, visibleOrderIds),
+    listRestaurantNetPaymentSummaries(workspaceId, visibleOrderIds),
   ]);
   const active = orders.filter((order) => !["COMPLETED", "CANCELLED"].includes(order.status));
   const recentClosed = orders.filter((order) => ["COMPLETED", "CANCELLED"].includes(order.status)).slice(0, 30);
