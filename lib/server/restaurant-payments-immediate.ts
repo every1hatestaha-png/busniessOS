@@ -5,7 +5,7 @@ import { Prisma, type PaymentMethod } from "@prisma/client";
 import { ensureDefaultAccounts, postCustomerPaymentToGeneralLedger } from "@/lib/server/accounting";
 import { writeAudit } from "@/lib/server/audit";
 import { IndustryDomainError, requireWorkspaceModule, type IndustryContext } from "@/lib/server/industry-modules";
-import { resolveRestaurantPaymentCashShift } from "@/lib/server/restaurant-payment-cash-shift";
+import { assertRestaurantPaymentAccountKind, resolveRestaurantPaymentCashShift } from "@/lib/server/restaurant-payment-cash-shift";
 import { releaseRestaurantTableIfSettled } from "@/lib/server/restaurant-table-settlement";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 
@@ -106,9 +106,10 @@ export async function recordRestaurantPaymentAtCollection(
 
     const cashBank = await tx.cashBankAccount.findFirst({
       where: { id: input.cashBankAccountId, workspaceId: context.workspaceId, isActive: true },
-      select: { id: true },
+      select: { id: true, isBank: true },
     });
     if (!cashBank) throw new IndustryDomainError("NOT_FOUND", "Cash or bank account is unavailable in this workspace.");
+    assertRestaurantPaymentAccountKind(input.method, cashBank.isBank);
 
     if (idempotencyKey) {
       const existing = await tx.$queryRaw<Array<{
