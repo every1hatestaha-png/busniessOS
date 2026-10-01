@@ -8,6 +8,7 @@ let createRestaurantMenuCategory: typeof import("@/lib/server/restaurant-workspa
 let createRestaurantMenuItem: typeof import("@/lib/server/restaurant-workspace")["createRestaurantMenuItem"];
 let createPosRestaurantOrder: typeof import("@/lib/server/restaurant-workspace")["createPosRestaurantOrder"];
 let recordRestaurantPaymentAtCollection: typeof import("@/lib/server/restaurant-payments-immediate")["recordRestaurantPaymentAtCollection"];
+let openRestaurantCashShiftSafely: typeof import("@/lib/server/restaurant-cash-shifts")["openRestaurantCashShiftSafely"];
 
 const runId = randomUUID();
 let userId = "";
@@ -25,6 +26,7 @@ describe("restaurant V1.12 payment settlement account integrity", () => {
     ({ createCashBankAccount, getCashBankAccounts } = await import("@/lib/server/accounting"));
     ({ createRestaurantMenuCategory, createRestaurantMenuItem, createPosRestaurantOrder } = await import("@/lib/server/restaurant-workspace"));
     ({ recordRestaurantPaymentAtCollection } = await import("@/lib/server/restaurant-payments-immediate"));
+    ({ openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts"));
 
     const user = await db.user.create({ data: { clerkId: `settlement-${runId}`, email: `settlement-${runId}@example.invalid` } });
     userId = user.id;
@@ -120,6 +122,7 @@ describe("restaurant V1.12 payment settlement account integrity", () => {
   });
 
   it("allows correctly matched cash and bank settlement accounts", async () => {
+    await openRestaurantCashShiftSafely(owner(), 0, "Payment account integrity test shift");
     const order = await createPosRestaurantOrder(owner(), {
       fulfillmentType: "TAKEAWAY",
       items: [{ menuItemId, quantity: 1 }],
