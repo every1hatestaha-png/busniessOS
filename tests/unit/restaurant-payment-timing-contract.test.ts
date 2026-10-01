@@ -13,7 +13,9 @@ describe("restaurant V1.7 payment timing production contract", () => {
 
   it("posts the receipt and postedAt inside the same serializable service", () => {
     expect(immediateService).toContain("postCustomerPaymentToGeneralLedger");
-    expect(immediateService).toContain('SET "postedAt"=${postedAt}');
+    expect(immediateService).toContain('SET "postedAt"=CURRENT_TIMESTAMP');
+    expect(immediateService).toContain('RETURNING "postedAt"');
+    expect(immediateService).not.toContain('SET "postedAt"=${postedAt}');
     expect(immediateService).toContain("withSerializableRetry");
     expect(immediateService).toContain('collectionTiming: "IMMEDIATE"');
   });
