@@ -128,6 +128,7 @@ describe("restaurant V1.7 payment collection timing", () => {
   });
 
   it("reverses a pre-completion receipt immediately so cancellation can proceed safely", async () => {
+    await openCashShift(owner(), 0, "Second timing shift");
     const order = await createPosRestaurantOrder(owner(), { fulfillmentType: "TAKEAWAY", items: [{ menuItemId, quantity: 1 }] });
     const cashBefore = await db.cashBankAccount.findUniqueOrThrow({ where: { id: cashBankAccountId } });
     const payment = await recordRestaurantPaymentAtCollection(owner(), {
