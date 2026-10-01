@@ -185,6 +185,11 @@ describe("restaurant V1.75 payment evidence snapshot", () => {
     });
     expect((await paymentSnapshot(payment.id)).voidedAt).not.toBeNull();
 
+    await expect(db.$executeRaw`
+      UPDATE "restaurant_payments" SET "voidedAt"=NULL, "voidedById"=NULL, "voidReason"=NULL
+      WHERE "id"=${payment.id}::uuid
+    `).rejects.toThrow("Restaurant payment void evidence is immutable without a compensating return reversal");
+
     await reverseReturn(actor(), returned.id, "Customer retained the item");
     const reactivated = await paymentSnapshot(payment.id);
     expect(reactivated.postedAt).not.toBeNull();
