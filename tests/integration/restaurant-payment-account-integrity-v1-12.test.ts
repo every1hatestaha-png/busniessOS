@@ -60,6 +60,7 @@ describe("restaurant V1.12 payment settlement account integrity", () => {
     const accounts = await getCashBankAccounts(workspaceId);
     cashAccountId = accounts.find((account) => account.id === cash.id)!.cashBankAccountId;
     bankAccountId = accounts.find((account) => account.id === bank.id)!.cashBankAccountId;
+    await openRestaurantCashShiftSafely(owner(), 0, "Payment account integrity test shift");
 
     const product = await db.product.create({
       data: { workspaceId, name: "Settlement Meal", sku: `SET-${runId}`, stockQuantity: 20, costPrice: 80, sellingPrice: 400 },
@@ -122,7 +123,6 @@ describe("restaurant V1.12 payment settlement account integrity", () => {
   });
 
   it("allows correctly matched cash and bank settlement accounts", async () => {
-    await openRestaurantCashShiftSafely(owner(), 0, "Payment account integrity test shift");
     const order = await createPosRestaurantOrder(owner(), {
       fulfillmentType: "TAKEAWAY",
       items: [{ menuItemId, quantity: 1 }],
