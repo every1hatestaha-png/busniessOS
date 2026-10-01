@@ -53,6 +53,9 @@ jobs:
           tests/integration/restaurant-kds-terminal-table-release-v1-46.test.ts
           tests/integration/restaurant-table-concurrency-v1-67.test.ts
           tests/integration/restaurant-payment-terminal-concurrency-v1-29.test.ts
+          tests/integration/restaurant-completion-exactly-once-v1-51.test.ts
+          tests/integration/restaurant-order-table-tenant-integrity-v1-41.test.ts
+          tests/integration/restaurant-refunds-v1-2.test.ts
           tests/integration/restaurant-integrity-v1-1.test.ts
       - name: TypeScript
         run: npx tsc --noEmit
