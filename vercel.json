@@ -27,7 +27,8 @@
       "architecture/restaurant-posting-evidence-v1-77": false,
       "architecture/restaurant-dependency-security-v1-78": false,
       "architecture/restaurant-production-certification-v1-79": false,
-      "architecture/restaurant-table-settlement-v1-82": false
+      "architecture/restaurant-table-settlement-v1-82": false,
+      "architecture/restaurant-pos-financial-override-v1-83": false
     }
   }
 }

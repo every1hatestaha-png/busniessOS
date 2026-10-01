@@ -14,7 +14,7 @@ type MenuItem = { id: string; categoryId: string; categoryName: string; name: st
 type Table = { id: string; name: string; status: string };
 type CartLine = { menuItemId: string; name: string; price: number; quantity: number };
 
-export function RestaurantPos({ categories, items, tables, canDiscount }: { categories: Category[]; items: MenuItem[]; tables: Table[]; canDiscount: boolean }) {
+export function RestaurantPos({ categories, items, tables, canFinancialOverride }: { categories: Category[]; items: MenuItem[]; tables: Table[]; canFinancialOverride: boolean }) {
   const [state, action, pending] = useActionState(createPosOrderAction, initialRestaurantV1ActionState);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [activeCategory, setActiveCategory] = useState(categories[0]?.id ?? "all");
@@ -86,10 +86,10 @@ export function RestaurantPos({ categories, items, tables, canDiscount }: { cate
             <div className="grid grid-cols-2 gap-2"><Input name="customerName" placeholder="Customer name" maxLength={120} /><Input name="customerPhone" placeholder="Phone" maxLength={40} /></div>
             {fulfillmentType === "DELIVERY" ? <Input name="deliveryAddress" placeholder="Delivery address" maxLength={500} required /> : null}
             <Input name="notes" placeholder="Order notes" maxLength={500} />
-            <div className="grid grid-cols-2 gap-2">
-              {canDiscount ? <label className="space-y-1 text-xs font-medium">Discount<Input name="discountAmount" type="number" min={0} step="0.01" defaultValue={0} /></label> : <input type="hidden" name="discountAmount" value="0" />}
+            {canFinancialOverride ? <div className="grid grid-cols-2 gap-2">
+              <label className="space-y-1 text-xs font-medium">Discount<Input name="discountAmount" type="number" min={0} step="0.01" defaultValue={0} /></label>
               <label className="space-y-1 text-xs font-medium">Tax<Input name="taxAmount" type="number" min={0} step="0.01" defaultValue={0} /></label>
-            </div>
+            </div> : null}
             <div className="border-t pt-3"><div className="flex items-center justify-between text-sm"><span className="text-muted-foreground">Displayed subtotal</span><span className="font-semibold">Rs {subtotal.toLocaleString()}</span></div><p className="mt-1 text-[11px] text-muted-foreground">Final prices and totals are recalculated securely by the server.</p></div>
             {state.message ? <p className={state.status === "error" ? "text-xs text-destructive" : "text-xs font-medium text-emerald-700"}>{state.message}</p> : null}
             <Button type="submit" className="w-full" disabled={pending || cart.length === 0}>{pending ? "Creating order..." : "Confirm & send to kitchen"}</Button>
