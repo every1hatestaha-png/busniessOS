@@ -57,9 +57,12 @@ BEGIN
      OR NEW."cashBankAccountId" IS DISTINCT FROM OLD."cashBankAccountId"
      OR NEW."method" IS DISTINCT FROM OLD."method"
      OR NEW."amount" IS DISTINCT FROM OLD."amount"
-     OR NEW."reference" IS DISTINCT FROM OLD."reference"
+     OR NEW."idempotencyKey" IS DISTINCT FROM OLD."idempotencyKey" THEN
+    RAISE EXCEPTION 'Restaurant payment financial snapshot is immutable';
+  END IF;
+
+  IF NEW."reference" IS DISTINCT FROM OLD."reference"
      OR NEW."notes" IS DISTINCT FROM OLD."notes"
-     OR NEW."idempotencyKey" IS DISTINCT FROM OLD."idempotencyKey"
      OR NEW."createdById" IS DISTINCT FROM OLD."createdById"
      OR NEW."createdAt" IS DISTINCT FROM OLD."createdAt" THEN
     RAISE EXCEPTION 'Restaurant payment evidence snapshot is immutable';
