@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("production release workflow", () => {
-  const workflow = readFileSync(join(process.cwd(), ".github/workflows/main_munshios.yml"), "utf8");
+  const workflow = readFileSync(join(process.cwd(), ".github/workflows/main_munshios.yml"), "utf8").replaceAll("\r\n", "\n");
   const targetAssertion = readFileSync(join(process.cwd(), "scripts/assert-production-database-target.cjs"), "utf8");
   const runtimeReadiness = readFileSync(join(process.cwd(), "lib/server/database-readiness.ts"), "utf8");
   const targetConfig = readFileSync(join(process.cwd(), "config/database-targets.json"), "utf8");

@@ -29,7 +29,7 @@ function fail(message: string): RestaurantV1ActionState {
 }
 
 function messageFor(error: unknown, fallback: string) {
-  return error instanceof IndustryDomainError || error instanceof Error ? error.message : fallback;
+  return error instanceof IndustryDomainError ? error.message : fallback;
 }
 
 function refreshRestaurant(orderId?: string) {

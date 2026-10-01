@@ -136,4 +136,23 @@ describe("Restaurant V1.85 timezone invariance", () => {
     expect(rows[0]?.closedAt).not.toBeNull();
     expect(rows[0]!.closedAt!.getTime()).toBeGreaterThanOrEqual(rows[0]!.openedAt.getTime());
   }, 60_000);
+
+  it("counts orders on the workspace midnight boundary independently of session timezone", async () => {
+    const { getRestaurantWorkspaceMetrics } = await import("@/lib/server/restaurant-workspace");
+    await db.workspace.update({ where: { id: workspaceId }, data: { timezone: "Asia/Karachi" } });
+    const before = await getRestaurantWorkspaceMetrics(workspaceId);
+    for (const seconds of [-1, 0, 1]) {
+      await db.$executeRaw`
+        INSERT INTO "restaurant_orders" (
+          "workspaceId", "orderNumber", "source", "fulfillmentType", "status", "createdAt", "createdById", "paymentStatus"
+        ) VALUES (
+          ${workspaceId}::uuid, ${`MIDNIGHT-${runId}-${seconds}`}, 'MANUAL', 'TAKEAWAY', 'PENDING_REVIEW',
+          (date_trunc('day', CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Karachi') AT TIME ZONE 'Asia/Karachi')
+            + (${seconds} * interval '1 second'), ${userId}, 'PAID'
+        )
+      `;
+    }
+    const after = await getRestaurantWorkspaceMetrics(workspaceId);
+    expect(after.todayOrders - before.todayOrders).toBe(2);
+  });
 });

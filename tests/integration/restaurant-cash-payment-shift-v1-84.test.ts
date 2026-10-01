@@ -157,6 +157,42 @@ describe("restaurant V1.84 cash payment shift integrity", () => {
     await closeRestaurantCashShiftFromLedger(owner(), shift.id, 200, "Service evidence shift close");
   }, 60_000);
 
+  it("cannot bypass drawer reconciliation by labeling physical cash as OTHER", async () => {
+    const order = await newOrder();
+    const before = await db.cashBankAccount.findUniqueOrThrow({ where: { id: cashAccountId } });
+    await expect(recordRestaurantPaymentAtCollection(owner(), {
+      orderId: order.id,
+      cashBankAccountId: cashAccountId,
+      method: "OTHER",
+      amount: 200,
+      idempotencyKey: `v186:other:${randomUUID()}`,
+    })).rejects.toThrow(/cash|shift|settlement/i);
+    const after = await db.cashBankAccount.findUniqueOrThrow({ where: { id: cashAccountId } });
+    expect(after.currentBalance.toString()).toBe(before.currentBalance.toString());
+    const payments = await db.$queryRaw<Array<{ count: number }>>`
+      SELECT COUNT(*)::int AS "count" FROM "restaurant_payments"
+      WHERE "workspaceId"=${workspaceId}::uuid AND "restaurantOrderId"=${order.id}::uuid
+    `;
+    expect(payments[0]?.count).toBe(0);
+  });
+
+  it("rejects direct OTHER cash inserts and preserves OTHER bank settlement", async () => {
+    const order = await newOrder();
+    await expect(db.$executeRaw`
+      INSERT INTO "restaurant_payments" (
+        "workspaceId", "restaurantOrderId", "cashBankAccountId", "method", "amount", "createdById"
+      ) VALUES (
+        ${workspaceId}::uuid, ${order.id}::uuid, ${cashAccountId}, 'OTHER', 200, ${ownerId}
+      )
+    `).rejects.toThrow(/Non-cash restaurant payments must use a bank/i);
+    const payment = await recordRestaurantPaymentAtCollection(owner(), {
+      orderId: order.id, cashBankAccountId: bankAccountId, method: "OTHER", amount: 200,
+      idempotencyKey: `v186:other-bank:${randomUUID()}`,
+    });
+    expect(await paymentRow(payment.id)).toMatchObject({ cashShiftId: null });
+    expect((await paymentRow(payment.id)).postedAt).not.toBeNull();
+  });
+
   it("fails closed for missing, cross-workspace, and non-cash shift references", async () => {
     const shift = await openRestaurantCashShiftSafely(owner(), 0, "V1.84 DB guard");
     const otherShift = await openRestaurantCashShiftSafely(otherOwner(), 0, "V1.84 other shift");
@@ -246,12 +282,159 @@ describe("restaurant V1.84 cash payment shift integrity", () => {
     `;
 
     if (paymentResult.status === "fulfilled") {
+      if (closeResult.status === "fulfilled") expect(closeResult.value.expectedCash).toBe(200);
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({ cashShiftId: shift.id });
       expect(rows[0]?.postedAt).not.toBeNull();
     } else {
+      if (closeResult.status === "fulfilled") expect(closeResult.value.expectedCash).toBe(0);
       expect(rows).toHaveLength(0);
       expect(String(paymentResult.reason)).toMatch(/open restaurant cash shift|required before recording a cash payment/i);
     }
   }, 90_000);
+
+  it("requires an open shift for a physical cash refund after the receipt shift closed", async () => {
+    const { refundRestaurantPayment } = await import("@/lib/server/restaurant-refunds");
+    const shift = await openRestaurantCashShiftSafely(owner(), 0, "V1.86 refund boundary");
+    const order = await newOrder();
+    const payment = await recordRestaurantPaymentAtCollection(owner(), {
+      orderId: order.id, cashBankAccountId: cashAccountId, method: "CASH", amount: 200,
+      idempotencyKey: `v186:refund-source:${randomUUID()}`,
+    });
+    await complete(order.id);
+    const closed = await closeRestaurantCashShiftFromLedger(owner(), shift.id, 200);
+    expect(closed.expectedCash).toBe(200);
+    await expect(refundRestaurantPayment(owner(), {
+      paymentId: payment.id, reason: "Cash refund after drawer close",
+      idempotencyKey: `v186:refund:${randomUUID()}`,
+    })).rejects.toThrow(/open.*cash shift|cash shift.*open/i);
+    const rows = await db.$queryRaw<Array<{ count: number }>>`
+      SELECT COUNT(*)::int AS "count" FROM "restaurant_refunds"
+      WHERE "workspaceId"=${workspaceId}::uuid AND "restaurantPaymentId"=${payment.id}::uuid
+    `;
+    expect(rows[0]?.count).toBe(0);
+    const refundShift = await openRestaurantCashShiftSafely(owner(), 200);
+    await refundRestaurantPayment(owner(), {
+      paymentId: payment.id, reason: "Cash refund in current drawer",
+      idempotencyKey: `v186:refund-current:${randomUUID()}`,
+    });
+    expect((await closeRestaurantCashShiftFromLedger(owner(), refundShift.id, 0)).expectedCash).toBe(0);
+  }, 60_000);
+
+  it("rolls back a posted cash void without a drawer and reconciles it in the next shift", async () => {
+    const { voidRestaurantPayment } = await import("@/lib/server/restaurant-integrity");
+    const shift = await openRestaurantCashShiftSafely(owner(), 0);
+    const order = await newOrder();
+    const payment = await recordRestaurantPaymentAtCollection(owner(), {
+      orderId: order.id, cashBankAccountId: cashAccountId, method: "CASH", amount: 200,
+    });
+    await closeRestaurantCashShiftFromLedger(owner(), shift.id, 200);
+    const before = await db.cashBankAccount.findUniqueOrThrow({ where: { id: cashAccountId } });
+    await expect(voidRestaurantPayment(owner(), payment.id, "Void after close"))
+      .rejects.toThrow(/open.*cash shift/i);
+    await expect(db.$executeRaw`
+      UPDATE "restaurant_payments" SET "voidedAt"=CURRENT_TIMESTAMP,
+        "voidedById"=${ownerId}, "voidReason"='Direct void after shift closed'
+      WHERE "id"=${payment.id}::uuid AND "workspaceId"=${workspaceId}::uuid
+    `).rejects.toThrow(/open.*cash shift/i);
+    expect((await db.cashBankAccount.findUniqueOrThrow({ where: { id: cashAccountId } })).currentBalance.toString())
+      .toBe(before.currentBalance.toString());
+    const next = await openRestaurantCashShiftSafely(owner(), 200);
+    await voidRestaurantPayment(owner(), payment.id, "Void in current drawer");
+    expect((await closeRestaurantCashShiftFromLedger(owner(), next.id, 0)).expectedCash).toBe(0);
+  });
+
+  it("rolls back cash item returns and reversals outside an open shift", async () => {
+    const { createRestaurantItemReturn } = await import("@/lib/server/restaurant-item-returns");
+    const { reverseRestaurantItemReturn } = await import("@/lib/server/restaurant-return-reversals");
+    const shift = await openRestaurantCashShiftSafely(owner(), 0);
+    const order = await newOrder();
+    const payment = await recordRestaurantPaymentAtCollection(owner(), {
+      orderId: order.id, cashBankAccountId: cashAccountId, method: "CASH", amount: 200,
+    });
+    await complete(order.id);
+    await closeRestaurantCashShiftFromLedger(owner(), shift.id, 200);
+    const items = await db.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"::text AS "id" FROM "restaurant_order_items" WHERE "restaurantOrderId"=${order.id}::uuid
+    `;
+    const input = {
+      orderId: order.id, reason: "Return after close", idempotencyKey: `v186:return:${randomUUID()}`,
+      items: [{ orderItemId: items[0]!.id, quantity: 1, restock: true }],
+      paymentAllocations: [{ paymentId: payment.id, amount: 200 }],
+    };
+    await expect(createRestaurantItemReturn(owner(), input)).rejects.toThrow(/open.*cash shift/i);
+    const returnedRows = await db.$queryRaw<Array<{ count: number }>>`
+      SELECT COUNT(*)::int AS "count" FROM "restaurant_returns" WHERE "restaurantOrderId"=${order.id}::uuid
+    `;
+    expect(returnedRows[0]?.count).toBe(0);
+    const returnShift = await openRestaurantCashShiftSafely(owner(), 200);
+    const returned = await createRestaurantItemReturn(owner(), input);
+    expect((await closeRestaurantCashShiftFromLedger(owner(), returnShift.id, 0)).expectedCash).toBe(0);
+    await expect(reverseRestaurantItemReturn(owner(), returned.id, "Reverse after close"))
+      .rejects.toThrow(/open.*cash shift/i);
+    const reversals = await db.$queryRaw<Array<{ count: number }>>`
+      SELECT COUNT(*)::int AS "count" FROM "restaurant_returns" WHERE "reversalOfId"=${returned.id}::uuid
+    `;
+    expect(reversals[0]?.count).toBe(0);
+    const reversalShift = await openRestaurantCashShiftSafely(owner(), 0);
+    await reverseRestaurantItemReturn(owner(), returned.id, "Reverse in current drawer");
+    expect((await closeRestaurantCashShiftFromLedger(owner(), reversalShift.id, 200)).expectedCash).toBe(200);
+  });
+
+  it("cannot void the full receipt after a partial item refund", async () => {
+    const { createRestaurantItemReturn } = await import("@/lib/server/restaurant-item-returns");
+    const { voidRestaurantPayment } = await import("@/lib/server/restaurant-integrity");
+    const order = await createPosRestaurantOrder(owner(), {
+      fulfillmentType: "TAKEAWAY", items: [{ menuItemId, quantity: 2 }],
+    });
+    const payment = await recordRestaurantPaymentAtCollection(owner(), {
+      orderId: order.id, cashBankAccountId: bankAccountId, method: "BANK_TRANSFER", amount: 400,
+    });
+    await complete(order.id);
+    const items = await db.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"::text AS "id" FROM "restaurant_order_items" WHERE "restaurantOrderId"=${order.id}::uuid
+    `;
+    await createRestaurantItemReturn(owner(), {
+      orderId: order.id, reason: "One item refunded", idempotencyKey: `v186:partial:${randomUUID()}`,
+      items: [{ orderItemId: items[0]!.id, quantity: 1, restock: false }],
+      paymentAllocations: [{ paymentId: payment.id, amount: 200 }],
+    });
+    const before = await db.cashBankAccount.findUniqueOrThrow({ where: { id: bankAccountId } });
+    await expect(voidRestaurantPayment(owner(), payment.id, "Attempt duplicate cash outflow"))
+      .rejects.toThrow(/return|allocat|refund/i);
+    await expect(db.$executeRaw`
+      UPDATE "restaurant_payments" SET "voidedAt"=CURRENT_TIMESTAMP,
+        "voidedById"=${ownerId}, "voidReason"='Direct partial-return void'
+      WHERE "id"=${payment.id}::uuid AND "workspaceId"=${workspaceId}::uuid
+    `).rejects.toThrow(/partial item-return refund allocations/i);
+    expect((await db.cashBankAccount.findUniqueOrThrow({ where: { id: bankAccountId } })).currentBalance.toString())
+      .toBe(before.currentBalance.toString());
+  });
+
+  it("reconciles a refund racing shift close or rejects it without financial residue", async () => {
+    const { refundRestaurantPayment } = await import("@/lib/server/restaurant-refunds");
+    const shift = await openRestaurantCashShiftSafely(owner(), 0);
+    const order = await newOrder();
+    const payment = await recordRestaurantPaymentAtCollection(owner(), {
+      orderId: order.id, cashBankAccountId: cashAccountId, method: "CASH", amount: 200,
+    });
+    await complete(order.id);
+    const [refund, close] = await Promise.allSettled([
+      refundRestaurantPayment(owner(), { paymentId: payment.id, reason: "Concurrent drawer refund" }),
+      closeRestaurantCashShiftFromLedger(owner(), shift.id, 0),
+    ]);
+    expect(close.status).toBe("fulfilled");
+    if (close.status !== "fulfilled") throw close.reason;
+    const refunds = await db.$queryRaw<Array<{ count: number }>>`
+      SELECT COUNT(*)::int AS "count" FROM "restaurant_refunds" WHERE "restaurantPaymentId"=${payment.id}::uuid
+    `;
+    if (refund.status === "fulfilled") {
+      expect(close.value.expectedCash).toBe(0);
+      expect(refunds[0]?.count).toBe(1);
+    } else {
+      expect(String(refund.reason)).toMatch(/open.*cash shift/i);
+      expect(close.value.expectedCash).toBe(200);
+      expect(refunds[0]?.count).toBe(0);
+    }
+  });
 });
