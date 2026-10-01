@@ -94,6 +94,8 @@ describe("restaurant V1.29 payment versus terminal transition concurrency", () =
       notes: "",
     });
     cashId = (await getCashBankAccounts(workspaceId)).find((account) => account.id === cash.id)!.cashBankAccountId;
+    const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+    await openRestaurantCashShiftSafely(owner(), 0, "Terminal concurrency test shift");
 
     const product = await db.product.create({
       data: {
