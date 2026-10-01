@@ -58,6 +58,8 @@ jobs:
           tests/integration/restaurant-cash-shift-actor-integrity-v1-18.test.ts
           tests/integration/restaurant-cash-shift-snapshot-v1-74.test.ts
           tests/integration/restaurant-payment-evidence-v1-75.test.ts
+      - name: Broad Restaurant regression
+        run: npx vitest run tests/integration/restaurant-*.test.ts tests/unit/restaurant-*.test.ts
       - name: TypeScript
         run: npx tsc --noEmit
       - name: Diff hygiene
