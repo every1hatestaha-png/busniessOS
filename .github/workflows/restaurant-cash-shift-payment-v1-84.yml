@@ -1,0 +1,62 @@
+name: Restaurant V1.84 cash shift payment gate
+
+on:
+  pull_request:
+    branches:
+      - architecture/restaurant-pos-financial-override-v1-83
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_restaurant_v184
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_restaurant_v184"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_restaurant_v184?sslmode=disable
+      RUN_INTEGRATION_TESTS: "true"
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci
+      - run: npx prisma validate
+      - name: Deploy complete migration chain
+        run: |
+          set -euo pipefail
+          npx prisma migrate deploy
+          npx prisma migrate status
+      - name: Confirmed blocker and cash-shift regressions
+        run: >
+          npx vitest run
+          tests/integration/restaurant-adversarial-reproduction-v1-80.test.ts
+          tests/integration/restaurant-payment-account-integrity-v1-12.test.ts
+          tests/integration/restaurant-payment-terminal-concurrency-v1-29.test.ts
+          tests/integration/restaurant-cash-shift-v1-5.test.ts
+          tests/integration/restaurant-cash-shift-auth-v1-8.test.ts
+          tests/integration/restaurant-cash-shift-actor-integrity-v1-18.test.ts
+          tests/integration/restaurant-cash-shift-snapshot-v1-74.test.ts
+          tests/integration/restaurant-payment-evidence-v1-75.test.ts
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Diff hygiene
+        run: git diff --check origin/architecture/restaurant-pos-financial-override-v1-83...HEAD
