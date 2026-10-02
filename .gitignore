@@ -54,3 +54,6 @@ next-env.d.ts
 
 # local IDE state / AI snapshots
 .vs/
+
+# Synthetic Restaurant browser build
+.tmp-restaurant-browser-v188/

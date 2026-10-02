@@ -80,7 +80,7 @@ jobs:
           export PGPASSWORD=postgres
           test "$(psql -h 127.0.0.1 -U postgres -d munshios_restaurant_v188 -Atc 'SHOW timezone')" = "Etc/UTC"
       - name: V1.88 focused acceptance and boundaries
-        run: npx vitest run tests/unit/restaurant-action-boundary-v1-88.test.ts tests/unit/restaurant-print-v1-88.test.ts tests/integration/restaurant-release-acceptance-v1-88.test.ts
+        run: npx vitest run tests/unit/restaurant-action-boundary-v1-88.test.ts tests/unit/restaurant-print-v1-88.test.ts tests/unit/restaurant-release-build-guard-v1-88.test.ts tests/integration/restaurant-release-acceptance-v1-88.test.ts
       - name: V1.86 focused regressions
         run: >
           npx vitest run
@@ -229,3 +229,28 @@ jobs:
         run: npx prisma migrate deploy
       - name: Synthetic Restaurant query-plan evidence
         run: node scripts/restaurant-query-plan-audit-v1-87.cjs
+
+  isolated-browser-and-print:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Install isolated browser harness tooling
+        run: npm install --no-save --package-lock=false --ignore-scripts playwright@1.62.1
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Build real Restaurant form and print components
+        run: npx vite build --config tests/browser/restaurant-v1-88/vite.config.mjs
+      - name: Browser form and 80mm print verification
+        run: node scripts/restaurant-browser-verification-v1-88.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: synthetic-restaurant-80mm-print-v188
+          path: .tmp-restaurant-browser-v188/*.pdf
+          if-no-files-found: ignore

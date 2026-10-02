@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const { spawnSync } = require("node:child_process");
 
 const FALLBACK_SUPABASE_URL = "https://wunynhbseytthrwceqhg.supabase.co";
@@ -49,6 +50,9 @@ assertProductionAuthConfiguration();
 const shouldRunMigrations = process.env.RUN_PRISMA_MIGRATIONS_ON_BUILD === "1";
 
 if (shouldRunMigrations) {
+  if (process.env.VERCEL_ENV === "production") {
+    run(process.execPath, [require("node:path").join(__dirname, "assert-production-database-target.cjs")]);
+  }
   console.log("[build] Applying pending Prisma migrations...");
   run("npx", ["prisma", "migrate", "deploy"]);
 } else {

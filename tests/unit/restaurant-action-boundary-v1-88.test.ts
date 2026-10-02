@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ transition: vi.fn(), reverse: vi.fn(), auth: vi.fn(), confirm: vi.fn(), availability: vi.fn(), payment: vi.fn(), void: vi.fn(), prepare: vi.fn(), itemReturn: vi.fn() }));
+vi.mock("@/lib/server/db", () => ({ db: {} }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/server/auth", () => ({ requireWorkspace: mocks.auth }));
 vi.mock("@/lib/server/restaurant-integrity", () => ({ transitionRestaurantOrderWithIntegrity: mocks.transition, voidRestaurantPayment: mocks.void }));
@@ -43,7 +44,7 @@ describe("Restaurant V1.88 action coverage and exceptions", () => {
     ["voidRestaurantPaymentAction", "void"],
     ["createRestaurantItemReturnAction", "prepare"],
   ] as const)("%s redacts known database errors", async (name, mock) => {
-    mocks[mock].mockRejectedValue(new Prisma.PrismaClientKnownRequestError("SQL internal secret", { code: "P2010", clientVersion: "7.10.0" }));
+    mocks[mock].mockRejectedValue(new Prisma.PrismaClientKnownRequestError("SQL internal secret", { code: "P2010", clientVersion: "7.10.0", meta: { code: "P0001" } }));
     const actions = await import("@/app/(dashboard)/restaurant/v1-actions");
     const result = await actions[name](new FormData());
     expect(result.status).toBe("error");
@@ -72,4 +73,11 @@ describe("Restaurant V1.88 action coverage and exceptions", () => {
     expect((await transitionRestaurantOrderAction(new FormData())).status).toBe("error");
     expect(mocks.transition).not.toHaveBeenCalled();
   });
+});
+
+it("does not hide a raw SQL programmer error", async () => {
+  const error = new Prisma.PrismaClientKnownRequestError("Syntax error", { code: "P2010", clientVersion: "7.10.0", meta: { code: "42601" } });
+  mocks.void.mockRejectedValue(error);
+  const { voidRestaurantPaymentAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
+  await expect(voidRestaurantPaymentAction(new FormData())).rejects.toBe(error);
 });
