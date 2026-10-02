@@ -42,6 +42,7 @@ async function explain(client, sql, params) {
 async function main() {
   const db = new Client({ connectionString: url });
   await db.connect();
+  try {
   const user = randomUUID();
   const workspace = randomUUID();
   const ledger = randomUUID();
@@ -108,7 +109,9 @@ async function main() {
   await db.query(`INSERT INTO restaurant_menu_items ("workspaceId","categoryId",name,price) SELECT $1::uuid,$2::uuid,'Synthetic menu ' || g::text,100 FROM generate_series(1,500) g`,[workspace,category]);
   await db.query(`INSERT INTO restaurant_tables ("workspaceId",name,capacity,status) SELECT $1::uuid,'Synthetic table ' || g::text,4,'AVAILABLE' FROM generate_series(1,200) g`,[workspace]);
   await db.query(`INSERT INTO restaurant_orders ("workspaceId","orderNumber",source,"fulfillmentType",status,total,"createdById","createdAt","updatedAt") SELECT $1::uuid,'KPERF-' || g::text,'MANUAL','TAKEAWAY',CASE WHEN g%2=0 THEN 'READY' ELSE 'CONFIRMED' END,100,$2,now()-(g*interval '1 second'),now() FROM generate_series(1,2000) g`,[workspace,user]);
-  await db.query(`INSERT INTO kitchen_tickets ("workspaceId","restaurantOrderId","ticketNumber",status) SELECT $1::uuid,id,'KOT-' || "orderNumber",CASE WHEN status='READY' THEN 'READY' ELSE 'QUEUED' END FROM restaurant_orders WHERE "workspaceId"=$1::uuid AND "orderNumber" LIKE 'KPERF-%'`,[workspace]);
+  await db.query(`INSERT INTO kitchen_tickets ("workspaceId","restaurantOrderId","ticketNumber",status) SELECT $1::uuid,id,'KOT-' || "orderNumber",'QUEUED' FROM restaurant_orders WHERE "workspaceId"=$1::uuid AND "orderNumber" LIKE 'KPERF-%'`,[workspace]);
+  await db.query(`UPDATE kitchen_tickets kt SET status='PREPARING',"startedAt"=now(),"updatedAt"=now() FROM restaurant_orders ro WHERE kt."workspaceId"=$1::uuid AND ro.id=kt."restaurantOrderId" AND ro."workspaceId"=kt."workspaceId" AND ro.status='READY'`,[workspace]);
+  await db.query(`UPDATE kitchen_tickets kt SET status='READY',"readyAt"=now(),"updatedAt"=now() FROM restaurant_orders ro WHERE kt."workspaceId"=$1::uuid AND ro.id=kt."restaurantOrderId" AND ro."workspaceId"=kt."workspaceId" AND ro.status='READY'`,[workspace]);
   execFileSync(process.execPath, [path.join(path.dirname(require.resolve("vitest/package.json")), "vitest.mjs"), "run", "tests/integration/restaurant-perf-fixture-v1-88.test.ts"], { stdio: "inherit", env: { ...process.env, RUN_INTEGRATION_TESTS: "true", RESTAURANT_PERF_WORKSPACE_ID: workspace, RESTAURANT_PERF_USER_ID: user } });
   await db.query("ANALYZE restaurant_returns");
   await db.query("ANALYZE restaurant_refunds");
@@ -195,7 +198,7 @@ async function main() {
     paymentSummary,
   };
   process.stdout.write(JSON.stringify(report, null, 2) + "\n");
-  await db.end();
+  } finally { await db.end(); }
 }
 
 main().catch((error) => {
