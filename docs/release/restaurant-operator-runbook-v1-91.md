@@ -64,9 +64,22 @@ pg_restore --list "$BACKUP_FILE" > "$BACKUP_FILE.contents"
 sha256sum "$BACKUP_FILE" > "$BACKUP_FILE.sha256"
 ```
 
-Restore only after switching those PG variables to the separately approved isolated restore target and verifying its host/database against the manifest. The restore target must differ from production; refuse if it matches either production host in the repository allow-list. Require an empty pre-created isolated database. Then:
+Restore only after switching those PG variables to the separately approved isolated restore target. Set APPROVED_RESTORE_HOST and APPROVED_RESTORE_DATABASE from the approved manifest, independently of the connection variables. Require an empty pre-created isolated database. This offline guard checks the manifest identity and refuses every production hostname in the repository allow-list before the restore command:
 
 ```bash
+node <<'NODE'
+const { productionHosts } = require("./config/database-targets.json");
+const host = (process.env.PGHOST || "").trim().toLowerCase();
+const database = process.env.PGDATABASE || "";
+const approvedHost = (process.env.APPROVED_RESTORE_HOST || "").trim().toLowerCase();
+const approvedDatabase = process.env.APPROVED_RESTORE_DATABASE || "";
+if (!host || !database || !approvedHost || !approvedDatabase
+    || host !== approvedHost || database !== approvedDatabase
+    || productionHosts.includes(host)) {
+  throw new Error("Restore target is missing, differs from the approved manifest, or is production.");
+}
+console.log("Isolated restore target guard passed.");
+NODE
 sha256sum --check "$BACKUP_FILE.sha256"
 pg_restore --dbname="$PGDATABASE" --exit-on-error --no-owner --no-acl "$BACKUP_FILE"
 ```
