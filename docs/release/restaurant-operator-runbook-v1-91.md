@@ -100,6 +100,7 @@ Before production authorization, perform this entire matrix on approved staging 
 - Dine-in: occupy table, prepare/ready, partial/final pay, complete/release. Takeaway: pay/prepare/complete. Bank payment needs no cash shift. Cash: open, sales, compensation, close; expected ledger cash and counted cash reconcile.
 - Partial/full return, refund and reversal; insufficient-stock rejection; tenant-mismatched IDs. After each, compare order, payments, table, stock/consumption, GL balance, account balance, cash shift, compensation and audit evidence. Never accept a successful UI message alone.
 - Suspend/expire the workspace after page load. Every Restaurant mutation, including successful POS replay, must reject with controlled read-only feedback; historical views/print stay readable to authenticated members.
+- Record agreed terminal concurrency and rejection/latency limits. Exercise distinct orders collecting into one account and completing against shared stock, not only copies of one request. Four-caller bank collection has a focused service regression; larger bursts can still exhaust bounded retries. On controlled errors, preserve the request identity, reconcile before replay and verify exactly-once effects. A correctness pass does not certify production throughput.
 
 Staging credentials are absent in this audit. Do not sign off this matrix from mocks or the synthetic component harness. Attach actual observed evidence for each case to the release manifest.
 

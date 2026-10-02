@@ -82,7 +82,7 @@ jobs:
           export PGPASSWORD=postgres
           test "$(psql -h 127.0.0.1 -U postgres -d munshios_restaurant_v188 -Atc 'SHOW timezone')" = "Etc/UTC"
       - name: V1.91 access and V1.90/V1.88 acceptance
-        run: npx vitest run tests/integration/restaurant-access-policy-v1-91.test.ts tests/unit/restaurant-access-policy-v1-91.test.ts tests/integration/restaurant-pos-replay-v1-90.test.ts tests/unit/restaurant-print-route-v1-90.test.ts tests/unit/restaurant-recipe-input-v1-90.test.ts tests/unit/restaurant-action-boundary-v1-88.test.ts tests/unit/restaurant-print-v1-88.test.ts tests/unit/restaurant-release-build-guard-v1-88.test.ts tests/integration/restaurant-release-acceptance-v1-88.test.ts
+        run: npx vitest run tests/integration/restaurant-access-policy-v1-91.test.ts tests/integration/restaurant-shared-account-contention-v1-91.test.ts tests/unit/restaurant-access-policy-v1-91.test.ts tests/integration/restaurant-pos-replay-v1-90.test.ts tests/unit/restaurant-print-route-v1-90.test.ts tests/unit/restaurant-recipe-input-v1-90.test.ts tests/unit/restaurant-action-boundary-v1-88.test.ts tests/unit/restaurant-print-v1-88.test.ts tests/unit/restaurant-release-build-guard-v1-88.test.ts tests/integration/restaurant-release-acceptance-v1-88.test.ts
       - name: V1.86 focused regressions
         run: >
           npx vitest run

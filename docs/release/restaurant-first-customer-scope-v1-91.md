@@ -1,6 +1,6 @@
 # Restaurant first-customer scope V1.91
 
-Proposed release candidate: POS-led Restaurant operations, with approved authenticated staging and printer acceptance required before launch. This matrix describes repository evidence, not production or provider validation. #270's five fixes remain intact. The V1.91 change enforces the existing expired/suspended read-only policy at all Restaurant mutation actions; existing history and print reads remain available.
+Proposed release candidate: POS-led Restaurant operations, with approved authenticated staging and printer acceptance required before launch. This matrix describes repository evidence, not production or provider validation. #270's five fixes remain intact. V1.91 enforces the existing expired/suspended read-only policy at all Restaurant mutation actions and locks the shared bank balance before collection postings to prevent avoidable late contention. Existing history and print reads remain available; serializable isolation and the retry budget are unchanged.
 
 | Capability | Classification | Actual supported scope / prerequisite |
 | --- | --- | --- |
@@ -53,3 +53,7 @@ For each intended customer and KOT printer, record manufacturer/model, driver/ve
 - Record jams, disconnect/reconnect and operator retry behavior. Confirm retry does not create another order/payment or misidentify a reprint.
 
 Status: **HARDWARE VALIDATION REQUIRED**. No physical printing was performed.
+
+## Concurrent-terminal acceptance
+
+The isolated investigation reproduced retry exhaustion when four distinct orders collected into one bank account. The targeted regression now covers three four-caller batches, exact account/payment/audit totals, balanced GL and replay after locking the shared account before ledger work. This is service-level evidence, not an authenticated browser throughput guarantee. Ten simultaneous operations on shared balances/stock can exceed the bounded retry budget; rejected transactions roll back and safe replay must reconcile their effects. Before promising multiple terminals, record the intended terminal count, workload and acceptable rejection/latency thresholds, then repeat them on approved staging. Do not weaken serializable isolation or claim capacity from a green correctness suite alone.

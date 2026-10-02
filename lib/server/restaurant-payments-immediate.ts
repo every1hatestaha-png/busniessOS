@@ -107,10 +107,18 @@ export async function recordRestaurantPaymentAtCollection(
     if (!order) throw new IndustryDomainError("NOT_FOUND", "Restaurant order was not found.");
     if (order.status === "CANCELLED") throw new IndustryDomainError("INVALID_STATE", "Cancelled restaurant orders cannot receive payments.");
 
-    const cashBank = await tx.cashBankAccount.findFirst({
-      where: { id: input.cashBankAccountId, workspaceId: context.workspaceId, isActive: true },
-      select: { id: true, isBank: true },
-    });
+    // Distinct orders can collect into the same balance. Lock that shared row
+    // before inserting ledger/payment evidence, so contention retries happen
+    // before accounting work instead of at the final balance increment.
+    const cashBanks = await tx.$queryRaw<Array<{ id: string; isBank: boolean }>>`
+      SELECT "id", "isBank"
+      FROM "cash_bank_accounts"
+      WHERE "id"=${input.cashBankAccountId}
+        AND "workspaceId"=${context.workspaceId}
+        AND "isActive"=true
+      FOR UPDATE
+    `;
+    const cashBank = cashBanks[0];
     if (!cashBank) throw new IndustryDomainError("NOT_FOUND", "Cash or bank account is unavailable in this workspace.");
     assertRestaurantPaymentAccountKind(input.method, cashBank.isBank);
 
