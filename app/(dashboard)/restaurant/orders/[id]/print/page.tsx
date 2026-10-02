@@ -16,6 +16,7 @@ export default async function RestaurantPrintPage({ params, searchParams }: {
   const document = await getRestaurantPrintDocument(workspaceId, id);
   if (!document) notFound();
   const kitchen = options.kind === "kot";
+  if (kitchen && !["CONFIRMED", "PREPARING", "READY", "COMPLETED", "CANCELLED"].includes(document.status)) notFound();
   return <>
     <div className="mb-4 flex gap-2 print:hidden"><PrintButton /><PrintButton label="Print 80mm" format="thermal" /></div>
     <div data-restaurant-print><DocumentFrame workspace={workspace} title={kitchen ? "Kitchen order ticket" : "Restaurant receipt"} number={document.orderNumber}>

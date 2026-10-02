@@ -6,7 +6,9 @@ const FALLBACK_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_ZrVgIikHRhL86YNlopG72g
 
 function run(command, args) {
   const executable = process.platform === "win32" && command === "npx" ? "npx.cmd" : command;
-  const result = spawnSync(executable, args, { stdio: "inherit", env: process.env });
+  // Windows batch launchers require cmd.exe; all npx arguments here are fixed
+  // build/migration commands, never values supplied by a request or environment.
+  const result = spawnSync(executable, args, { stdio: "inherit", env: process.env, shell: process.platform === "win32" && command === "npx" });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
 }

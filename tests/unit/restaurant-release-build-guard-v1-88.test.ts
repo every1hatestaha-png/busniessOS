@@ -1,16 +1,19 @@
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 // All commands are intercepted. No database or provider connection is possible.
 function runBuildGuard(migrations: string) {
   const directory = mkdtempSync(join(tmpdir(), "restaurant-build-guard-"));
   try {
-    writeFileSync(join(directory, "npx"), '#!/bin/sh\nprintf "intercepted-command:%s\\n" "$*"\n', { mode: 0o755 });
+    const windows = process.platform === "win32";
+    writeFileSync(join(directory, windows ? "npx.cmd" : "npx"), windows
+      ? '@echo off\r\necho intercepted-command:%*\r\n'
+      : '#!/bin/sh\nprintf "intercepted-command:%s\\n" "$*"\n', { mode: 0o755 });
     return spawnSync(process.execPath, [resolve("scripts/production-build.cjs")], { encoding: "utf8", env: {
-      ...process.env, PATH: `${directory}:${process.env.PATH}`, VERCEL_ENV: "production",
+      ...process.env, PATH: `${directory}${delimiter}${process.env.PATH}`, VERCEL_ENV: "production",
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_live_synthetic_fixture", CLERK_SECRET_KEY: "sk_live_synthetic_fixture",
       DATABASE_URL: "postgresql://fixture:fixture@127.0.0.1:5432/synthetic?sslmode=disable",
       RUN_PRISMA_MIGRATIONS_ON_BUILD: migrations,

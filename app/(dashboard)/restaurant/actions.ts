@@ -124,7 +124,7 @@ export async function createRecipeAction(
   let rawItems: RecipeItemInput[] = [];
   try {
     const parsed = JSON.parse(String(formData.get("itemsJson") ?? "[]"));
-    if (!Array.isArray(parsed)) return fail("Recipe ingredients are invalid.");
+    if (!Array.isArray(parsed) || parsed.some(item => !item || typeof item !== "object" || Array.isArray(item))) return fail("Recipe ingredients are invalid.");
     rawItems = parsed;
   } catch {
     return fail("Recipe ingredients are invalid.");

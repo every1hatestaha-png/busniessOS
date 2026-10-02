@@ -2,7 +2,7 @@
 
 import { useRestaurantActionState } from "@/app/(dashboard)/restaurant/use-restaurant-action-state";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
 
 import { initialRestaurantV1ActionState } from "@/app/(dashboard)/restaurant/v1-action-state";
@@ -18,9 +18,15 @@ type CartLine = { menuItemId: string; name: string; price: number; quantity: num
 
 export function RestaurantPos({ workspaceId, categories, items, tables, canFinancialOverride }: { workspaceId?: string; categories: Category[]; items: MenuItem[]; tables: Table[]; canFinancialOverride: boolean }) {
   const [cart, setCart] = useState<CartLine[]>([]);
+  const requestId = useRef<string | null>(null);
+  const requestField = useRef<HTMLInputElement>(null);
   const [state, action, pending, onSubmit] = useRestaurantActionState(async (previous, form) => {
     const result = await createPosOrderAction(previous, form);
-    if (result.status === "success") setCart([]);
+    if (result.status === "success") {
+      setCart([]);
+      requestId.current = null;
+      if (requestField.current) requestField.current.value = "";
+    }
     return result;
   }, initialRestaurantV1ActionState);
   const [activeCategory, setActiveCategory] = useState(categories[0]?.id ?? "all");
@@ -79,7 +85,14 @@ export function RestaurantPos({ workspaceId, categories, items, tables, canFinan
             )) : <p className="rounded-md border border-dashed p-5 text-center text-sm text-muted-foreground">Select menu items to start an order.</p>}
           </div>
 
-          <form action={action} onSubmit={onSubmit} aria-busy={pending} className="space-y-3">
+          <form action={action} onSubmit={(event) => {
+            onSubmit(event);
+            if (!event.defaultPrevented) {
+              requestId.current ??= crypto.randomUUID();
+              if (requestField.current) requestField.current.value = requestId.current;
+            }
+          }} aria-busy={pending} className="space-y-3">
+            <input ref={requestField} type="hidden" name="orderRequestId" />
             {workspaceId ? <input type="hidden" name="formWorkspaceId" value={workspaceId} /> : null}
             <fieldset disabled={pending} className="contents"><input type="hidden" name="itemsJson" value={JSON.stringify(cart.map(({ menuItemId, quantity }) => ({ menuItemId, quantity })))} />
             <label className="block space-y-1.5 text-xs font-medium">Order type

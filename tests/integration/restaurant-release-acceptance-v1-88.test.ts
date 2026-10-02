@@ -40,6 +40,88 @@ async function assertBalancedLedger() {
   expect(Number(rows[0].balance)).toBe(0);
 }
 
+async function overlapOnOrder(orderId: string, operations: Array<() => Promise<unknown>>) {
+  let unlock!: () => void, acquired!: () => void;
+  const release = new Promise<void>(resolve => { unlock = resolve; });
+  const locked = new Promise<void>(resolve => { acquired = resolve; });
+  const blocker = db.$transaction(async tx => {
+    await tx.$queryRaw`SELECT id FROM restaurant_orders WHERE id=${orderId}::uuid FOR UPDATE`;
+    acquired();
+    await release;
+  }, { timeout: 20_000 });
+  await locked;
+  const results = Promise.allSettled(operations.map(operation => operation()));
+  try {
+    let waiting = 0;
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline && waiting < operations.length) {
+      const rows = await db.$queryRaw<Array<{ count: number }>>`
+        SELECT COUNT(*)::int AS count FROM pg_stat_activity
+        WHERE datname=current_database() AND pid<>pg_backend_pid()
+          AND wait_event_type='Lock' AND query LIKE '%FOR UPDATE%'
+      `;
+      waiting = rows[0].count;
+      if (waiting < operations.length) await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    expect(waiting).toBeGreaterThanOrEqual(operations.length);
+  } finally { unlock(); await blocker; }
+  return results;
+}
+
+it("payment, completion and cancellation overlap without mixed terminal effects", async () => {
+  const order = await ready();
+  const stock = Number((await db.product.findUniqueOrThrow({ where: { id: productId } })).stockQuantity);
+  const bank = Number((await db.cashBankAccount.findUniqueOrThrow({ where: { id: bankId } })).currentBalance);
+  const outcomes = await overlapOnOrder(order.id, [
+    () => collect(context(), { orderId: order.id, cashBankAccountId: bankId, method: "BANK_TRANSFER", amount: 100, idempotencyKey: `collision:${randomUUID()}` }),
+    () => integrity.transitionRestaurantOrderWithIntegrity(context(), order.id, "COMPLETED"),
+    () => integrity.transitionRestaurantOrderWithIntegrity(context(), order.id, "CANCELLED"),
+  ]);
+  const doc = (await print(workspaceId, order.id))!;
+  expect(["COMPLETED", "CANCELLED"]).toContain(doc.status);
+  const completed = doc.status === "COMPLETED";
+  const paid = outcomes[0].status === "fulfilled";
+  expect(doc.payments).toHaveLength(paid ? 1 : 0);
+  expect(doc.retainedPaid).toBe(paid ? 100 : 0);
+  expect(Number((await db.product.findUniqueOrThrow({ where: { id: productId } })).stockQuantity)).toBe(stock - (completed ? 1 : 0));
+  expect(Number((await db.cashBankAccount.findUniqueOrThrow({ where: { id: bankId } })).currentBalance)).toBe(bank + (paid ? 100 : 0));
+  const consumed = await db.$queryRaw<Array<{ count: bigint }>>`SELECT COUNT(*) AS count FROM restaurant_inventory_consumptions WHERE "restaurantOrderId"=${order.id}::uuid`;
+  expect(Number(consumed[0].count)).toBe(completed ? 1 : 0);
+  const sale = await db.generalLedgerEntry.count({ where: { workspaceId, sourceType: "SALE", sourceId: order.id } });
+  expect(sale > 0).toBe(completed);
+  if (!completed) expect(paid).toBe(false);
+  expect(await print(foreignWorkspaceId, order.id)).toBeNull();
+  await assertBalancedLedger();
+}, 60_000);
+
+it("partial return, full refund and payment void overlap without double compensation", async () => {
+  const order = await ready(2);
+  const payment = await collect(context(), { orderId: order.id, cashBankAccountId: bankId, method: "BANK_TRANSFER", amount: 200, idempotencyKey: `collision:${randomUUID()}` });
+  await integrity.transitionRestaurantOrderWithIntegrity(context(), order.id, "COMPLETED");
+  const stock = Number((await db.product.findUniqueOrThrow({ where: { id: productId } })).stockQuantity);
+  const bank = Number((await db.cashBankAccount.findUniqueOrThrow({ where: { id: bankId } })).currentBalance);
+  const [item] = await db.$queryRaw<Array<{ id: string }>>`SELECT id FROM restaurant_order_items WHERE "restaurantOrderId"=${order.id}::uuid`;
+  const { createRestaurantItemReturn } = await import("@/lib/server/restaurant-item-returns");
+  const { refundRestaurantPayment } = await import("@/lib/server/restaurant-refunds");
+  await overlapOnOrder(order.id, [
+    () => createRestaurantItemReturn(context(), { orderId: order.id, reason: "Synthetic collision return", idempotencyKey: `collision:${randomUUID()}`, items: [{ orderItemId: item.id, quantity: 1, restock: true }], paymentAllocations: [{ paymentId: payment.id, amount: 100 }] }),
+    () => refundRestaurantPayment(context(), { paymentId: payment.id, reason: "Synthetic collision refund", idempotencyKey: `collision:${randomUUID()}` }),
+    () => integrity.voidRestaurantPayment(context(), payment.id, "Synthetic collision void"),
+  ]);
+  const doc = (await print(workspaceId, order.id))!;
+  expect(doc.status).toBe("COMPLETED");
+  expect(doc.returns.length).toBeLessThanOrEqual(1);
+  expect(doc.refunds.length).toBeLessThanOrEqual(1);
+  const returned = doc.returns.length === 1;
+  expect(doc.retainedPaid).toBe(returned ? 100 : 0);
+  expect(doc.adjustedDue).toBe(returned ? 100 : 200);
+  expect(Number((await db.cashBankAccount.findUniqueOrThrow({ where: { id: bankId } })).currentBalance)).toBe(bank - (returned ? 100 : 200));
+  expect(Number((await db.product.findUniqueOrThrow({ where: { id: productId } })).stockQuantity)).toBe(stock + (returned ? 1 : 0));
+  if (returned) { expect(doc.refunds).toHaveLength(0); expect(doc.payments[0].voidedAt).toBeNull(); }
+  else expect(doc.payments[0].voidedAt).not.toBeNull();
+  await assertBalancedLedger();
+}, 60_000);
+
 describe("Restaurant V1.88 synthetic acceptance", () => {
   it("prints historical item snapshots and rejects direct foreign/invalid URLs", async () => {
     const order = await ready(2);
