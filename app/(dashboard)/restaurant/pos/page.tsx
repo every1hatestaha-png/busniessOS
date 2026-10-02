@@ -15,6 +15,7 @@ export default async function RestaurantPosPage() {
     <div className="mx-auto max-w-[1600px] space-y-6">
       <PageHeader title="Restaurant POS" description="Create dine-in, takeaway and delivery orders. Prices are always validated on the server before an order is accepted." />
       <RestaurantPos
+        workspaceId={workspaceId}
         categories={menu.categories.filter((category) => category.isActive)}
         items={menu.items.filter((item) => item.isActive)}
         tables={tables.filter((table) => table.status !== "INACTIVE").map((table) => ({ id: table.id, name: table.name, status: table.status }))}

@@ -13,9 +13,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
 export function RestaurantControls({
+  workspaceId,
   openShiftId,
   canManageTables,
 }: {
+  workspaceId?: string;
   openShiftId: string | null;
   canManageTables: boolean;
 }) {
@@ -30,7 +32,7 @@ export function RestaurantControls({
           <h2 className="text-sm font-semibold">Table setup</h2>
           <p className="mt-1 text-xs text-muted-foreground">Add dining tables without changing core sales or inventory data.</p>
           {canManageTables ? (
-            <form action={tableAction} className="mt-4 grid gap-3 sm:grid-cols-3">
+            <form action={tableAction} className="mt-4 grid gap-3 sm:grid-cols-3">{workspaceId ? <input type="hidden" name="formWorkspaceId" value={workspaceId} /> : null}
               <Field label="Table name"><Input name="name" placeholder="Table 01" maxLength={80} required /></Field>
               <Field label="Capacity"><Input name="capacity" type="number" min={1} max={100} defaultValue={2} required /></Field>
               <Field label="Area"><Input name="area" placeholder="Ground floor" maxLength={80} /></Field>
@@ -50,7 +52,7 @@ export function RestaurantControls({
           <h2 className="text-sm font-semibold">Cash shift</h2>
           <p className="mt-1 text-xs text-muted-foreground">Opening and closing cash is tracked separately from accounting receipts.</p>
           {openShiftId ? (
-            <form action={closeAction} className="mt-4 grid gap-3 sm:grid-cols-2">
+            <form action={closeAction} className="mt-4 grid gap-3 sm:grid-cols-2">{workspaceId ? <input type="hidden" name="formWorkspaceId" value={workspaceId} /> : null}
               <input type="hidden" name="shiftId" value={openShiftId} />
               <Field label="Closing cash"><Input name="closingCash" type="number" min={0} step="0.01" defaultValue={0} required /></Field>
               <Field label="Notes"><Input name="notes" placeholder="Optional closing note" maxLength={500} /></Field>
@@ -60,7 +62,7 @@ export function RestaurantControls({
               </div>
             </form>
           ) : (
-            <form action={openAction} className="mt-4 grid gap-3 sm:grid-cols-2">
+            <form action={openAction} className="mt-4 grid gap-3 sm:grid-cols-2">{workspaceId ? <input type="hidden" name="formWorkspaceId" value={workspaceId} /> : null}
               <Field label="Opening cash"><Input name="openingCash" type="number" min={0} step="0.01" defaultValue={0} required /></Field>
               <Field label="Notes"><Input name="notes" placeholder="Optional opening note" maxLength={500} /></Field>
               <div className="sm:col-span-2 flex items-center justify-between gap-3">

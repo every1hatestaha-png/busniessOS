@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { restaurantActionErrorMessage, restaurantFormWorkspaceChanged } from "@/lib/server/restaurant-action-errors";
 import { requireWorkspace } from "@/lib/server/auth";
 import {
   closeRestaurantCashShiftFromLedger,
@@ -12,7 +13,6 @@ import {
   createKitchenTicket,
   createRecipe,
   createRestaurantTable,
-  IndustryDomainError,
 } from "@/lib/server/industry-modules";
 
 export type RestaurantActionState = {
@@ -27,7 +27,7 @@ function fail(message: string): RestaurantActionState {
 }
 
 function messageFor(error: unknown, fallback: string) {
-  return error instanceof IndustryDomainError ? error.message : fallback;
+  return restaurantActionErrorMessage(error, fallback);
 }
 
 export async function createRestaurantTableAction(
@@ -43,6 +43,7 @@ export async function createRestaurantTableAction(
   if (area.length > 80) return fail("Area must be 80 characters or fewer.");
 
   const { workspaceId, role, user } = await requireWorkspace();
+  if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
     await createRestaurantTable(
       { workspaceId, role, userId: user.id },
@@ -67,6 +68,7 @@ export async function openCashShiftAction(
   if (notes.length > 500) return fail("Notes must be 500 characters or fewer.");
 
   const { workspaceId, role, user } = await requireWorkspace();
+  if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
     await openRestaurantCashShiftSafely({ workspaceId, role, userId: user.id }, openingCash, notes || undefined);
     revalidatePath("/restaurant");
@@ -91,6 +93,7 @@ export async function closeCashShiftAction(
   if (notes.length > 500) return fail("Notes must be 500 characters or fewer.");
 
   const { workspaceId, role, user } = await requireWorkspace();
+  if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
     const result = await closeRestaurantCashShiftFromLedger(
       { workspaceId, role, userId: user.id },
@@ -148,6 +151,7 @@ export async function createRecipeAction(
   }
 
   const { workspaceId, role, user } = await requireWorkspace();
+  if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
     await createRecipe(
       { workspaceId, role, userId: user.id },
@@ -175,6 +179,7 @@ export async function createKitchenTicketAction(
   if (notes.length > 500) return fail("Notes must be 500 characters or fewer.");
 
   const { workspaceId, role, user } = await requireWorkspace();
+  if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
     await createKitchenTicket(
       { workspaceId, role, userId: user.id },
@@ -202,6 +207,7 @@ export async function updateKitchenTicketStatusAction(
   if (!["PREPARING", "READY", "SERVED", "CANCELLED"].includes(status)) return fail("Kitchen ticket status is invalid.");
 
   const { workspaceId, role, user } = await requireWorkspace();
+  if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
     await updateLegacyKitchenTicketStatusSafely(
       { workspaceId, role, userId: user.id },

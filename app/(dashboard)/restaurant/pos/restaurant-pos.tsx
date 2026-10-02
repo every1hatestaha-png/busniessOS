@@ -14,7 +14,7 @@ type MenuItem = { id: string; categoryId: string; categoryName: string; name: st
 type Table = { id: string; name: string; status: string };
 type CartLine = { menuItemId: string; name: string; price: number; quantity: number };
 
-export function RestaurantPos({ categories, items, tables, canFinancialOverride }: { categories: Category[]; items: MenuItem[]; tables: Table[]; canFinancialOverride: boolean }) {
+export function RestaurantPos({ workspaceId, categories, items, tables, canFinancialOverride }: { workspaceId?: string; categories: Category[]; items: MenuItem[]; tables: Table[]; canFinancialOverride: boolean }) {
   const [state, action, pending] = useActionState(createPosOrderAction, initialRestaurantV1ActionState);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [activeCategory, setActiveCategory] = useState(categories[0]?.id ?? "all");
@@ -74,6 +74,7 @@ export function RestaurantPos({ categories, items, tables, canFinancialOverride 
           </div>
 
           <form action={action} className="space-y-3">
+            {workspaceId ? <input type="hidden" name="formWorkspaceId" value={workspaceId} /> : null}
             <input type="hidden" name="itemsJson" value={JSON.stringify(cart.map(({ menuItemId, quantity }) => ({ menuItemId, quantity })))} />
             <label className="block space-y-1.5 text-xs font-medium">Order type
               <select name="fulfillmentType" value={fulfillmentType} onChange={(event) => setFulfillmentType(event.target.value)} className="h-9 w-full rounded-md border bg-background px-3 text-sm">

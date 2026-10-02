@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 
 import type { RestaurantV1ActionState } from "@/app/(dashboard)/restaurant/v1-action-state";
 import { requireWorkspace } from "@/lib/server/auth";
-import { IndustryDomainError } from "@/lib/server/industry-modules";
+import { restaurantActionErrorMessage, restaurantMutationFeedback, restaurantFormWorkspaceChanged } from "@/lib/server/restaurant-action-errors";
 import {
   transitionRestaurantOrderWithIntegrity,
   voidRestaurantPayment,
@@ -29,7 +29,7 @@ function fail(message: string): RestaurantV1ActionState {
 }
 
 function messageFor(error: unknown, fallback: string) {
-  return error instanceof IndustryDomainError ? error.message : fallback;
+  return restaurantActionErrorMessage(error, fallback);
 }
 
 function refreshRestaurant(orderId?: string) {
@@ -61,6 +61,7 @@ export async function createMenuCategoryAction(
   if (!name || name.length > 80) return fail("Category name must be 1-80 characters.");
   if (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > 10_000) return fail("Category order is invalid.");
   const workspace = await requireWorkspace();
+  if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
     await createRestaurantMenuCategory(contextFrom(workspace), { name, sortOrder });
     refreshRestaurant();
@@ -86,6 +87,7 @@ export async function createMenuItemAction(
   if (description.length > 500) return fail("Description must be 500 characters or fewer.");
   if (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > 10_000) return fail("Menu item order is invalid.");
   const workspace = await requireWorkspace();
+  if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
     await createRestaurantMenuItem(contextFrom(workspace), {
       categoryId,
@@ -106,9 +108,12 @@ export async function setMenuItemAvailabilityAction(formData: FormData) {
   const menuItemId = String(formData.get("menuItemId") ?? "").trim();
   const isAvailable = String(formData.get("isAvailable") ?? "") === "true";
   const workspace = await requireWorkspace();
-  if (!canManageRestaurant(workspace.role)) throw new Error("Manager access is required to change menu availability.");
-  await setRestaurantMenuItemAvailability(contextFrom(workspace), menuItemId, isAvailable);
-  refreshRestaurant();
+  if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
+  if (!canManageRestaurant(workspace.role)) return fail("Manager access is required to change menu availability.");
+  return restaurantMutationFeedback(async () => {
+    await setRestaurantMenuItemAvailability(contextFrom(workspace), menuItemId, isAvailable);
+    refreshRestaurant();
+  }, "Menu availability updated.", "We could not update menu availability. Refresh the menu before trying again.");
 }
 
 type RawCartLine = { menuItemId?: unknown; quantity?: unknown; notes?: unknown; modifiers?: unknown };
@@ -130,6 +135,7 @@ function parseCart(formData: FormData): RestaurantOrderLineInput[] {
   }));
 }
 
+
 export async function createPosOrderAction(
   _previous: RestaurantV1ActionState,
   formData: FormData,
@@ -137,8 +143,8 @@ export async function createPosOrderAction(
   let items: RestaurantOrderLineInput[];
   try {
     items = parseCart(formData);
-  } catch (error) {
-    return fail(messageFor(error, "The order cart is invalid."));
+  } catch {
+    return fail("The order cart is invalid.");
   }
   const fulfillmentType = String(formData.get("fulfillmentType") ?? "TAKEAWAY") as RestaurantFulfillmentType;
   if (!["DINE_IN", "TAKEAWAY", "DELIVERY"].includes(fulfillmentType)) return fail("Order type is invalid.");
@@ -150,6 +156,7 @@ export async function createPosOrderAction(
   const discountAmount = Number(formData.get("discountAmount") ?? 0);
   const taxAmount = Number(formData.get("taxAmount") ?? 0);
   const workspace = await requireWorkspace();
+  if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
     const order = await createPosRestaurantOrder(contextFrom(workspace), {
       fulfillmentType,
@@ -172,23 +179,29 @@ export async function createPosOrderAction(
 export async function confirmRestaurantOrderAction(formData: FormData) {
   const orderId = String(formData.get("orderId") ?? "").trim();
   const workspace = await requireWorkspace();
-  await confirmRestaurantOrder(contextFrom(workspace), orderId);
-  refreshRestaurant();
+  if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
+  return restaurantMutationFeedback(async () => {
+    await confirmRestaurantOrder(contextFrom(workspace), orderId);
+    refreshRestaurant();
+  }, "Order confirmed.", "We could not confirm this order. Refresh its status before trying again.");
 }
 
 export async function transitionRestaurantOrderAction(formData: FormData) {
   const orderId = String(formData.get("orderId") ?? "").trim();
   const nextStatus = String(formData.get("nextStatus") ?? "") as RestaurantOrderStatus;
   if (!["PENDING_REVIEW", "CONFIRMED", "PREPARING", "READY", "COMPLETED", "CANCELLED"].includes(nextStatus)) {
-    throw new Error("Restaurant order status is invalid.");
+    return fail("Restaurant order status is invalid.");
   }
   const workspace = await requireWorkspace();
-  await transitionRestaurantOrderWithIntegrity(contextFrom(workspace), orderId, nextStatus);
-  refreshRestaurant();
+  if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
+  return restaurantMutationFeedback(async () => {
+    await transitionRestaurantOrderWithIntegrity(contextFrom(workspace), orderId, nextStatus);
+    refreshRestaurant();
+  }, "Order updated.", "We could not update this order. Refresh its status before trying again.");
 }
 
 export async function setRestaurantOrderPaymentStatusAction() {
-  throw new Error("Manual payment status changes are disabled. Record an actual restaurant payment instead.");
+  return fail("Manual payment status changes are disabled. Record an actual restaurant payment instead.");
 }
 
 export async function recordRestaurantPaymentAction(formData: FormData) {
@@ -200,24 +213,30 @@ export async function recordRestaurantPaymentAction(formData: FormData) {
   const notes = String(formData.get("notes") ?? "").trim();
   const idempotencyKey = String(formData.get("paymentRequestId") ?? "").trim();
   const workspace = await requireWorkspace();
-  await recordRestaurantPaymentAtCollection(contextFrom(workspace), {
-    orderId,
-    cashBankAccountId,
-    method,
-    amount,
-    reference: reference || undefined,
-    notes: notes || undefined,
-    idempotencyKey: idempotencyKey || undefined,
-  });
-  refreshRestaurant();
+  if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
+  return restaurantMutationFeedback(async () => {
+    await recordRestaurantPaymentAtCollection(contextFrom(workspace), {
+      orderId,
+      cashBankAccountId,
+      method,
+      amount,
+      reference: reference || undefined,
+      notes: notes || undefined,
+      idempotencyKey: idempotencyKey || undefined,
+    });
+    refreshRestaurant();
+  }, "Payment recorded.", "We could not record this payment. Check payment history before trying again.");
 }
 
 export async function voidRestaurantPaymentAction(formData: FormData) {
   const paymentId = String(formData.get("paymentId") ?? "").trim();
   const reason = String(formData.get("reason") ?? "").trim();
   const workspace = await requireWorkspace();
-  await voidRestaurantPayment(contextFrom(workspace), paymentId, reason);
-  refreshRestaurant();
+  if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
+  return restaurantMutationFeedback(async () => {
+    await voidRestaurantPayment(contextFrom(workspace), paymentId, reason);
+    refreshRestaurant();
+  }, "Payment voided.", "We could not void this payment. Refresh payment history before trying again.");
 }
 
 export async function createRestaurantItemReturnAction(formData: FormData) {
@@ -228,21 +247,24 @@ export async function createRestaurantItemReturnAction(formData: FormData) {
   const restock = String(formData.get("restock") ?? "") === "true";
   const requestId = String(formData.get("returnRequestId") ?? "").trim();
   const workspace = await requireWorkspace();
-  if (!canManageRestaurant(workspace.role)) throw new Error("Manager access is required for restaurant returns.");
+  if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
+  if (!canManageRestaurant(workspace.role)) return fail("Manager access is required for restaurant returns.");
+  return restaurantMutationFeedback(async () => {
 
-  const context = contextFrom(workspace);
-  const prepared = await prepareRestaurantSingleItemReturn(context, {
-    orderId,
-    orderItemId,
-    quantity: returnQuantity,
-  });
+    const context = contextFrom(workspace);
+    const prepared = await prepareRestaurantSingleItemReturn(context, {
+      orderId,
+      orderItemId,
+      quantity: returnQuantity,
+    });
 
-  await createRestaurantItemReturn(context, {
-    orderId,
-    reason,
-    idempotencyKey: requestId || undefined,
-    items: [{ orderItemId, quantity: returnQuantity, restock }],
-    paymentAllocations: prepared.paymentAllocations,
-  });
-  refreshRestaurant(orderId);
+    await createRestaurantItemReturn(context, {
+      orderId,
+      reason,
+      idempotencyKey: requestId || undefined,
+      items: [{ orderItemId, quantity: returnQuantity, restock }],
+      paymentAllocations: prepared.paymentAllocations,
+    });
+    refreshRestaurant(orderId);
+  }, "Item return recorded.", "We could not create this return. Refresh return history before trying again.");
 }

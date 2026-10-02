@@ -1,3 +1,4 @@
+import { RestaurantMutationForm } from "@/app/(dashboard)/restaurant/mutation-form";
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { ArrowLeft, RotateCcw, Undo2 } from "lucide-react";
@@ -59,7 +60,7 @@ export default async function RestaurantOrderReturnPage({ params }: { params: Pr
                   <p className="font-semibold">Rs {item.lineTotal.toLocaleString()}</p>
                 </div>
                 {item.remainingQuantity > 0 ? (
-                  <form action={createRestaurantItemReturnAction} className="grid gap-3 md:grid-cols-[160px_1fr_auto] md:items-end">
+                  <RestaurantMutationForm action={createRestaurantItemReturnAction} workspaceId={workspaceId} className="grid gap-3 md:grid-cols-[160px_1fr_auto] md:items-end">
                     <input type="hidden" name="orderId" value={state.order.id} />
                     <input type="hidden" name="orderItemId" value={item.id} />
                     <input type="hidden" name="returnRequestId" value={`rr:${randomUUID()}`} />
@@ -73,7 +74,7 @@ export default async function RestaurantOrderReturnPage({ params }: { params: Pr
                     <label className="flex items-center gap-2 text-xs text-muted-foreground md:col-span-3">
                       <input type="checkbox" name="restock" value="true" />Restock physical inventory and reverse COGS using the historical consumption snapshot
                     </label>
-                  </form>
+                  </RestaurantMutationForm>
                 ) : <p className="text-sm text-muted-foreground">This item has been fully returned.</p>}
               </CardContent>
             </Card>
@@ -88,7 +89,7 @@ export default async function RestaurantOrderReturnPage({ params }: { params: Pr
             const metadata = reversalById.get(entry.id);
             const isReversal = metadata?.isReversal === true;
             const hasReversal = metadata?.hasReversal === true;
-            return <div key={entry.id} className="grid gap-3 px-5 py-4 sm:grid-cols-[1fr_auto]"><div><div className="flex flex-wrap items-center gap-2"><p className="font-medium">{entry.returnNumber}</p>{isReversal ? <span className="rounded bg-muted px-2 py-0.5 text-[11px] font-semibold">REVERSAL</span> : hasReversal ? <span className="rounded bg-muted px-2 py-0.5 text-[11px] font-semibold">REVERSED</span> : null}</div><p className="text-xs text-muted-foreground">{entry.reason}</p><p className="text-xs text-muted-foreground">{new Intl.DateTimeFormat("en-PK", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Karachi" }).format(entry.createdAt)}</p>{metadata?.reversalReason ? <p className="mt-1 text-xs text-muted-foreground">Reversal reason: {metadata.reversalReason}</p> : null}</div><div className="space-y-2 text-right"><div><p className="font-semibold">Rs {entry.total.toLocaleString()}</p><p className="text-xs text-muted-foreground">Inventory effect Rs {entry.inventoryCost.toLocaleString()}</p></div>{canReturn && !isReversal && !hasReversal ? <form action={reverseRestaurantReturnAction} className="flex flex-wrap justify-end gap-2"><input type="hidden" name="orderId" value={state.order.id} /><input type="hidden" name="returnId" value={entry.id} /><input name="reason" minLength={3} maxLength={500} required placeholder="Reversal reason" className="h-8 w-44 rounded-md border bg-background px-2 text-xs" /><Button type="submit" size="sm" variant="outline"><Undo2 className="mr-1 size-3.5" />Reverse return</Button></form> : null}</div></div>;
+            return <div key={entry.id} className="grid gap-3 px-5 py-4 sm:grid-cols-[1fr_auto]"><div><div className="flex flex-wrap items-center gap-2"><p className="font-medium">{entry.returnNumber}</p>{isReversal ? <span className="rounded bg-muted px-2 py-0.5 text-[11px] font-semibold">REVERSAL</span> : hasReversal ? <span className="rounded bg-muted px-2 py-0.5 text-[11px] font-semibold">REVERSED</span> : null}</div><p className="text-xs text-muted-foreground">{entry.reason}</p><p className="text-xs text-muted-foreground">{new Intl.DateTimeFormat("en-PK", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Karachi" }).format(entry.createdAt)}</p>{metadata?.reversalReason ? <p className="mt-1 text-xs text-muted-foreground">Reversal reason: {metadata.reversalReason}</p> : null}</div><div className="space-y-2 text-right"><div><p className="font-semibold">Rs {entry.total.toLocaleString()}</p><p className="text-xs text-muted-foreground">Inventory effect Rs {entry.inventoryCost.toLocaleString()}</p></div>{canReturn && !isReversal && !hasReversal ? <RestaurantMutationForm action={reverseRestaurantReturnAction} workspaceId={workspaceId} className="flex flex-wrap justify-end gap-2"><input type="hidden" name="orderId" value={state.order.id} /><input type="hidden" name="returnId" value={entry.id} /><input name="reason" minLength={3} maxLength={500} required placeholder="Reversal reason" className="h-8 w-44 rounded-md border bg-background px-2 text-xs" /><Button type="submit" size="sm" variant="outline"><Undo2 className="mr-1 size-3.5" />Reverse return</Button></RestaurantMutationForm> : null}</div></div>;
           })}</div> : <div className="p-5 text-sm text-muted-foreground">No item returns posted yet.</div>}
         </CardContent>
       </Card>
