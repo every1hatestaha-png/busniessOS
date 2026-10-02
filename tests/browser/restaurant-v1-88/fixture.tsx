@@ -3,8 +3,10 @@ import { createRoot } from "react-dom/client";
 import { RestaurantMutationForm } from "../../../app/(dashboard)/restaurant/mutation-form";
 import { RestaurantPrintBody } from "../../../components/documents/restaurant-print-body";
 import RestaurantError from "../../../app/(dashboard)/restaurant/error";
+import { DocumentFrame } from "../../../components/documents/document-frame";
 import type { RestaurantPrintDocument } from "../../../lib/server/restaurant-print";
 import "../../../app/globals.css";
+import "../../../components/documents/restaurant-print.css";
 
 const doc: RestaurantPrintDocument = {
   orderNumber: "SYNTHETIC-100", status: "CANCELLED", paymentStatus: "UNPAID", fulfillmentType: "DINE_IN", tableName: "Table 100", customerName: "Synthetic customer", notes: "Synthetic kitchen note", createdAt: new Date("2026-10-01T20:00:00Z"), timezone: "Asia/Karachi", subtotal: 200, discountAmount: 10, taxAmount: 5, total: 195, adjustedDue: 95, retainedPaid: 95, outstanding: 0,
@@ -21,5 +23,5 @@ const errorPreview = new URLSearchParams(location.search).get("kind") === "error
 // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- Standalone browser fixture has no Next router.
 createRoot(document.getElementById("root")!).render(errorPreview ? <RestaurantError reset={() => location.assign("/")} /> : <>
   <div className="print:hidden"><RestaurantMutationForm action={mutation} workspaceId="synthetic-workspace"><input name="reason" defaultValue="Synthetic reason" /><button type="submit">Submit synthetic mutation</button></RestaurantMutationForm></div>
-  <article data-document data-print-surface className="mx-auto max-w-[210mm] bg-white p-6 text-neutral-950 print:p-0"><header><h1>{doc.orderNumber}</h1></header><RestaurantPrintBody document={doc} kitchen={kitchen} reprint /></article>
+  <div data-restaurant-print><DocumentFrame workspace={{ name: "Synthetic Restaurant" }} title={kitchen ? "Kitchen order ticket" : "Restaurant receipt"} number={doc.orderNumber}><RestaurantPrintBody document={doc} kitchen={kitchen} reprint /></DocumentFrame></div>
 </>);

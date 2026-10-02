@@ -175,3 +175,27 @@ it("concurrent first cash/bank account creation retries only the recognised uniq
   const defaults = await db.account.findMany({ where: { workspaceId: workspace.id, systemCode: { not:null } } });
   expect(new Set(defaults.map((row) => row.systemCode)).size).toBe(defaults.length);
 },60_000);
+
+it("keeps an older completed receivable in the collection queue after newer cancelled history", async () => {
+  const run = randomUUID();
+  const workspace = await db.workspace.create({ data: { name: `Old receivable ${run}`, members: { create: { userId, role: "OWNER" } } } });
+  const id = workspace.id;
+  const owner = { workspaceId: id, userId, role: "OWNER" as const };
+  await db.$executeRaw`INSERT INTO workspace_modules ("workspaceId","moduleKey",enabled,config) VALUES (${id}::uuid,'restaurant',true,'{}'::jsonb)`;
+  const category = await restaurant.createRestaurantMenuCategory(owner, { name: "Receivable meal" });
+  const menu = await restaurant.createRestaurantMenuItem(owner, { categoryId: category.id, name: "Receivable meal", price: 100 });
+  const order = await restaurant.createPosRestaurantOrder(owner, { fulfillmentType: "TAKEAWAY", items: [{ menuItemId: menu.id, quantity: 1 }] });
+  for (const status of ["PREPARING","READY","COMPLETED"] as const) await integrity.transitionRestaurantOrderWithIntegrity(owner, order.id, status);
+  await db.$executeRaw`INSERT INTO restaurant_orders ("workspaceId","orderNumber",source,"fulfillmentType",status,total,"createdById","createdAt","cancelledAt") SELECT ${id}::uuid,'NEWER-CANCELLED-' || g::text,'MANUAL','TAKEAWAY','CANCELLED',100,${userId},now()+(g*interval '1 second'),now() FROM generate_series(1,201) g`;
+  expect((await restaurant.listRestaurantOrders(id,30,{ statuses:["COMPLETED","CANCELLED"] })).some((row) => row.id===order.id)).toBe(false);
+  expect((await restaurant.listRestaurantOrders(id,200,{ statuses:["COMPLETED"],outstandingOnly:true,oldestFirst:true })).map((row) => row.id)).toEqual([order.id]);
+  expect(await restaurant.listRestaurantOrders(foreignWorkspaceId,200,{ statuses:["COMPLETED"],outstandingOnly:true })).toEqual([]);
+  const { createCashBankAccount, getCashBankAccounts } = await import("@/lib/server/accounting");
+  const account = await createCashBankAccount(owner,{ name:"Receivable bank",isBank:true,openingBalance:0,bankName:"Synthetic",accountTitle:"Synthetic",accountNumber:"000",notes:"" });
+  const bank = (await getCashBankAccounts(id)).find((row) => row.id===account.id)!.cashBankAccountId;
+  await collect(owner,{ orderId:order.id,cashBankAccountId:bank,method:"BANK_TRANSFER",amount:100,idempotencyKey:`v188:${randomUUID()}` });
+  expect(await restaurant.listRestaurantOrders(id,200,{ statuses:["COMPLETED"],outstandingOnly:true })).toEqual([]);
+  expect(await print(id,order.id)).toMatchObject({ retainedPaid:100,outstanding:0 });
+  const ledger = await db.generalLedgerEntry.findMany({ where:{workspaceId:id} });
+  expect(ledger.reduce((sum,row) => sum+Number(row.debit)-Number(row.credit),0)).toBe(0);
+},60_000);

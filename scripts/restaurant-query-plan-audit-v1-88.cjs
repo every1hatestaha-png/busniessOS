@@ -173,6 +173,7 @@ async function main() {
   );
 
   const kitchenQueue = await explain(db, `SELECT ro.id,ro."createdAt" FROM restaurant_orders ro LEFT JOIN restaurant_tables rt ON rt.id=ro."restaurantTableId" AND rt."workspaceId"=ro."workspaceId" WHERE ro."workspaceId"=$1::uuid AND ro.status IN ('CONFIRMED','PREPARING','READY') ORDER BY ro."createdAt" ASC,ro.id ASC LIMIT 200`,[workspace]);
+  const outstandingQueue = await explain(db, `SELECT ro.id,ro."createdAt" FROM restaurant_orders ro WHERE ro."workspaceId"=$1::uuid AND ro.status='COMPLETED' AND restaurant_order_net_outstanding(ro.id,ro."workspaceId")>0 ORDER BY ro."createdAt" ASC,ro.id ASC LIMIT 200`,[workspace]);
   const posMenu = await explain(db, `SELECT mi.id,mi.name,mi.price,mc.name AS category FROM restaurant_menu_items mi INNER JOIN restaurant_menu_categories mc ON mc.id=mi."categoryId" AND mc."workspaceId"=mi."workspaceId" WHERE mi."workspaceId"=$1::uuid ORDER BY mc."sortOrder",mc.name,mi."sortOrder",mi.name`,[workspace]);
   const posCategories = await explain(db, `SELECT id,name,"sortOrder","isActive" FROM restaurant_menu_categories WHERE "workspaceId"=$1::uuid ORDER BY "sortOrder",name`,[workspace]);
   const tables = await explain(db, `SELECT * FROM restaurant_tables WHERE "workspaceId"=$1::uuid ORDER BY name`,[workspace]);
@@ -192,6 +193,7 @@ async function main() {
     returnHistory,
     refundHistory,
     kitchenQueue,
+    outstandingQueue,
     posMenu,
     latestOrders,
     latestPayments,

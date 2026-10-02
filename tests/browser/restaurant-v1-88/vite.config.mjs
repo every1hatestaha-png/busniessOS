@@ -2,6 +2,7 @@ import path from "node:path";
 import { defineConfig } from "vite";
 const root = path.resolve(import.meta.dirname, "../../..");
 export default defineConfig({
+  define: { "process.env": JSON.stringify({ NODE_ENV: "production" }) },
   root: import.meta.dirname,
   resolve: { alias: { "@": root } },
   esbuild: { jsx: "automatic" },

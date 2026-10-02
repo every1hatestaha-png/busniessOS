@@ -5,6 +5,13 @@ const path = require("node:path");
 const assert = require("node:assert/strict");
 const { chromium } = require("playwright");
 
+function thermalPdfPages(file) {
+  const boxes = [...fs.readFileSync(file).toString("latin1").matchAll(/\/MediaBox\s*\[([\d.\s]+)\]/g)].map((match) => match[1].trim().split(/\s+/).map(Number));
+  assert.ok(boxes.length > 0, "PDF has no readable page boxes");
+  for (const box of boxes) assert.ok(box[2]-box[0] >= 226 && box[2]-box[0] <= 228, "Thermal PDF uses an A4/fallback page width");
+  return boxes.length;
+}
+
 async function main() {
   const root = path.resolve(__dirname, "../.tmp-restaurant-browser-v188");
   let requests = 0;
@@ -75,12 +82,22 @@ async function main() {
     assert.equal(requests, 3, "Refresh during a mutation issued another request");
     await page.emulateMedia({ media: "print" });
     await page.evaluate(() => { document.documentElement.dataset.printFormat = "thermal"; });
+    const paperRule = await page.evaluate(() => {
+      const pages = [];
+      function walk(rules) { for (const rule of rules) { if (rule.type === CSSRule.PAGE_RULE) pages.push({ name: rule.selectorText, size: rule.style.getPropertyValue("size") }); if (rule.cssRules) walk(rule.cssRules); } }
+      for (const sheet of document.styleSheets) walk(sheet.cssRules);
+      return { page: getComputedStyle(document.querySelector("[data-document]")).page, sizes: pages.filter((rule) => rule.name === "restaurant-thermal").map((rule) => rule.size) };
+    });
+    assert.equal(paperRule.page, "restaurant-thermal", "DocumentFrame overrides the Restaurant thermal page");
+    assert.ok(paperRule.sizes.some((size) => size.includes("80mm") && size.includes("297mm")), "Thermal page size was discarded by the browser");
     const dimensions = await page.locator("[data-document]").evaluate((node) => ({ width: node.getBoundingClientRect().width, scroll: node.scrollWidth, client: node.clientWidth }));
     assert.ok(dimensions.width <= 273, "Thermal surface exceeds 72mm");
     assert.ok(dimensions.scroll <= dimensions.client + 1, "Thermal content overflows horizontally");
     const receipt = await page.locator("[data-document]").textContent();
     for (const token of ["REPRINT COPY", "CANCELLED", "VOID", "Remaining balance", "SYNTHETIC-RR-100"]) assert.ok(receipt.includes(token));
-    await page.pdf({ path: path.join(root, "synthetic-receipt-80mm.pdf"), width: "80mm", height: "297mm", printBackground: true });
+    const receiptPdf = path.join(root, "synthetic-receipt-80mm.pdf");
+    await page.pdf({ path: receiptPdf, preferCSSPageSize: true, printBackground: true });
+    const receiptPages = thermalPdfPages(receiptPdf);
     await page.goto(url + "/?kind=kot");
     await page.getByText("KITCHEN COPY").waitFor();
     const kot = await page.locator("[data-document]").textContent();
@@ -89,9 +106,11 @@ async function main() {
     await page.evaluate(() => { document.documentElement.dataset.printFormat = "thermal"; });
     const kotDimensions = await page.locator("[data-document]").evaluate((node) => ({ width: node.getBoundingClientRect().width, scroll: node.scrollWidth, client: node.clientWidth }));
     assert.ok(kotDimensions.width <= 273 && kotDimensions.scroll <= kotDimensions.client + 1, "KOT thermal content overflows horizontally");
-    await page.pdf({ path: path.join(root, "synthetic-kot-80mm.pdf"), width: "80mm", height: "297mm", printBackground: true });
+    const kotPdf = path.join(root, "synthetic-kot-80mm.pdf");
+    await page.pdf({ path: kotPdf, preferCSSPageSize: true, printBackground: true });
+    const kotPages = thermalPdfPages(kotPdf);
     assert.deepEqual(errors, [], "Browser runtime errors");
-    console.log(JSON.stringify({ result: "PASS", scope: "isolated React form, error boundary and print harness, no provider auth or live server actions", doubleSubmitRequests, totalSyntheticRequests: requests, refreshDuringMutation: "PASS", refreshAfterSuccess: "PASS", backNavigation: "PASS", errorReset: "PASS", thermalDimensions: dimensions, kotDimensions, browserErrors: errors.length }));
+    console.log(JSON.stringify({ result: "PASS", scope: "isolated React form, error boundary, DocumentFrame and print harness, no provider auth or live server actions", doubleSubmitRequests, totalSyntheticRequests: requests, refreshDuringMutation: "PASS", refreshAfterSuccess: "PASS", backNavigation: "PASS", errorReset: "PASS", paperRule, receiptPages, kotPages, thermalDimensions: dimensions, kotDimensions, browserErrors: errors.length }));
   } finally {
     await browser.close();
     await new Promise((resolve) => server.close(resolve));

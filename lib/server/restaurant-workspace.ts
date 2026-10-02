@@ -512,11 +512,13 @@ export async function listRestaurantOrders(workspaceId: string, limit = 100, opt
   statuses?: readonly RestaurantOrderStatus[];
   source?: RestaurantOrderSource;
   oldestFirst?: boolean;
+  outstandingOnly?: boolean;
 }) {
   await requireWorkspaceModule(workspaceId, "restaurant");
   const safeLimit = Math.max(1, Math.min(Math.trunc(limit), 250));
   const statusFilter = options?.statuses?.length ? Prisma.sql`AND ro."status" IN (${Prisma.join(options.statuses)})` : Prisma.empty;
   const sourceFilter = options?.source ? Prisma.sql`AND ro."source"=${options.source}` : Prisma.empty;
+  const outstandingFilter = options?.outstandingOnly ? Prisma.sql`AND restaurant_order_net_outstanding(ro."id", ro."workspaceId") > 0` : Prisma.empty;
   const direction = options?.oldestFirst ? Prisma.sql`ASC` : Prisma.sql`DESC`;
   const rows = await db.$queryRaw<Array<{
     id: string; orderNumber: string; source: RestaurantOrderSource; fulfillmentType: RestaurantFulfillmentType;
@@ -528,7 +530,7 @@ export async function listRestaurantOrders(workspaceId: string, limit = 100, opt
     FROM "restaurant_orders" ro
     LEFT JOIN "restaurant_tables" rt ON rt."id"=ro."restaurantTableId" AND rt."workspaceId"=ro."workspaceId"
     WHERE ro."workspaceId"=${workspaceId}::uuid
-      ${statusFilter} ${sourceFilter}
+      ${statusFilter} ${sourceFilter} ${outstandingFilter}
     ORDER BY ro."createdAt" ${direction}, ro."id" ${direction}
     LIMIT ${safeLimit}
   `;
