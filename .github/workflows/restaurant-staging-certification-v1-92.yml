@@ -1,0 +1,294 @@
+name: Restaurant V1.92 staging certification
+
+on:
+  pull_request:
+    branches:
+      - architecture/restaurant-release-candidate-v1-91
+
+permissions:
+  contents: read
+
+jobs:
+  utc-certification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_restaurant_v188
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_restaurant_v188"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_restaurant_v188?sslmode=disable
+      RUN_INTEGRATION_TESTS: "true"
+      NODE_ENV: test
+      AUDITED_BASE: 3ebebc846112ac67e3a30344e8f39b5eee623f9a
+      CERTIFIED_V185: 1d486e598668951aa5ff32251d225d9fec4aa3a0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - name: Verify ancestry and release safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$CERTIFIED_V185" HEAD
+          git merge-base --is-ancestor "$AUDITED_BASE" HEAD
+          git diff --check "$CERTIFIED_V185...HEAD"
+          git diff --quiet "$CERTIFIED_V185...HEAD" -- .github/workflows/main_munshios.yml
+          node <<'NODE'
+          const fs = require("node:fs");
+          const cfg = JSON.parse(fs.readFileSync("vercel.json","utf8"));
+          const disabled = cfg.git?.deploymentEnabled ?? {};
+          for (const branch of [
+            "architecture/restaurant-independent-audit-v1-86",
+            "architecture/restaurant-independent-certification-v1-87",
+            "architecture/restaurant-release-readiness-v1-88",
+            "architecture/restaurant-release-candidate-v1-91",
+            "architecture/restaurant-staging-certification-v1-92",
+            "architecture/restaurant-release-candidate-v1-91",
+          ]) {
+            if (disabled[branch] !== false) throw new Error("Deployment must stay disabled for " + branch);
+          }
+          NODE
+
+      - run: npm ci
+      - name: Dependency audit
+        run: npm audit --audit-level=moderate
+      - name: Prisma validate
+        run: npx prisma validate
+      - name: Vertical entrypoints
+        run: node scripts/vertical/entrypoints.cjs
+      - name: Full migration chain
+        run: |
+          set -euo pipefail
+          npx prisma migrate deploy
+          npx prisma migrate status
+      - name: Assert UTC database timezone
+        shell: bash
+        run: |
+          export PGPASSWORD=postgres
+          test "$(psql -h 127.0.0.1 -U postgres -d munshios_restaurant_v188 -Atc 'SHOW timezone')" = "Etc/UTC"
+      - name: V1.91 access and V1.90/V1.88 acceptance
+        run: npx vitest run tests/unit/restaurant-release-scope-v1-92.test.ts tests/integration/restaurant-access-policy-v1-91.test.ts tests/integration/restaurant-shared-account-contention-v1-91.test.ts tests/unit/restaurant-access-policy-v1-91.test.ts tests/integration/restaurant-pos-replay-v1-90.test.ts tests/unit/restaurant-print-route-v1-90.test.ts tests/unit/restaurant-recipe-input-v1-90.test.ts tests/unit/restaurant-action-boundary-v1-88.test.ts tests/unit/restaurant-print-v1-88.test.ts tests/unit/restaurant-release-build-guard-v1-88.test.ts tests/integration/restaurant-release-acceptance-v1-88.test.ts
+      - name: V1.86 focused regressions
+        run: >
+          npx vitest run
+          tests/integration/restaurant-action-error-redaction-v1-86.test.ts
+          tests/integration/restaurant-cash-payment-shift-v1-84.test.ts
+          tests/integration/restaurant-timezone-invariance-v1-85.test.ts
+          tests/unit/finance-harness-line-endings.test.ts
+          tests/unit/production-release-workflow.test.ts
+      - name: Full Restaurant plus warehouse regressions
+        run: >
+          npx vitest run
+          tests/integration/restaurant-*.test.ts
+          tests/unit/restaurant-*.test.ts
+          tests/integration/warehouse-stock-tenant-tuple-integrity-v1-50.test.ts
+          tests/integration/managed-warehouse-stock.test.ts
+      - name: Full application regression
+        run: npm test
+      - name: Finance suite
+        run: npm run test:finance
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Changed-file lint
+        shell: bash
+        run: |
+          git diff --name-only -z "$AUDITED_BASE" HEAD -- '*.ts' '*.tsx' '*.cjs' '*.mjs' | xargs -0 -r npx eslint
+      - name: Production web build
+        env:
+          NODE_ENV: production
+        run: npm run build:web
+
+  karachi-certification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_restaurant_v188_karachi?sslmode=disable
+      RUN_INTEGRATION_TESTS: "true"
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci
+      - name: Create Asia Karachi database
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PGPASSWORD=postgres
+          psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE munshios_restaurant_v188_karachi'
+          psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -c "ALTER DATABASE munshios_restaurant_v188_karachi SET timezone TO 'Asia/Karachi'"
+      - name: Deploy full migration chain
+        run: |
+          npx prisma migrate deploy
+          npx prisma migrate status
+      - name: Assert Asia Karachi timezone
+        shell: bash
+        run: |
+          export PGPASSWORD=postgres
+          test "$(psql -h 127.0.0.1 -U postgres -d munshios_restaurant_v188_karachi -Atc 'SHOW timezone')" = "Asia/Karachi"
+      - name: Timezone and compensation regressions
+        run: >
+          npx vitest run
+          tests/integration/restaurant-timezone-invariance-v1-85.test.ts
+          tests/integration/restaurant-cash-payment-shift-v1-84.test.ts
+          tests/integration/restaurant-payment-timing-v1-7.test.ts
+          tests/integration/restaurant-refunds-v1-2.test.ts
+          tests/integration/restaurant-item-returns-v1-3.test.ts
+          tests/integration/restaurant-return-reversal-v1-4.test.ts
+      - name: Full Restaurant suite
+        run: >
+          npx vitest run
+          tests/integration/restaurant-*.test.ts
+          tests/unit/restaurant-*.test.ts
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+  historical-upgrade-rehearsal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci
+      - name: Historical pre V1.82 and pre V1.84 upgrade rehearsal
+        run: node scripts/restaurant-upgrade-rehearsal-v1-86.cjs
+
+
+  query-plan-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_restaurant_perf
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_restaurant_perf"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_restaurant_perf?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci
+      - name: Deploy migration chain
+        run: npx prisma migrate deploy
+      - name: Synthetic Restaurant query-plan evidence
+        run: |
+          node scripts/restaurant-query-plan-audit-v1-88.cjs
+          node scripts/restaurant-query-plan-certification-v1-88.cjs
+
+  isolated-browser-and-print:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Install isolated browser harness tooling
+        run: |
+          mkdir -p "$RUNNER_TEMP/restaurant-browser-tools"
+          npm install --prefix "$RUNNER_TEMP/restaurant-browser-tools" --ignore-scripts playwright@1.62.1
+          echo "NODE_PATH=$RUNNER_TEMP/restaurant-browser-tools/node_modules" >> "$GITHUB_ENV"
+          echo "RESTAURANT_PLAYWRIGHT_CLI=$RUNNER_TEMP/restaurant-browser-tools/node_modules/playwright/cli.js" >> "$GITHUB_ENV"
+      - name: Install Chromium
+        run: node "$RESTAURANT_PLAYWRIGHT_CLI" install --with-deps chromium
+      - name: Build real Restaurant form and print components
+        run: npx vite build --config tests/browser/restaurant-v1-88/vite.config.mjs
+      - name: Browser form and 80mm print verification
+        run: node scripts/restaurant-browser-verification-v1-88.cjs
+      - name: Render and verify thermal PDF evidence
+        run: |
+          sudo apt-get install -y poppler-utils
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const assert = require("node:assert/strict");
+          const { execFileSync } = require("node:child_process");
+          const root = ".tmp-restaurant-browser-v188";
+          for (const name of fs.readdirSync(root).filter(name => name.endsWith(".pdf")).sort()) {
+            const file = path.join(root,name);
+            const xml = execFileSync("pdftotext",["-bbox",file,"-"],{encoding:"utf8"});
+            const words = [...xml.matchAll(/<word\b([^>]+)>Historical<\/word>/g)];
+            assert.equal(words.length,30,"PDF lost an historical item label");
+            const height = words.map(match => Number(match[1].match(/yMax="([^"]+)"/)[1])-Number(match[1].match(/yMin="([^"]+)"/)[1]));
+            assert.ok(Math.min(...height)>=5.5,"Thermal text shrank under a fallback paper size");
+            console.log(JSON.stringify({document:name,historicalItemLabels:words.length,minimumItemWordHeightPt:Math.min(...height)}));
+            execFileSync("pdftoppm",["-r","120","-png",file,path.join(root,name.replace(".pdf",""))]);
+          }
+          console.log("::group::Thermal visual evidence");
+          for (const kind of ["receipt","kot"]) {
+            const names = fs.readdirSync(root).filter(name => name.startsWith("synthetic-"+kind+"-80mm-") && name.endsWith(".png")).sort();
+            for (const name of new Set([names[0],names.at(-1)])) console.log("THERMAL_PNG:"+JSON.stringify({name,data:fs.readFileSync(path.join(root,name)).toString("base64")}));
+          }
+          console.log("::endgroup::");
+          NODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: synthetic-restaurant-80mm-print-v188
+          path: |
+            .tmp-restaurant-browser-v188/*.pdf
+            .tmp-restaurant-browser-v188/*.png
+          include-hidden-files: true
+          if-no-files-found: error

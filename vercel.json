@@ -35,7 +35,8 @@
       "architecture/restaurant-independent-certification-v1-87": false,
       "architecture/restaurant-release-readiness-v1-88": false,
       "architecture/restaurant-release-audit-v1-90": false,
-      "architecture/restaurant-release-candidate-v1-91": false
+      "architecture/restaurant-release-candidate-v1-91": false,
+      "architecture/restaurant-staging-certification-v1-92": false
     }
   }
 }

@@ -59,10 +59,10 @@ export default async function RestaurantOrdersPage() {
 
   return (
     <div className="mx-auto max-w-[1800px] space-y-6">
-      <PageHeader title="Restaurant Orders" description="One operational queue for POS and WhatsApp orders. Payments are recorded against real cash or bank accounts and completion posts stock and accounting atomically." />
+      <PageHeader title="Restaurant Orders" description="One operational queue for POS orders and saved staff reviews. Payments are recorded against real cash or bank accounts and completion posts stock and accounting atomically." />
       <div className="flex flex-wrap gap-2">
         <Link href="/restaurant/pos" className={cn(buttonVariants())}><Plus className="mr-1 size-4" />New POS order</Link>
-        <Link href="/restaurant/whatsapp" className={cn(buttonVariants({ variant: "outline" }))}><MessageCircleMore className="mr-1 size-4" />WhatsApp inbox</Link>
+        <Link href="/restaurant/whatsapp" className={cn(buttonVariants({ variant: "outline" }))}><MessageCircleMore className="mr-1 size-4" />Saved WhatsApp reviews</Link>
       </div>
 
       {payments.length === 500 ? <p className="text-sm text-amber-700">Showing the latest 500 payments for these orders. Open an order receipt for its complete payment history.</p> : null}
