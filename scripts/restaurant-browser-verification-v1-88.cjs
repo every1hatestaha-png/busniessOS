@@ -111,10 +111,22 @@ async function main() {
     assert.ok(dimensions.width <= 273, "Thermal surface exceeds 72mm");
     assert.ok(dimensions.scroll <= dimensions.client + 1, "Thermal content overflows horizontally");
     const receipt = await page.locator("[data-document]").textContent();
-    for (const token of ["REPRINT COPY", "CANCELLED", "VOID", "Remaining balance", "SYNTHETIC-RR-100"]) assert.ok(receipt.includes(token));
+    for (const token of ["REPRINT COPY", "COMPLETED", "Remaining balance", "SYNTHETIC-RR-100"]) assert.ok(receipt.includes(token));
     const receiptPdf = path.join(root, "synthetic-receipt-80mm.pdf");
     await page.pdf({ path: receiptPdf, preferCSSPageSize: true, printBackground: true });
     const receiptPages = thermalPdfPages(receiptPdf);
+    const statePages = {};
+    for (const state of ["cancelled","refund"]) {
+      await page.goto(url+"/?state="+state);
+      await page.getByText("SYNTHETIC-100",{exact:true}).waitFor();
+      await page.evaluate(() => { document.documentElement.dataset.printFormat = "thermal"; });
+      const text = await page.locator("[data-document]").textContent();
+      if (state === "cancelled") assert.ok(text.includes("CANCELLED, DO NOT FULFIL") && !text.includes("BANK TRANSFER"));
+      if (state === "refund") assert.ok(text.includes("VOID") && text.includes("REFUND") && text.includes("6,000"));
+      const file = path.join(root,"synthetic-"+state+"-80mm.pdf");
+      await page.pdf({path:file,preferCSSPageSize:true,printBackground:true});
+      statePages[state] = thermalPdfPages(file);
+    }
     await page.goto(url + "/?kind=kot");
     await page.getByText("KITCHEN COPY").waitFor();
     const kot = await page.locator("[data-document]").textContent();
@@ -127,7 +139,7 @@ async function main() {
     await page.pdf({ path: kotPdf, preferCSSPageSize: true, printBackground: true });
     const kotPages = thermalPdfPages(kotPdf);
     assert.deepEqual(errors, [], "Browser runtime errors");
-    console.log(JSON.stringify({ result: "PASS", scope: "isolated real POS/form/error/DocumentFrame UI with synthetic action transport, no provider auth or live server actions", doubleSubmitRequests, previousStatefulDoubleSubmitRequests: 2, posDoubleSubmitRequests: 1, posPendingCartLock: "PASS", posSuccessCartClear: "PASS", totalSyntheticRequests: requests, refreshDuringMutation: "PASS", refreshAfterSuccess: "PASS", backNavigation: "PASS", errorReset: "PASS", paperRule, receiptPages, kotPages, thermalDimensions: dimensions, kotDimensions, browserErrors: errors.length }));
+    console.log(JSON.stringify({ result: "PASS", scope: "isolated real POS/form/error/DocumentFrame UI with synthetic action transport, no provider auth or live server actions", doubleSubmitRequests, previousStatefulDoubleSubmitRequests: 2, posDoubleSubmitRequests: 1, posPendingCartLock: "PASS", posSuccessCartClear: "PASS", totalSyntheticRequests: requests, refreshDuringMutation: "PASS", refreshAfterSuccess: "PASS", backNavigation: "PASS", errorReset: "PASS", paperRule, receiptPages, kotPages, statePages, thermalDimensions: dimensions, kotDimensions, browserErrors: errors.length }));
   } finally {
     await browser.close();
     await new Promise((resolve) => server.close(resolve));

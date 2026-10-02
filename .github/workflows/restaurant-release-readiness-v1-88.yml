@@ -252,10 +252,38 @@ jobs:
         run: npx vite build --config tests/browser/restaurant-v1-88/vite.config.mjs
       - name: Browser form and 80mm print verification
         run: node scripts/restaurant-browser-verification-v1-88.cjs
+      - name: Render and verify thermal PDF evidence
+        run: |
+          sudo apt-get install -y poppler-utils
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const assert = require("node:assert/strict");
+          const { execFileSync } = require("node:child_process");
+          const root = ".tmp-restaurant-browser-v188";
+          for (const name of fs.readdirSync(root).filter(name => name.endsWith(".pdf")).sort()) {
+            const file = path.join(root,name);
+            const xml = execFileSync("pdftotext",["-bbox",file,"-"],{encoding:"utf8"});
+            const words = [...xml.matchAll(/<word\b([^>]+)>Historical<\/word>/g)];
+            assert.equal(words.length,30,"PDF lost an historical item label");
+            const height = words.map(match => Number(match[1].match(/yMax="([^"]+)"/)[1])-Number(match[1].match(/yMin="([^"]+)"/)[1]));
+            assert.ok(Math.min(...height)>=5.5,"Thermal text shrank under a fallback paper size");
+            console.log(JSON.stringify({document:name,historicalItemLabels:words.length,minimumItemWordHeightPt:Math.min(...height)}));
+            execFileSync("pdftoppm",["-r","120","-png",file,path.join(root,name.replace(".pdf",""))]);
+          }
+          console.log("::group::Thermal visual evidence");
+          for (const kind of ["receipt","kot"]) {
+            const names = fs.readdirSync(root).filter(name => name.startsWith("synthetic-"+kind+"-80mm-") && name.endsWith(".png")).sort();
+            for (const name of new Set([names[0],names.at(-1)])) console.log("THERMAL_PNG:"+JSON.stringify({name,data:fs.readFileSync(path.join(root,name)).toString("base64")}));
+          }
+          console.log("::endgroup::");
+          NODE
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: synthetic-restaurant-80mm-print-v188
-          path: .tmp-restaurant-browser-v188/*.pdf
+          path: |
+            .tmp-restaurant-browser-v188/*.pdf
+            .tmp-restaurant-browser-v188/*.png
           include-hidden-files: true
           if-no-files-found: error

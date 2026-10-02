@@ -10,12 +10,15 @@ import type { RestaurantPrintDocument } from "../../../lib/server/restaurant-pri
 import "../../../app/globals.css";
 import "../../../components/documents/restaurant-print.css";
 
-const doc: RestaurantPrintDocument = {
-  orderNumber: "SYNTHETIC-100", status: "CANCELLED", paymentStatus: "UNPAID", fulfillmentType: "DINE_IN", tableName: "Table 100", customerName: "Synthetic customer", notes: "Synthetic kitchen note", createdAt: new Date("2026-10-01T20:00:00Z"), timezone: "Asia/Karachi", subtotal: 200, discountAmount: 10, taxAmount: 5, total: 195, adjustedDue: 95, retainedPaid: 95, outstanding: 0,
+let doc: RestaurantPrintDocument = {
+  orderNumber: "SYNTHETIC-100", status: "COMPLETED", paymentStatus: "PAID", fulfillmentType: "DINE_IN", tableName: "Table 100", customerName: "Synthetic customer", notes: "Synthetic kitchen note", createdAt: new Date("2026-10-01T20:00:00Z"), timezone: "Asia/Karachi", subtotal: 6000, discountAmount: 0, taxAmount: 0, total: 6000, adjustedDue: 5900, retainedPaid: 5900, outstanding: 0,
   items: Array.from({ length: 30 }, (_, index) => ({ itemName: `Historical meal ${index} with a long name that must wrap safely`, quantity: 2, unitPrice: 100, lineTotal: 200, notes: "No onions", modifiers: ["Extra sauce"] })),
-  payments: [{ method: "BANK_TRANSFER", amount: 195, createdAt: new Date("2026-10-01T20:00:00Z"), postedAt: new Date(), voidedAt: new Date() }],
-  returns: [{ returnNumber: "SYNTHETIC-RR-100", total: 100, reason: "Synthetic return", createdAt: new Date(), isReversal: false }], refunds: [{ amount: 95, reason: "Synthetic refund", createdAt: new Date() }],
+  payments: [{ method: "BANK_TRANSFER", amount: 6000, createdAt: new Date("2026-10-01T20:00:00Z"), postedAt: new Date("2026-10-01T20:00:01Z"), voidedAt: null }],
+  returns: [{ returnNumber: "SYNTHETIC-RR-100", total: 100, reason: "Synthetic return", createdAt: new Date("2026-10-01T21:00:00Z"), isReversal: false }], refunds: [],
 };
+const printState = new URLSearchParams(location.search).get("state");
+if (printState === "cancelled") doc = { ...doc, status:"CANCELLED", paymentStatus:"UNPAID", adjustedDue:6000, retainedPaid:0, outstanding:6000, payments:[], returns:[], refunds:[] };
+if (printState === "refund") doc = { ...doc, paymentStatus:"UNPAID", adjustedDue:6000, retainedPaid:0, outstanding:6000, payments:doc.payments.map(payment => ({ ...payment,voidedAt:new Date("2026-10-01T21:00:00Z") })), returns:[], refunds:[{ amount:6000,reason:"Synthetic full refund",createdAt:new Date("2026-10-01T21:00:00Z") }] };
 async function mutation(form: FormData) {
   const response = await fetch("/synthetic-mutation", { method: "POST", body: new URLSearchParams([...form.entries()].map(([key, value]) => [key, String(value)])) });
   return await response.json();
