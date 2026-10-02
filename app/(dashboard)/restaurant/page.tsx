@@ -41,12 +41,12 @@ export default async function RestaurantPage() {
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">
-      <PageHeader title="Restaurant Workspace" description="POS, WhatsApp intake, kitchen flow, tables, recipes, stock and cash operations in one tenant-isolated workspace." />
+      <PageHeader title="Restaurant Workspace" description="POS, kitchen flow, tables, recipes, stock and cash operations in one tenant-isolated workspace." />
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <MetricCard label="Today's sales" value={`Rs ${restaurantMetrics.todaySales.toLocaleString()}`} detail={`${restaurantMetrics.todayOrders} restaurant orders today`} icon={Banknote} />
         <MetricCard label="Live orders" value={String(restaurantMetrics.liveOrders)} detail="Confirmed, preparing or ready" icon={ClipboardList} />
-        <MetricCard label="WhatsApp review" value={String(restaurantMetrics.pendingWhatsapp)} detail="Waiting for staff confirmation" icon={MessageCircleMore} />
+        <MetricCard label="Saved WhatsApp reviews" value={String(restaurantMetrics.pendingWhatsapp)} detail="Saved orders waiting for staff confirmation" icon={MessageCircleMore} />
         <MetricCard label="Ready" value={String(restaurantMetrics.readyOrders)} detail="Orders ready to hand over" icon={ChefHat} />
         <MetricCard label="Cash shift" value={openShift ? "Open" : "Closed"} detail={openShift ? `Rs ${openShift.openingCash.toLocaleString()} opening cash` : "No open cash shift"} icon={Banknote} />
       </section>
@@ -56,7 +56,7 @@ export default async function RestaurantPage() {
         <QuickLink href="/restaurant/orders" title="Orders" description="Review and move live orders" icon={ClipboardList} />
         <QuickLink href="/restaurant/kitchen" title="Kitchen" description="Preparation board and ready queue" icon={ChefHat} />
         <QuickLink href="/restaurant/menu" title="Menu" description="Items, prices and availability" icon={UtensilsCrossed} />
-        <QuickLink href="/restaurant/whatsapp" title="WhatsApp" description="Pending intake and provider messages" icon={MessageCircleMore} />
+        <QuickLink href="/restaurant/whatsapp" title="Saved WhatsApp reviews" description="Saved messages and pending reviews" icon={MessageCircleMore} />
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
