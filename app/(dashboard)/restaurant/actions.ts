@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { restaurantActionErrorMessage, restaurantFormWorkspaceChanged } from "@/lib/server/restaurant-action-errors";
 import { requireWorkspace } from "@/lib/server/auth";
+import { assertRestaurantMutationAccess } from "@/lib/server/restaurant-mutation-access";
 import {
   closeRestaurantCashShiftFromLedger,
   openRestaurantCashShiftSafely,
@@ -45,6 +46,7 @@ export async function createRestaurantTableAction(
   const { workspaceId, role, user } = await requireWorkspace();
   if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
+    await assertRestaurantMutationAccess(workspaceId);
     await createRestaurantTable(
       { workspaceId, role, userId: user.id },
       { name, capacity, area: area || undefined },
@@ -70,6 +72,7 @@ export async function openCashShiftAction(
   const { workspaceId, role, user } = await requireWorkspace();
   if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
+    await assertRestaurantMutationAccess(workspaceId);
     await openRestaurantCashShiftSafely({ workspaceId, role, userId: user.id }, openingCash, notes || undefined);
     revalidatePath("/restaurant");
     return { status: "success", message: "Cash shift opened." };
@@ -95,6 +98,7 @@ export async function closeCashShiftAction(
   const { workspaceId, role, user } = await requireWorkspace();
   if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
+    await assertRestaurantMutationAccess(workspaceId);
     const result = await closeRestaurantCashShiftFromLedger(
       { workspaceId, role, userId: user.id },
       shiftId,
@@ -153,6 +157,7 @@ export async function createRecipeAction(
   const { workspaceId, role, user } = await requireWorkspace();
   if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
+    await assertRestaurantMutationAccess(workspaceId);
     await createRecipe(
       { workspaceId, role, userId: user.id },
       { finishedProductId, yieldQuantity, notes: notes || undefined, items },
@@ -181,6 +186,7 @@ export async function createKitchenTicketAction(
   const { workspaceId, role, user } = await requireWorkspace();
   if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
+    await assertRestaurantMutationAccess(workspaceId);
     await createKitchenTicket(
       { workspaceId, role, userId: user.id },
       {
@@ -209,6 +215,7 @@ export async function updateKitchenTicketStatusAction(
   const { workspaceId, role, user } = await requireWorkspace();
   if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
+    await assertRestaurantMutationAccess(workspaceId);
     await updateLegacyKitchenTicketStatusSafely(
       { workspaceId, role, userId: user.id },
       ticketId,

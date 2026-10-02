@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ transition: vi.fn(), reverse: vi.fn(), auth: vi.fn(), confirm: vi.fn(), availability: vi.fn(), payment: vi.fn(), void: vi.fn(), prepare: vi.fn(), itemReturn: vi.fn() }));
 vi.mock("@/lib/server/db", () => ({ db: {} }));
+vi.mock("@/lib/server/subscriptions", () => ({ getWorkspaceAccess: vi.fn().mockResolvedValue({ allowed: true, reason: "active" }) }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/server/auth", () => ({ requireWorkspace: mocks.auth }));
 vi.mock("@/lib/server/restaurant-integrity", () => ({ transitionRestaurantOrderWithIntegrity: mocks.transition, voidRestaurantPayment: mocks.void }));

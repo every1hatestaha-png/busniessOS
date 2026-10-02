@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 
 import type { RestaurantV1ActionState } from "@/app/(dashboard)/restaurant/v1-action-state";
 import { requireWorkspace } from "@/lib/server/auth";
+import { assertRestaurantMutationAccess } from "@/lib/server/restaurant-mutation-access";
 import { restaurantActionErrorMessage, restaurantMutationFeedback, restaurantFormWorkspaceChanged } from "@/lib/server/restaurant-action-errors";
 import {
   transitionRestaurantOrderWithIntegrity,
@@ -63,6 +64,7 @@ export async function createMenuCategoryAction(
   const workspace = await requireWorkspace();
   if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
+    await assertRestaurantMutationAccess(workspace.workspaceId);
     await createRestaurantMenuCategory(contextFrom(workspace), { name, sortOrder });
     refreshRestaurant();
     return { status: "success", message: `${name} added to the menu.` };
@@ -89,6 +91,7 @@ export async function createMenuItemAction(
   const workspace = await requireWorkspace();
   if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
+    await assertRestaurantMutationAccess(workspace.workspaceId);
     await createRestaurantMenuItem(contextFrom(workspace), {
       categoryId,
       productId: productId || undefined,
@@ -111,6 +114,7 @@ export async function setMenuItemAvailabilityAction(formData: FormData) {
   if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   if (!canManageRestaurant(workspace.role)) return fail("Manager access is required to change menu availability.");
   return restaurantMutationFeedback(async () => {
+    await assertRestaurantMutationAccess(workspace.workspaceId);
     await setRestaurantMenuItemAvailability(contextFrom(workspace), menuItemId, isAvailable);
     refreshRestaurant();
   }, "Menu availability updated.", "We could not update menu availability. Refresh the menu before trying again.");
@@ -162,6 +166,7 @@ export async function createPosOrderAction(
   const workspace = await requireWorkspace();
   if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
+    await assertRestaurantMutationAccess(workspace.workspaceId);
     const order = await createPosRestaurantOrder(contextFrom(workspace), {
       idempotencyKey: requestId,
       fulfillmentType,
@@ -186,6 +191,7 @@ export async function confirmRestaurantOrderAction(formData: FormData) {
   const workspace = await requireWorkspace();
   if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   return restaurantMutationFeedback(async () => {
+    await assertRestaurantMutationAccess(workspace.workspaceId);
     await confirmRestaurantOrder(contextFrom(workspace), orderId);
     refreshRestaurant();
   }, "Order confirmed.", "We could not confirm this order. Refresh its status before trying again.");
@@ -200,6 +206,7 @@ export async function transitionRestaurantOrderAction(formData: FormData) {
   const workspace = await requireWorkspace();
   if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   return restaurantMutationFeedback(async () => {
+    await assertRestaurantMutationAccess(workspace.workspaceId);
     await transitionRestaurantOrderWithIntegrity(contextFrom(workspace), orderId, nextStatus);
     refreshRestaurant();
   }, "Order updated.", "We could not update this order. Refresh its status before trying again.");
@@ -220,6 +227,7 @@ export async function recordRestaurantPaymentAction(formData: FormData) {
   const workspace = await requireWorkspace();
   if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   return restaurantMutationFeedback(async () => {
+    await assertRestaurantMutationAccess(workspace.workspaceId);
     await recordRestaurantPaymentAtCollection(contextFrom(workspace), {
       orderId,
       cashBankAccountId,
@@ -239,6 +247,7 @@ export async function voidRestaurantPaymentAction(formData: FormData) {
   const workspace = await requireWorkspace();
   if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   return restaurantMutationFeedback(async () => {
+    await assertRestaurantMutationAccess(workspace.workspaceId);
     await voidRestaurantPayment(contextFrom(workspace), paymentId, reason);
     refreshRestaurant();
   }, "Payment voided.", "We could not void this payment. Refresh payment history before trying again.");
@@ -255,6 +264,7 @@ export async function createRestaurantItemReturnAction(formData: FormData) {
   if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   if (!canManageRestaurant(workspace.role)) return fail("Manager access is required for restaurant returns.");
   return restaurantMutationFeedback(async () => {
+    await assertRestaurantMutationAccess(workspace.workspaceId);
 
     const context = contextFrom(workspace);
     const prepared = await prepareRestaurantSingleItemReturn(context, {
