@@ -66,9 +66,10 @@ export default async function RestaurantPage() {
         <MetricCard label="Menu & order layer" value="V1" detail="Restaurant-native ordering foundation" icon={UtensilsCrossed} />
       </section>
 
-      <RestaurantControls openShiftId={openShift?.id ?? null} canManageTables={canManageTables} />
+      <RestaurantControls workspaceId={workspaceId} openShiftId={openShift?.id ?? null} canManageTables={canManageTables} />
 
       <RestaurantLifecycleControls
+        workspaceId={workspaceId}
         products={products.filter((product) => product.status === "ACTIVE").map((product) => ({ id: product.id, name: product.name, sku: product.sku }))}
         tables={tables.map((table) => ({ id: table.id, name: table.name, status: table.status }))}
         sales={sales.slice(0, 100).map((sale) => ({ id: sale.id, orderNumber: sale.orderNumber, customerName: sale.customerName, status: sale.status }))}

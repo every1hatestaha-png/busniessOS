@@ -17,9 +17,14 @@ function retryableMessage(err: unknown) {
   return `${err.message ?? ""} ${meta}`;
 }
 
-function isRetryableError(err: unknown): boolean {
+function isRetryableError(err: unknown, retryUniqueConstraints: readonly string[] = []): boolean {
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     if (err.code === "P2034" || err.code === "P2028") return true;
+    if (err.code === "P2002") {
+      const adapter = err.meta?.driverAdapterError as { cause?: { constraint?: { index?: string } } } | undefined;
+      const constraint = adapter?.cause?.constraint?.index;
+      if (constraint && retryUniqueConstraints.includes(constraint)) return true;
+    }
   }
 
   const msg = retryableMessage(err);
@@ -33,7 +38,7 @@ function isRetryableError(err: unknown): boolean {
 
 export async function withSerializableRetry<T>(
   fn: (tx: Prisma.TransactionClient) => Promise<T>,
-  options?: { maxWait?: number; timeout?: number },
+  options?: { maxWait?: number; timeout?: number; retryUniqueConstraints?: readonly string[] },
 ): Promise<T> {
   const txOptions = {
     isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -47,7 +52,7 @@ export async function withSerializableRetry<T>(
       return await db.$transaction(fn, txOptions);
     } catch (err) {
       lastError = err;
-      if (attempt < MAX_RETRIES && isRetryableError(err)) {
+      if (attempt < MAX_RETRIES && isRetryableError(err, options?.retryUniqueConstraints)) {
         await new Promise((resolve) => setTimeout(resolve, BASE_DELAY_MS * 2 ** attempt));
         continue;
       }

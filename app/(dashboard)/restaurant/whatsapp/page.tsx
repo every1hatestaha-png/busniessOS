@@ -9,7 +9,7 @@ export default async function RestaurantWhatsappPage() {
   const { workspaceId } = await requireWorkspace();
   const [messages, orders] = await Promise.all([
     listWhatsappRestaurantMessages(workspaceId, 100),
-    listRestaurantOrders(workspaceId, 200),
+    listRestaurantOrders(workspaceId, 200, { statuses: ["PENDING_REVIEW"], source: "WHATSAPP", oldestFirst: true }),
   ]);
   const pending = orders.filter((order) => order.source === "WHATSAPP" && order.status === "PENDING_REVIEW");
 

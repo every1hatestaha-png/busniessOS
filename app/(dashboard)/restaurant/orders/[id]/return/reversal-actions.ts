@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { restaurantMutationFeedback, restaurantFormWorkspaceChanged } from "@/lib/server/restaurant-action-errors";
 import { requireWorkspace } from "@/lib/server/auth";
 import { reverseRestaurantItemReturn } from "@/lib/server/restaurant-return-reversals";
 
@@ -11,6 +12,8 @@ export async function reverseRestaurantReturnAction(formData: FormData) {
   const reason = String(formData.get("reason") ?? "").trim();
   const workspace = await requireWorkspace();
 
+  if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return { status: "error" as const, message: "Your workspace changed. Refresh this page before submitting." };
+  return restaurantMutationFeedback(async () => {
   await reverseRestaurantItemReturn(
     { workspaceId: workspace.workspaceId, role: workspace.role, userId: workspace.user.id },
     returnId,
@@ -22,4 +25,5 @@ export async function reverseRestaurantReturnAction(formData: FormData) {
     "/restaurant/orders",
     `/restaurant/orders/${orderId}/return`,
   ]) revalidatePath(path);
+  }, "Return reversed.", "We could not reverse this return. Refresh its status before trying again.");
 }

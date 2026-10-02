@@ -1,6 +1,8 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useRestaurantActionState } from "@/app/(dashboard)/restaurant/use-restaurant-action-state";
+
+import { useMemo, useState } from "react";
 import { Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
 
 import { initialRestaurantV1ActionState } from "@/app/(dashboard)/restaurant/v1-action-state";
@@ -14,9 +16,13 @@ type MenuItem = { id: string; categoryId: string; categoryName: string; name: st
 type Table = { id: string; name: string; status: string };
 type CartLine = { menuItemId: string; name: string; price: number; quantity: number };
 
-export function RestaurantPos({ categories, items, tables, canFinancialOverride }: { categories: Category[]; items: MenuItem[]; tables: Table[]; canFinancialOverride: boolean }) {
-  const [state, action, pending] = useActionState(createPosOrderAction, initialRestaurantV1ActionState);
+export function RestaurantPos({ workspaceId, categories, items, tables, canFinancialOverride }: { workspaceId?: string; categories: Category[]; items: MenuItem[]; tables: Table[]; canFinancialOverride: boolean }) {
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [state, action, pending, onSubmit] = useRestaurantActionState(async (previous, form) => {
+    const result = await createPosOrderAction(previous, form);
+    if (result.status === "success") setCart([]);
+    return result;
+  }, initialRestaurantV1ActionState);
   const [activeCategory, setActiveCategory] = useState(categories[0]?.id ?? "all");
   const [fulfillmentType, setFulfillmentType] = useState("TAKEAWAY");
   const visibleItems = items.filter((item) => item.categoryId === activeCategory || activeCategory === "all");
@@ -48,7 +54,7 @@ export function RestaurantPos({ categories, items, tables, canFinancialOverride 
         {visibleItems.length ? (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {visibleItems.map((item) => (
-              <button key={item.id} type="button" disabled={!item.isAvailable} onClick={() => add(item)} className="rounded-lg border bg-card p-4 text-left shadow-sm transition hover:border-emerald-300 hover:bg-emerald-50/30 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-emerald-950/10">
+              <button key={item.id} type="button" disabled={pending || !item.isAvailable} onClick={() => add(item)} className="rounded-lg border bg-card p-4 text-left shadow-sm transition hover:border-emerald-300 hover:bg-emerald-50/30 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-emerald-950/10">
                 <div className="flex items-start justify-between gap-3"><p className="font-semibold">{item.name}</p><span className="whitespace-nowrap text-sm font-semibold text-emerald-700">Rs {item.price.toLocaleString()}</span></div>
                 <p className="mt-1 line-clamp-2 min-h-8 text-xs text-muted-foreground">{item.description || item.categoryName}</p>
                 {!item.isAvailable ? <p className="mt-3 text-xs font-semibold text-destructive">Unavailable</p> : <p className="mt-3 text-xs font-medium text-emerald-700">Tap to add</p>}
@@ -65,16 +71,17 @@ export function RestaurantPos({ categories, items, tables, canFinancialOverride 
             {cart.length ? cart.map((line) => (
               <div key={line.menuItemId} className="flex items-center gap-2 rounded-md border p-2.5">
                 <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{line.name}</p><p className="text-xs text-muted-foreground">Rs {(line.price * line.quantity).toLocaleString()}</p></div>
-                <Button type="button" variant="outline" size="icon" className="size-7" onClick={() => change(line.menuItemId, -1)}><Minus className="size-3" /></Button>
+                <Button type="button" variant="outline" size="icon" className="size-7" disabled={pending} onClick={() => change(line.menuItemId, -1)}><Minus className="size-3" /></Button>
                 <span className="w-6 text-center text-sm font-semibold">{line.quantity}</span>
-                <Button type="button" variant="outline" size="icon" className="size-7" onClick={() => change(line.menuItemId, 1)}><Plus className="size-3" /></Button>
-                <Button type="button" variant="ghost" size="icon" className="size-7 text-destructive" onClick={() => setCart((current) => current.filter((item) => item.menuItemId !== line.menuItemId))}><Trash2 className="size-3.5" /></Button>
+                <Button type="button" variant="outline" size="icon" className="size-7" disabled={pending} onClick={() => change(line.menuItemId, 1)}><Plus className="size-3" /></Button>
+                <Button type="button" variant="ghost" size="icon" className="size-7 text-destructive" disabled={pending} onClick={() => setCart((current) => current.filter((item) => item.menuItemId !== line.menuItemId))}><Trash2 className="size-3.5" /></Button>
               </div>
             )) : <p className="rounded-md border border-dashed p-5 text-center text-sm text-muted-foreground">Select menu items to start an order.</p>}
           </div>
 
-          <form action={action} className="space-y-3">
-            <input type="hidden" name="itemsJson" value={JSON.stringify(cart.map(({ menuItemId, quantity }) => ({ menuItemId, quantity })))} />
+          <form action={action} onSubmit={onSubmit} aria-busy={pending} className="space-y-3">
+            {workspaceId ? <input type="hidden" name="formWorkspaceId" value={workspaceId} /> : null}
+            <fieldset disabled={pending} className="contents"><input type="hidden" name="itemsJson" value={JSON.stringify(cart.map(({ menuItemId, quantity }) => ({ menuItemId, quantity })))} />
             <label className="block space-y-1.5 text-xs font-medium">Order type
               <select name="fulfillmentType" value={fulfillmentType} onChange={(event) => setFulfillmentType(event.target.value)} className="h-9 w-full rounded-md border bg-background px-3 text-sm">
                 <option value="DINE_IN">Dine-in</option><option value="TAKEAWAY">Takeaway</option><option value="DELIVERY">Delivery</option>
@@ -91,8 +98,8 @@ export function RestaurantPos({ categories, items, tables, canFinancialOverride 
               <label className="space-y-1 text-xs font-medium">Tax<Input name="taxAmount" type="number" min={0} step="0.01" defaultValue={0} /></label>
             </div> : null}
             <div className="border-t pt-3"><div className="flex items-center justify-between text-sm"><span className="text-muted-foreground">Displayed subtotal</span><span className="font-semibold">Rs {subtotal.toLocaleString()}</span></div><p className="mt-1 text-[11px] text-muted-foreground">Final prices and totals are recalculated securely by the server.</p></div>
-            {state.message ? <p className={state.status === "error" ? "text-xs text-destructive" : "text-xs font-medium text-emerald-700"}>{state.message}</p> : null}
-            <Button type="submit" className="w-full" disabled={pending || cart.length === 0}>{pending ? "Creating order..." : "Confirm & send to kitchen"}</Button>
+            {state.message ? <p role={state.status === "error" ? "alert" : "status"} className={state.status === "error" ? "text-xs text-destructive" : "text-xs font-medium text-emerald-700"}>{state.message}</p> : null}
+            <Button type="submit" className="w-full" disabled={pending || cart.length === 0}>{pending ? "Creating order..." : "Confirm & send to kitchen"}</Button></fieldset>
           </form>
         </CardContent>
       </Card>
