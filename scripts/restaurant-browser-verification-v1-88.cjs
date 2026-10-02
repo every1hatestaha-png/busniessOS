@@ -80,6 +80,23 @@ async function main() {
     await page.reload();
     await page.getByRole("button", { name: "Submit synthetic mutation" }).waitFor();
     assert.equal(requests, 3, "Refresh during a mutation issued another request");
+    await page.goto(url + "/?kind=unguarded");
+    await page.getByRole("button", { name: "Unguarded synthetic form" }).waitFor();
+    await page.evaluate(() => { const form = document.querySelector("form"); form.requestSubmit(); form.requestSubmit(); });
+    await page.waitForFunction(() => document.querySelector("form")?.dataset.pending === "true");
+    await page.waitForFunction(() => document.querySelector("form")?.dataset.pending === "false" && document.querySelector('[role="alert"]'));
+    assert.equal(requests, 5, "Previous pending-only stateful form did not reproduce the duplicate request");
+    await page.goto(url + "/?kind=pos");
+    await page.getByRole("button", { name: /Synthetic meal/ }).click();
+    await page.evaluate(() => { const form = document.querySelector("form"); form.requestSubmit(); form.requestSubmit(); });
+    await page.waitForFunction(() => document.querySelector("fieldset")?.disabled === true);
+    assert.equal(await page.getByRole("button", { name: /Synthetic meal/ }).isDisabled(), true, "POS cart can change during a pending order");
+    await page.getByRole("status").filter({ hasText: "Synthetic mutation completed." }).waitFor();
+    assert.equal(requests, 6, "POS double submit created another request");
+    assert.equal(await page.getByRole("button", { name: "Confirm & send to kitchen" }).isDisabled(), true, "Successful POS order leaves the old basket submit-ready");
+    assert.equal(await page.getByText("Select menu items to start an order.").isVisible(), true);
+    await page.goto(url);
+    await page.getByRole("button", { name: "Submit synthetic mutation" }).waitFor();
     await page.emulateMedia({ media: "print" });
     await page.evaluate(() => { document.documentElement.dataset.printFormat = "thermal"; });
     const paperRule = await page.evaluate(() => {
@@ -110,7 +127,7 @@ async function main() {
     await page.pdf({ path: kotPdf, preferCSSPageSize: true, printBackground: true });
     const kotPages = thermalPdfPages(kotPdf);
     assert.deepEqual(errors, [], "Browser runtime errors");
-    console.log(JSON.stringify({ result: "PASS", scope: "isolated React form, error boundary, DocumentFrame and print harness, no provider auth or live server actions", doubleSubmitRequests, totalSyntheticRequests: requests, refreshDuringMutation: "PASS", refreshAfterSuccess: "PASS", backNavigation: "PASS", errorReset: "PASS", paperRule, receiptPages, kotPages, thermalDimensions: dimensions, kotDimensions, browserErrors: errors.length }));
+    console.log(JSON.stringify({ result: "PASS", scope: "isolated real POS/form/error/DocumentFrame UI with synthetic action transport, no provider auth or live server actions", doubleSubmitRequests, previousStatefulDoubleSubmitRequests: 2, posDoubleSubmitRequests: 1, posPendingCartLock: "PASS", posSuccessCartClear: "PASS", totalSyntheticRequests: requests, refreshDuringMutation: "PASS", refreshAfterSuccess: "PASS", backNavigation: "PASS", errorReset: "PASS", paperRule, receiptPages, kotPages, thermalDimensions: dimensions, kotDimensions, browserErrors: errors.length }));
   } finally {
     await browser.close();
     await new Promise((resolve) => server.close(resolve));

@@ -186,7 +186,8 @@ it("keeps an older completed receivable in the collection queue after newer canc
   const menu = await restaurant.createRestaurantMenuItem(owner, { categoryId: category.id, name: "Receivable meal", price: 100 });
   const order = await restaurant.createPosRestaurantOrder(owner, { fulfillmentType: "TAKEAWAY", items: [{ menuItemId: menu.id, quantity: 1 }] });
   for (const status of ["PREPARING","READY","COMPLETED"] as const) await integrity.transitionRestaurantOrderWithIntegrity(owner, order.id, status);
-  await db.$executeRaw`INSERT INTO restaurant_orders ("workspaceId","orderNumber",source,"fulfillmentType",status,total,"createdById","createdAt","cancelledAt") SELECT ${id}::uuid,'NEWER-CANCELLED-' || g::text,'MANUAL','TAKEAWAY','CANCELLED',100,${userId},now()+(g*interval '1 second'),now() FROM generate_series(1,201) g`;
+  await db.$executeRaw`INSERT INTO restaurant_orders ("workspaceId","orderNumber",source,"fulfillmentType",status,total,"createdById","createdAt") SELECT ${id}::uuid,'NEWER-CANCELLED-' || g::text,'MANUAL','TAKEAWAY','PENDING_REVIEW',100,${userId},now() FROM generate_series(1,201) g`;
+  await db.$executeRaw`UPDATE restaurant_orders SET status='CANCELLED',"cancelledAt"=now(),"updatedAt"=now() WHERE "workspaceId"=${id}::uuid AND "orderNumber" LIKE 'NEWER-CANCELLED-%'`;
   expect((await restaurant.listRestaurantOrders(id,30,{ statuses:["COMPLETED","CANCELLED"] })).some((row) => row.id===order.id)).toBe(false);
   expect((await restaurant.listRestaurantOrders(id,200,{ statuses:["COMPLETED"],outstandingOnly:true,oldestFirst:true })).map((row) => row.id)).toEqual([order.id]);
   expect(await restaurant.listRestaurantOrders(foreignWorkspaceId,200,{ statuses:["COMPLETED"],outstandingOnly:true })).toEqual([]);

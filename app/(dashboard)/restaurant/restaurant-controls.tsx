@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
+import { useRestaurantActionState } from "@/app/(dashboard)/restaurant/use-restaurant-action-state";
+
 
 import {
   closeCashShiftAction,
@@ -21,9 +22,9 @@ export function RestaurantControls({
   openShiftId: string | null;
   canManageTables: boolean;
 }) {
-  const [tableState, tableAction, tablePending] = useActionState(createRestaurantTableAction, initialRestaurantActionState);
-  const [openState, openAction, openPending] = useActionState(openCashShiftAction, initialRestaurantActionState);
-  const [closeState, closeAction, closePending] = useActionState(closeCashShiftAction, initialRestaurantActionState);
+  const [tableState, tableAction, tablePending, tableSubmit] = useRestaurantActionState(createRestaurantTableAction, initialRestaurantActionState);
+  const [openState, openAction, openPending, openSubmit] = useRestaurantActionState(openCashShiftAction, initialRestaurantActionState);
+  const [closeState, closeAction, closePending, closeSubmit] = useRestaurantActionState(closeCashShiftAction, initialRestaurantActionState);
 
   return (
     <div className="grid gap-5 xl:grid-cols-2">
@@ -32,7 +33,7 @@ export function RestaurantControls({
           <h2 className="text-sm font-semibold">Table setup</h2>
           <p className="mt-1 text-xs text-muted-foreground">Add dining tables without changing core sales or inventory data.</p>
           {canManageTables ? (
-            <form action={tableAction} className="mt-4 grid gap-3 sm:grid-cols-3">{workspaceId ? <input type="hidden" name="formWorkspaceId" value={workspaceId} /> : null}
+            <form action={tableAction} onSubmit={tableSubmit} aria-busy={tablePending} className="mt-4 grid gap-3 sm:grid-cols-3">{workspaceId ? <input type="hidden" name="formWorkspaceId" value={workspaceId} /> : null}
               <Field label="Table name"><Input name="name" placeholder="Table 01" maxLength={80} required /></Field>
               <Field label="Capacity"><Input name="capacity" type="number" min={1} max={100} defaultValue={2} required /></Field>
               <Field label="Area"><Input name="area" placeholder="Ground floor" maxLength={80} /></Field>
@@ -52,7 +53,7 @@ export function RestaurantControls({
           <h2 className="text-sm font-semibold">Cash shift</h2>
           <p className="mt-1 text-xs text-muted-foreground">Opening and closing cash is tracked separately from accounting receipts.</p>
           {openShiftId ? (
-            <form action={closeAction} className="mt-4 grid gap-3 sm:grid-cols-2">{workspaceId ? <input type="hidden" name="formWorkspaceId" value={workspaceId} /> : null}
+            <form action={closeAction} onSubmit={closeSubmit} aria-busy={closePending} className="mt-4 grid gap-3 sm:grid-cols-2">{workspaceId ? <input type="hidden" name="formWorkspaceId" value={workspaceId} /> : null}
               <input type="hidden" name="shiftId" value={openShiftId} />
               <Field label="Closing cash"><Input name="closingCash" type="number" min={0} step="0.01" defaultValue={0} required /></Field>
               <Field label="Notes"><Input name="notes" placeholder="Optional closing note" maxLength={500} /></Field>
@@ -62,7 +63,7 @@ export function RestaurantControls({
               </div>
             </form>
           ) : (
-            <form action={openAction} className="mt-4 grid gap-3 sm:grid-cols-2">{workspaceId ? <input type="hidden" name="formWorkspaceId" value={workspaceId} /> : null}
+            <form action={openAction} onSubmit={openSubmit} aria-busy={openPending} className="mt-4 grid gap-3 sm:grid-cols-2">{workspaceId ? <input type="hidden" name="formWorkspaceId" value={workspaceId} /> : null}
               <Field label="Opening cash"><Input name="openingCash" type="number" min={0} step="0.01" defaultValue={0} required /></Field>
               <Field label="Notes"><Input name="notes" placeholder="Optional opening note" maxLength={500} /></Field>
               <div className="sm:col-span-2 flex items-center justify-between gap-3">

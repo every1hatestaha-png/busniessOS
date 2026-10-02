@@ -1,8 +1,9 @@
 "use client";
 
+import { useRestaurantActionState } from "@/app/(dashboard)/restaurant/use-restaurant-action-state";
+
 import { RestaurantMutationForm } from "@/app/(dashboard)/restaurant/mutation-form";
 
-import { useActionState } from "react";
 import { CheckCircle2, CircleOff } from "lucide-react";
 
 import { initialRestaurantV1ActionState } from "@/app/(dashboard)/restaurant/v1-action-state";
@@ -20,15 +21,15 @@ type Item = { id: string; categoryId: string; categoryName: string; productId: s
 type Product = { id: string; name: string; sku: string };
 
 export function RestaurantMenuManager({ workspaceId, categories, items, products, canManage }: { workspaceId: string; categories: Category[]; items: Item[]; products: Product[]; canManage: boolean }) {
-  const [categoryState, categoryAction, categoryPending] = useActionState(createMenuCategoryAction, initialRestaurantV1ActionState);
-  const [itemState, itemAction, itemPending] = useActionState(createMenuItemAction, initialRestaurantV1ActionState);
+  const [categoryState, categoryAction, categoryPending, categorySubmit] = useRestaurantActionState(createMenuCategoryAction, initialRestaurantV1ActionState);
+  const [itemState, itemAction, itemPending, itemSubmit] = useRestaurantActionState(createMenuItemAction, initialRestaurantV1ActionState);
 
   return (
     <div className="space-y-5">
       {canManage ? (
         <div className="grid gap-5 xl:grid-cols-2">
           <Card className="rounded-lg shadow-sm"><CardContent className="p-5"><h2 className="font-semibold">Add category</h2><p className="mt-1 text-xs text-muted-foreground">Create menu groups such as Burgers, Pizza or Drinks.</p>
-            <form action={categoryAction} className="mt-4 grid gap-3 sm:grid-cols-[1fr_120px_auto]"><input type="hidden" name="formWorkspaceId" value={workspaceId} />
+            <form action={categoryAction} onSubmit={categorySubmit} aria-busy={categoryPending} className="mt-4 grid gap-3 sm:grid-cols-[1fr_120px_auto]"><input type="hidden" name="formWorkspaceId" value={workspaceId} />
               <Input name="name" placeholder="Category name" maxLength={80} required />
               <Input name="sortOrder" type="number" min={0} max={10000} defaultValue={0} aria-label="Sort order" />
               <Button type="submit" disabled={categoryPending || categories.length >= 200}>{categoryPending ? "Adding..." : "Add category"}</Button>
@@ -37,7 +38,7 @@ export function RestaurantMenuManager({ workspaceId, categories, items, products
           </CardContent></Card>
 
           <Card className="rounded-lg shadow-sm"><CardContent className="p-5"><h2 className="font-semibold">Add menu item</h2><p className="mt-1 text-xs text-muted-foreground">Selling price is stored here. Linking inventory is optional and tenant-validated.</p>
-            <form action={itemAction} className="mt-4 grid gap-3 sm:grid-cols-2"><input type="hidden" name="formWorkspaceId" value={workspaceId} />
+            <form action={itemAction} onSubmit={itemSubmit} aria-busy={itemPending} className="mt-4 grid gap-3 sm:grid-cols-2"><input type="hidden" name="formWorkspaceId" value={workspaceId} />
               <select name="categoryId" required className="h-9 rounded-md border bg-background px-3 text-sm"><option value="">Choose category</option>{categories.filter((category) => category.isActive).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select>
               <Input name="name" placeholder="Menu item name" maxLength={120} required />
               <Input name="price" type="number" min={0} step="0.01" placeholder="Price" required />

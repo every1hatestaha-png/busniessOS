@@ -12,4 +12,12 @@
   html[data-print-format="thermal"] [data-restaurant-print] header {
     overflow-wrap: anywhere;
   }
+  html[data-print-format="thermal"] [data-restaurant-print] header > div {
+    flex-direction: column !important;
+    gap: 2mm !important;
+  }
+  html[data-print-format="thermal"] [data-restaurant-print] header > div > div {
+    max-width: 100% !important;
+    text-align: left !important;
+  }
 }

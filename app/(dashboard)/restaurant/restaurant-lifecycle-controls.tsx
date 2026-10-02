@@ -1,6 +1,8 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useRestaurantActionState } from "@/app/(dashboard)/restaurant/use-restaurant-action-state";
+
+import { useMemo, useState } from "react";
 import { CheckCircle2, ChefHat, CircleX, Flame, Plus, Trash2, Utensils } from "lucide-react";
 
 import {
@@ -35,8 +37,8 @@ export function RestaurantLifecycleControls({
   tickets: Ticket[];
   canManageRecipes: boolean;
 }) {
-  const [recipeState, recipeAction, recipePending] = useActionState(createRecipeAction, initialRestaurantActionState);
-  const [ticketState, ticketAction, ticketPending] = useActionState(createKitchenTicketAction, initialRestaurantActionState);
+  const [recipeState, recipeAction, recipePending, recipeSubmit] = useRestaurantActionState(createRecipeAction, initialRestaurantActionState);
+  const [ticketState, ticketAction, ticketPending, ticketSubmit] = useRestaurantActionState(createKitchenTicketAction, initialRestaurantActionState);
   const [ingredients, setIngredients] = useState<IngredientRow[]>([{ ingredientProductId: "", quantity: "1", wastagePercent: "0" }]);
 
   const itemsJson = useMemo(
@@ -60,7 +62,7 @@ export function RestaurantLifecycleControls({
             <div className="flex items-center gap-2"><ChefHat className="size-4 text-emerald-700" /><h2 className="text-sm font-semibold">Recipe builder</h2></div>
             <p className="mt-1 text-xs text-muted-foreground">Restaurant-native orders use these recipes for verified ingredient consumption. Legacy sales-linked KOTs do not post inventory.</p>
             {canManageRecipes ? (
-              <form action={recipeAction} className="mt-4 space-y-4">{workspaceId ? <input type="hidden" name="formWorkspaceId" value={workspaceId} /> : null}
+              <form action={recipeAction} onSubmit={recipeSubmit} aria-busy={recipePending} className="mt-4 space-y-4">{workspaceId ? <input type="hidden" name="formWorkspaceId" value={workspaceId} /> : null}
                 <input type="hidden" name="itemsJson" value={itemsJson} />
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Field label="Finished product">
@@ -102,7 +104,7 @@ export function RestaurantLifecycleControls({
           <CardContent className="p-5">
             <div className="flex items-center gap-2"><Utensils className="size-4 text-emerald-700" /><h2 className="text-sm font-semibold">Legacy KOT compatibility</h2></div>
             <p className="mt-1 text-xs text-muted-foreground">Legacy tickets can track kitchen status for older ERP sales. They are status-only and never post inventory. Use Restaurant POS and Orders for new restaurant transactions.</p>
-            <form action={ticketAction} className="mt-4 grid gap-3 sm:grid-cols-2">{workspaceId ? <input type="hidden" name="formWorkspaceId" value={workspaceId} /> : null}
+            <form action={ticketAction} onSubmit={ticketSubmit} aria-busy={ticketPending} className="mt-4 grid gap-3 sm:grid-cols-2">{workspaceId ? <input type="hidden" name="formWorkspaceId" value={workspaceId} /> : null}
               <Field label="Ticket number"><Input name="ticketNumber" placeholder="KT-0001" maxLength={80} required /></Field>
               <Field label="Table">
                 <select name="restaurantTableId" defaultValue="" className={selectClass}>
@@ -134,7 +136,7 @@ export function RestaurantLifecycleControls({
 }
 
 function KitchenTicketRow({ ticket, workspaceId }: { ticket: Ticket; workspaceId?: string }) {
-  const [state, action, pending] = useActionState(updateKitchenTicketStatusAction, initialRestaurantActionState);
+  const [state, action, pending, onSubmit] = useRestaurantActionState(updateKitchenTicketStatusAction, initialRestaurantActionState);
   const next = ticket.status === "QUEUED" ? "PREPARING" : ticket.status === "PREPARING" ? "READY" : ticket.status === "READY" ? "SERVED" : null;
   const label = next === "PREPARING" ? "Start preparing" : next === "READY" ? "Mark ready" : next === "SERVED" ? "Serve" : null;
 
@@ -147,8 +149,8 @@ function KitchenTicketRow({ ticket, workspaceId }: { ticket: Ticket; workspaceId
       </div>
       {!["SERVED", "CANCELLED"].includes(ticket.status) ? (
         <div className="flex flex-wrap gap-2">
-          {next && label ? <form action={action}>{workspaceId ? <input type="hidden" name="formWorkspaceId" value={workspaceId} /> : null}<input type="hidden" name="ticketId" value={ticket.id} /><input type="hidden" name="status" value={next} /><Button type="submit" size="sm" disabled={pending}>{next === "PREPARING" ? <Flame /> : <CheckCircle2 />}{pending ? "Updating..." : label}</Button></form> : null}
-          <form action={action}>{workspaceId ? <input type="hidden" name="formWorkspaceId" value={workspaceId} /> : null}<input type="hidden" name="ticketId" value={ticket.id} /><input type="hidden" name="status" value="CANCELLED" /><Button type="submit" size="sm" variant="outline" disabled={pending}><CircleX />Cancel</Button></form>
+          {next && label ? <form action={action} onSubmit={onSubmit} aria-busy={pending}>{workspaceId ? <input type="hidden" name="formWorkspaceId" value={workspaceId} /> : null}<input type="hidden" name="ticketId" value={ticket.id} /><input type="hidden" name="status" value={next} /><Button type="submit" size="sm" disabled={pending}>{next === "PREPARING" ? <Flame /> : <CheckCircle2 />}{pending ? "Updating..." : label}</Button></form> : null}
+          <form action={action} onSubmit={onSubmit} aria-busy={pending}>{workspaceId ? <input type="hidden" name="formWorkspaceId" value={workspaceId} /> : null}<input type="hidden" name="ticketId" value={ticket.id} /><input type="hidden" name="status" value="CANCELLED" /><Button type="submit" size="sm" variant="outline" disabled={pending}><CircleX />Cancel</Button></form>
         </div>
       ) : null}
     </div>
