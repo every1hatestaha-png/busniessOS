@@ -140,6 +140,10 @@ export async function createPosOrderAction(
   _previous: RestaurantV1ActionState,
   formData: FormData,
 ): Promise<RestaurantV1ActionState> {
+  const requestId = String(formData.get("orderRequestId") ?? "").trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)) {
+    return fail("Refresh the POS before submitting this order.");
+  }
   let items: RestaurantOrderLineInput[];
   try {
     items = parseCart(formData);
@@ -159,6 +163,7 @@ export async function createPosOrderAction(
   if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
     const order = await createPosRestaurantOrder(contextFrom(workspace), {
+      idempotencyKey: requestId,
       fulfillmentType,
       restaurantTableId: restaurantTableId || undefined,
       customerName: customerName || undefined,

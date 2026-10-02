@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
 import { Prisma, type Role } from "@prisma/client";
 
 import { writeAudit } from "@/lib/server/audit";
@@ -20,6 +21,7 @@ export type RestaurantOrderLineInput = {
 };
 
 export type RestaurantOrderInput = {
+  idempotencyKey?: string;
   fulfillmentType: RestaurantFulfillmentType;
   restaurantTableId?: string;
   customerName?: string;
@@ -320,9 +322,48 @@ export async function createPosRestaurantOrder(context: IndustryContext, input: 
   if (hasFinancialOverride && !managerRoles.has(context.role)) {
     throw new IndustryDomainError("PERMISSION_DENIED", "Manager approval is required for POS financial overrides");
   }
+  const requestId = input.idempotencyKey?.trim().toLowerCase();
+  if (requestId) assertUuid(requestId, "Order request");
+  const requestHash = requestId ? createHash("sha256").update(JSON.stringify({
+    actorId: context.userId ?? null,
+    fulfillmentType: input.fulfillmentType,
+    restaurantTableId: input.restaurantTableId?.toLowerCase() ?? null,
+    customerName: input.customerName?.trim() || null,
+    customerPhone: input.customerPhone?.trim() || null,
+    deliveryAddress: input.deliveryAddress?.trim() || null,
+    notes: input.notes?.trim() || null,
+    discountAmount: input.discountAmount ?? 0,
+    taxAmount: input.taxAmount ?? 0,
+    items: input.items.map(line => ({
+      menuItemId: line.menuItemId.toLowerCase(), quantity: line.quantity,
+      notes: line.notes?.trim() || null,
+      modifiers: line.modifiers?.map(value => value.trim()).filter(Boolean).slice(0, 20) ?? [],
+    })),
+  })).digest("hex") : null;
   return db.$transaction(async (tx) => {
+    if (requestId) {
+      // Serialise copies of this request before reading its immutable identity.
+      // ReadCommitted gives the waiter a fresh snapshot after the first commit.
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${context.workspaceId}), hashtext(${`pos:${requestId}`}))::text`;
+      const prior = await tx.$queryRaw<Array<{ id: string; orderNumber: string; status: RestaurantOrderStatus; total: Prisma.Decimal }>>`
+        SELECT "id", "orderNumber", "status", "total" FROM restaurant_orders
+        WHERE "workspaceId"=${context.workspaceId}::uuid AND "source"='POS' AND "externalReference"=${`pos:${requestId}`}
+      `;
+      if (prior[0]) {
+        const audit = await tx.auditLog.findFirst({ where: {
+          workspaceId: context.workspaceId, action: "restaurant.order.created",
+          entityType: "RestaurantOrder", entityId: prior[0].id,
+        }, select: { metadata: true } });
+        const metadata = audit?.metadata;
+        if (!metadata || typeof metadata !== "object" || Array.isArray(metadata) || metadata.requestHash !== requestHash) {
+          throw new IndustryDomainError("CONFLICT", "This order request was already used for a different basket. Check order history before starting a new order.");
+        }
+        return { ...prior[0], total: Number(prior[0].total) };
+      }
+    }
     const order = await insertRestaurantOrder(tx, context.workspaceId, "POS", input, {
       actorId: context.userId,
+      externalReference: requestId ? `pos:${requestId}` : undefined,
       initialStatus: "CONFIRMED",
     });
     const stored = await tx.$queryRaw<Array<{ id: string; orderNumber: string; restaurantTableId: string | null }>>`
@@ -337,10 +378,10 @@ export async function createPosRestaurantOrder(context: IndustryContext, input: 
       action: "restaurant.order.created",
       entityType: "RestaurantOrder",
       entityId: order.id,
-      metadata: { source: "POS", orderNumber: order.orderNumber, total: order.total },
+      metadata: { source: "POS", orderNumber: order.orderNumber, total: order.total, ...(requestHash ? { requestHash } : {}) },
     });
     return order;
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, maxWait: 15_000, timeout: 45_000 });
 }
 
 export async function ingestWhatsappRestaurantOrder(workspaceId: string, input: WhatsappRestaurantOrderInput) {

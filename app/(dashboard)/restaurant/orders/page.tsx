@@ -37,13 +37,16 @@ type PaymentSummary = Awaited<ReturnType<typeof listRestaurantNetPaymentSummarie
 
 export default async function RestaurantOrdersPage() {
   const { workspaceId, role } = await requireWorkspace();
-  const [active, recentClosed, completedOutstanding, cashAccounts, payments, paymentSummaries] = await Promise.all([
+  const [active, recentClosed, completedOutstanding, cashAccounts] = await Promise.all([
     listRestaurantOrders(workspaceId, 200, { statuses: ["PENDING_REVIEW", "CONFIRMED", "PREPARING", "READY"], oldestFirst: true }),
     listRestaurantOrders(workspaceId, 30, { statuses: ["COMPLETED", "CANCELLED"] }),
     listRestaurantOrders(workspaceId, 200, { statuses: ["COMPLETED"], oldestFirst: true, outstandingOnly: true }),
     getCashBankAccounts(workspaceId),
-    listRestaurantPayments(workspaceId),
-    listRestaurantNetPaymentSummaries(workspaceId),
+  ]);
+  const visibleOrderIds = [...new Set([...active, ...recentClosed, ...completedOutstanding].map(order => order.id))];
+  const [payments, paymentSummaries] = await Promise.all([
+    listRestaurantPayments(workspaceId, visibleOrderIds),
+    listRestaurantNetPaymentSummaries(workspaceId, visibleOrderIds),
   ]);
   const canManageFinancialActions = role === "OWNER" || role === "ADMIN" || role === "MANAGER";
   const paymentsByOrder = new Map<string, RestaurantPaymentRecord[]>();
@@ -62,6 +65,7 @@ export default async function RestaurantOrdersPage() {
         <Link href="/restaurant/whatsapp" className={cn(buttonVariants({ variant: "outline" }))}><MessageCircleMore className="mr-1 size-4" />WhatsApp inbox</Link>
       </div>
 
+      {payments.length === 500 ? <p className="text-sm text-amber-700">Showing the latest 500 payments for these orders. Open an order receipt for its complete payment history.</p> : null}
       {active.length === 200 ? <p className="text-sm text-amber-700">Showing the oldest 200 active orders. Finish these to advance the queue.</p> : null}
       <div className="grid gap-4 xl:grid-cols-4">
         {columns.map((column) => {

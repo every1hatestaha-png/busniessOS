@@ -16,6 +16,7 @@ async function main() {
   const root = path.resolve(__dirname, "../.tmp-restaurant-browser-v188");
   let requests = 0;
   const submittedWorkspaces = [];
+  const submittedOrderRequests = [];
   const server = http.createServer((request, response) => {
     if (request.url === "/synthetic-mutation") {
       requests++;
@@ -23,6 +24,8 @@ async function main() {
       request.on("data", (chunk) => { body += chunk; });
       request.on("end", () => {
         submittedWorkspaces.push(new URLSearchParams(body).get("formWorkspaceId"));
+        const orderRequest = new URLSearchParams(body).get("orderRequestId");
+        if (orderRequest) submittedOrderRequests.push(orderRequest);
         const success = new URLSearchParams(body).get("reason") === "Synthetic success";
         setTimeout(() => {
           response.writeHead(200, { "Content-Type": "application/json" });
@@ -93,8 +96,16 @@ async function main() {
     assert.equal(await page.getByRole("button", { name: /Synthetic meal/ }).isDisabled(), true, "POS cart can change during a pending order");
     await page.getByRole("status").filter({ hasText: "Synthetic mutation completed." }).waitFor();
     assert.equal(requests, 6, "POS double submit created another request");
+    assert.equal(submittedOrderRequests.length, 1);
+    assert.match(submittedOrderRequests[0], /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
     assert.equal(await page.getByRole("button", { name: "Confirm & send to kitchen" }).isDisabled(), true, "Successful POS order leaves the old basket submit-ready");
     assert.equal(await page.getByText("Select menu items to start an order.").isVisible(), true);
+    await page.getByRole("button", { name: /Synthetic meal/ }).click();
+    await page.getByRole("button", { name: "Confirm & send to kitchen" }).click();
+    await page.getByText("Select menu items to start an order.").waitFor();
+    assert.equal(requests, 7);
+    assert.equal(submittedOrderRequests.length, 2);
+    assert.notEqual(submittedOrderRequests[0], submittedOrderRequests[1], "New basket reused a committed request identity");
     await page.goto(url);
     await page.getByRole("button", { name: "Submit synthetic mutation" }).waitFor();
     await page.emulateMedia({ media: "print" });
