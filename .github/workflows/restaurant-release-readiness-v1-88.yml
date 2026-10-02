@@ -257,4 +257,5 @@ jobs:
         with:
           name: synthetic-restaurant-80mm-print-v188
           path: .tmp-restaurant-browser-v188/*.pdf
-          if-no-files-found: ignore
+          include-hidden-files: true
+          if-no-files-found: error

@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { RestaurantMutationForm } from "../../../app/(dashboard)/restaurant/mutation-form";
 import { RestaurantPrintBody } from "../../../components/documents/restaurant-print-body";
+import RestaurantError from "../../../app/(dashboard)/restaurant/error";
 import type { RestaurantPrintDocument } from "../../../lib/server/restaurant-print";
 import "../../../app/globals.css";
 
@@ -16,7 +17,9 @@ async function mutation(form: FormData) {
   return await response.json();
 }
 const kitchen = new URLSearchParams(location.search).get("kind") === "kot";
-createRoot(document.getElementById("root")!).render(<>
+const errorPreview = new URLSearchParams(location.search).get("kind") === "error";
+// eslint-disable-next-line @next/next/no-location-assign-relative-destination -- Standalone browser fixture has no Next router.
+createRoot(document.getElementById("root")!).render(errorPreview ? <RestaurantError reset={() => location.assign("/")} /> : <>
   <div className="print:hidden"><RestaurantMutationForm action={mutation} workspaceId="synthetic-workspace"><input name="reason" defaultValue="Synthetic reason" /><button type="submit">Submit synthetic mutation</button></RestaurantMutationForm></div>
   <article data-document data-print-surface className="mx-auto max-w-[210mm] bg-white p-6 text-neutral-950 print:p-0"><header><h1>{doc.orderNumber}</h1></header><RestaurantPrintBody document={doc} kitchen={kitchen} reprint /></article>
 </>);
