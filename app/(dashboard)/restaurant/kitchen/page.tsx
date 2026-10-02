@@ -17,10 +17,11 @@ const kitchenColumns = [
 
 export default async function RestaurantKitchenPage() {
   const { workspaceId } = await requireWorkspace();
-  const orders = await listRestaurantOrders(workspaceId, 200);
+  const orders = await listRestaurantOrders(workspaceId, 200, { statuses: ["CONFIRMED", "PREPARING", "READY"], oldestFirst: true });
   return (
     <div className="mx-auto max-w-[1800px] space-y-6">
       <PageHeader title="Kitchen Board" description="Live preparation queue for confirmed restaurant orders. Status changes are tenant-scoped and audited." />
+      {orders.length === 200 ? <p className="text-sm text-amber-700">Showing the oldest 200 kitchen orders. Finish these to advance the queue.</p> : null}
       <div className="grid gap-4 lg:grid-cols-3">
         {kitchenColumns.map((column) => {
           const matching = orders.filter((order) => order.status === column.status);

@@ -81,3 +81,9 @@ it("does not hide a raw SQL programmer error", async () => {
   const { voidRestaurantPaymentAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
   await expect(voidRestaurantPaymentAction(new FormData())).rejects.toBe(error);
 });
+
+it("redacts the actual Prisma 7 adapter nested constraint shape", async () => {
+  mocks.void.mockRejectedValue(new Prisma.PrismaClientKnownRequestError("SQL private constraint", { code: "P2010", clientVersion: "7.10.0", meta: { driverAdapterError: { cause: { originalCode: "23505", originalMessage: "private constraint" } } } }));
+  const { voidRestaurantPaymentAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
+  expect((await voidRestaurantPaymentAction(new FormData())).status).toBe("error");
+});

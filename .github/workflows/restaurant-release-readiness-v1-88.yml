@@ -228,7 +228,7 @@ jobs:
       - name: Deploy migration chain
         run: npx prisma migrate deploy
       - name: Synthetic Restaurant query-plan evidence
-        run: node scripts/restaurant-query-plan-audit-v1-87.cjs
+        run: node scripts/restaurant-query-plan-audit-v1-88.cjs
 
   isolated-browser-and-print:
     runs-on: ubuntu-latest
@@ -241,9 +241,13 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - name: Install isolated browser harness tooling
-        run: npm install --no-save --package-lock=false --ignore-scripts playwright@1.62.1
+        run: |
+          mkdir -p "$RUNNER_TEMP/restaurant-browser-tools"
+          npm install --prefix "$RUNNER_TEMP/restaurant-browser-tools" --ignore-scripts playwright@1.62.1
+          echo "NODE_PATH=$RUNNER_TEMP/restaurant-browser-tools/node_modules" >> "$GITHUB_ENV"
+          echo "RESTAURANT_PLAYWRIGHT_CLI=$RUNNER_TEMP/restaurant-browser-tools/node_modules/playwright/cli.js" >> "$GITHUB_ENV"
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        run: node "$RESTAURANT_PLAYWRIGHT_CLI" install --with-deps chromium
       - name: Build real Restaurant form and print components
         run: npx vite build --config tests/browser/restaurant-v1-88/vite.config.mjs
       - name: Browser form and 80mm print verification

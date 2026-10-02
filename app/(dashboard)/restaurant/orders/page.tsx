@@ -37,14 +37,13 @@ type PaymentSummary = Awaited<ReturnType<typeof listRestaurantNetPaymentSummarie
 
 export default async function RestaurantOrdersPage() {
   const { workspaceId, role } = await requireWorkspace();
-  const [orders, cashAccounts, payments, paymentSummaries] = await Promise.all([
-    listRestaurantOrders(workspaceId, 200),
+  const [active, recentClosed, cashAccounts, payments, paymentSummaries] = await Promise.all([
+    listRestaurantOrders(workspaceId, 200, { statuses: ["PENDING_REVIEW", "CONFIRMED", "PREPARING", "READY"], oldestFirst: true }),
+    listRestaurantOrders(workspaceId, 30, { statuses: ["COMPLETED", "CANCELLED"] }),
     getCashBankAccounts(workspaceId),
     listRestaurantPayments(workspaceId),
     listRestaurantNetPaymentSummaries(workspaceId),
   ]);
-  const active = orders.filter((order) => !["COMPLETED", "CANCELLED"].includes(order.status));
-  const recentClosed = orders.filter((order) => ["COMPLETED", "CANCELLED"].includes(order.status)).slice(0, 30);
   const canManageFinancialActions = role === "OWNER" || role === "ADMIN" || role === "MANAGER";
   const paymentsByOrder = new Map<string, RestaurantPaymentRecord[]>();
   for (const payment of payments) {
@@ -63,6 +62,7 @@ export default async function RestaurantOrdersPage() {
         <Link href="/restaurant/whatsapp" className={cn(buttonVariants({ variant: "outline" }))}><MessageCircleMore className="mr-1 size-4" />WhatsApp inbox</Link>
       </div>
 
+      {active.length === 200 ? <p className="text-sm text-amber-700">Showing the oldest 200 active orders. Finish these to advance the queue.</p> : null}
       <div className="grid gap-4 xl:grid-cols-4">
         {columns.map((column) => {
           const matching = active.filter((order) => order.status === column.status);

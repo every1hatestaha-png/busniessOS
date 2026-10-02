@@ -15,7 +15,8 @@ export function restaurantActionErrorMessage(error: unknown, fallback: string): 
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2010") {
     // Raw-query errors also include programmer mistakes such as SQL syntax.
     // Only recognised constraint/trigger/concurrency states are expected here.
-    const state = String(error.meta?.code ?? "");
+    const adapter = error.meta?.driverAdapterError as { cause?: { originalCode?: unknown } } | undefined;
+    const state = String(error.meta?.code ?? adapter?.cause?.originalCode ?? "");
     if (EXPECTED_SQL_STATES.has(state)) return fallback;
   }
   throw error;

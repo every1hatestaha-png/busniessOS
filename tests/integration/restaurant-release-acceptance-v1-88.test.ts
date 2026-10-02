@@ -97,3 +97,36 @@ describe("Restaurant V1.88 synthetic acceptance", () => {
     await assertBalancedLedger();
   }, 120_000);
 });
+
+it("active kitchen orders remain visible behind more than 200 newer closed orders", async () => {
+  const order = await ready();
+  await db.$executeRaw`
+    INSERT INTO "restaurant_orders" ("workspaceId", "orderNumber", "source", "fulfillmentType", "status", "paymentStatus", "total", "createdById", "createdAt", "updatedAt")
+    SELECT ${workspaceId}::uuid, 'SYNTHETIC-CLOSED-' || g::text, 'MANUAL', 'TAKEAWAY', 'COMPLETED', 'UNPAID', 100, ${userId}, now() + (g * interval '1 second'), now()
+    FROM generate_series(1,201) g
+  `;
+  const unfiltered = await restaurant.listRestaurantOrders(workspaceId,200);
+  expect(unfiltered.some((row) => row.id === order.id)).toBe(false);
+  const kitchen = await restaurant.listRestaurantOrders(workspaceId,200,{ statuses: ["CONFIRMED","PREPARING","READY"], oldestFirst:true });
+  expect(kitchen.some((row) => row.id === order.id)).toBe(true);
+  expect(kitchen.every((row) => ["CONFIRMED","PREPARING","READY"].includes(row.status))).toBe(true);
+  const foreign = await restaurant.listRestaurantOrders(foreignWorkspaceId,200,{ statuses:["READY"], oldestFirst:true });
+  expect(foreign).toEqual([]);
+});
+
+it("concurrent first cash/bank account creation retries only the recognised unique conflicts", async () => {
+  const run = randomUUID();
+  const workspace = await db.workspace.create({ data: { name: `Bootstrap concurrency ${run}`, members: { create: { userId, role: "OWNER" } } } });
+  const { createCashBankAccount, getCashBankAccounts } = await import("@/lib/server/accounting");
+  const bootstrapContext = { workspaceId: workspace.id, userId, role: "OWNER" as const };
+  const results = await Promise.all([
+    createCashBankAccount(bootstrapContext,{ name:"Concurrent drawer", isBank:false, openingBalance:0,bankName:"",accountTitle:"",accountNumber:"",notes:"" }),
+    createCashBankAccount(bootstrapContext,{ name:"Concurrent bank", isBank:true, openingBalance:0,bankName:"Synthetic",accountTitle:"Synthetic",accountNumber:"000",notes:"" }),
+  ]);
+  expect(new Set(results.map((row) => row.id)).size).toBe(2);
+  const accounts = await getCashBankAccounts(workspace.id);
+  expect(accounts.some((row) => row.name === "Concurrent drawer")).toBe(true);
+  expect(accounts.some((row) => row.name === "Concurrent bank")).toBe(true);
+  const defaults = await db.account.findMany({ where: { workspaceId: workspace.id, systemCode: { not:null } } });
+  expect(new Set(defaults.map((row) => row.systemCode)).size).toBe(defaults.length);
+},60_000);
