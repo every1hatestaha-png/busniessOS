@@ -67,6 +67,8 @@ beforeAll(async () => {
   const { createRestaurantTable, createKitchenTicket } = await import("@/lib/server/industry-modules");
   tableId = (await createRestaurantTable(context(), { name: "Historical table", capacity: 4 })).id;
   const dineIn = await createOrder(1, true); await pay(dineIn.id,100); await complete(dineIn.id);
+  tableId = (await createRestaurantTable(context(), { name: "Historical unpaid table", capacity: 2 })).id;
+  const unpaidDineIn = await createOrder(1, true); await complete(unpaidDineIn.id);
   const unpaid = await createOrder(); await complete(unpaid.id);
   const partial = await createOrder(); await pay(partial.id,50); await complete(partial.id);
   const voided = await createOrder(); const voidPayment = await pay(voided.id,100); await integrity.voidRestaurantPayment(context(), voidPayment.id, "Synthetic historical void");
@@ -100,6 +102,11 @@ describe("Restaurant V1.88 rich pre-V1.86 historical migration rehearsal", () =>
     expect(before.restaurant_refunds.count).toBe(1);
     expect(before.restaurant_whatsapp_messages.count).toBe(1);
     expect(before.cash_shifts.count).toBe(2);
+    expect(before.restaurant_tables.count).toBe(2);
+    const dineInHistory = await client.query('SELECT status,"paymentStatus","restaurantTableId" FROM restaurant_orders WHERE "workspaceId"=$1::uuid AND "fulfillmentType"=\'DINE_IN\' ORDER BY "orderNumber"',[workspaceId]);
+    expect(dineInHistory.rows).toHaveLength(2);
+    expect(new Set(dineInHistory.rows.map(row => row.restaurantTableId)).size).toBe(2);
+    expect(dineInHistory.rows.map(row => [row.status,row.paymentStatus])).toEqual([["COMPLETED","PAID"],["COMPLETED","UNPAID"]]);
     console.log(JSON.stringify({ migrations: migrations.length, historicalOrders: orders.rowCount, migrationMs: performance.now()-started, preserved: before }));
   }, 120_000);
   it("enforces the new OTHER physical-cash guard after historical upgrade", async () => {

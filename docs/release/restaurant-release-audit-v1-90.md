@@ -14,6 +14,8 @@ This draft continues PR #269 at `3916bedf80d7bf8340f71a2d9bb47dfdae2a758b`. GitH
 
 The only added migration is the existing PR #267 migration `20261001140000_restaurant_operational_query_indexes`, containing measured workspace/recency indexes. No new backfill or historical rewrite is introduced. The complete chain is 128 migrations.
 
+The rich upgrade rehearsal preserves hashes/counts across 18 historical tables, including paid and unpaid completed dine-in orders across two distinct tables, partial payments, voids, refunds, partial/full returns and reversal, legacy KOT, WhatsApp pending review, open/closed shifts and OTHER payment evidence. The older staged rehearsal separately preserves pre-V1.82 completed unpaid dine-in and pre-V1.84 cash without shift attribution.
+
 New regressions cover POS replay, ten copied requests, changed payload, separate orders, catalogue changes, malformed carts, workspace isolation, actor changes and revoked financial override permission. Added collision tests hold a PostgreSQL order lock until all three service callers are blocked, then release them and verify terminal state, bank balance, stock/consumption, receipts, balanced GL and tenant isolation for payment/completion/cancellation and return/refund/void races. Existing ten-finalizer, final-payment, refund, last-stock, table and cash-shift races remain intact.
 
 ## Certification and limits
