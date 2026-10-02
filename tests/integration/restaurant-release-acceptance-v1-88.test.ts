@@ -96,6 +96,51 @@ describe("Restaurant V1.88 synthetic acceptance", () => {
     expect(doc!.payments).toHaveLength(1);
     await assertBalancedLedger();
   }, 120_000);
+  it("ten refund attempts reverse one receipt without repeating money or stock effects", async () => {
+    const order = await ready();
+    const payment = await collect(context(), { orderId: order.id, cashBankAccountId: bankId, method: "BANK_TRANSFER", amount: 100, idempotencyKey: `v188:${randomUUID()}` });
+    await integrity.transitionRestaurantOrderWithIntegrity(context(), order.id, "COMPLETED");
+    const before = await db.cashBankAccount.findUniqueOrThrow({ where: { id: bankId } });
+    const stock = (await db.product.findUniqueOrThrow({ where: { id: productId } })).stockQuantity.toString();
+    const { refundRestaurantPayment } = await import("@/lib/server/restaurant-refunds");
+    const results = await Promise.allSettled(Array.from({ length: 10 }, () => refundRestaurantPayment(context(), { paymentId: payment.id, reason: "Synthetic concurrent refund", idempotencyKey: `v188:${randomUUID()}` })));
+    expect(results.some((row) => row.status === "fulfilled")).toBe(true);
+    const doc = await print(workspaceId, order.id);
+    expect(doc).toMatchObject({ retainedPaid: 0, outstanding: 100, refunds: [{ amount: 100 }] });
+    expect(doc!.refunds).toHaveLength(1);
+    expect(doc!.payments[0].voidedAt).not.toBeNull();
+    expect(Number(before.currentBalance) - Number((await db.cashBankAccount.findUniqueOrThrow({ where: { id: bankId } })).currentBalance)).toBe(100);
+    expect((await db.product.findUniqueOrThrow({ where: { id: productId } })).stockQuantity.toString()).toBe(stock);
+    expect(await db.auditLog.count({ where: { workspaceId, action: "restaurant.payment.refunded", entityId: results.find((row) => row.status === "fulfilled")!.value.id } })).toBe(1);
+    await assertBalancedLedger();
+  }, 120_000);
+  it("ten independent orders competing for the last unit complete exactly one order", async () => {
+    const run = randomUUID();
+    const product = await db.product.create({ data: { workspaceId, name: "Last unit", sku: `last-${run}`, stockQuantity: 1, costPrice: 25, sellingPrice: 100 } });
+    const category = await restaurant.createRestaurantMenuCategory(context(), { name: `Last unit ${run}` });
+    const menu = await restaurant.createRestaurantMenuItem(context(), { categoryId: category.id, productId: product.id, name: "Last unit meal", price: 100 });
+    const ids: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      const order = await restaurant.createPosRestaurantOrder(context(), { fulfillmentType: "TAKEAWAY", items: [{ menuItemId: menu.id, quantity: 1 }] });
+      await integrity.transitionRestaurantOrderWithIntegrity(context(), order.id, "PREPARING");
+      await integrity.transitionRestaurantOrderWithIntegrity(context(), order.id, "READY");
+      ids.push(order.id);
+    }
+    const results = await Promise.allSettled(ids.map((id) => integrity.transitionRestaurantOrderWithIntegrity(context(), id, "COMPLETED")));
+    expect(results.filter((row) => row.status === "fulfilled")).toHaveLength(1);
+    expect(Number((await db.product.findUniqueOrThrow({ where: { id: product.id } })).stockQuantity)).toBe(0);
+    for (let i = 0; i < ids.length; i++) {
+      const completed = results[i].status === "fulfilled";
+      const order = await restaurant.getRestaurantOrder(workspaceId, ids[i]);
+      expect(order?.status).toBe(completed ? "COMPLETED" : "READY");
+      const snapshots = await db.$queryRaw<Array<{ count: bigint }>>`SELECT COUNT(*) AS count FROM restaurant_inventory_consumptions WHERE "workspaceId"=${workspaceId}::uuid AND "restaurantOrderId"=${ids[i]}::uuid`;
+      expect(Number(snapshots[0].count)).toBe(completed ? 1 : 0);
+      const ledger = await db.generalLedgerEntry.findMany({ where: { workspaceId, sourceType: "SALE", sourceId: ids[i] } });
+      if (completed) expect(ledger.length).toBeGreaterThan(0);
+      else expect(ledger).toHaveLength(0);
+    }
+    await assertBalancedLedger();
+  }, 120_000);
 });
 
 it("active kitchen orders remain visible behind more than 200 newer closed orders", async () => {
