@@ -1,0 +1,46 @@
+name: Restaurant V1.95 server-action exports
+on:
+  pull_request:
+    branches:
+      - architecture/restaurant-staging-readiness-v1-94
+permissions:
+  contents: read
+jobs:
+  action-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RUN_INTEGRATION_TESTS: "false"
+      DATABASE_URL: postgresql://synthetic:synthetic@127.0.0.1:5432/offline_unit_tests?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - name: Preserve certified ancestry and production/authentication guards
+        run: |
+          git merge-base --is-ancestor 9e6ae06852e9355c468795aa71e49d926e37ed26 HEAD
+          git diff --check 9e6ae06852e9355c468795aa71e49d926e37ed26...HEAD
+          git diff --exit-code 9e6ae06852e9355c468795aa71e49d926e37ed26 HEAD -- lib/database-target.ts config/database-targets.json lib/server/auth.ts lib/supabase proxy.ts .github/workflows/main_munshios.yml
+          node -e 'if(require("./vercel.json").git.deploymentEnabled["architecture/restaurant-server-action-state-v1-95"]!==false)throw Error("Draft deployment must stay disabled")'
+      - run: npm ci
+      - name: Runtime action-export and readiness regressions
+        run: >-
+          npx vitest run tests/unit/restaurant-server-action-exports.test.ts
+          tests/unit/database-target.test.ts tests/unit/staging-database-target.test.ts
+          tests/unit/database-readiness.test.ts tests/unit/database-readiness-route.test.ts
+          tests/unit/production-release-workflow.test.ts
+      - run: npx tsc --noEmit
+      - name: Changed-code lint
+        run: >-
+          npx eslint 'app/(dashboard)/restaurant/action-state.ts'
+          'app/(dashboard)/restaurant/actions.ts'
+          'app/(dashboard)/restaurant/restaurant-controls.tsx'
+          'app/(dashboard)/restaurant/restaurant-lifecycle-controls.tsx'
+          tests/unit/restaurant-server-action-exports.test.ts
+      - name: Build without deployment
+        run: npm run build:web
+

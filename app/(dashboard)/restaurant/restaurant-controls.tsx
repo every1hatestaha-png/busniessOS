@@ -6,9 +6,9 @@ import { useRestaurantActionState } from "@/app/(dashboard)/restaurant/use-resta
 import {
   closeCashShiftAction,
   createRestaurantTableAction,
-  initialRestaurantActionState,
   openCashShiftAction,
 } from "@/app/(dashboard)/restaurant/actions";
+import { initialRestaurantActionState } from "@/app/(dashboard)/restaurant/action-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
