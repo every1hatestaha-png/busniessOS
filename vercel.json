@@ -37,7 +37,8 @@
       "architecture/restaurant-release-audit-v1-90": false,
       "architecture/restaurant-release-candidate-v1-91": false,
       "architecture/restaurant-staging-certification-v1-92": false,
-      "architecture/restaurant-staging-readiness-v1-94": false
+      "architecture/restaurant-staging-readiness-v1-94": false,
+      "architecture/restaurant-server-action-state-v1-95": false
     }
   }
 }

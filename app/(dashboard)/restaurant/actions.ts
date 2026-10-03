@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import type { RestaurantActionState } from "./action-state";
 
 import { restaurantActionErrorMessage, restaurantFormWorkspaceChanged } from "@/lib/server/restaurant-action-errors";
 import { requireWorkspace } from "@/lib/server/auth";
@@ -15,13 +16,6 @@ import {
   createRecipe,
   createRestaurantTable,
 } from "@/lib/server/industry-modules";
-
-export type RestaurantActionState = {
-  status: "idle" | "success" | "error";
-  message: string;
-};
-
-export const initialRestaurantActionState: RestaurantActionState = { status: "idle", message: "" };
 
 function fail(message: string): RestaurantActionState {
   return { status: "error", message };

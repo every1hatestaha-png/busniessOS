@@ -8,9 +8,9 @@ import { CheckCircle2, ChefHat, CircleX, Flame, Plus, Trash2, Utensils } from "l
 import {
   createKitchenTicketAction,
   createRecipeAction,
-  initialRestaurantActionState,
   updateKitchenTicketStatusAction,
 } from "@/app/(dashboard)/restaurant/actions";
+import { initialRestaurantActionState } from "@/app/(dashboard)/restaurant/action-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
