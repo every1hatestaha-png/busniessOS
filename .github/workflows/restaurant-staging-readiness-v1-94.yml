@@ -1,0 +1,53 @@
+name: Restaurant V1.94 staging readiness
+
+on:
+  pull_request:
+    branches:
+      - architecture/restaurant-staging-certification-v1-92
+
+permissions:
+  contents: read
+
+jobs:
+  readiness-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NODE_ENV: test
+      RUN_INTEGRATION_TESTS: "false"
+      DATABASE_URL: postgresql://synthetic:synthetic@127.0.0.1:5432/offline_unit_tests?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - name: Preserve certified ancestry and production guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          certified=9e6ae06852e9355c468795aa71e49d926e37ed26
+          git merge-base --is-ancestor "$certified" HEAD
+          git diff --check "$certified...HEAD"
+          git diff --exit-code "$certified" HEAD -- lib/database-target.ts config/database-targets.json scripts/assert-production-database-target.cjs .github/workflows/main_munshios.yml lib/server/auth.ts lib/supabase proxy.ts
+          node -e 'const c=require("./vercel.json");if(c.git.deploymentEnabled["architecture/restaurant-staging-readiness-v1-94"]!==false)throw Error("Draft branch deployment must remain disabled")'
+      - run: npm ci
+      - name: Readiness and production safety regressions
+        run: >-
+          npx vitest run
+          tests/unit/database-target.test.ts
+          tests/unit/staging-database-target.test.ts
+          tests/unit/database-readiness.test.ts
+          tests/unit/database-readiness-route.test.ts
+          tests/unit/production-release-workflow.test.ts
+      - run: npx tsc --noEmit
+      - name: Changed code lint
+        run: >-
+          npx eslint lib/staging-database-target.ts lib/server/database-readiness.ts
+          tests/unit/staging-database-target.test.ts tests/unit/database-readiness.test.ts
+      - name: Web build without deployment
+        env:
+          NODE_ENV: production
+        run: npm run build:web
