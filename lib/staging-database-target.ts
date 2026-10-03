@@ -7,6 +7,7 @@ type StagingReadinessEnvironment = {
 };
 
 const hosts = new Set(target.hosts);
+const routingParameters = new Set(["host", "hostaddr", "port", "database", "dbname", "service", "connectionstring"]);
 
 export function assertApprovedStagingDatabaseTarget(
   value: string | undefined,
@@ -28,7 +29,8 @@ export function assertApprovedStagingDatabaseTarget(
       !["postgres:", "postgresql:"].includes(parsed.protocol) ||
       !hosts.has(parsed.hostname.toLowerCase()) ||
       decodeURIComponent(parsed.pathname.replace(/^\//, "")) !== target.database ||
-      (parsed.port && parsed.port !== "5432")
+      (parsed.port && parsed.port !== "5432") ||
+      [...parsed.searchParams.keys()].some((key) => routingParameters.has(key.toLowerCase()))
     ) {
       throw new Error("Unapproved target");
     }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parse } from "pg-connection-string";
 
 import production from "@/config/database-targets.json";
 import staging from "@/config/staging-database-targets.json";
@@ -54,4 +55,17 @@ describe("separate staging readiness policy", () => {
   it("accepts the supported postgres protocol and explicit standard port", () => {
     expect(() => assertApprovedStagingDatabaseTarget(`postgres://synthetic:synthetic@${staging.hosts[0]}:5432/neondb`, approvedEnvironment)).not.toThrow();
   });
+
+  it("rejects a query host override that the Postgres driver would use instead of the approved URL host", () => {
+    const value = `${url(staging.hosts[0])}&host=unknown.example`;
+    expect(parse(value).host).toBe("unknown.example");
+    expect(() => assertApprovedStagingDatabaseTarget(value, approvedEnvironment)).toThrow("endpoint");
+  });
+
+  it.each(["hostaddr", "port", "database", "dbname", "service", "connectionString"])(
+    "rejects routing overrides even when the authority host is approved",
+    (parameter) => {
+      expect(() => assertApprovedStagingDatabaseTarget(`${url(staging.hosts[0])}&${parameter}=synthetic-override`, approvedEnvironment)).toThrow("endpoint");
+    },
+  );
 });

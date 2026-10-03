@@ -11,7 +11,7 @@ The staging branch of readiness requires all of the following server-side contex
 - `VERCEL_PROJECT_ID=prj_ytXqF1zAoJjcsBIICz7PryfAczLz`, the separate `munshios-restaurant-staging` project.
 - A Postgres URI pointing to database `neondb` on the exact direct or pooled `ep-fragrant-heart-b578tydw` endpoint listed in `config/staging-database-targets.json`, using the default or explicit5432 port.
 
-There is no environment-provided host allowlist, request-controlled environment selection or generic preview allowance. Missing or mismatched staging context fails before any readiness query. Production and historical development database hosts are rejected by the staging assertion. Without the explicit staging marker, readiness invokes the exact original production assertion. The production assertion continues rejecting the staging endpoints.
+There is no environment-provided host allowlist, request-controlled environment selection or generic preview allowance. Missing or mismatched staging context fails before any readiness query. Connection-routing query parameters are rejected because the installed Postgres driver can use them to override URI authority fields. Production and historical development database hosts are rejected by the staging assertion. Without the explicit staging marker, readiness invokes the exact original production assertion. The production assertion continues rejecting the staging endpoints.
 
 Accepted staging targets still need a successful database connection and the full shipped migration ledger before readiness reports ready. Pending migrations, connection failures, response redaction, deployment revision and FBR readiness reporting retain their existing behavior.
 
