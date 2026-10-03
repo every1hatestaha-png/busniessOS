@@ -18,4 +18,3 @@ describe("Restaurant server-action export boundary", () => {
   expect(() => ensureServerEntryExports([...Object.values(actions), initialRestaurantActionState])).toThrow('found object');
  });
 });
-

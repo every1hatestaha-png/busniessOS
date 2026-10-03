@@ -43,4 +43,3 @@ jobs:
           tests/unit/restaurant-server-action-exports.test.ts
       - name: Build without deployment
         run: npm run build:web
-

@@ -6,4 +6,3 @@ The Restaurant actions module exported initialRestaurantActionState alongside it
 The regression imports the actual actions module with external services mocked and runs the installed Next.js ensureServerEntryExports validator. It also reproduces E352 when the shared object is included. CI performs these checks, type checking, lint, certified ancestry/guard checks and a web build. This new stacked draft targets architecture/restaurant-staging-readiness-v1-94. Automatic deployment is disabled; commits use [vercel skip].
 
 This change is undeployed. F03 and cash capacity remain blocked on the current staging SHA. A successful build does not establish runtime acceptance; a separately authorized nonproduction deployment and rerun are required.
-
