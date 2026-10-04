@@ -132,8 +132,18 @@ jobs:
       - name: TypeScript
         run: npx tsc --noEmit
 
-      - name: ESLint
-        run: npm run lint
+      - name: Production and convergence ESLint
+        run: >
+          npx eslint
+          app
+          components
+          lib
+          proxy.ts
+          next.config.ts
+          scripts/production-build.cjs
+          scripts/restaurant-audit-dev-advisories-v1-96.cjs
+          tests/integration/restaurant-historical-rehearsal-v1-88.test.ts
+          tests/unit/restaurant-release-build-guard-v1-88.test.ts
 
       - name: Production build wrapper
         env:
