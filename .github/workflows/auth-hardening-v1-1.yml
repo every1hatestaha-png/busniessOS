@@ -32,6 +32,7 @@ jobs:
           tests/unit/auth-confirm-route.test.ts
           tests/unit/auth-callback-route.test.ts
           tests/unit/supabase-config.test.ts
+          tests/unit/supabase-server.test.ts
       - run: npx tsc --noEmit
       - name: Auth changed-code lint
         run: >-
@@ -48,4 +49,5 @@ jobs:
           tests/unit/auth-confirm-route.test.ts
           tests/unit/auth-callback-route.test.ts
           tests/unit/supabase-config.test.ts
+          tests/unit/supabase-server.test.ts
       - run: npm run build:web

@@ -6,8 +6,9 @@ import { cookies } from "next/headers";
 import { getSupabasePublicConfig } from "@/lib/supabase/config";
 
 export async function createSupabaseServerClient() {
-  const { url, publishableKey } = getSupabasePublicConfig();
+  // Let prerendering defer to the request before checking runtime configuration.
   const cookieStore = await cookies();
+  const { url, publishableKey } = getSupabasePublicConfig();
 
   return createServerClient(url, publishableKey, {
     cookies: {
