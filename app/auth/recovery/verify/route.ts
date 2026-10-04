@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { isValidEmailOtp, normalizeEmailOtp } from "@/lib/auth-email-otp";
 import { issueRecoveryMarker } from "@/lib/server/recovery-session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -7,9 +8,9 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as { email?: unknown; token?: unknown };
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-    const token = typeof body.token === "string" ? body.token.trim() : "";
+    const token = typeof body.token === "string" ? normalizeEmailOtp(body.token) : "";
 
-    if (!email || !/^\d{6,8}$/.test(token)) {
+    if (!email || !isValidEmailOtp(token)) {
       return NextResponse.json(
         { error: "That confirmation code is invalid or has expired." },
         { status: 400, headers: { "Cache-Control": "no-store" } },
