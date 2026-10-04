@@ -3,15 +3,13 @@ import "server-only";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
-const FALLBACK_SUPABASE_URL = "https://wunynhbseytthrwceqhg.supabase.co";
-const FALLBACK_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_ZrVgIikHRhL86YNlopG72g_Em-2_wWP";
+import { getSupabasePublicConfig } from "@/lib/supabase/config";
 
 export async function createSupabaseServerClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || FALLBACK_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || FALLBACK_SUPABASE_PUBLISHABLE_KEY;
+  const { url, publishableKey } = getSupabasePublicConfig();
   const cookieStore = await cookies();
 
-  return createServerClient(url, key, {
+  return createServerClient(url, publishableKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();
