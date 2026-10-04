@@ -12,7 +12,7 @@ function isRecoveryDestination(next: string) {
 function signInFallback(requestUrl: string, next: string) {
   const target = new URL("/sign-in", requestUrl);
   target.searchParams.set("next", next);
-  target.searchParams.set("confirmed", "1");
+  target.searchParams.set("confirmation_error", "session");
   return NextResponse.redirect(target);
 }
 
@@ -44,8 +44,8 @@ export async function GET(request: Request) {
       return recoveryActivationFallback(request.url);
     }
 
-    // Normal signup confirmation can safely fall back to password sign-in
-    // because a new signup already chose a password.
+    // A failed exchange cannot establish that the email was confirmed. Keep
+    // password sign-in and resend available without claiming confirmation.
     return signInFallback(request.url, next);
   }
 
