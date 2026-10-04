@@ -14,6 +14,7 @@ let collect: typeof import("@/lib/server/restaurant-payments-immediate")["record
 const context = () => ({ workspaceId, userId, role: "OWNER" as const });
 const migrations = readdirSync(resolve("prisma/migrations")).filter((name) => /^\d/.test(name)).sort();
 const cutoff = "20261001123000_restaurant_other_payment_account_guard";
+const compatibilityMigrations = new Set(["20261004144500_user_supabase_identity"]);
 let pendingOrderId = "";
 
 async function createOrder(quantity = 1, dineIn = false) {
@@ -50,6 +51,12 @@ beforeAll(async () => {
   parsed.pathname = `/${name}`;
   client = new Client({ connectionString: parsed.toString() }); await client.connect();
   for (const migration of migrations.filter((name) => name < cutoff)) await client.query(readFileSync(resolve("prisma/migrations", migration, "migration.sql"), "utf8"));
+  // The current Prisma client projects User.supabaseId. Apply only that additive,
+  // auth-only compatibility migration before seeding the historical Restaurant state.
+  // Restaurant migrations at/after the cutoff remain unapplied until the rehearsal step.
+  for (const migration of migrations.filter((name) => compatibilityMigrations.has(name))) {
+    await client.query(readFileSync(resolve("prisma/migrations", migration, "migration.sql"), "utf8"));
+  }
   process.env.DATABASE_URL = parsed.toString();
   ({ db } = await import("@/lib/server/db"));
   restaurant = await import("@/lib/server/restaurant-workspace"); integrity = await import("@/lib/server/restaurant-integrity");
@@ -93,7 +100,7 @@ describe("Restaurant V1.88 rich pre-V1.86 historical migration rehearsal", () =>
   it("preserves all seeded financial, inventory and operational snapshots through remaining migrations", async () => {
     const before = await digest();
     const started = performance.now();
-    for (const migration of migrations.filter((name) => name >= cutoff)) await client.query(readFileSync(resolve("prisma/migrations", migration, "migration.sql"), "utf8"));
+    for (const migration of migrations.filter((name) => name >= cutoff && !compatibilityMigrations.has(name))) await client.query(readFileSync(resolve("prisma/migrations", migration, "migration.sql"), "utf8"));
     expect(await digest()).toEqual(before);
     const { getRestaurantPrintDocument } = await import("@/lib/server/restaurant-print");
     const orders = await client.query('SELECT id FROM restaurant_orders WHERE "workspaceId"=$1',[workspaceId]);
