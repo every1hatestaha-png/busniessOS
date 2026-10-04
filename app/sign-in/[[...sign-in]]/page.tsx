@@ -11,6 +11,8 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const LOGIN_VISUAL = "/auth/faisal-mosque.webp";
 const RESEND_COOLDOWN_SECONDS = 30;
+const MIN_EMAIL_OTP_LENGTH = 6;
+const MAX_EMAIL_OTP_LENGTH = 10;
 
 export default function SignInPage() {
   const searchParams = useSearchParams();
@@ -22,6 +24,9 @@ export default function SignInPage() {
   const [error, setError] = useState(searchParams.get("error") || "");
   const [showMigrationHelp, setShowMigrationHelp] = useState(false);
   const [showVerificationHelp, setShowVerificationHelp] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [verificationBusy, setVerificationBusy] = useState(false);
+  const [verificationError, setVerificationError] = useState("");
   const [resendBusy, setResendBusy] = useState(false);
   const [resendStatus, setResendStatus] = useState("");
   const [resendCooldown, setResendCooldown] = useState(0);
