@@ -1,0 +1,48 @@
+name: Auth hardening V1.1
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  auth-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: postgresql://synthetic:synthetic@127.0.0.1:5432/offline_unit_tests?sslmode=disable
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: synthetic-publishable-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Auth unit regressions
+        run: >-
+          npx vitest run
+          tests/unit/auth-routing.test.ts
+          tests/unit/auth-recovery-proof.test.ts
+          tests/unit/auth-confirm-route.test.ts
+          tests/unit/supabase-config.test.ts
+      - run: npx tsc --noEmit
+      - name: Auth changed-code lint
+        run: >-
+          npx eslint
+          'app/sign-in/[[...sign-in]]/page.tsx'
+          'app/sign-up/[[...sign-up]]/page.tsx'
+          app/auth/confirm/route.ts
+          lib/supabase/config.ts
+          lib/supabase/client.ts
+          lib/supabase/server.ts
+          lib/server/auth.ts
+          proxy.ts
+          tests/unit/auth-confirm-route.test.ts
+          tests/unit/supabase-config.test.ts
+      - run: npm run build:web
