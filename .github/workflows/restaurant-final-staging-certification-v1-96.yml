@@ -1,4 +1,4 @@
-name: Restaurant V1.96 final staging certification
+name: Restaurant V1.97 main-convergence certification
 
 on:
   pull_request:
@@ -18,19 +18,20 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: munshios_restaurant_v196
+          POSTGRES_DB: munshios_restaurant_v197
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d munshios_restaurant_v196"
+          --health-cmd "pg_isready -U postgres -d munshios_restaurant_v197"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 15
     env:
-      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_restaurant_v196?sslmode=disable
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_restaurant_v197?sslmode=disable
       RUN_INTEGRATION_TESTS: "true"
       NODE_ENV: test
       V195_HEAD: de8d4986e4b5a8ab8e38b92d6ee723eedd651a7e
+      MAIN_CONVERGENCE_SHA: b9061723ea493a4947d56d7f72749bbb24cf3f8b
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,19 +41,45 @@ jobs:
           node-version: '22.x'
           cache: npm
 
-      - name: Preserve V1.95 ancestry and production safety
+      - name: Verify V1.95 and current-main convergence safety
         shell: bash
         run: |
           set -euo pipefail
           git merge-base --is-ancestor "$V195_HEAD" HEAD
+          git merge-base --is-ancestor "$MAIN_CONVERGENCE_SHA" HEAD
           git diff --check "$V195_HEAD...HEAD"
-          git diff --quiet "$V195_HEAD...HEAD" -- lib/server/auth.ts lib/supabase proxy.ts .github/workflows/main_munshios.yml
           node <<'NODE'
           const fs = require("node:fs");
+
+          const auth = fs.readFileSync("lib/server/auth.ts","utf8");
+          if (!auth.includes("supabaseId")) throw new Error("Supabase durable identity mapping was lost.");
+          if (!auth.includes("resolveWorkspaceVertical")) throw new Error("Restaurant vertical routing was lost.");
+
+          const schema = fs.readFileSync("prisma/schema.prisma","utf8");
+          if (!schema.includes("supabaseId String?")) throw new Error("Supabase user identity column missing.");
+          if (!schema.includes("enum WorkspaceVertical")) throw new Error("Workspace vertical schema missing.");
+
+          const build = fs.readFileSync("scripts/production-build.cjs","utf8");
+          if (build.includes("FALLBACK_SUPABASE")) throw new Error("Hardcoded Supabase production fallback reappeared.");
+          if (!build.includes("assert-production-database-target.cjs")) throw new Error("Production DB target guard was lost.");
+          if (!build.includes('shell: process.platform === "win32" && command === "npx"')) {
+            throw new Error("Windows npx launcher compatibility was lost.");
+          }
+
+          const pkg = JSON.parse(fs.readFileSync("package.json","utf8"));
+          if (pkg.dependencies?.next !== "16.3.8") throw new Error("Next.js convergence version drifted.");
+          if (pkg.devDependencies?.["eslint-config-next"] !== "16.3.8") {
+            throw new Error("eslint-config-next must remain aligned with the Restaurant stack.");
+          }
+
+          if (!fs.existsSync("prisma/migrations/20261004144500_user_supabase_identity/migration.sql")) {
+            throw new Error("Supabase identity migration missing after convergence.");
+          }
+
           const cfg = JSON.parse(fs.readFileSync("vercel.json","utf8"));
-          const branch = "architecture/restaurant-final-staging-certification-v1-96";
+          const branch = "architecture/restaurant-main-convergence-v1-97";
           if (cfg.git?.deploymentEnabled?.[branch] !== false) {
-            throw new Error("V1.96 must remain deployment-disabled.");
+            throw new Error("V1.97 must remain deployment-disabled.");
           }
           NODE
 
@@ -91,6 +118,16 @@ jobs:
           tests/unit/restaurant-*.test.ts
           tests/integration/warehouse-stock-tenant-tuple-integrity-v1-50.test.ts
           tests/integration/managed-warehouse-stock.test.ts
+
+      - name: Auth and vertical convergence regressions
+        run: >
+          npx vitest run
+          tests/unit/api-auth.test.ts
+          tests/unit/auth-*.test.ts
+          tests/unit/supabase-*.test.ts
+          tests/unit/vertical-*.test.ts
+          tests/unit/database-readiness-route.test.ts
+          tests/unit/production-database-target.test.ts
 
       - name: Full application regression
         run: npm test
@@ -163,7 +200,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: restaurant-v196-thermal-evidence
+          name: restaurant-v197-thermal-evidence
           path: |
             .tmp-restaurant-browser-v188/*.pdf
             .tmp-restaurant-browser-v188/*.png
