@@ -71,9 +71,9 @@ export default function SignUpPage() {
     if (signUpError) {
       const message = signUpError.message.toLowerCase();
       if (message.includes("rate") || message.includes("too many")) {
-        setError("Too many signup attempts. Please wait a moment and try again.");
+        setError("Too many signup attempts. If you already received a verification code, sign in with the same email and verify it there. Otherwise, wait a moment before requesting another code.");
       } else {
-        setError("We could not create your account right now. Please try again.");
+        setError("We could not start a new signup right now. If you already created this account, sign in with the same email and verify the code we sent.");
       }
       setBusy(false);
       return;
