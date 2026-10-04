@@ -25,6 +25,9 @@ export default function SignUpPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
+  const [otp, setOtp] = useState("");
+  const [otpBusy, setOtpBusy] = useState(false);
+  const [otpError, setOtpError] = useState("");
   const [resendBusy, setResendBusy] = useState(false);
   const [resendStatus, setResendStatus] = useState("");
   const [resendCooldown, setResendCooldown] = useState(0);
@@ -84,6 +87,41 @@ export default function SignUpPage() {
     setBusy(false);
   }
 
+  async function verifyEmailOtp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (otpBusy) return;
+
+    const token = otp.replace(/\s+/g, "");
+    if (!/^\d{6}$/.test(token)) {
+      setOtpError("Enter the 6-digit verification code from your email.");
+      return;
+    }
+
+    setOtpBusy(true);
+    setOtpError("");
+
+    const { data, error: verifyError } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: "email",
+    });
+
+    if (verifyError || !data.user) {
+      const message = verifyError?.message.toLowerCase() ?? "";
+      if (message.includes("expired") || message.includes("invalid")) {
+        setOtpError("That code is invalid or expired. Request a new code and try again.");
+      } else if (message.includes("rate") || message.includes("too many")) {
+        setOtpError("Too many verification attempts. Please wait a moment and try again.");
+      } else {
+        setOtpError("We could not verify that code. Please check it and try again.");
+      }
+      setOtpBusy(false);
+      return;
+    }
+
+    window.location.assign("/onboarding");
+  }
+
   async function resendVerification() {
     if (!email || resendBusy || resendCooldown > 0) return;
     setResendBusy(true);
@@ -101,8 +139,8 @@ export default function SignUpPage() {
     setResendCooldown(RESEND_COOLDOWN_SECONDS);
     setResendStatus(
       resendError
-        ? "We could not resend the verification email yet. Please wait a moment and try again."
-        : "A new verification email has been requested. Check your inbox and spam folder.",
+        ? "We could not resend the verification code yet. Please wait a moment and try again."
+        : "A new verification code has been requested. Check your inbox and spam folder.",
     );
     setResendBusy(false);
   }
@@ -138,17 +176,48 @@ export default function SignUpPage() {
                 <div className="grid size-12 place-items-center rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.08]">
                   <CheckCircle2 className="size-6 text-emerald-300" />
                 </div>
-                <h1 className="mt-6 text-[34px] font-semibold tracking-[-0.045em] text-white">Check your email</h1>
-                <p className="mt-3 text-[15px] leading-6 text-slate-400">We sent a verification link to <span className="font-medium text-slate-200">{email}</span>.</p>
-                <p className="mt-2 text-sm leading-6 text-slate-500">Open the verification link on any trusted device. After verification, continue to MunshiOS and sign in if prompted.</p>
-                <div className="mt-6 flex flex-col items-start gap-3">
+                <h1 className="mt-6 text-[34px] font-semibold tracking-[-0.045em] text-white">Verify your email</h1>
+                <p className="mt-3 text-[15px] leading-6 text-slate-400">We sent a 6-digit verification code to <span className="font-medium text-slate-200">{email}</span>.</p>
+                <p className="mt-2 text-sm leading-6 text-slate-500">Enter the code below to activate your MunshiOS account.</p>
+
+                <form onSubmit={verifyEmailOtp} className="mt-6 space-y-4">
+                  <div>
+                    <label htmlFor="verification-code" className="mb-2 block text-sm font-medium text-slate-200">Verification code</label>
+                    <input
+                      id="verification-code"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      value={otp}
+                      onChange={(event) => {
+                        setOtp(event.target.value.replace(/\D/g, "").slice(0, 6));
+                        setOtpError("");
+                      }}
+                      placeholder="123456"
+                      disabled={otpBusy}
+                      className="h-[56px] w-full rounded-xl border border-white/10 bg-white/[0.035] px-4 text-center text-xl font-semibold tracking-[0.35em] text-white outline-none transition placeholder:text-slate-600 placeholder:tracking-[0.35em] hover:border-white/15 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-400/10 disabled:opacity-60"
+                    />
+                  </div>
+
+                  {otpError ? <p role="alert" className="rounded-xl border border-red-400/20 bg-red-500/[0.07] px-4 py-3 text-sm leading-5 text-red-200">{otpError}</p> : null}
+
+                  <button
+                    type="submit"
+                    disabled={otpBusy || otp.length !== 6}
+                    className="h-[52px] w-full rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-[#03251b] shadow-[0_10px_30px_rgba(16,185,129,0.14)] transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {otpBusy ? "Verifying..." : "Verify email"}
+                  </button>
+                </form>
+
+                <div className="mt-5 flex flex-col items-start gap-3">
                   <button
                     type="button"
                     disabled={resendBusy || resendCooldown > 0}
                     onClick={resendVerification}
                     className="text-sm font-medium text-emerald-300 transition hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {resendBusy ? "Sending..." : resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend verification email"}
+                    {resendBusy ? "Sending..." : resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : "Resend verification code"}
                   </button>
                   {resendStatus ? <p role="status" className="text-xs leading-5 text-slate-500">{resendStatus}</p> : null}
                   <Link href="/sign-in" className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] px-5 text-sm font-medium text-slate-200 transition hover:bg-white/[0.07]">Back to sign in</Link>
