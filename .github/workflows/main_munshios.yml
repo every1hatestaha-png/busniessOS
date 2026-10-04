@@ -35,7 +35,7 @@ jobs:
       NODE_ENV: test
       RUN_INTEGRATION_TESTS: "true"
       NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
-      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: synthetic-publishable-key
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_synthetic_release_gate_key
 
     steps:
       - uses: actions/checkout@v4
