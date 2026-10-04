@@ -71,7 +71,15 @@ export default function SignUpPage() {
     if (signUpError) {
       const message = signUpError.message.toLowerCase();
       if (message.includes("rate") || message.includes("too many")) {
-        setError("Too many signup attempts. If you already received a verification code, sign in with the same email and verify it there. Otherwise, wait a moment before requesting another code.");
+        // A previous signup request may already have created the pending user
+        // and delivered a usable code. Do not dead-end the customer just
+        // because another email cannot be sent yet.
+        setEmail(identifier);
+        setOtp("");
+        setOtpError("");
+        setSent(true);
+        setResendCooldown(RESEND_COOLDOWN_SECONDS);
+        setResendStatus("If you already received a verification code, enter it above. You can request a fresh code when the cooldown ends.");
       } else {
         setError("We could not start a new signup right now. If you already created this account, sign in with the same email and verify the code we sent.");
       }
