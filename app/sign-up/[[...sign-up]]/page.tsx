@@ -129,6 +129,11 @@ export default function SignUpPage() {
       return;
     }
 
+    if (!data.session) {
+      window.location.assign("/sign-in?confirmed=1&next=/onboarding");
+      return;
+    }
+
     window.location.assign("/onboarding");
   }
 
