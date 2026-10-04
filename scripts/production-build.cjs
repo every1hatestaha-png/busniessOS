@@ -1,14 +1,15 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { spawnSync } = require("node:child_process");
 
-const FALLBACK_SUPABASE_URL = "https://wunynhbseytthrwceqhg.supabase.co";
-const FALLBACK_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_ZrVgIikHRhL86YNlopG72g_Em-2_wWP";
-
 function run(command, args) {
   const executable = process.platform === "win32" && command === "npx" ? "npx.cmd" : command;
   // Windows batch launchers require cmd.exe; all npx arguments here are fixed
   // build/migration commands, never values supplied by a request or environment.
-  const result = spawnSync(executable, args, { stdio: "inherit", env: process.env, shell: process.platform === "win32" && command === "npx" });
+  const result = spawnSync(executable, args, {
+    stdio: "inherit",
+    env: process.env,
+    shell: process.platform === "win32" && command === "npx",
+  });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
@@ -16,13 +17,10 @@ function run(command, args) {
 function assertProductionAuthConfiguration() {
   if (process.env.VERCEL_ENV !== "production") return;
 
-  // Supabase URL + publishable key are public client configuration. Keep the
-  // production build guard aligned with the runtime clients, which use the same
-  // checked-in fallback values when Vercel env vars are not explicitly scoped
-  // to Production.
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || FALLBACK_SUPABASE_URL;
-  const supabasePublishableKey =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() || FALLBACK_SUPABASE_PUBLISHABLE_KEY;
+  // Customer web auth must be explicitly configured in Production. Never
+  // silently fall back to a checked-in Supabase project or publishable key.
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
+  const supabasePublishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ?? "";
   if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(supabaseUrl)) {
     throw new Error("Production deployment requires a valid Supabase URL.");
   }
