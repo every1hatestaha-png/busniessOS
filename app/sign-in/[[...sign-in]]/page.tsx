@@ -124,6 +124,11 @@ export default function SignInPage() {
       return;
     }
 
+    if (!data.session) {
+      window.location.assign("/sign-in?confirmed=1");
+      return;
+    }
+
     const destination = safeInternalDestination(
       searchParams.get("redirect_url") ?? searchParams.get("next"),
       window.location.href,
