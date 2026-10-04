@@ -21,13 +21,15 @@ describe("signup email OTP UI", () => {
     expect(source).toContain("email,");
     expect(source).toContain("token,");
     expect(source).toContain('type: "email"');
-    expect(source).toContain("MIN_EMAIL_OTP_LENGTH = 6");
-    expect(source).toContain("MAX_EMAIL_OTP_LENGTH = 10");
+    expect(source).toContain("isValidEmailOtp");
+    expect(source).toContain("normalizeEmailOtp");
     expect(source).toContain('window.location.assign("/onboarding")');
   });
 
   it("keeps resend recovery aligned with OTP wording", () => {
     expect(source).toContain("Resend verification code");
     expect(source).toContain("A new verification code has been requested.");
+    expect(source).toContain("I already have a verification code");
+    expect(source).toContain("Use another email");
   });
 });
