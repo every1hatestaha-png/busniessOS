@@ -1,0 +1,181 @@
+name: Restaurant V1.97 main convergence certification
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  pg18-convergence-certification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_restaurant_v197
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_restaurant_v197"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_restaurant_v197?sslmode=disable
+      RUN_INTEGRATION_TESTS: "true"
+      NODE_ENV: test
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_synthetic_restaurant_v197
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_live_fixture
+      CLERK_SECRET_KEY: sk_live_fixture
+      CLERK_OAUTH_CLIENT_ID: fixture-client
+      RESTAURANT_V196_HEAD: aa6cad246fa1eacaa7cd5b8971065a532afe616a
+      MAIN_PARENT: b9061723ea493a4947d56d7f72749bbb24cf3f8b
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - name: Verify convergence ancestry and deployment safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$RESTAURANT_V196_HEAD" HEAD
+          git merge-base --is-ancestor "$MAIN_PARENT" HEAD
+          node <<'NODE'
+          const fs = require("node:fs");
+          const cfg = JSON.parse(fs.readFileSync("vercel.json","utf8"));
+          const enabled = cfg.git?.deploymentEnabled ?? {};
+          for (const branch of [
+            "architecture/restaurant-final-staging-certification-v1-96",
+            "architecture/restaurant-main-convergence-v1-97",
+            "architecture/restaurant-main-converged-v1-97",
+          ]) {
+            if (enabled[branch] !== false) {
+              throw new Error(`Missing deployment-disable guard for ${branch}`);
+            }
+          }
+          NODE
+
+      - run: npm ci
+
+      - name: Full audit advisory containment
+        run: node scripts/restaurant-audit-dev-advisories-v1-96.cjs
+
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=moderate
+
+      - name: Prisma validate
+        run: npx prisma validate
+
+      - name: Deploy complete migration chain to PostgreSQL 18
+        run: |
+          set -euo pipefail
+          npx prisma migrate deploy
+          npx prisma migrate status
+
+      - name: Auth convergence regressions
+        run: >
+          npx vitest run
+          tests/unit/api-auth.test.ts
+          tests/unit/auth-routing.test.ts
+          tests/unit/auth-recovery-proof.test.ts
+          tests/unit/auth-confirm-route.test.ts
+          tests/unit/auth-callback-route.test.ts
+          tests/unit/auth-email-otp.test.ts
+          tests/unit/auth-recovery-verify-route.test.ts
+          tests/unit/signin-email-otp-ui.test.ts
+          tests/unit/signup-email-otp-ui.test.ts
+          tests/unit/recovery-email-otp-ui.test.ts
+          tests/unit/supabase-config.test.ts
+          tests/unit/supabase-server.test.ts
+
+      - name: Restaurant race-focused regressions
+        run: >
+          npx vitest run
+          tests/integration/restaurant-release-acceptance-v1-88.test.ts
+          tests/integration/restaurant-pos-replay-v1-90.test.ts
+          tests/integration/restaurant-shared-account-contention-v1-91.test.ts
+          tests/integration/restaurant-payment-concurrency-v1-28.test.ts
+          tests/integration/restaurant-payment-terminal-concurrency-v1-29.test.ts
+          tests/integration/restaurant-refund-concurrency-v1-27.test.ts
+          tests/integration/restaurant-refund-return-concurrency-v1-30.test.ts
+          tests/integration/restaurant-item-return-concurrency-v1-31.test.ts
+          tests/integration/restaurant-stock-concurrency-v1-56.test.ts
+          tests/integration/restaurant-table-concurrency-v1-67.test.ts
+          tests/integration/restaurant-table-settlement-v1-82.test.ts
+
+      - name: Full Restaurant and warehouse regressions
+        run: >
+          npx vitest run
+          tests/integration/restaurant-*.test.ts
+          tests/unit/restaurant-*.test.ts
+          tests/integration/warehouse-stock-tenant-tuple-integrity-v1-50.test.ts
+          tests/integration/managed-warehouse-stock.test.ts
+
+      - name: Full application regression
+        run: npm test
+
+      - name: Finance suite
+        run: npm run test:finance
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Production build wrapper
+        env:
+          NODE_ENV: production
+          VERCEL_ENV: production
+          RUN_PRISMA_MIGRATIONS_ON_BUILD: "0"
+        run: npm run build
+
+  isolated-print-certification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Restaurant print unit contracts
+        run: >
+          npx vitest run
+          tests/unit/restaurant-print-v1-88.test.ts
+          tests/unit/restaurant-print-route-v1-90.test.ts
+          tests/unit/thermal-print.test.ts
+      - name: Install isolated browser harness tooling
+        run: |
+          mkdir -p "$RUNNER_TEMP/restaurant-browser-tools"
+          npm install --prefix "$RUNNER_TEMP/restaurant-browser-tools" --ignore-scripts playwright@1.62.1
+          echo "NODE_PATH=$RUNNER_TEMP/restaurant-browser-tools/node_modules" >> "$GITHUB_ENV"
+          echo "RESTAURANT_PLAYWRIGHT_CLI=$RUNNER_TEMP/restaurant-browser-tools/node_modules/playwright/cli.js" >> "$GITHUB_ENV"
+      - name: Install Chromium
+        run: node "$RESTAURANT_PLAYWRIGHT_CLI" install --with-deps chromium
+      - name: Build Restaurant print harness
+        run: npx vite build --config tests/browser/restaurant-v1-88/vite.config.mjs
+      - name: Browser and 80mm print verification
+        run: node scripts/restaurant-browser-verification-v1-88.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: restaurant-v197-thermal-evidence
+          path: |
+            .tmp-restaurant-browser-v188/*.pdf
+            .tmp-restaurant-browser-v188/*.png
+          include-hidden-files: true
+          if-no-files-found: error
