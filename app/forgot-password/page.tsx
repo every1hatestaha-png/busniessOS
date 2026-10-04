@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ArrowLeft, CheckCircle2, KeyRound, Mail, ShieldCheck } from "lucide-react";
 
 type RecoveryStep = "email" | "code" | "choice";
@@ -10,6 +11,7 @@ type RecoveryStep = "email" | "code" | "choice";
 const RESEND_COOLDOWN_SECONDS = 30;
 
 export default function ForgotPasswordPage() {
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [step, setStep] = useState<RecoveryStep>("email");
@@ -18,13 +20,10 @@ export default function ForgotPasswordPage() {
   const [resendCooldown, setResendCooldown] = useState(0);
   const [legacyNotice, setLegacyNotice] = useState(false);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const activationByOldLink = params.get("activation") === "1";
-    const verifiedByOldLink = params.get("verified") === "1";
+  const activationByOldLink = searchParams.get("activation") === "1";
+  const verifiedByOldLink = searchParams.get("verified") === "1";
 
-    if (activationByOldLink) setLegacyNotice(true);
+  useEffect(() => {
     if (!verifiedByOldLink) return;
 
     let active = true;
@@ -41,7 +40,7 @@ export default function ForgotPasswordPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [verifiedByOldLink]);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -151,7 +150,7 @@ export default function ForgotPasswordPage() {
             <h1 className="mt-6 text-[34px] font-semibold tracking-[-0.045em] text-white">Recover your account</h1>
             <p className="mt-2 text-[15px] leading-6 text-slate-400">Enter the email attached to your MunshiOS account. We&apos;ll send a one-time verification code.</p>
 
-            {legacyNotice ? (
+            {legacyNotice || activationByOldLink ? (
               <p role="status" className="mt-5 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.07] px-4 py-3 text-sm leading-6 text-emerald-100">
                 That older activation link has been replaced by verification codes. Enter your email below to receive a fresh code.
               </p>
