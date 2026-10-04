@@ -38,6 +38,7 @@ import { requireApiUser } from "@/lib/server/api";
 const localUser = {
   id: "local-user",
   clerkId: "clerk-user",
+  supabaseId: null,
   email: "owner@example.com",
   firstName: "Owner",
   lastName: "User",
@@ -99,12 +100,13 @@ describe("API authentication contract", () => {
 
     await expect(requireApiUser()).resolves.toMatchObject({ id: "local-user", email: "owner@example.com" });
     expect(findUniqueMock).toHaveBeenCalledWith({
-      where: { clerkId: "supabase:supabase-user" },
+      where: { supabaseId: "supabase-user" },
     });
     expect(findFirstMock).toHaveBeenCalledWith(insensitiveEmailLookup("owner@example.com"));
     expect(updateMock).toHaveBeenCalledWith({
       where: { id: "local-user" },
       data: {
+        supabaseId: "supabase-user",
         email: "owner@example.com",
         firstName: "Owner",
         lastName: "User",
@@ -125,6 +127,7 @@ describe("API authentication contract", () => {
     expect(updateMock).toHaveBeenCalledWith({
       where: { id: "local-user" },
       data: {
+        supabaseId: "supabase-user",
         email: "owner@example.com",
         firstName: "Owner",
         lastName: "User",
@@ -143,6 +146,7 @@ describe("API authentication contract", () => {
     expect(createMock).toHaveBeenCalledWith({
       data: {
         clerkId: "supabase:supabase-user",
+        supabaseId: "supabase-user",
         email: "new@example.com",
         firstName: "Owner",
         lastName: "User",
@@ -151,10 +155,29 @@ describe("API authentication contract", () => {
     expect(authMock).not.toHaveBeenCalled();
   });
 
+  it("recovers when two first Supabase requests race to create the same local user", async () => {
+    getSupabaseAuthUserMock.mockResolvedValue(verifiedSupabaseUser("new@example.com"));
+    findUniqueMock
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ ...localUser, clerkId: "supabase:supabase-user", supabaseId: "supabase-user", email: "new@example.com" });
+    findFirstMock.mockResolvedValueOnce(null);
+    createMock.mockRejectedValueOnce(new Error("unique constraint"));
+
+    await expect(requireApiUser()).resolves.toMatchObject({
+      id: "local-user",
+      supabaseId: "supabase-user",
+      email: "new@example.com",
+    });
+    expect(createMock).toHaveBeenCalledTimes(1);
+    expect(findUniqueMock).toHaveBeenNthCalledWith(2, {
+      where: { supabaseId: "supabase-user" },
+    });
+  });
+
   it("resolves an already-linked Supabase identity directly by provider id", async () => {
     getSupabaseAuthUserMock.mockResolvedValue(verifiedSupabaseUser());
-    findUniqueMock.mockResolvedValueOnce({ ...localUser, clerkId: "supabase:supabase-user" });
-    findFirstMock.mockResolvedValueOnce({ ...localUser, clerkId: "supabase:supabase-user" });
+    findUniqueMock.mockResolvedValueOnce({ ...localUser, clerkId: "legacy-clerk-user", supabaseId: "supabase-user" });
+    findFirstMock.mockResolvedValueOnce({ ...localUser, clerkId: "legacy-clerk-user", supabaseId: "supabase-user" });
 
     await expect(requireApiUser()).resolves.toMatchObject({ id: "local-user" });
     expect(updateMock).not.toHaveBeenCalled();
