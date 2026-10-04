@@ -38,7 +38,8 @@
       "architecture/restaurant-release-candidate-v1-91": false,
       "architecture/restaurant-staging-certification-v1-92": false,
       "architecture/restaurant-staging-readiness-v1-94": false,
-      "architecture/restaurant-server-action-state-v1-95": false
+      "architecture/restaurant-server-action-state-v1-95": false,
+      "architecture/restaurant-final-staging-certification-v1-96": false
     }
   }
 }
