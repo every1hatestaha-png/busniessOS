@@ -124,6 +124,39 @@ One initial broad query found one PAID+COMPLETED dine-in order without `tableRel
 
 **Database reconciliation: PASS for the checked staging invariants.**
 
+
+### Additional financial and audit conservation checks
+
+Additional read-only reconciliation also reports zero violations for:
+
+- net returned quantity below zero
+- net returned quantity exceeding sold quantity
+- negative adjusted order due after returns/reversals
+- negative retained paid amount after return allocations
+- return payment allocation exceeding its active payment
+- derived Restaurant payment-status mismatch after treating a fully returned zero-due order as settled
+- manual payment voids missing their dedicated payment-void audit
+- return-driven automatic payment voids missing a Restaurant-return audit that references the affected payment
+
+Three fully returned orders initially looked like payment-status mismatches only because a naive check classified zero-due/zero-retained orders as UNPAID. The application correctly records these zero-due orders as PAID.
+
+Three payments automatically voided by full item returns do not carry a separate manual `restaurant.payment.voided` audit. This is intentional derived-state behavior: each payment is referenced by the corresponding `restaurant.return.created` audit metadata and retains its explicit full-return void reason. Dedicated manual payment voids do have `restaurant.payment.voided` audit events.
+
+### Runtime observations
+
+The dedicated staging deployment's grouped runtime history contains expected authorization/authentication guard noise:
+
+- `MODULE_DISABLED` on Restaurant routes for a workspace without the Restaurant module
+- stale/invalid Supabase refresh-token errors in middleware
+
+These are consistent with negative authorization/session testing and are not evidence of a Restaurant data-integrity failure. Exact-deployment error/fatal log retrieval over the checked window returned no matching entries after the latest staging verification.
+
+### Main-branch convergence boundary
+
+The V1.95 Restaurant stack and current main are diverged. At inspection time the Restaurant head is 483 commits ahead and 66 commits behind current main, with merge base `cebb8f41d564ce261386c0168cc756eba7276cd5`.
+
+This V1.96 certification therefore proves the frozen Restaurant stack itself. Any future merge/rebase/convergence with current main invalidates exact-SHA certification and requires the affected release gates to run again before production promotion.
+
 ## Print acceptance
 
 Automatable print evidence is covered by V1.96 CI:
