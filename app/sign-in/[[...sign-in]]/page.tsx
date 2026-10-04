@@ -6,13 +6,12 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, CheckCircle2, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 
+import { MAX_EMAIL_OTP_LENGTH, isValidEmailOtp, normalizeEmailOtp } from "@/lib/auth-email-otp";
 import { safeInternalDestination } from "@/lib/auth-routing";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const LOGIN_VISUAL = "/auth/faisal-mosque.webp";
 const RESEND_COOLDOWN_SECONDS = 30;
-const MIN_EMAIL_OTP_LENGTH = 6;
-const MAX_EMAIL_OTP_LENGTH = 10;
 
 export default function SignInPage() {
   const searchParams = useSearchParams();
@@ -90,14 +89,14 @@ export default function SignInPage() {
     if (verificationBusy) return;
 
     const identifier = email.trim().toLowerCase();
-    const token = verificationCode.replace(/\s+/g, "");
+    const token = normalizeEmailOtp(verificationCode);
 
     if (!identifier) {
       setVerificationError("Enter the email address you used to create the account.");
       return;
     }
 
-    if (!/^\d+$/.test(token) || token.length < MIN_EMAIL_OTP_LENGTH || token.length > MAX_EMAIL_OTP_LENGTH) {
+    if (!isValidEmailOtp(token)) {
       setVerificationError("Enter the verification code exactly as it appears in your email.");
       return;
     }
@@ -202,10 +201,10 @@ export default function SignInPage() {
             {confirmationError ? (
               <p role="alert" className="mb-5 rounded-xl border border-amber-400/20 bg-amber-400/[0.07] px-4 py-3 text-sm leading-5 text-amber-100">
                 {confirmationError === "session"
-                  ? "This link could not sign you in. If you already verified your email, sign in below. Otherwise, request a new verification email."
+                  ? "This link could not sign you in. If you already verified your email, sign in below. Otherwise, request a new verification code."
                   : confirmationError === "expired"
-                  ? "That verification link is invalid or expired. Enter your email below and request a new one."
-                  : "That verification link is incomplete. Request a new verification email below."}
+                  ? "That verification link is invalid or expired. Enter your email below and request a new verification code."
+                  : "That verification link is incomplete. Request a new verification code below."}
               </p>
             ) : null}
 
@@ -243,7 +242,7 @@ export default function SignInPage() {
                       maxLength={MAX_EMAIL_OTP_LENGTH}
                       value={verificationCode}
                       onChange={(event) => {
-                        setVerificationCode(event.target.value.replace(/\\D/g, "").slice(0, MAX_EMAIL_OTP_LENGTH));
+                        setVerificationCode(normalizeEmailOtp(event.target.value));
                         setVerificationError("");
                       }}
                       placeholder="12345678"
@@ -254,7 +253,7 @@ export default function SignInPage() {
                     <button
                       type="button"
                       onClick={verifyPendingEmail}
-                      disabled={verificationBusy || verificationCode.length < MIN_EMAIL_OTP_LENGTH || verificationCode.length > MAX_EMAIL_OTP_LENGTH || !email.trim()}
+                      disabled={verificationBusy || !isValidEmailOtp(verificationCode) || !email.trim()}
                       className="h-10 rounded-lg bg-emerald-500 px-4 text-xs font-semibold text-[#03251b] hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {verificationBusy ? "Verifying..." : "Verify email"}
