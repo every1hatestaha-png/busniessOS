@@ -14,6 +14,8 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const LOGIN_VISUAL = "/auth/faisal-mosque.webp";
 const RESEND_COOLDOWN_SECONDS = 30;
+const MIN_EMAIL_OTP_LENGTH = 6;
+const MAX_EMAIL_OTP_LENGTH = 10;
 
 export default function SignUpPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -69,9 +71,17 @@ export default function SignUpPage() {
     if (signUpError) {
       const message = signUpError.message.toLowerCase();
       if (message.includes("rate") || message.includes("too many")) {
-        setError("Too many signup attempts. Please wait a moment and try again.");
+        // A previous signup request may already have created the pending user
+        // and delivered a usable code. Do not dead-end the customer just
+        // because another email cannot be sent yet.
+        setEmail(identifier);
+        setOtp("");
+        setOtpError("");
+        setSent(true);
+        setResendCooldown(RESEND_COOLDOWN_SECONDS);
+        setResendStatus("If you already received a verification code, enter it above. You can request a fresh code when the cooldown ends.");
       } else {
-        setError("We could not create your account right now. Please try again.");
+        setError("We could not start a new signup right now. If you already created this account, sign in with the same email and verify the code we sent.");
       }
       setBusy(false);
       return;
@@ -92,8 +102,8 @@ export default function SignUpPage() {
     if (otpBusy) return;
 
     const token = otp.replace(/\s+/g, "");
-    if (!/^\d{6}$/.test(token)) {
-      setOtpError("Enter the 6-digit verification code from your email.");
+    if (!/^\d+$/.test(token) || token.length < MIN_EMAIL_OTP_LENGTH || token.length > MAX_EMAIL_OTP_LENGTH) {
+      setOtpError("Enter the verification code exactly as it appears in your email.");
       return;
     }
 
@@ -116,6 +126,11 @@ export default function SignUpPage() {
         setOtpError("We could not verify that code. Please check it and try again.");
       }
       setOtpBusy(false);
+      return;
+    }
+
+    if (!data.session) {
+      window.location.assign("/sign-in?confirmed=1&next=/onboarding");
       return;
     }
 
@@ -177,7 +192,7 @@ export default function SignUpPage() {
                   <CheckCircle2 className="size-6 text-emerald-300" />
                 </div>
                 <h1 className="mt-6 text-[34px] font-semibold tracking-[-0.045em] text-white">Verify your email</h1>
-                <p className="mt-3 text-[15px] leading-6 text-slate-400">We sent a 6-digit verification code to <span className="font-medium text-slate-200">{email}</span>.</p>
+                <p className="mt-3 text-[15px] leading-6 text-slate-400">We sent a verification code to <span className="font-medium text-slate-200">{email}</span>.</p>
                 <p className="mt-2 text-sm leading-6 text-slate-500">Enter the code below to activate your MunshiOS account.</p>
 
                 <form onSubmit={verifyEmailOtp} className="mt-6 space-y-4">
@@ -187,13 +202,13 @@ export default function SignUpPage() {
                       id="verification-code"
                       inputMode="numeric"
                       autoComplete="one-time-code"
-                      maxLength={6}
+                      maxLength={MAX_EMAIL_OTP_LENGTH}
                       value={otp}
                       onChange={(event) => {
-                        setOtp(event.target.value.replace(/\D/g, "").slice(0, 6));
+                        setOtp(event.target.value.replace(/\D/g, "").slice(0, MAX_EMAIL_OTP_LENGTH));
                         setOtpError("");
                       }}
-                      placeholder="123456"
+                      placeholder="12345678"
                       disabled={otpBusy}
                       className="h-[56px] w-full rounded-xl border border-white/10 bg-white/[0.035] px-4 text-center text-xl font-semibold tracking-[0.35em] text-white outline-none transition placeholder:text-slate-600 placeholder:tracking-[0.35em] hover:border-white/15 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-400/10 disabled:opacity-60"
                     />
@@ -203,7 +218,7 @@ export default function SignUpPage() {
 
                   <button
                     type="submit"
-                    disabled={otpBusy || otp.length !== 6}
+                    disabled={otpBusy || otp.length < MIN_EMAIL_OTP_LENGTH || otp.length > MAX_EMAIL_OTP_LENGTH}
                     className="h-[52px] w-full rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-[#03251b] shadow-[0_10px_30px_rgba(16,185,129,0.14)] transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {otpBusy ? "Verifying..." : "Verify email"}

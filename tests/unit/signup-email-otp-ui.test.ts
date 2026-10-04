@@ -9,11 +9,11 @@ describe("signup email OTP UI", () => {
     "utf8",
   );
 
-  it("renders a six-digit verification-code field after signup", () => {
+  it("renders a flexible numeric verification-code field after signup", () => {
     expect(source).toContain('id="verification-code"');
     expect(source).toContain('autoComplete="one-time-code"');
-    expect(source).toContain("maxLength={6}");
-    expect(source).toContain("We sent a 6-digit verification code");
+    expect(source).toContain("maxLength={MAX_EMAIL_OTP_LENGTH}");
+    expect(source).toContain("We sent a verification code");
   });
 
   it("verifies the emailed code with Supabase email OTP", () => {
@@ -21,6 +21,8 @@ describe("signup email OTP UI", () => {
     expect(source).toContain("email,");
     expect(source).toContain("token,");
     expect(source).toContain('type: "email"');
+    expect(source).toContain("MIN_EMAIL_OTP_LENGTH = 6");
+    expect(source).toContain("MAX_EMAIL_OTP_LENGTH = 10");
     expect(source).toContain('window.location.assign("/onboarding")');
   });
 
