@@ -151,8 +151,8 @@ export default function SignInPage() {
     setResendCooldown(RESEND_COOLDOWN_SECONDS);
     setResendStatus(
       resendError
-        ? "We could not resend the verification email yet. Please wait a moment and try again."
-        : "If this address has a pending MunshiOS signup, a new verification email has been sent.",
+        ? "We could not resend the verification code yet. Please wait a moment and try again."
+        : "If this address has a pending MunshiOS signup, a new verification code has been sent.",
     );
     setResendBusy(false);
   }
@@ -230,14 +230,38 @@ export default function SignInPage() {
 
               {showVerificationHelp || confirmationError ? (
                 <div className="rounded-xl border border-amber-400/15 bg-amber-400/[0.05] px-4 py-3 text-sm leading-6 text-slate-300">
-                  <p>Check your inbox and spam folder for the MunshiOS verification email.</p>
+                  <p>Enter the verification code from your MunshiOS email. If you need a fresh code, resend it below.</p>
+                  <form onSubmit={verifyPendingEmail} className="mt-3 space-y-2">
+                    <input
+                      id="sign-in-verification-code"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={MAX_EMAIL_OTP_LENGTH}
+                      value={verificationCode}
+                      onChange={(event) => {
+                        setVerificationCode(event.target.value.replace(/\\D/g, "").slice(0, MAX_EMAIL_OTP_LENGTH));
+                        setVerificationError("");
+                      }}
+                      placeholder="12345678"
+                      disabled={verificationBusy}
+                      className="h-12 w-full rounded-xl border border-white/10 bg-black/10 px-4 text-center text-lg font-semibold tracking-[0.28em] text-white outline-none focus:border-emerald-400/70 disabled:opacity-60"
+                    />
+                    {verificationError ? <p role="alert" className="text-xs leading-5 text-red-200">{verificationError}</p> : null}
+                    <button
+                      type="submit"
+                      disabled={verificationBusy || verificationCode.length < MIN_EMAIL_OTP_LENGTH || verificationCode.length > MAX_EMAIL_OTP_LENGTH || !email.trim()}
+                      className="h-10 rounded-lg bg-emerald-500 px-4 text-xs font-semibold text-[#03251b] hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {verificationBusy ? "Verifying..." : "Verify email"}
+                    </button>
+                  </form>
                   <button
                     type="button"
                     disabled={resendBusy || resendCooldown > 0 || !email.trim()}
                     onClick={resendVerification}
                     className="mt-2 font-medium text-emerald-300 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {resendBusy ? "Sending..." : resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend verification email"}
+                    {resendBusy ? "Sending..." : resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : "Resend verification code"}
                   </button>
                   {resendStatus ? <p role="status" className="mt-2 text-xs text-slate-400">{resendStatus}</p> : null}
                 </div>
