@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, CheckCircle2, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 
@@ -10,6 +10,7 @@ import { safeInternalDestination } from "@/lib/auth-routing";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const LOGIN_VISUAL = "/auth/faisal-mosque.webp";
+const RESEND_COOLDOWN_SECONDS = 30;
 
 export default function SignInPage() {
   const searchParams = useSearchParams();
@@ -23,8 +24,17 @@ export default function SignInPage() {
   const [showVerificationHelp, setShowVerificationHelp] = useState(false);
   const [resendBusy, setResendBusy] = useState(false);
   const [resendStatus, setResendStatus] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
   const emailConfirmed = searchParams.get("confirmed") === "1";
   const confirmationError = searchParams.get("confirmation_error");
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setInterval(() => {
+      setResendCooldown((value) => Math.max(0, value - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendCooldown]);
 
   async function handleSignIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -73,7 +83,7 @@ export default function SignInPage() {
 
   async function resendVerification() {
     const identifier = email.trim().toLowerCase();
-    if (!identifier || resendBusy) return;
+    if (!identifier || resendBusy || resendCooldown > 0) return;
 
     setResendBusy(true);
     setResendStatus("");
@@ -86,6 +96,7 @@ export default function SignInPage() {
       },
     });
 
+    setResendCooldown(RESEND_COOLDOWN_SECONDS);
     setResendStatus(
       resendError
         ? "We could not resend the verification email yet. Please wait a moment and try again."
@@ -168,11 +179,11 @@ export default function SignInPage() {
                   <p>Check your inbox and spam folder for the MunshiOS verification email.</p>
                   <button
                     type="button"
-                    disabled={resendBusy || !email.trim()}
+                    disabled={resendBusy || resendCooldown > 0 || !email.trim()}
                     onClick={resendVerification}
                     className="mt-2 font-medium text-emerald-300 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {resendBusy ? "Sending..." : "Resend verification email"}
+                    {resendBusy ? "Sending..." : resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend verification email"}
                   </button>
                   {resendStatus ? <p role="status" className="mt-2 text-xs text-slate-400">{resendStatus}</p> : null}
                 </div>
