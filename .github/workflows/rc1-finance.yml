@@ -34,6 +34,8 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_test?sslmode=disable
       NODE_ENV: test
       RUN_INTEGRATION_TESTS: "true"
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: synthetic-publishable-key
 
     steps:
       - name: Checkout

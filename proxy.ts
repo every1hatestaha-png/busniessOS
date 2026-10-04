@@ -3,11 +3,10 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 
 import { isAuthEntryPath, isPublicMarketingPath, safeInternalDestination } from "@/lib/auth-routing";
+import { getSupabasePublicConfig } from "@/lib/supabase/config";
 import { checkAppRateLimit } from "@/lib/request-rate-limit";
 import { applyCorsHeaders, corsPreflightResponse, isApiV1Request, isTrustedMutationOrigin } from "@/lib/server/cors";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://wunynhbseytthrwceqhg.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "sb_publishable_ZrVgIikHRhL86YNlopG72g_Em-2_wWP";
 const CLERK_SERVER_CONFIGURED = Boolean(process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
 function isMutationMethod(method: string) {
@@ -27,8 +26,9 @@ function redirectWithCookies(url: URL, authResponse: NextResponse) {
 
 async function getSupabaseSessionState(request: NextRequest) {
   let response = NextResponse.next({ request });
+  const { url, publishableKey } = getSupabasePublicConfig();
 
-  const supabase = createServerClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  const supabase = createServerClient(url, publishableKey, {
     cookies: {
       getAll() {
         return request.cookies.getAll();
@@ -151,6 +151,13 @@ async function supabaseOnlyProxy(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
   const isElectron = (request.headers.get("user-agent") || "").includes("Electron");
+
+  // Health and readiness must remain reachable even when auth configuration is
+  // broken so operators receive an explicit 503 from the readiness handler
+  // instead of an opaque proxy failure.
+  if (path === "/api/health" || path === "/api/readiness") {
+    return NextResponse.next();
+  }
 
   if (isElectron || path.startsWith("/desktop-auth") || path.startsWith("/platform")) {
     if (publicAuthPath(path) || path.startsWith("/desktop-auth") || path.startsWith("/platform/sign-in")) {

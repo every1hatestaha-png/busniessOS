@@ -6,8 +6,8 @@ import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
 
 import { db } from "@/lib/server/db";
-import { getSupabaseAuthUser } from "@/lib/supabase/server";
 import { isAvailableVertical, resolveWorkspaceVertical } from "@/lib/verticals/registry";
+import { getSupabaseAuthUser } from "@/lib/supabase/server";
 
 const CLERK_SERVER_CONFIGURED = Boolean(process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
@@ -18,10 +18,6 @@ type AuthIdentity = {
   firstName: string | null;
   lastName: string | null;
 };
-
-function providerStorageId(identity: AuthIdentity) {
-  return identity.provider === "supabase" ? `supabase:${identity.providerUserId}` : identity.providerUserId;
-}
 
 async function findLocalUserByEmail(email: string) {
   return db.user.findFirst({
@@ -77,8 +73,9 @@ const getCurrentIdentity = cache(async (): Promise<AuthIdentity | null> => {
 });
 
 async function resolveLocalUser(identity: AuthIdentity) {
-  const storedProviderId = providerStorageId(identity);
-  const existingByProvider = await db.user.findUnique({ where: { clerkId: storedProviderId } });
+  const existingByProvider = identity.provider === "supabase"
+    ? await db.user.findUnique({ where: { supabaseId: identity.providerUserId } })
+    : await db.user.findUnique({ where: { clerkId: identity.providerUserId } });
 
   if (existingByProvider) {
     const conflictingEmailOwner = await findLocalUserByEmail(identity.email);
@@ -118,9 +115,14 @@ async function resolveLocalUser(identity: AuthIdentity) {
       });
     }
 
+    if (existingByEmail.supabaseId && existingByEmail.supabaseId !== identity.providerUserId) {
+      throw new Error("This verified email is already linked to another Supabase identity.");
+    }
+
     return db.user.update({
       where: { id: existingByEmail.id },
       data: {
+        supabaseId: identity.providerUserId,
         email: identity.email,
         firstName: identity.firstName ?? existingByEmail.firstName,
         lastName: identity.lastName ?? existingByEmail.lastName,
@@ -128,14 +130,75 @@ async function resolveLocalUser(identity: AuthIdentity) {
     });
   }
 
-  return db.user.create({
-    data: {
-      clerkId: storedProviderId,
-      email: identity.email,
-      firstName: identity.firstName,
-      lastName: identity.lastName,
-    },
-  });
+  try {
+    return await db.user.create({
+      data: identity.provider === "supabase"
+        ? {
+            clerkId: `supabase:${identity.providerUserId}`,
+            supabaseId: identity.providerUserId,
+            email: identity.email,
+            firstName: identity.firstName,
+            lastName: identity.lastName,
+          }
+        : {
+            clerkId: identity.providerUserId,
+            email: identity.email,
+            firstName: identity.firstName,
+            lastName: identity.lastName,
+          },
+    });
+  } catch (error) {
+    // Two first authenticated requests can race before either has created the
+    // local user. Recover by resolving the winner through the durable provider
+    // identity (or verified email during the legacy migration window).
+    const winner = identity.provider === "supabase"
+      ? await db.user.findUnique({ where: { supabaseId: identity.providerUserId } })
+      : await db.user.findUnique({ where: { clerkId: identity.providerUserId } });
+    if (winner) return winner;
+
+    const winnerByEmail = await findLocalUserByEmail(identity.email);
+    if (!winnerByEmail) throw error;
+
+    if (identity.provider === "supabase") {
+      if (winnerByEmail.supabaseId && winnerByEmail.supabaseId !== identity.providerUserId) {
+        throw error;
+      }
+      if (winnerByEmail.supabaseId === identity.providerUserId) return winnerByEmail;
+
+      try {
+        return await db.user.update({
+          where: { id: winnerByEmail.id },
+          data: {
+            supabaseId: identity.providerUserId,
+            email: identity.email,
+            firstName: identity.firstName ?? winnerByEmail.firstName,
+            lastName: identity.lastName ?? winnerByEmail.lastName,
+          },
+        });
+      } catch {
+        const linkedWinner = await db.user.findUnique({ where: { supabaseId: identity.providerUserId } });
+        if (linkedWinner) return linkedWinner;
+        throw error;
+      }
+    }
+
+    if (winnerByEmail.clerkId === identity.providerUserId) return winnerByEmail;
+    try {
+      return await db.user.update({
+        where: { id: winnerByEmail.id },
+        data: {
+          clerkId: identity.providerUserId,
+          email: identity.email,
+          firstName: identity.firstName ?? winnerByEmail.firstName,
+          lastName: identity.lastName ?? winnerByEmail.lastName,
+        },
+      });
+    } catch {
+      const linkedWinner = await db.user.findUnique({ where: { clerkId: identity.providerUserId } });
+      if (linkedWinner) return linkedWinner;
+      throw error;
+    }
+  }
 }
 
 export const getOptionalCurrentUser = cache(async () => {
