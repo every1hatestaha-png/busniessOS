@@ -145,7 +145,9 @@ export default function SignInPage() {
 
             {confirmationError ? (
               <p role="alert" className="mb-5 rounded-xl border border-amber-400/20 bg-amber-400/[0.07] px-4 py-3 text-sm leading-5 text-amber-100">
-                {confirmationError === "expired"
+                {confirmationError === "session"
+                  ? "This link could not sign you in. If you already verified your email, sign in below. Otherwise, request a new verification email."
+                  : confirmationError === "expired"
                   ? "That verification link is invalid or expired. Enter your email below and request a new one."
                   : "That verification link is incomplete. Request a new verification email below."}
               </p>
