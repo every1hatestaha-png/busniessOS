@@ -57,6 +57,8 @@ jobs:
           NODE
 
       - run: npm ci
+      - name: Dependency audit
+        run: npm audit --audit-level=moderate
       - name: Prisma validate
         run: npx prisma validate
       - name: Deploy complete migration chain to PostgreSQL 18
