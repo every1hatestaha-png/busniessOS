@@ -14,6 +14,8 @@ function runBuildGuard(migrations: string) {
       : '#!/bin/sh\nprintf "intercepted-command:%s\\n" "$*"\n', { mode: 0o755 });
     return spawnSync(process.execPath, [resolve("scripts/production-build.cjs")], { encoding: "utf8", env: {
       ...process.env, PATH: `${directory}${delimiter}${process.env.PATH}`, VERCEL_ENV: "production",
+      NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_synthetic_restaurant_release_guard",
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_live_synthetic_fixture", CLERK_SECRET_KEY: "sk_live_synthetic_fixture",
       DATABASE_URL: "postgresql://fixture:fixture@127.0.0.1:5432/synthetic?sslmode=disable",
       RUN_PRISMA_MIGRATIONS_ON_BUILD: migrations,
