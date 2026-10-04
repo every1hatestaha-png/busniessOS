@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 
 import {
@@ -13,6 +13,7 @@ import {
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const LOGIN_VISUAL = "/auth/faisal-mosque.webp";
+const RESEND_COOLDOWN_SECONDS = 30;
 
 export default function SignUpPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -26,6 +27,15 @@ export default function SignUpPage() {
   const [sent, setSent] = useState(false);
   const [resendBusy, setResendBusy] = useState(false);
   const [resendStatus, setResendStatus] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setInterval(() => {
+      setResendCooldown((value) => Math.max(0, value - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendCooldown]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -75,7 +85,7 @@ export default function SignUpPage() {
   }
 
   async function resendVerification() {
-    if (!email || resendBusy) return;
+    if (!email || resendBusy || resendCooldown > 0) return;
     setResendBusy(true);
     setResendStatus("");
 
@@ -88,6 +98,7 @@ export default function SignUpPage() {
       },
     });
 
+    setResendCooldown(RESEND_COOLDOWN_SECONDS);
     setResendStatus(
       resendError
         ? "We could not resend the verification email yet. Please wait a moment and try again."
@@ -133,11 +144,11 @@ export default function SignUpPage() {
                 <div className="mt-6 flex flex-col items-start gap-3">
                   <button
                     type="button"
-                    disabled={resendBusy}
+                    disabled={resendBusy || resendCooldown > 0}
                     onClick={resendVerification}
                     className="text-sm font-medium text-emerald-300 transition hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {resendBusy ? "Sending..." : "Resend verification email"}
+                    {resendBusy ? "Sending..." : resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend verification email"}
                   </button>
                   {resendStatus ? <p role="status" className="text-xs leading-5 text-slate-500">{resendStatus}</p> : null}
                   <Link href="/sign-in" className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] px-5 text-sm font-medium text-slate-200 transition hover:bg-white/[0.07]">Back to sign in</Link>
