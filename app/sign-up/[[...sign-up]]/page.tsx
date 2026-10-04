@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 
 import {
@@ -10,9 +10,11 @@ import {
   MIN_NEW_PASSWORD_LENGTH,
   isAcceptableNewPassword,
 } from "@/lib/auth-password-policy";
+import { MAX_EMAIL_OTP_LENGTH, isValidEmailOtp, normalizeEmailOtp } from "@/lib/auth-email-otp";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const LOGIN_VISUAL = "/auth/faisal-mosque.webp";
+const RESEND_COOLDOWN_SECONDS = 30;
 
 export default function SignUpPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -24,6 +26,20 @@ export default function SignUpPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
+  const [otp, setOtp] = useState("");
+  const [otpBusy, setOtpBusy] = useState(false);
+  const [otpError, setOtpError] = useState("");
+  const [resendBusy, setResendBusy] = useState(false);
+  const [resendStatus, setResendStatus] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setInterval(() => {
+      setResendCooldown((value) => Math.max(0, value - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendCooldown]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -54,9 +70,17 @@ export default function SignUpPage() {
     if (signUpError) {
       const message = signUpError.message.toLowerCase();
       if (message.includes("rate") || message.includes("too many")) {
-        setError("Too many signup attempts. Please wait a moment and try again.");
+        // A previous signup request may already have created the pending user
+        // and delivered a usable code. Do not dead-end the customer just
+        // because another email cannot be sent yet.
+        setEmail(identifier);
+        setOtp("");
+        setOtpError("");
+        setSent(true);
+        setResendCooldown(RESEND_COOLDOWN_SECONDS);
+        setResendStatus("If you already received a verification code, enter it above. You can request a fresh code when the cooldown ends.");
       } else {
-        setError("We could not create your account right now. Please try again.");
+        setError("We could not start a new signup right now. If you already created this account, sign in with the same email and verify the code we sent.");
       }
       setBusy(false);
       return;
@@ -70,6 +94,69 @@ export default function SignUpPage() {
     setEmail(identifier);
     setSent(true);
     setBusy(false);
+  }
+
+  async function verifyEmailOtp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (otpBusy) return;
+
+    const token = normalizeEmailOtp(otp);
+    if (!isValidEmailOtp(token)) {
+      setOtpError("Enter the verification code exactly as it appears in your email.");
+      return;
+    }
+
+    setOtpBusy(true);
+    setOtpError("");
+
+    const { data, error: verifyError } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: "email",
+    });
+
+    if (verifyError || !data.user) {
+      const message = verifyError?.message.toLowerCase() ?? "";
+      if (message.includes("expired") || message.includes("invalid")) {
+        setOtpError("That code is invalid or expired. Request a new code and try again.");
+      } else if (message.includes("rate") || message.includes("too many")) {
+        setOtpError("Too many verification attempts. Please wait a moment and try again.");
+      } else {
+        setOtpError("We could not verify that code. Please check it and try again.");
+      }
+      setOtpBusy(false);
+      return;
+    }
+
+    if (!data.session) {
+      window.location.assign("/sign-in?confirmed=1&next=/onboarding");
+      return;
+    }
+
+    window.location.assign("/onboarding");
+  }
+
+  async function resendVerification() {
+    if (!email || resendBusy || resendCooldown > 0) return;
+    setResendBusy(true);
+    setResendStatus("");
+
+    const origin = window.location.origin;
+    const { error: resendError } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: {
+        emailRedirectTo: `${origin}/auth/callback?next=/onboarding`,
+      },
+    });
+
+    setResendCooldown(RESEND_COOLDOWN_SECONDS);
+    setResendStatus(
+      resendError
+        ? "We could not resend the verification code yet. Please wait a moment and try again."
+        : "A new verification code has been requested. Check your inbox and spam folder.",
+    );
+    setResendBusy(false);
   }
 
   return (
@@ -103,10 +190,65 @@ export default function SignUpPage() {
                 <div className="grid size-12 place-items-center rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.08]">
                   <CheckCircle2 className="size-6 text-emerald-300" />
                 </div>
-                <h1 className="mt-6 text-[34px] font-semibold tracking-[-0.045em] text-white">Check your email</h1>
-                <p className="mt-3 text-[15px] leading-6 text-slate-400">We sent a verification link to <span className="font-medium text-slate-200">{email}</span>.</p>
-                <p className="mt-2 text-sm leading-6 text-slate-500">Open it on this device to finish setup and continue to your workspace.</p>
-                <Link href="/sign-in" className="mt-7 inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] px-5 text-sm font-medium text-slate-200 transition hover:bg-white/[0.07]">Back to sign in</Link>
+                <h1 className="mt-6 text-[34px] font-semibold tracking-[-0.045em] text-white">Verify your email</h1>
+                <p className="mt-3 text-[15px] leading-6 text-slate-400">We sent a verification code to <span className="font-medium text-slate-200">{email}</span>.</p>
+                <p className="mt-2 text-sm leading-6 text-slate-500">Enter the code below to activate your MunshiOS account.</p>
+
+                <form onSubmit={verifyEmailOtp} className="mt-6 space-y-4">
+                  <div>
+                    <label htmlFor="verification-code" className="mb-2 block text-sm font-medium text-slate-200">Verification code</label>
+                    <input
+                      id="verification-code"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={MAX_EMAIL_OTP_LENGTH}
+                      value={otp}
+                      onChange={(event) => {
+                        setOtp(normalizeEmailOtp(event.target.value));
+                        setOtpError("");
+                      }}
+                      placeholder="12345678"
+                      disabled={otpBusy}
+                      className="h-[56px] w-full rounded-xl border border-white/10 bg-white/[0.035] px-4 text-center text-xl font-semibold tracking-[0.35em] text-white outline-none transition placeholder:text-slate-600 placeholder:tracking-[0.35em] hover:border-white/15 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-400/10 disabled:opacity-60"
+                    />
+                  </div>
+
+                  {otpError ? <p role="alert" className="rounded-xl border border-red-400/20 bg-red-500/[0.07] px-4 py-3 text-sm leading-5 text-red-200">{otpError}</p> : null}
+
+                  <button
+                    type="submit"
+                    disabled={otpBusy || !isValidEmailOtp(otp)}
+                    className="h-[52px] w-full rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-[#03251b] shadow-[0_10px_30px_rgba(16,185,129,0.14)] transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {otpBusy ? "Verifying..." : "Verify email"}
+                  </button>
+                </form>
+
+                <div className="mt-5 flex flex-col items-start gap-3">
+                  <button
+                    type="button"
+                    disabled={resendBusy || resendCooldown > 0}
+                    onClick={resendVerification}
+                    className="text-sm font-medium text-emerald-300 transition hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {resendBusy ? "Sending..." : resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : "Resend verification code"}
+                  </button>
+                  {resendStatus ? <p role="status" className="text-xs leading-5 text-slate-500">{resendStatus}</p> : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSent(false);
+                      setOtp("");
+                      setOtpError("");
+                      setResendStatus("");
+                      setResendCooldown(0);
+                    }}
+                    className="text-sm text-slate-500 transition hover:text-slate-300"
+                  >
+                    Use another email
+                  </button>
+                  <Link href="/sign-in" className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] px-5 text-sm font-medium text-slate-200 transition hover:bg-white/[0.07]">Back to sign in</Link>
+                </div>
               </div>
             ) : (
               <>
@@ -148,6 +290,25 @@ export default function SignUpPage() {
                   {error ? <p role="alert" className="rounded-xl border border-red-400/20 bg-red-500/[0.07] px-4 py-3 text-sm leading-5 text-red-200">{error}</p> : null}
 
                   <button type="submit" disabled={busy} className="mt-1 h-[52px] w-full rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-[#03251b] shadow-[0_10px_30px_rgba(16,185,129,0.14)] transition hover:bg-emerald-400 disabled:opacity-60">{busy ? "Creating account..." : "Create account"}</button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      const identifier = email.trim().toLowerCase();
+                      if (!identifier) {
+                        setError("Enter the email address that received your verification code.");
+                        return;
+                      }
+                      setEmail(identifier);
+                      setError("");
+                      setOtp("");
+                      setOtpError("");
+                      setSent(true);
+                    }}
+                    className="h-11 w-full text-sm font-medium text-slate-400 transition hover:text-slate-200 disabled:opacity-50"
+                  >
+                    I already have a verification code
+                  </button>
                 </form>
 
                 <p className="mt-7 border-t border-white/[0.08] pt-6 text-center text-sm text-slate-500">Already have an account? <Link href="/sign-in" className="font-medium text-emerald-300 transition hover:text-emerald-200">Sign in</Link></p>

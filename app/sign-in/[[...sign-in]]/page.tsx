@@ -2,14 +2,16 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, CheckCircle2, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 
+import { MAX_EMAIL_OTP_LENGTH, isValidEmailOtp, normalizeEmailOtp } from "@/lib/auth-email-otp";
 import { safeInternalDestination } from "@/lib/auth-routing";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const LOGIN_VISUAL = "/auth/faisal-mosque.webp";
+const RESEND_COOLDOWN_SECONDS = 30;
 
 export default function SignInPage() {
   const searchParams = useSearchParams();
@@ -20,7 +22,23 @@ export default function SignInPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(searchParams.get("error") || "");
   const [showMigrationHelp, setShowMigrationHelp] = useState(false);
+  const [showVerificationHelp, setShowVerificationHelp] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [verificationBusy, setVerificationBusy] = useState(false);
+  const [verificationError, setVerificationError] = useState("");
+  const [resendBusy, setResendBusy] = useState(false);
+  const [resendStatus, setResendStatus] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
   const emailConfirmed = searchParams.get("confirmed") === "1";
+  const confirmationError = searchParams.get("confirmation_error");
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setInterval(() => {
+      setResendCooldown((value) => Math.max(0, value - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendCooldown]);
 
   async function handleSignIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -28,6 +46,8 @@ export default function SignInPage() {
     setBusy(true);
     setError("");
     setShowMigrationHelp(false);
+    setShowVerificationHelp(false);
+    setResendStatus("");
 
     const identifier = email.trim().toLowerCase();
     if (!identifier || !password) {
@@ -42,9 +62,14 @@ export default function SignInPage() {
     });
 
     if (signInError) {
-      if (signInError.message === "Invalid login credentials") {
+      if (signInError.code === "email_not_confirmed" || signInError.message.toLowerCase().includes("email not confirmed")) {
+        setError("Your email has not been verified yet.");
+        setShowVerificationHelp(true);
+      } else if (signInError.message === "Invalid login credentials") {
         setError("Email or password is incorrect.");
         setShowMigrationHelp(true);
+      } else if (signInError.status === 429 || signInError.message.toLowerCase().includes("rate")) {
+        setError("Too many sign-in attempts. Please wait a moment and try again.");
       } else {
         setError("We could not sign you in right now. Please try again.");
       }
@@ -58,6 +83,81 @@ export default function SignInPage() {
       "/dashboard",
     );
     window.location.assign(destination);
+  }
+
+  async function verifyPendingEmail() {
+    if (verificationBusy) return;
+
+    const identifier = email.trim().toLowerCase();
+    const token = normalizeEmailOtp(verificationCode);
+
+    if (!identifier) {
+      setVerificationError("Enter the email address you used to create the account.");
+      return;
+    }
+
+    if (!isValidEmailOtp(token)) {
+      setVerificationError("Enter the verification code exactly as it appears in your email.");
+      return;
+    }
+
+    setVerificationBusy(true);
+    setVerificationError("");
+
+    const { data, error: verifyError } = await supabase.auth.verifyOtp({
+      email: identifier,
+      token,
+      type: "email",
+    });
+
+    if (verifyError || !data.user) {
+      const message = verifyError?.message.toLowerCase() ?? "";
+      if (message.includes("expired") || message.includes("invalid")) {
+        setVerificationError("That code is invalid or expired. Request a new code and try again.");
+      } else if (message.includes("rate") || message.includes("too many")) {
+        setVerificationError("Too many verification attempts. Please wait a moment and try again.");
+      } else {
+        setVerificationError("We could not verify that code. Please check it and try again.");
+      }
+      setVerificationBusy(false);
+      return;
+    }
+
+    if (!data.session) {
+      window.location.assign("/sign-in?confirmed=1");
+      return;
+    }
+
+    const destination = safeInternalDestination(
+      searchParams.get("redirect_url") ?? searchParams.get("next"),
+      window.location.href,
+      "/onboarding",
+    );
+    window.location.assign(destination);
+  }
+
+  async function resendVerification() {
+    const identifier = email.trim().toLowerCase();
+    if (!identifier || resendBusy || resendCooldown > 0) return;
+
+    setResendBusy(true);
+    setResendStatus("");
+    const origin = window.location.origin;
+    const { error: resendError } = await supabase.auth.resend({
+      type: "signup",
+      email: identifier,
+      options: {
+        emailRedirectTo: `${origin}/auth/callback?next=/onboarding`,
+      },
+    });
+
+    setResendCooldown(RESEND_COOLDOWN_SECONDS);
+    setResendStatus(
+      resendError
+        ? "We could not resend the verification code yet. Please wait a moment and try again."
+        : "If this address has a pending MunshiOS signup, a new verification code has been sent.",
+    );
+    setResendBusy(false);
   }
 
   return (
@@ -98,6 +198,16 @@ export default function SignInPage() {
               </p>
             ) : null}
 
+            {confirmationError ? (
+              <p role="alert" className="mb-5 rounded-xl border border-amber-400/20 bg-amber-400/[0.07] px-4 py-3 text-sm leading-5 text-amber-100">
+                {confirmationError === "session"
+                  ? "This link could not sign you in. If you already verified your email, sign in below. Otherwise, request a new verification code."
+                  : confirmationError === "expired"
+                  ? "That verification link is invalid or expired. Enter your email below and request a new verification code."
+                  : "That verification link is incomplete. Request a new verification code below."}
+              </p>
+            ) : null}
+
             <form onSubmit={handleSignIn} className="space-y-5">
               <div>
                 <label htmlFor="email" className="mb-2 block text-sm font-medium text-slate-200">Email</label>
@@ -120,6 +230,46 @@ export default function SignInPage() {
               </div>
 
               {error ? <p role="alert" className="rounded-xl border border-red-400/20 bg-red-500/[0.07] px-4 py-3 text-sm leading-5 text-red-200">{error}</p> : null}
+
+              {showVerificationHelp || confirmationError ? (
+                <div className="rounded-xl border border-amber-400/15 bg-amber-400/[0.05] px-4 py-3 text-sm leading-6 text-slate-300">
+                  <p>Enter the verification code from your MunshiOS email. If you need a fresh code, resend it below.</p>
+                  <div className="mt-3 space-y-2">
+                    <input
+                      id="sign-in-verification-code"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={MAX_EMAIL_OTP_LENGTH}
+                      value={verificationCode}
+                      onChange={(event) => {
+                        setVerificationCode(normalizeEmailOtp(event.target.value));
+                        setVerificationError("");
+                      }}
+                      placeholder="12345678"
+                      disabled={verificationBusy}
+                      className="h-12 w-full rounded-xl border border-white/10 bg-black/10 px-4 text-center text-lg font-semibold tracking-[0.28em] text-white outline-none focus:border-emerald-400/70 disabled:opacity-60"
+                    />
+                    {verificationError ? <p role="alert" className="text-xs leading-5 text-red-200">{verificationError}</p> : null}
+                    <button
+                      type="button"
+                      onClick={verifyPendingEmail}
+                      disabled={verificationBusy || !isValidEmailOtp(verificationCode) || !email.trim()}
+                      className="h-10 rounded-lg bg-emerald-500 px-4 text-xs font-semibold text-[#03251b] hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {verificationBusy ? "Verifying..." : "Verify email"}
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={resendBusy || resendCooldown > 0 || !email.trim()}
+                    onClick={resendVerification}
+                    className="mt-2 font-medium text-emerald-300 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {resendBusy ? "Sending..." : resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : "Resend verification code"}
+                  </button>
+                  {resendStatus ? <p role="status" className="mt-2 text-xs text-slate-400">{resendStatus}</p> : null}
+                </div>
+              ) : null}
 
               {showMigrationHelp ? (
                 <div className="rounded-xl border border-emerald-400/15 bg-emerald-400/[0.05] px-4 py-3 text-sm leading-6 text-slate-300">

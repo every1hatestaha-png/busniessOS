@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { checkDatabaseReadiness, getFbrCredentialDeploymentReadiness } = vi.hoisted(() => ({
+const { checkDatabaseReadiness, getFbrCredentialDeploymentReadiness, getSupabasePublicConfig } = vi.hoisted(() => ({
   checkDatabaseReadiness: vi.fn(),
   getFbrCredentialDeploymentReadiness: vi.fn(),
+  getSupabasePublicConfig: vi.fn(),
 }));
 
 vi.mock("@/lib/server/database-readiness", () => ({ checkDatabaseReadiness }));
 vi.mock("@/lib/server/fbr-credentials", () => ({ getFbrCredentialDeploymentReadiness }));
+vi.mock("@/lib/supabase/config", () => ({ getSupabasePublicConfig }));
 
 import { GET } from "@/app/api/readiness/route";
 
@@ -14,6 +16,11 @@ describe("database readiness endpoint", () => {
   beforeEach(() => {
     checkDatabaseReadiness.mockReset();
     getFbrCredentialDeploymentReadiness.mockReset();
+    getSupabasePublicConfig.mockReset();
+    getSupabasePublicConfig.mockReturnValue({
+      url: "https://example.supabase.co",
+      publishableKey: "synthetic",
+    });
     getFbrCredentialDeploymentReadiness.mockReturnValue({
       credentialEncryption: "configured",
       productionTransmission: "disabled",
@@ -28,6 +35,7 @@ describe("database readiness endpoint", () => {
     await expect(response.json()).resolves.toEqual({
       ok: true,
       database: "ready",
+      auth: "configured",
       revision: null,
       fbr: { credentialEncryption: "configured", productionTransmission: "disabled" },
     });
@@ -44,6 +52,7 @@ describe("database readiness endpoint", () => {
     await expect(response.json()).resolves.toEqual({
       ok: true,
       database: "ready",
+      auth: "configured",
       revision: "5127483238af",
       fbr: { credentialEncryption: "missing", productionTransmission: "disabled" },
     });
@@ -53,13 +62,32 @@ describe("database readiness endpoint", () => {
     checkDatabaseReadiness.mockResolvedValue({ ready: false, pendingCount: 2 });
     const response = await GET();
     expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toEqual({ ok: false, database: "schema_pending" });
+    await expect(response.json()).resolves.toEqual({ ok: false, database: "schema_pending", auth: "configured" });
   });
 
   it("fails closed without exposing database errors", async () => {
     checkDatabaseReadiness.mockRejectedValue(new Error("credential or host detail"));
     const response = await GET();
     expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toEqual({ ok: false, database: "unavailable" });
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      database: "unavailable",
+      auth: "misconfigured_or_unavailable",
+    });
   });
+  it("fails closed when Supabase auth configuration is missing", async () => {
+    getSupabasePublicConfig.mockImplementation(() => {
+      throw new Error("missing auth env");
+    });
+
+    const response = await GET();
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      database: "unavailable",
+      auth: "misconfigured_or_unavailable",
+    });
+    expect(checkDatabaseReadiness).not.toHaveBeenCalled();
+  });
+
 });

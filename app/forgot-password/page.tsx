@@ -2,14 +2,18 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ArrowLeft, CheckCircle2, KeyRound, Mail, ShieldCheck } from "lucide-react";
+
+import { MAX_EMAIL_OTP_LENGTH, isValidEmailOtp, normalizeEmailOtp } from "@/lib/auth-email-otp";
 
 type RecoveryStep = "email" | "code" | "choice";
 
 const RESEND_COOLDOWN_SECONDS = 30;
 
-export default function ForgotPasswordPage() {
+function ForgotPasswordContent() {
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [step, setStep] = useState<RecoveryStep>("email");
@@ -18,13 +22,10 @@ export default function ForgotPasswordPage() {
   const [resendCooldown, setResendCooldown] = useState(0);
   const [legacyNotice, setLegacyNotice] = useState(false);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const activationByOldLink = params.get("activation") === "1";
-    const verifiedByOldLink = params.get("verified") === "1";
+  const activationByOldLink = searchParams.get("activation") === "1";
+  const verifiedByOldLink = searchParams.get("verified") === "1";
 
-    if (activationByOldLink) setLegacyNotice(true);
+  useEffect(() => {
     if (!verifiedByOldLink) return;
 
     let active = true;
@@ -41,7 +42,7 @@ export default function ForgotPasswordPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [verifiedByOldLink]);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -95,9 +96,9 @@ export default function ForgotPasswordPage() {
     if (busy) return;
 
     const identifier = email.trim().toLowerCase();
-    const token = code.trim();
-    if (!identifier || !/^\d{6,8}$/.test(token)) {
-      setError("Enter the 6–8 digit verification code from your email.");
+    const token = normalizeEmailOtp(code);
+    if (!identifier || !isValidEmailOtp(token)) {
+      setError("Enter the verification code exactly as it appears in your email.");
       return;
     }
 
@@ -151,7 +152,7 @@ export default function ForgotPasswordPage() {
             <h1 className="mt-6 text-[34px] font-semibold tracking-[-0.045em] text-white">Recover your account</h1>
             <p className="mt-2 text-[15px] leading-6 text-slate-400">Enter the email attached to your MunshiOS account. We&apos;ll send a one-time verification code.</p>
 
-            {legacyNotice ? (
+            {legacyNotice || activationByOldLink ? (
               <p role="status" className="mt-5 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.07] px-4 py-3 text-sm leading-6 text-emerald-100">
                 That older activation link has been replaced by verification codes. Enter your email below to receive a fresh code.
               </p>
@@ -174,10 +175,10 @@ export default function ForgotPasswordPage() {
               <KeyRound className="size-5 text-emerald-300" />
             </div>
             <h1 className="mt-6 text-[34px] font-semibold tracking-[-0.045em] text-white">Enter your verification code</h1>
-            <p className="mt-2 text-[15px] leading-6 text-slate-400">If <span className="font-medium text-slate-300">{email}</span> belongs to a MunshiOS account, we sent a 6–8 digit code. Check Inbox and Spam.</p>
+            <p className="mt-2 text-[15px] leading-6 text-slate-400">If <span className="font-medium text-slate-300">{email}</span> belongs to a MunshiOS account, we sent a verification code. Check Inbox and Spam.</p>
 
             <form onSubmit={verifyRecoveryCode} className="mt-7 space-y-4">
-              <input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={8} required disabled={busy} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="6–8 digit code" className="h-[56px] w-full rounded-xl border border-white/10 bg-white/[0.035] px-4 text-center text-xl tracking-[0.18em] text-white outline-none transition placeholder:text-sm placeholder:tracking-normal placeholder:text-slate-700 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-400/10 disabled:opacity-60" />
+              <input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={MAX_EMAIL_OTP_LENGTH} required disabled={busy} value={code} onChange={(event) => setCode(normalizeEmailOtp(event.target.value))} placeholder="Verification code" className="h-[56px] w-full rounded-xl border border-white/10 bg-white/[0.035] px-4 text-center text-xl tracking-[0.18em] text-white outline-none transition placeholder:text-sm placeholder:tracking-normal placeholder:text-slate-700 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-400/10 disabled:opacity-60" />
               {error ? <p role="alert" className="rounded-xl border border-red-400/20 bg-red-500/[0.07] px-4 py-3 text-sm leading-5 text-red-200">{error}</p> : null}
               <button type="submit" disabled={busy} className="h-[52px] w-full rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-[#03251b] transition hover:bg-emerald-400 disabled:opacity-60">{busy ? "Verifying..." : "Verify code"}</button>
               <button type="button" disabled={busy || resendCooldown > 0} onClick={() => void sendRecoveryCode()} className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] text-sm font-medium text-slate-300 transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-50">{resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : "Resend verification code"}</button>
@@ -204,5 +205,14 @@ export default function ForgotPasswordPage() {
         <Link href="/sign-in" className="mt-8 inline-flex items-center gap-2 self-start text-sm text-slate-500 transition hover:text-slate-300"><ArrowLeft className="size-4" /> Back to sign in</Link>
       </div>
     </main>
+  );
+}
+
+
+export default function ForgotPasswordPage() {
+  return (
+    <Suspense fallback={null}>
+      <ForgotPasswordContent />
+    </Suspense>
   );
 }
