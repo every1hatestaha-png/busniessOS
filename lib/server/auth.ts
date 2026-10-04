@@ -156,8 +156,47 @@ async function resolveLocalUser(identity: AuthIdentity) {
     if (winner) return winner;
 
     const winnerByEmail = await findLocalUserByEmail(identity.email);
-    if (winnerByEmail) return winnerByEmail;
-    throw error;
+    if (!winnerByEmail) throw error;
+
+    if (identity.provider === "supabase") {
+      if (winnerByEmail.supabaseId && winnerByEmail.supabaseId !== identity.providerUserId) {
+        throw error;
+      }
+      if (winnerByEmail.supabaseId === identity.providerUserId) return winnerByEmail;
+
+      try {
+        return await db.user.update({
+          where: { id: winnerByEmail.id },
+          data: {
+            supabaseId: identity.providerUserId,
+            email: identity.email,
+            firstName: identity.firstName ?? winnerByEmail.firstName,
+            lastName: identity.lastName ?? winnerByEmail.lastName,
+          },
+        });
+      } catch {
+        const linkedWinner = await db.user.findUnique({ where: { supabaseId: identity.providerUserId } });
+        if (linkedWinner) return linkedWinner;
+        throw error;
+      }
+    }
+
+    if (winnerByEmail.clerkId === identity.providerUserId) return winnerByEmail;
+    try {
+      return await db.user.update({
+        where: { id: winnerByEmail.id },
+        data: {
+          clerkId: identity.providerUserId,
+          email: identity.email,
+          firstName: identity.firstName ?? winnerByEmail.firstName,
+          lastName: identity.lastName ?? winnerByEmail.lastName,
+        },
+      });
+    } catch {
+      const linkedWinner = await db.user.findUnique({ where: { clerkId: identity.providerUserId } });
+      if (linkedWinner) return linkedWinner;
+      throw error;
+    }
   }
 }
 
