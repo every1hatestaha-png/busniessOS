@@ -57,8 +57,10 @@ jobs:
           NODE
 
       - run: npm ci
-      - name: Dependency audit
-        run: npm audit --audit-level=moderate
+      - name: Full audit advisory containment
+        run: node scripts/restaurant-audit-dev-advisories-v1-96.cjs
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=moderate
       - name: Prisma validate
         run: npx prisma validate
       - name: Deploy complete migration chain to PostgreSQL 18
