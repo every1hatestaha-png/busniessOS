@@ -55,7 +55,15 @@ beforeAll(async () => {
   restaurant = await import("@/lib/server/restaurant-workspace"); integrity = await import("@/lib/server/restaurant-integrity");
   ({ recordRestaurantPaymentAtCollection: collect } = await import("@/lib/server/restaurant-payments-immediate"));
   const run = randomUUID();
-  const user = await db.user.create({ data: { clerkId: `history-${run}`, email: `history-${run}@example.invalid` } }); userId = user.id;
+  // This database intentionally represents the pre-V1.86 Restaurant schema. The
+  // converged Prisma client already knows about the later nullable supabaseId
+  // column, so seed the historical user through SQL and let the real later auth
+  // migration add supabaseId during the upgrade loop below.
+  userId = randomUUID();
+  await client.query(
+    'INSERT INTO users (id,"clerkId",email,"createdAt","updatedAt") VALUES ($1,$2,$3,now(),now())',
+    [userId, `history-${run}`, `history-${run}@example.invalid`],
+  );
   const workspace = await db.workspace.create({ data: { name: `Historical synthetic ${run}`, members: { create: { userId, role: "OWNER" } } } }); workspaceId = workspace.id;
   await db.$executeRaw`INSERT INTO "workspace_modules" ("workspaceId", "moduleKey", "enabled", "config", "updatedAt") VALUES (${workspaceId}::uuid, 'restaurant', true, '{}'::jsonb, now())`;
   const { createCashBankAccount, getCashBankAccounts } = await import("@/lib/server/accounting");
