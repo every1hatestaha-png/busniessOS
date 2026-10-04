@@ -174,6 +174,24 @@ describe("API authentication contract", () => {
     });
   });
 
+  it("does not attach a raced email winner that belongs to a different Supabase identity", async () => {
+    getSupabaseAuthUserMock.mockResolvedValue(verifiedSupabaseUser("new@example.com"));
+    findUniqueMock
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    findFirstMock
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        ...localUser,
+        email: "new@example.com",
+        supabaseId: "different-supabase-user",
+      });
+    createMock.mockRejectedValueOnce(new Error("unique constraint"));
+
+    await expect(requireApiUser()).rejects.toThrow("unique constraint");
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
   it("resolves an already-linked Supabase identity directly by provider id", async () => {
     getSupabaseAuthUserMock.mockResolvedValue(verifiedSupabaseUser());
     findUniqueMock.mockResolvedValueOnce({ ...localUser, clerkId: "legacy-clerk-user", supabaseId: "supabase-user" });
