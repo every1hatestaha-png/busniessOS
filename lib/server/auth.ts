@@ -129,22 +129,36 @@ async function resolveLocalUser(identity: AuthIdentity) {
     });
   }
 
-  return db.user.create({
-    data: identity.provider === "supabase"
-      ? {
-          clerkId: `supabase:${identity.providerUserId}`,
-          supabaseId: identity.providerUserId,
-          email: identity.email,
-          firstName: identity.firstName,
-          lastName: identity.lastName,
-        }
-      : {
-          clerkId: identity.providerUserId,
-          email: identity.email,
-          firstName: identity.firstName,
-          lastName: identity.lastName,
-        },
-  });
+  try {
+    return await db.user.create({
+      data: identity.provider === "supabase"
+        ? {
+            clerkId: `supabase:${identity.providerUserId}`,
+            supabaseId: identity.providerUserId,
+            email: identity.email,
+            firstName: identity.firstName,
+            lastName: identity.lastName,
+          }
+        : {
+            clerkId: identity.providerUserId,
+            email: identity.email,
+            firstName: identity.firstName,
+            lastName: identity.lastName,
+          },
+    });
+  } catch (error) {
+    // Two first authenticated requests can race before either has created the
+    // local user. Recover by resolving the winner through the durable provider
+    // identity (or verified email during the legacy migration window).
+    const winner = identity.provider === "supabase"
+      ? await db.user.findUnique({ where: { supabaseId: identity.providerUserId } })
+      : await db.user.findUnique({ where: { clerkId: identity.providerUserId } });
+    if (winner) return winner;
+
+    const winnerByEmail = await findLocalUserByEmail(identity.email);
+    if (winnerByEmail) return winnerByEmail;
+    throw error;
+  }
 }
 
 export const getOptionalCurrentUser = cache(async () => {
