@@ -152,6 +152,13 @@ async function supabaseOnlyProxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const isElectron = (request.headers.get("user-agent") || "").includes("Electron");
 
+  // Health and readiness must remain reachable even when auth configuration is
+  // broken so operators receive an explicit 503 from the readiness handler
+  // instead of an opaque proxy failure.
+  if (path === "/api/health" || path === "/api/readiness") {
+    return NextResponse.next();
+  }
+
   if (isElectron || path.startsWith("/desktop-auth") || path.startsWith("/platform")) {
     if (publicAuthPath(path) || path.startsWith("/desktop-auth") || path.startsWith("/platform/sign-in")) {
       return NextResponse.next();
