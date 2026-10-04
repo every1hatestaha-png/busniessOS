@@ -10,12 +10,11 @@ import {
   MIN_NEW_PASSWORD_LENGTH,
   isAcceptableNewPassword,
 } from "@/lib/auth-password-policy";
+import { MAX_EMAIL_OTP_LENGTH, isValidEmailOtp, normalizeEmailOtp } from "@/lib/auth-email-otp";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const LOGIN_VISUAL = "/auth/faisal-mosque.webp";
 const RESEND_COOLDOWN_SECONDS = 30;
-const MIN_EMAIL_OTP_LENGTH = 6;
-const MAX_EMAIL_OTP_LENGTH = 10;
 
 export default function SignUpPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -101,8 +100,8 @@ export default function SignUpPage() {
     event.preventDefault();
     if (otpBusy) return;
 
-    const token = otp.replace(/\s+/g, "");
-    if (!/^\d+$/.test(token) || token.length < MIN_EMAIL_OTP_LENGTH || token.length > MAX_EMAIL_OTP_LENGTH) {
+    const token = normalizeEmailOtp(otp);
+    if (!isValidEmailOtp(token)) {
       setOtpError("Enter the verification code exactly as it appears in your email.");
       return;
     }
@@ -205,7 +204,7 @@ export default function SignUpPage() {
                       maxLength={MAX_EMAIL_OTP_LENGTH}
                       value={otp}
                       onChange={(event) => {
-                        setOtp(event.target.value.replace(/\D/g, "").slice(0, MAX_EMAIL_OTP_LENGTH));
+                        setOtp(normalizeEmailOtp(event.target.value));
                         setOtpError("");
                       }}
                       placeholder="12345678"
@@ -218,7 +217,7 @@ export default function SignUpPage() {
 
                   <button
                     type="submit"
-                    disabled={otpBusy || otp.length < MIN_EMAIL_OTP_LENGTH || otp.length > MAX_EMAIL_OTP_LENGTH}
+                    disabled={otpBusy || !isValidEmailOtp(otp)}
                     className="h-[52px] w-full rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-[#03251b] shadow-[0_10px_30px_rgba(16,185,129,0.14)] transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {otpBusy ? "Verifying..." : "Verify email"}
@@ -235,6 +234,19 @@ export default function SignUpPage() {
                     {resendBusy ? "Sending..." : resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : "Resend verification code"}
                   </button>
                   {resendStatus ? <p role="status" className="text-xs leading-5 text-slate-500">{resendStatus}</p> : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSent(false);
+                      setOtp("");
+                      setOtpError("");
+                      setResendStatus("");
+                      setResendCooldown(0);
+                    }}
+                    className="text-sm text-slate-500 transition hover:text-slate-300"
+                  >
+                    Use another email
+                  </button>
                   <Link href="/sign-in" className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] px-5 text-sm font-medium text-slate-200 transition hover:bg-white/[0.07]">Back to sign in</Link>
                 </div>
               </div>
@@ -278,6 +290,25 @@ export default function SignUpPage() {
                   {error ? <p role="alert" className="rounded-xl border border-red-400/20 bg-red-500/[0.07] px-4 py-3 text-sm leading-5 text-red-200">{error}</p> : null}
 
                   <button type="submit" disabled={busy} className="mt-1 h-[52px] w-full rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-[#03251b] shadow-[0_10px_30px_rgba(16,185,129,0.14)] transition hover:bg-emerald-400 disabled:opacity-60">{busy ? "Creating account..." : "Create account"}</button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      const identifier = email.trim().toLowerCase();
+                      if (!identifier) {
+                        setError("Enter the email address that received your verification code.");
+                        return;
+                      }
+                      setEmail(identifier);
+                      setError("");
+                      setOtp("");
+                      setOtpError("");
+                      setSent(true);
+                    }}
+                    className="h-11 w-full text-sm font-medium text-slate-400 transition hover:text-slate-200 disabled:opacity-50"
+                  >
+                    I already have a verification code
+                  </button>
                 </form>
 
                 <p className="mt-7 border-t border-white/[0.08] pt-6 text-center text-sm text-slate-500">Already have an account? <Link href="/sign-in" className="font-medium text-emerald-300 transition hover:text-emerald-200">Sign in</Link></p>

@@ -14,5 +14,7 @@ describe("sign-in verification code UI", () => {
     expect(source).toContain("supabase.auth.verifyOtp({");
     expect(source).toContain('type: "email"');
     expect(source).toContain("Resend verification code");
+    expect(source).toContain("normalizeEmailOtp");
+    expect(source).toContain("isValidEmailOtp");
   });
 });
