@@ -86,8 +86,7 @@ export default function SignInPage() {
     window.location.assign(destination);
   }
 
-  async function verifyPendingEmail(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function verifyPendingEmail() {
     if (verificationBusy) return;
 
     const identifier = email.trim().toLowerCase();
@@ -231,7 +230,7 @@ export default function SignInPage() {
               {showVerificationHelp || confirmationError ? (
                 <div className="rounded-xl border border-amber-400/15 bg-amber-400/[0.05] px-4 py-3 text-sm leading-6 text-slate-300">
                   <p>Enter the verification code from your MunshiOS email. If you need a fresh code, resend it below.</p>
-                  <form onSubmit={verifyPendingEmail} className="mt-3 space-y-2">
+                  <div className="mt-3 space-y-2">
                     <input
                       id="sign-in-verification-code"
                       inputMode="numeric"
@@ -248,13 +247,14 @@ export default function SignInPage() {
                     />
                     {verificationError ? <p role="alert" className="text-xs leading-5 text-red-200">{verificationError}</p> : null}
                     <button
-                      type="submit"
+                      type="button"
+                      onClick={verifyPendingEmail}
                       disabled={verificationBusy || verificationCode.length < MIN_EMAIL_OTP_LENGTH || verificationCode.length > MAX_EMAIL_OTP_LENGTH || !email.trim()}
                       className="h-10 rounded-lg bg-emerald-500 px-4 text-xs font-semibold text-[#03251b] hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {verificationBusy ? "Verifying..." : "Verify email"}
                     </button>
-                  </form>
+                  </div>
                   <button
                     type="button"
                     disabled={resendBusy || resendCooldown > 0 || !email.trim()}
