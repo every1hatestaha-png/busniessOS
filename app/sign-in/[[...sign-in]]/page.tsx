@@ -86,6 +86,53 @@ export default function SignInPage() {
     window.location.assign(destination);
   }
 
+  async function verifyPendingEmail(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (verificationBusy) return;
+
+    const identifier = email.trim().toLowerCase();
+    const token = verificationCode.replace(/\s+/g, "");
+
+    if (!identifier) {
+      setVerificationError("Enter the email address you used to create the account.");
+      return;
+    }
+
+    if (!/^\d+$/.test(token) || token.length < MIN_EMAIL_OTP_LENGTH || token.length > MAX_EMAIL_OTP_LENGTH) {
+      setVerificationError("Enter the verification code exactly as it appears in your email.");
+      return;
+    }
+
+    setVerificationBusy(true);
+    setVerificationError("");
+
+    const { data, error: verifyError } = await supabase.auth.verifyOtp({
+      email: identifier,
+      token,
+      type: "email",
+    });
+
+    if (verifyError || !data.user) {
+      const message = verifyError?.message.toLowerCase() ?? "";
+      if (message.includes("expired") || message.includes("invalid")) {
+        setVerificationError("That code is invalid or expired. Request a new code and try again.");
+      } else if (message.includes("rate") || message.includes("too many")) {
+        setVerificationError("Too many verification attempts. Please wait a moment and try again.");
+      } else {
+        setVerificationError("We could not verify that code. Please check it and try again.");
+      }
+      setVerificationBusy(false);
+      return;
+    }
+
+    const destination = safeInternalDestination(
+      searchParams.get("redirect_url") ?? searchParams.get("next"),
+      window.location.href,
+      "/onboarding",
+    );
+    window.location.assign(destination);
+  }
+
   async function resendVerification() {
     const identifier = email.trim().toLowerCase();
     if (!identifier || resendBusy || resendCooldown > 0) return;
