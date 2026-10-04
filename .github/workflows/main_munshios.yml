@@ -34,6 +34,8 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_release_gate?sslmode=disable
       NODE_ENV: test
       RUN_INTEGRATION_TESTS: "true"
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: synthetic-publishable-key
 
     steps:
       - uses: actions/checkout@v4
@@ -59,10 +61,12 @@ jobs:
       - name: Production Next.js build gate
         env:
           NODE_ENV: production
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Zml4dHVyZS5jbGVyay5hY2NvdW50cy5kZXYk
-          CLERK_SECRET_KEY: sk_test_fixture
+          VERCEL_ENV: production
+          RUN_PRISMA_MIGRATIONS_ON_BUILD: "0"
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_live_fixture
+          CLERK_SECRET_KEY: sk_live_fixture
           CLERK_OAUTH_CLIENT_ID: fixture-client
-        run: npm run build:web
+        run: npm run build
 
       - name: Visual QA harness syntax gate
         run: |
