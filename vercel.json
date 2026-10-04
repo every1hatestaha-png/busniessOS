@@ -40,7 +40,9 @@
       "architecture/restaurant-staging-readiness-v1-94": false,
       "architecture/restaurant-server-action-state-v1-95": false,
       "architecture/restaurant-final-staging-certification-v1-96": false,
-      "architecture/restaurant-main-convergence-v1-97": false
+      "architecture/restaurant-main-convergence-v1-97": false,
+      "architecture/auth-hardening-v1-1": false,
+      "architecture/restaurant-main-converged-v1-97": false
     }
   }
 }
