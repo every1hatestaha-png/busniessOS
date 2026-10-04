@@ -18,10 +18,6 @@ type AuthIdentity = {
   lastName: string | null;
 };
 
-function providerStorageId(identity: AuthIdentity) {
-  return identity.provider === "supabase" ? `supabase:${identity.providerUserId}` : identity.providerUserId;
-}
-
 async function findLocalUserByEmail(email: string) {
   return db.user.findFirst({
     where: {
@@ -76,8 +72,9 @@ const getCurrentIdentity = cache(async (): Promise<AuthIdentity | null> => {
 });
 
 async function resolveLocalUser(identity: AuthIdentity) {
-  const storedProviderId = providerStorageId(identity);
-  const existingByProvider = await db.user.findUnique({ where: { clerkId: storedProviderId } });
+  const existingByProvider = identity.provider === "supabase"
+    ? await db.user.findUnique({ where: { supabaseId: identity.providerUserId } })
+    : await db.user.findUnique({ where: { clerkId: identity.providerUserId } });
 
   if (existingByProvider) {
     const conflictingEmailOwner = await findLocalUserByEmail(identity.email);
@@ -117,9 +114,14 @@ async function resolveLocalUser(identity: AuthIdentity) {
       });
     }
 
+    if (existingByEmail.supabaseId && existingByEmail.supabaseId !== identity.providerUserId) {
+      throw new Error("This verified email is already linked to another Supabase identity.");
+    }
+
     return db.user.update({
       where: { id: existingByEmail.id },
       data: {
+        supabaseId: identity.providerUserId,
         email: identity.email,
         firstName: identity.firstName ?? existingByEmail.firstName,
         lastName: identity.lastName ?? existingByEmail.lastName,
@@ -128,12 +130,20 @@ async function resolveLocalUser(identity: AuthIdentity) {
   }
 
   return db.user.create({
-    data: {
-      clerkId: storedProviderId,
-      email: identity.email,
-      firstName: identity.firstName,
-      lastName: identity.lastName,
-    },
+    data: identity.provider === "supabase"
+      ? {
+          clerkId: `supabase:${identity.providerUserId}`,
+          supabaseId: identity.providerUserId,
+          email: identity.email,
+          firstName: identity.firstName,
+          lastName: identity.lastName,
+        }
+      : {
+          clerkId: identity.providerUserId,
+          email: identity.email,
+          firstName: identity.firstName,
+          lastName: identity.lastName,
+        },
   });
 }
 
