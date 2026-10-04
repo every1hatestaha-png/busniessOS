@@ -24,6 +24,8 @@ export default function SignUpPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
+  const [resendBusy, setResendBusy] = useState(false);
+  const [resendStatus, setResendStatus] = useState("");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -72,6 +74,28 @@ export default function SignUpPage() {
     setBusy(false);
   }
 
+  async function resendVerification() {
+    if (!email || resendBusy) return;
+    setResendBusy(true);
+    setResendStatus("");
+
+    const origin = window.location.origin;
+    const { error: resendError } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: {
+        emailRedirectTo: `${origin}/auth/callback?next=/onboarding`,
+      },
+    });
+
+    setResendStatus(
+      resendError
+        ? "We could not resend the verification email yet. Please wait a moment and try again."
+        : "A new verification email has been requested. Check your inbox and spam folder.",
+    );
+    setResendBusy(false);
+  }
+
   return (
     <main className="min-h-dvh bg-[#071821] text-white">
       <div className="grid min-h-dvh lg:grid-cols-[56%_44%]">
@@ -105,8 +129,19 @@ export default function SignUpPage() {
                 </div>
                 <h1 className="mt-6 text-[34px] font-semibold tracking-[-0.045em] text-white">Check your email</h1>
                 <p className="mt-3 text-[15px] leading-6 text-slate-400">We sent a verification link to <span className="font-medium text-slate-200">{email}</span>.</p>
-                <p className="mt-2 text-sm leading-6 text-slate-500">Open it on this device to finish setup and continue to your workspace.</p>
-                <Link href="/sign-in" className="mt-7 inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] px-5 text-sm font-medium text-slate-200 transition hover:bg-white/[0.07]">Back to sign in</Link>
+                <p className="mt-2 text-sm leading-6 text-slate-500">Open the verification link on any trusted device. After verification, continue to MunshiOS and sign in if prompted.</p>
+                <div className="mt-6 flex flex-col items-start gap-3">
+                  <button
+                    type="button"
+                    disabled={resendBusy}
+                    onClick={resendVerification}
+                    className="text-sm font-medium text-emerald-300 transition hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {resendBusy ? "Sending..." : "Resend verification email"}
+                  </button>
+                  {resendStatus ? <p role="status" className="text-xs leading-5 text-slate-500">{resendStatus}</p> : null}
+                  <Link href="/sign-in" className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] px-5 text-sm font-medium text-slate-200 transition hover:bg-white/[0.07]">Back to sign in</Link>
+                </div>
               </div>
             ) : (
               <>
