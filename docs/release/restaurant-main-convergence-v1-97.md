@@ -57,6 +57,24 @@ Before convergence, V1.96 passed:
 
 That exact-SHA certification is historical evidence only after convergence. V1.97 must rerun the affected gates.
 
+## Staging-derived auth migration rehearsal
+
+The converged auth migration was also applied on a temporary Neon branch cloned from the real Restaurant staging parent:
+
+- project: `wandering-moon-51932710`
+- parent staging branch: `br-delicate-credit-b5lttgnc`
+- temporary migration branch: `br-curly-wildflower-b5tgb8vv`
+- migration id: `bd03bfb4-f623-42e3-b2ee-0f5447c387bf`
+
+Observed schema delta is exactly:
+
+- nullable text column `users.supabaseId`
+- unique index `users_supabaseId_key`
+
+The temporary branch retained all 4 existing staging users as unlinked `supabaseId=NULL` rows. Parent and temporary-branch row counts plus deterministic content hashes matched for users (excluding the new nullable column), workspace memberships, Restaurant orders, payments, returns, GL entries and inventory transactions.
+
+The parent staging branch was not changed. Applying or discarding the prepared migration through Neon remains an explicit operator decision; this certification does not silently mutate the pinned staging branch.
+
 ## V1.97 hard gates
 
 The V1.97 workflow requires both V1.95 and current main to be ancestors of the candidate and asserts that convergence did not lose:
