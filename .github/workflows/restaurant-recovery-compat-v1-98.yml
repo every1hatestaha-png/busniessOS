@@ -1,0 +1,36 @@
+name: Restaurant recovery compatibility V1.98
+
+on:
+  push:
+    branches: [architecture/restaurant-recovery-compat-v1-98]
+  pull_request:
+    branches: [architecture/restaurant-main-converged-v1-97]
+
+permissions:
+  contents: read
+
+jobs:
+  offline-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RUN_INTEGRATION_TESTS: "false"
+      RUN_PRISMA_MIGRATIONS_ON_BUILD: "0"
+      DATABASE_URL: postgresql://synthetic:synthetic@127.0.0.1:19999/offline_unit_tests?sslmode=disable
+      VERCEL_ENV: preview
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx prisma generate
+      - run: npx prisma validate
+      - name: Auth and Restaurant offline unit regressions
+        run: npm test
+      - run: npx tsc --noEmit
+      - name: Release code and regression test lint
+        run: npx eslint app components lib proxy.ts next.config.ts scripts/production-build.cjs tests/unit/auth-recovery-start-route.test.ts
+      - name: Build with migrations disabled
+        run: npm run build

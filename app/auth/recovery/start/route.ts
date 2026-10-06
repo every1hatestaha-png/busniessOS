@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { safeInternalDestination } from "@/lib/auth-routing";
+import { db } from "@/lib/server/db";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const GENERIC_RESPONSE = { ok: true };
@@ -32,13 +33,32 @@ export async function POST(request: Request) {
     const redirectTo = `${origin}${safeRedirectPath}`;
 
     const supabase = await createSupabaseServerClient();
-    const { error } = await supabase.auth.signInWithOtp({
+    let { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
         shouldCreateUser: false,
         emailRedirectTo: redirectTo,
       },
     });
+
+    // Canonical Supabase users can recover before their first local-user sync.
+    // Preserve main's activation path only for a known, still-unlinked legacy
+    // MunshiOS user; unknown emails must never create a recovery identity.
+    if (error?.code === "otp_disabled") {
+      const legacyUser = await db.user.findFirst({
+        where: {
+          email: { equals: email, mode: "insensitive" },
+          supabaseId: null,
+        },
+        select: { id: true },
+      });
+      if (legacyUser) {
+        ({ error } = await supabase.auth.signInWithOtp({
+          email,
+          options: { shouldCreateUser: true, emailRedirectTo: redirectTo },
+        }));
+      }
+    }
 
     if (error) {
       console.warn("[auth] recovery OTP request failed", {
