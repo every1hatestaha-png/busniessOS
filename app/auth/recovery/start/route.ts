@@ -13,6 +13,21 @@ function genericResponse() {
   });
 }
 
+function recoveryOrigin(requestUrl: string) {
+  const fallback = new URL(requestUrl).origin;
+  const configured = process.env.AUTH_REDIRECT_ORIGIN?.trim();
+
+  if (!configured) return fallback;
+
+  try {
+    const parsed = new URL(configured);
+    if (!["https:", "http:"].includes(parsed.protocol)) return fallback;
+    return parsed.origin;
+  } catch {
+    return fallback;
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as { email?: unknown; redirectTo?: unknown };
@@ -22,7 +37,7 @@ export async function POST(request: Request) {
       return genericResponse();
     }
 
-    const origin = new URL(request.url).origin;
+    const origin = recoveryOrigin(request.url);
     const requestedRedirect = typeof body.redirectTo === "string" ? body.redirectTo : null;
     const safeRedirectPath = safeInternalDestination(
       requestedRedirect,
