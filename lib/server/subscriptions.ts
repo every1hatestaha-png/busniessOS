@@ -2,11 +2,11 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 import { cache } from "react";
-import { auth, clerkClient } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
 import { db } from "@/lib/server/db";
 import { getCurrentUser, requireWorkspace } from "@/lib/server/auth";
+import { getVerifiedPlatformOwnerIdentity } from "@/lib/server/platform-security";
 import {
   computeWorkspaceAccess,
   type SubscriptionSnapshot,
@@ -99,29 +99,60 @@ export async function requireWorkspaceAccess() {
 }
 
 export async function requirePlatformOwner() {
-  const configuredOwner = process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL?.trim().toLowerCase();
-  if (!configuredOwner) redirect("/dashboard");
-
-  const session = await auth({ acceptsToken: ["session_token", "oauth_token"] });
-  const userId = "userId" in session ? session.userId : null;
-  if (!userId) redirect("/platform/sign-in");
-
-  const clerkUser = await (await clerkClient()).users.getUser(userId);
+  // Resolve the platform actor from the verified Clerk owner identity itself.
+  // Never use the browser's unrelated Supabase identity for privileged audit
+  // attribution when both auth providers happen to have active sessions.
+  const clerkUser = await getVerifiedPlatformOwnerIdentity();
   const primaryEmailAddress = clerkUser.primaryEmailAddressId
     ? clerkUser.emailAddresses.find((email) => email.id === clerkUser.primaryEmailAddressId)
     : undefined;
   const authenticatedEmail = primaryEmailAddress?.emailAddress?.trim().toLowerCase();
+  if (!authenticatedEmail) redirect("/dashboard");
 
-  if (
-    !authenticatedEmail ||
-    primaryEmailAddress?.verification?.status !== "verified" ||
-    authenticatedEmail !== configuredOwner
-  ) {
-    redirect("/dashboard");
+  const existingByClerk = await db.user.findUnique({ where: { clerkId: clerkUser.id } });
+  if (existingByClerk) return existingByClerk;
+
+  const existingByEmail = await db.user.findFirst({
+    where: { email: { equals: authenticatedEmail, mode: "insensitive" } },
+  });
+
+  if (existingByEmail) {
+    try {
+      return await db.user.update({
+        where: { id: existingByEmail.id },
+        data: {
+          clerkId: clerkUser.id,
+          email: authenticatedEmail,
+          firstName: clerkUser.firstName ?? existingByEmail.firstName,
+          lastName: clerkUser.lastName ?? existingByEmail.lastName,
+        },
+      });
+    } catch (error) {
+      const linkedWinner = await db.user.findUnique({ where: { clerkId: clerkUser.id } });
+      if (linkedWinner?.id === existingByEmail.id) return linkedWinner;
+      throw error;
+    }
   }
 
-  const user = await getCurrentUser();
-  return user;
+  try {
+    return await db.user.create({
+      data: {
+        clerkId: clerkUser.id,
+        email: authenticatedEmail,
+        firstName: clerkUser.firstName,
+        lastName: clerkUser.lastName,
+      },
+    });
+  } catch (error) {
+    const linkedWinner = await db.user.findUnique({ where: { clerkId: clerkUser.id } });
+    if (linkedWinner) return linkedWinner;
+
+    const emailWinner = await db.user.findFirst({
+      where: { email: { equals: authenticatedEmail, mode: "insensitive" } },
+    });
+    if (emailWinner?.clerkId === clerkUser.id) return emailWinner;
+    throw error;
+  }
 }
 
 export async function requestWorkspaceActivation(input: { planCode: string; billing: "monthly" | "annual" }) {
