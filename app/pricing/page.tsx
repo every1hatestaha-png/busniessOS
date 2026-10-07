@@ -7,6 +7,8 @@ export const metadata: Metadata = {
   title: "Pricing",
   description: "MunshiOS pricing: PKR 29,000 one-time implementation and PKR 5,000 per month.",
   alternates: { canonical: "/pricing" },
+  openGraph: { title: "Pricing | MunshiOS", description: "MunshiOS pricing: PKR 29,000 one-time implementation and PKR 5,000 per month.", url: "/pricing", type: "website" },
+  twitter: { card: "summary_large_image", title: "Pricing | MunshiOS", description: "MunshiOS pricing: PKR 29,000 one-time implementation and PKR 5,000 per month." },
 };
 
 export default function PricingPage(){
