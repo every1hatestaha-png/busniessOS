@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getCurrentUser } from "@/lib/server/auth";
+import { getAuthenticatedUser } from "@/lib/server/auth";
 import { recordCurrentPolicyAcceptance } from "@/lib/server/legal";
 import { isTrustedMutationOrigin } from "@/lib/server/cors";
 
@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const user = await getCurrentUser();
+  const user = await getAuthenticatedUser();
   await recordCurrentPolicyAcceptance(user.id);
 
   return NextResponse.json(
