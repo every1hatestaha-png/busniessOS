@@ -31,7 +31,7 @@ describe("vertical operational manifests and entry points", () => {
   });
 
   it("keeps unavailable verticals empty and LEGACY exact", () => {
-    for (const vertical of ["RESTAURANT", "PROPERTY", "SERVICES"] as const) {
+    for (const vertical of ["PROPERTY", "SERVICES"] as const) {
       expect(VERTICALS[vertical].dashboard).toBeNull();
       expect(getVerticalNavigation(vertical)).toEqual([]);
       expect(getDashboardComposition(vertical)).toBeNull();
@@ -40,6 +40,14 @@ describe("vertical operational manifests and entry points", () => {
     }
     expect(getVerticalNavigation("LEGACY").map((section) => section.label)).toEqual(["Overview", "Operations", "Industry", "Finance", "Workspace"]);
     expect(getVerticalNavigation("LEGACY")[2]?.routes).toEqual(["/restaurant", "/manufacturing", "/services"]);
+  });
+  it("maps Restaurant navigation to real operational pages", () => {
+    const restaurant = JSON.parse(fs.readFileSync(path.join(root, "docs/architecture/vertical-entrypoints.restaurant-v1.json"), "utf8")) as typeof inventory;
+    const routes = new Set([...inventory, ...restaurant].filter(entry => entry.kind === "PAGE").map(entry => entry.url));
+    expect(VERTICALS.RESTAURANT.dashboard).toBe("/restaurant");
+    const navigation = getVerticalNavigation("RESTAURANT").flatMap(section => section.routes);
+    expect(new Set(navigation).size).toBe(navigation.length);
+    for (const route of navigation) expect(routes.has(route), route).toBe(true);
   });
 
   it("has an explicit classification and no unreviewed boundary", () => {

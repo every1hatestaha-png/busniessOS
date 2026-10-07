@@ -46,6 +46,7 @@ export function resolveProvisioningModules(
   businessType?: BuilderBusinessType | null,
 ): ProvisioningModuleKey[] {
   const resolved = new Set<ProvisioningModuleKey>(modules);
+  if (businessType === "restaurant") resolved.add("restaurant");
 
   if (resolved.has("restaurant") || resolved.has("wholesale") || resolved.has("manufacturing")) {
     resolved.add("inventory");

@@ -32,12 +32,18 @@ describe("persisted workspace vertical policy", () => {
   });
 
   it("denies all routes and capabilities for unreleased verticals", () => {
-    for (const vertical of ["RESTAURANT", "PROPERTY", "SERVICES"] as const) {
+    for (const vertical of ["PROPERTY", "SERVICES"] as const) {
       expect(resolveVerticalDashboard(vertical)).toBeNull();
       expect(canOpenVerticalRoute(vertical, "/dashboard", ["restaurant", "manufacturing"])).toBe(false);
       expect(canOpenVerticalRoute(vertical, "/sales", ["restaurant"])).toBe(false);
       expect(canUseVerticalCapability(vertical, "finance")).toBe(false);
     }
+  });
+  it("routes Restaurant home while preserving its module entitlement boundary", () => {
+    expect(resolveVerticalDashboard("RESTAURANT")).toBe("/restaurant");
+    expect(canOpenVerticalRoute("RESTAURANT", "/restaurant/pos", ["restaurant"])).toBe(true);
+    expect(canOpenVerticalRoute("RESTAURANT", "/restaurant/pos", [])).toBe(false);
+    expect(canUseVerticalCapability("RESTAURANT", "restaurant", [])).toBe(false);
   });
 
   it("rejects settings requests that change business classification", () => {

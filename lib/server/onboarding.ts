@@ -4,9 +4,8 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { Prisma, type BusinessType } from "@prisma/client";
 
-import { PROVISIONING_MODULE_KEYS, type ProvisioningModuleKey } from "@/lib/saas/provisioning-selection";
+import { DEFAULT_MODULES_BY_BUSINESS, PROVISIONING_MODULE_KEYS, isBuilderBusinessType, resolveProvisioningModules, type ProvisioningModuleKey } from "@/lib/saas/provisioning-selection";
 import { writeAudit } from "@/lib/server/audit";
-import { db } from "@/lib/server/db";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 import { onboardingSchema, type OnboardingInput } from "@/lib/validation/onboarding";
 import { initialVerticalForProvisioning } from "@/lib/verticals/registry";
@@ -39,7 +38,10 @@ function defaultModulesForBusinessType(businessType: BusinessType): Provisioning
 }
 
 function effectiveModules(businessType: BusinessType, provisioning?: ProvisioningInput) {
-  return provisioning?.modules.length ? provisioning.modules : defaultModulesForBusinessType(businessType);
+  const selected = provisioning?.modules.length ? provisioning.modules
+    : provisioning?.builderBusiness === "restaurant" ? DEFAULT_MODULES_BY_BUSINESS.restaurant
+      : defaultModulesForBusinessType(businessType);
+  return resolveProvisioningModules(selected, isBuilderBusinessType(provisioning?.builderBusiness) ? provisioning.builderBusiness : null);
 }
 
 function sanitizeProvisioningRequestId(value?: string) {
@@ -196,9 +198,8 @@ export async function createInitialWorkspace(
 
     const existing = await tx.workspaceMember.findFirst({ where: { userId }, select: { workspaceId: true } });
     if (existing && !options.allowAdditional) {
-      const workspace = await tx.workspace.findUnique({ where: { id: existing.workspaceId }, select: { businessType: true } });
-      await ensureWorkspaceSubscriptionInTransaction(tx, existing.workspaceId);
-      if (workspace) await ensureWorkspaceModulesInTransaction(tx, existing.workspaceId, workspace.businessType, provisioning);
+      // Onboarding is not an administrative module/subscription editor. A
+      // returning member must not rewrite another owner's workspace settings.
       return existing;
     }
 

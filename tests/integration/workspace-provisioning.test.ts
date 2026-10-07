@@ -4,6 +4,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { PROVISIONING_MODULE_KEYS } from "@/lib/saas/provisioning-selection";
 import { db } from "@/lib/server/db";
 import { createInitialWorkspace } from "@/lib/server/onboarding";
+import { getRestaurantOverviewReadiness } from "@/lib/server/industry-modules";
 import type { OnboardingInput } from "@/lib/validation/onboarding";
 
 const runId = randomUUID();
@@ -24,6 +25,21 @@ const input: OnboardingInput = {
 };
 
 describe("workspace provisioning transaction", () => {
+  it("provisions a new isolated Restaurant workspace with both modules and a trial", async () => {
+    const user = await db.user.create({ data: { clerkId: `restaurant-provisioning-${runId}`, email: `restaurant-provisioning-${runId}@example.invalid` } });
+    userIds.push(user.id);
+    const result = await createInitialWorkspace(user.id, { ...input, businessType: "OTHER" }, { modules: [], builderBusiness: "restaurant", billing: "monthly" }, { provisioningRequestId: `test:restaurant:${runId}` });
+    workspaceIds.push(result.workspaceId);
+    expect((await db.workspace.findUniqueOrThrow({ where: { id: result.workspaceId } })).vertical).toBe("RESTAURANT");
+    expect(await db.workspaceMember.count({ where: { userId: user.id, workspaceId: result.workspaceId, role: "OWNER" } })).toBe(1);
+    const modules = await db.$queryRaw<Array<{ moduleKey: string }>>`SELECT "moduleKey" FROM workspace_modules WHERE "workspaceId"=${result.workspaceId}::uuid AND enabled=true ORDER BY "moduleKey"`;
+    expect(modules.map(m => m.moduleKey)).toEqual(["inventory", "restaurant"]);
+    const subscription = await db.$queryRaw<Array<{ status: string; trialEndsAt: Date }>>`SELECT status, "trialEndsAt" FROM workspace_subscriptions WHERE "workspaceId"=${result.workspaceId}`;
+    expect(subscription[0]?.status).toBe("TRIALING");
+    expect(subscription[0]?.trialEndsAt.getTime()).toBeGreaterThan(Date.now());
+    expect(await db.workspaceMember.count({ where: { workspaceId: result.workspaceId, userId: { not: user.id } } })).toBe(0);
+    expect(await getRestaurantOverviewReadiness(result.workspaceId)).toEqual({ recipes: 0, activeRecipes: 0, openKitchenTickets: 0, openShift: null });
+  });
   afterAll(async () => {
     if (workspaceIds.length) await db.workspace.deleteMany({ where: { id: { in: workspaceIds } } });
     if (userIds.length) await db.user.deleteMany({ where: { id: { in: userIds } } });

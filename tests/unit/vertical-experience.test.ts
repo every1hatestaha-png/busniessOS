@@ -34,11 +34,18 @@ describe("vertical experience composition", () => {
   });
 
   it("has no dashboard, navigation, search or reports for unavailable verticals", () => {
-    for (const vertical of ["RESTAURANT", "PROPERTY", "SERVICES"] as const) {
+    for (const vertical of ["PROPERTY", "SERVICES"] as const) {
       expect(getDashboardComposition(vertical)).toBeNull();
       expect(getVerticalNavigation(vertical)).toEqual([]);
       expect(getSearchTypes(vertical)).toEqual([]);
       expect(getReportSectionOrder(vertical)).toEqual([]);
     }
+  });
+  it("provides the released Restaurant workspace without the generic ERP dashboard", () => {
+    expect(getDashboardComposition("RESTAURANT")).toEqual({ title: "Restaurant overview", lead: "restaurant", sharedErpPanels: false });
+    expect(getVerticalNavigation("RESTAURANT")[0]?.routes).toContain("/restaurant/pos");
+    expect(getVerticalNavigation("RESTAURANT").flatMap(section => section.routes)).not.toContain("/dashboard");
+    expect(getSearchTypes("RESTAURANT")).toEqual(["Order", "Product"]);
+    expect(getReportSectionOrder("RESTAURANT")).toEqual(["Restaurant", "Financial", "Inventory"]);
   });
 });
