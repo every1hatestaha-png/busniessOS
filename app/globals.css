@@ -396,6 +396,7 @@ body:has(a[aria-label="MunshiOS home"]) main button {
 /* Premium public-site composition */
 body:has(a[aria-label="MunshiOS home"]) main {
   letter-spacing: -0.005em;
+  overflow-x: clip;
 }
 
 body:has(a[aria-label="MunshiOS home"]) main h1 {
