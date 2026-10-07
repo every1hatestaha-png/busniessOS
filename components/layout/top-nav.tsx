@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useState, useSyncExternalStore } from "react";
 import type { Role } from "@prisma/client";
-import { Menu, Search, X } from "lucide-react";
+import { Menu, Search, ShoppingCart, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -17,7 +17,7 @@ import type { WorkspaceVertical } from "@/lib/verticals/registry";
 export function TopNav({ workspaceName, workspaceId, workspaces, role, enabledModules, vertical }: { workspaceName: string; workspaceId: string; workspaces: Array<{ workspaceId: string; workspace: { name: string } }>; role: Role; enabledModules: string[]; vertical: WorkspaceVertical }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-  const branding = getWorkspaceBranding(workspaceName);
+  const branding = getWorkspaceBranding(workspaceName);\n  const restaurantMode = vertical === "RESTAURANT";
   const isDesktop = useSyncExternalStore(
     () => () => {},
     () => Boolean(window.businessOSDesktop?.signOut && window.businessOSDesktop.switchAccount),
@@ -50,7 +50,7 @@ export function TopNav({ workspaceName, workspaceId, workspaces, role, enabledMo
           />
         )}
         <span className="max-w-40 truncate text-base font-bold tracking-tight lg:hidden" title={workspaceName}>{workspaceName}</span>
-        <GlobalSearch key={`desktop-${workspaceId}`} className="hidden min-w-0 max-w-[520px] flex-1 lg:block" />
+{restaurantMode ? (\n          <div className="hidden min-w-0 flex-1 lg:block">\n            <p className="truncate text-sm font-semibold text-slate-900">{workspaceName}</p>\n            <p className="text-[11px] text-slate-500">Restaurant workspace</p>\n          </div>\n        ) : (\n          <GlobalSearch key={`desktop-${workspaceId}`} className="hidden min-w-0 max-w-[520px] flex-1 lg:block" />\n        )}
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <WorkspaceSwitcher activeId={workspaceId} workspaces={workspaces} />
