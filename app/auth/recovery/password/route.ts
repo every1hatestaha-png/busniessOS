@@ -10,12 +10,12 @@ import {
   clearRecoveryMarker,
   hasRecoveryMarker,
 } from "@/lib/server/recovery-session";
-import { isTrustedMutationOrigin } from "@/lib/server/cors";
+import { isSameOriginWebMutation } from "@/lib/server/cors";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
   try {
-    if (!isTrustedMutationOrigin(request.headers.get("origin"), new URL(request.url).origin)) {
+    if (!isSameOriginWebMutation(request)) {
       return NextResponse.json(
         { error: "This request origin is not allowed." },
         { status: 403, headers: { "Cache-Control": "no-store" } },

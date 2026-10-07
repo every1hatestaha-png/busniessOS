@@ -30,7 +30,7 @@ const devOnlyPaths = [
   "node_modules/electron-builder",
 ];
 
-const audit = spawnSync("npm", ["audit", "--audit-level=moderate"], {
+const audit = spawnSync("npm", ["audit", "--json", "--audit-level=moderate"], {
   encoding: "utf8",
   shell: process.platform === "win32",
 });
@@ -63,6 +63,18 @@ for (const advisory of expectedLower) {
 }
 
 const lock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
+const report = JSON.parse(audit.stdout);
+if (!report.vulnerabilities || report.error) throw new Error("Dependency audit did not return a complete advisory report.");
+// Validate every affected path, including nested nodes and newly introduced
+// transitive packages. The historical explicit list alone can miss those.
+for (const [name, vulnerability] of Object.entries(report.vulnerabilities)) {
+  if (!vulnerability.nodes?.length) throw new Error(`Missing advisory dependency paths: ${name}`);
+  for (const dependencyPath of vulnerability.nodes) {
+    if (lock.packages?.[dependencyPath]?.dev !== true) {
+      throw new Error(`Advisory dependency is not provably dev-only: ${dependencyPath}`);
+    }
+  }
+}
 for (const path of devOnlyPaths) {
   const entry = lock.packages?.[path];
   if (!entry) continue;

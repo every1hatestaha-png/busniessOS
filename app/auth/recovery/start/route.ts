@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { safeInternalDestination } from "@/lib/auth-routing";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isSameOriginWebMutation } from "@/lib/server/cors";
 
 const GENERIC_RESPONSE = { ok: true };
 const DEFAULT_RECOVERY_REDIRECT = "/auth/callback?next=%2Frecovery%2Fnew-password";
@@ -34,6 +35,12 @@ function recoveryOrigin(requestUrl: string) {
 }
 
 export async function POST(request: Request) {
+  if (!isSameOriginWebMutation(request)) {
+    return NextResponse.json(
+      { error: "This request origin is not allowed." },
+      { status: 403, headers: { "Cache-Control": "no-store" } },
+    );
+  }
   try {
     const body = (await request.json()) as { email?: unknown; redirectTo?: unknown };
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";

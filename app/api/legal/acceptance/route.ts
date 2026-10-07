@@ -1,20 +1,24 @@
 import { NextResponse } from "next/server";
 
-import { getAuthenticatedUser } from "@/lib/server/auth";
+import { getOptionalCurrentUser } from "@/lib/server/auth";
 import { recordCurrentPolicyAcceptance } from "@/lib/server/legal";
-import { isTrustedMutationOrigin } from "@/lib/server/cors";
+import { isSameOriginWebMutation } from "@/lib/server/cors";
 
 export async function POST(request: Request) {
-  const origin = request.headers.get("origin");
-  const requestOrigin = new URL(request.url).origin;
-  if (!isTrustedMutationOrigin(origin, requestOrigin)) {
+  if (!isSameOriginWebMutation(request)) {
     return NextResponse.json(
       { error: "This request origin is not allowed." },
       { status: 403, headers: { "Cache-Control": "no-store" } },
     );
   }
 
-  const user = await getAuthenticatedUser();
+  const user = await getOptionalCurrentUser();
+  if (!user) {
+    return NextResponse.json(
+      { error: "Authentication required." },
+      { status: 401, headers: { "Cache-Control": "no-store" } },
+    );
+  }
   await recordCurrentPolicyAcceptance(user.id);
 
   return NextResponse.json(

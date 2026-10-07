@@ -45,6 +45,27 @@ describe("password recovery start", () => {
     expectNoProvisioning();
   });
 
+  it.each<Record<string, string>>([
+    { origin: "https://evil.example.invalid" },
+    { origin: "http://localhost:8081" },
+    { "sec-fetch-site": "cross-site" },
+    { origin: "null" },
+  ])("rejects cross-origin reset requests without sending email: %j", async headers => {
+    const response = await POST(new Request(`${origin}/auth/recovery/start`, {
+      method: "POST", headers, body: JSON.stringify({ email: "canonical@example.invalid" }),
+    }));
+    expect(response.status).toBe(403);
+    expect(resetPasswordForEmail).not.toHaveBeenCalled();
+    expectNoProvisioning();
+  });
+
+  it("accepts a same-origin recovery request", async () => {
+    await expectGeneric(await POST(new Request(`${origin}/auth/recovery/start`, {
+      method: "POST", headers: { origin }, body: JSON.stringify({ email: "canonical@example.invalid" }),
+    })));
+    expect(resetPasswordForEmail).toHaveBeenCalledOnce();
+  });
+
   it("preserves normalized legacy email recovery without creating or remapping users", async () => {
     findLegacyUser.mockResolvedValue({ id: "legacy-user", supabaseId: null });
     await expectGeneric(await POST(request({ email: " LEGACY@example.invalid " })));
