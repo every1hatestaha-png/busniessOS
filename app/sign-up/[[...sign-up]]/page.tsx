@@ -42,6 +42,23 @@ export default function SignUpPage() {
     return () => window.clearInterval(timer);
   }, [resendCooldown]);
 
+  async function persistPolicyAcceptance() {
+    try {
+      const response = await fetch("/api/legal/acceptance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async function finishVerifiedSignup() {
+    const recorded = await persistPolicyAcceptance();
+    window.location.assign(recorded ? "/auth/post-login" : "/legal/acceptance");
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
@@ -93,7 +110,7 @@ export default function SignUpPage() {
     }
 
     if (data.session) {
-      window.location.assign("/auth/post-login");
+      await finishVerifiedSignup();
       return;
     }
 
@@ -139,7 +156,7 @@ export default function SignUpPage() {
       return;
     }
 
-    window.location.assign("/auth/post-login");
+    await finishVerifiedSignup();
   }
 
   async function resendVerification() {
