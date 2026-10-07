@@ -26,6 +26,22 @@ function assertStagingTarget(env) {
   return { host: url.hostname, database: "neondb", schema: "public", project: "wandering-moon-51932710", branch };
 }
 
+function migrationChecksumMatches(bytes, expectedChecksum) {
+  const raw = createHash("sha256").update(bytes).digest("hex");
+  if (raw === expectedChecksum) return true;
+
+  // Older staging migrations were applied from a Windows checkout, so Prisma
+  // recorded the checksum of CRLF bytes while Git now materializes the same SQL
+  // with LF line endings. Accept ONLY line-ending-equivalent content; all other
+  // whitespace or SQL changes must still fail checksum validation.
+  const text = bytes.toString("utf8");
+  const lf = text.replace(/\r\n/g, "\n");
+  const crlf = lf.replace(/\n/g, "\r\n");
+  const lfHash = createHash("sha256").update(lf, "utf8").digest("hex");
+  const crlfHash = createHash("sha256").update(crlf, "utf8").digest("hex");
+  return expectedChecksum === lfHash || expectedChecksum === crlfHash;
+}
+
 function assertPolicySchemaState(pending, columns) {
   const names = new Set(columns.map(row => row.column_name));
   const required = ["termsAcceptedAt", "termsVersion", "privacyAcknowledgedAt", "privacyVersion"];
@@ -49,8 +65,9 @@ async function main() {
     for (const row of applied) {
       if (!expected.includes(row.migration_name)) throw new Error("Unknown migration in staging history.");
       const bytes = fs.readFileSync(path.join(root, row.migration_name, "migration.sql"));
-      const hash = createHash("sha256").update(bytes).digest("hex");
-      if (hash !== row.checksum) throw new Error(`Staging migration checksum mismatch: ${row.migration_name}`);
+      if (!migrationChecksumMatches(bytes, row.checksum)) {
+        throw new Error(`Staging migration checksum mismatch: ${row.migration_name}`);
+      }
     }
     const pending = expected.filter(name => !applied.some(row => row.migration_name === name));
     if (pending.some(name => name !== "20261007183000_user_policy_acceptance")) throw new Error("Unexpected pending staging migration.");
@@ -63,7 +80,7 @@ async function main() {
   }
 }
 
-module.exports = { assertStagingTarget, assertPolicySchemaState };
+module.exports = { assertStagingTarget, assertPolicySchemaState, migrationChecksumMatches };
 if (require.main === module) main().catch((error) => {
   // Connection errors can contain credentials; never serialize arbitrary driver errors.
   // Only surface our own fixed-format guard failures, which contain no connection values.
