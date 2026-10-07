@@ -1,9 +1,11 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
 import type { Role } from "@prisma/client";
 import { Menu, Search, ShoppingCart, X } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -14,10 +16,25 @@ import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { getWorkspaceBranding } from "@/lib/workspace-branding";
 import type { WorkspaceVertical } from "@/lib/verticals/registry";
 
-export function TopNav({ workspaceName, workspaceId, workspaces, role, enabledModules, vertical }: { workspaceName: string; workspaceId: string; workspaces: Array<{ workspaceId: string; workspace: { name: string } }>; role: Role; enabledModules: string[]; vertical: WorkspaceVertical }) {
+export function TopNav({
+  workspaceName,
+  workspaceId,
+  workspaces,
+  role,
+  enabledModules,
+  vertical,
+}: {
+  workspaceName: string;
+  workspaceId: string;
+  workspaces: Array<{ workspaceId: string; workspace: { name: string } }>;
+  role: Role;
+  enabledModules: string[];
+  vertical: WorkspaceVertical;
+}) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-  const branding = getWorkspaceBranding(workspaceName);\n  const restaurantMode = vertical === "RESTAURANT";
+  const branding = getWorkspaceBranding(workspaceName);
+  const restaurantMode = vertical === "RESTAURANT";
   const isDesktop = useSyncExternalStore(
     () => () => {},
     () => Boolean(window.businessOSDesktop?.signOut && window.businessOSDesktop.switchAccount),
@@ -31,9 +48,14 @@ export function TopNav({ workspaceName, workspaceId, workspaces, role, enabledMo
           <SheetTrigger render={<Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open navigation menu" />}>
             <Menu className="size-5" />
           </SheetTrigger>
-          <SheetContent side="left" className="w-[260px] max-w-full gap-0 p-0" showCloseButton={false} onClick={(event) => {
-            if ((event.target as HTMLElement).closest("a")) setMobileMenuOpen(false);
-          }}>
+          <SheetContent
+            side="left"
+            className={restaurantMode ? "w-[248px] max-w-full gap-0 p-0" : "w-[260px] max-w-full gap-0 p-0"}
+            showCloseButton={false}
+            onClick={(event) => {
+              if ((event.target as HTMLElement).closest("a")) setMobileMenuOpen(false);
+            }}
+          >
             <SheetTitle className="sr-only">Navigation menu</SheetTitle>
             <Sidebar workspaceName={workspaceName} role={role} enabledModules={enabledModules} vertical={vertical} />
           </SheetContent>
@@ -50,17 +72,44 @@ export function TopNav({ workspaceName, workspaceId, workspaces, role, enabledMo
           />
         )}
         <span className="max-w-40 truncate text-base font-bold tracking-tight lg:hidden" title={workspaceName}>{workspaceName}</span>
-{restaurantMode ? (\n          <div className="hidden min-w-0 flex-1 lg:block">\n            <p className="truncate text-sm font-semibold text-slate-900">{workspaceName}</p>\n            <p className="text-[11px] text-slate-500">Restaurant workspace</p>\n          </div>\n        ) : (\n          <GlobalSearch key={`desktop-${workspaceId}`} className="hidden min-w-0 max-w-[520px] flex-1 lg:block" />\n        )}
+
+        {restaurantMode ? (
+          <div className="hidden min-w-0 flex-1 lg:block">
+            <p className="truncate text-sm font-semibold text-slate-900">{workspaceName}</p>
+            <p className="text-[11px] text-slate-500">Restaurant workspace</p>
+          </div>
+        ) : (
+          <GlobalSearch key={`desktop-${workspaceId}`} className="hidden min-w-0 max-w-[520px] flex-1 lg:block" />
+        )}
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          {restaurantMode ? (
+            <Button
+              className="hidden bg-emerald-600 hover:bg-emerald-500 sm:inline-flex"
+              nativeButton={false}
+              render={<Link href="/restaurant/pos" />}
+            >
+              <ShoppingCart className="size-4" />
+              Open POS
+            </Button>
+          ) : null}
           <WorkspaceSwitcher activeId={workspaceId} workspaces={workspaces} />
-          <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileSearchOpen((open) => !open)} aria-label={mobileSearchOpen ? "Close search" : "Open search"}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="lg:hidden"
+            onClick={() => setMobileSearchOpen((open) => !open)}
+            aria-label={mobileSearchOpen ? "Close search" : "Open search"}
+          >
             {mobileSearchOpen ? <X /> : <Search />}
           </Button>
           {isDesktop ? <DesktopClerkAccountMenu /> : <WebAccountMenu />}
         </div>
       </div>
-      {mobileSearchOpen && <GlobalSearch key={`mobile-${workspaceId}`} autoFocus onNavigate={() => setMobileSearchOpen(false)} className="mt-3 w-full lg:hidden" />}
+
+      {mobileSearchOpen && !restaurantMode ? (
+        <GlobalSearch key={`mobile-${workspaceId}`} autoFocus onNavigate={() => setMobileSearchOpen(false)} className="mt-3 w-full lg:hidden" />
+      ) : null}
     </header>
   );
 }
