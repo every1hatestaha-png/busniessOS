@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 
-import { getCurrentUser } from "@/lib/server/auth";
+import { getAuthenticatedUser } from "@/lib/server/auth";
 import { recordCurrentPolicyAcceptance } from "@/lib/server/legal";
 
 export async function acceptCurrentPolicies(formData: FormData) {
@@ -12,7 +12,7 @@ export async function acceptCurrentPolicies(formData: FormData) {
     redirect("/legal/acceptance?error=required");
   }
 
-  const user = await getCurrentUser();
+  const user = await getAuthenticatedUser();
   await recordCurrentPolicyAcceptance(user.id);
   redirect("/auth/post-login");
 }
