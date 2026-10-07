@@ -4,18 +4,15 @@ import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, KeyRound, Mail } from "lucide-react";
+import { ArrowLeft, Mail } from "lucide-react";
 
-import { MAX_EMAIL_OTP_LENGTH, isValidEmailOtp, normalizeEmailOtp } from "@/lib/auth-email-otp";
-
-type RecoveryStep = "email" | "code";
+type RecoveryStep = "email" | "sent";
 
 const RESEND_COOLDOWN_SECONDS = 30;
 
 function ForgotPasswordContent() {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
   const [step, setStep] = useState<RecoveryStep>("email");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -54,7 +51,7 @@ function ForgotPasswordContent() {
 
   async function sendRecoveryEmail(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
-    if (busy || (step === "code" && resendCooldown > 0)) return;
+    if (busy || (step === "sent" && resendCooldown > 0)) return;
 
     const identifier = email.trim().toLowerCase();
     if (!identifier) {
@@ -80,47 +77,11 @@ function ForgotPasswordContent() {
       }
 
       setEmail(identifier);
-      setCode("");
       setLegacyNotice(false);
-      setStep("code");
+      setStep("sent");
       setResendCooldown(RESEND_COOLDOWN_SECONDS);
     } catch {
       setError("We could not request a password reset right now. Please try again shortly.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function verifyRecoveryCode(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (busy) return;
-
-    const identifier = email.trim().toLowerCase();
-    const token = normalizeEmailOtp(code);
-    if (!identifier || !isValidEmailOtp(token)) {
-      setError("Enter the verification code exactly as it appears in your email.");
-      return;
-    }
-
-    setBusy(true);
-    setError("");
-
-    try {
-      const response = await fetch("/auth/recovery/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: identifier, token }),
-      });
-
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-        setError(payload?.error || "That verification code is invalid or has expired.");
-        return;
-      }
-
-      window.location.assign("/recovery/new-password");
-    } catch {
-      setError("We could not verify that code right now. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -161,22 +122,20 @@ function ForgotPasswordContent() {
           </section>
         ) : null}
 
-        {step === "code" ? (
+        {step === "sent" ? (
           <section>
             <div className="grid size-12 place-items-center rounded-2xl border border-emerald-400/15 bg-emerald-400/[0.06]">
-              <KeyRound className="size-5 text-emerald-300" />
+              <Mail className="size-5 text-emerald-300" />
             </div>
             <h1 className="mt-6 text-[34px] font-semibold tracking-[-0.045em] text-white">Check your email</h1>
-            <p className="mt-2 text-[15px] leading-6 text-slate-400">If an account exists for <span className="font-medium text-slate-300">{email}</span>, a password reset email will arrive. Open its link in the browser that requested it. Check Inbox and Spam.</p>
-            <p className="mt-4 text-sm leading-6 text-slate-400">If your email includes a recovery code, you can enter it below instead.</p>
+            <p role="status" className="mt-2 text-[15px] leading-6 text-slate-400">Check your email and open the password reset link.</p>
+            <p className="mt-4 text-sm leading-6 text-slate-400">If an account exists for <span className="font-medium text-slate-300">{email}</span>, a password reset email will arrive. Open its link in the browser that requested it. Check Inbox and Spam.</p>
 
-            <form onSubmit={verifyRecoveryCode} className="mt-7 space-y-4">
-              <input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={MAX_EMAIL_OTP_LENGTH} required disabled={busy} value={code} onChange={(event) => setCode(normalizeEmailOtp(event.target.value))} placeholder="Verification code" className="h-[56px] w-full rounded-xl border border-white/10 bg-white/[0.035] px-4 text-center text-xl tracking-[0.18em] text-white outline-none transition placeholder:text-sm placeholder:tracking-normal placeholder:text-slate-700 focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-400/10 disabled:opacity-60" />
+            <div className="mt-7 space-y-4">
               {error ? <p role="alert" className="rounded-xl border border-red-400/20 bg-red-500/[0.07] px-4 py-3 text-sm leading-5 text-red-200">{error}</p> : null}
-              <button type="submit" disabled={busy} className="h-[52px] w-full rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-[#03251b] transition hover:bg-emerald-400 disabled:opacity-60">{busy ? "Verifying..." : "Verify code"}</button>
               <button type="button" disabled={busy || resendCooldown > 0} onClick={() => void sendRecoveryEmail()} className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] text-sm font-medium text-slate-300 transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-50">{resendCooldown > 0 ? `Resend email in ${resendCooldown}s` : "Resend password reset email"}</button>
-              <button type="button" disabled={busy} onClick={() => { setStep("email"); setCode(""); setError(""); setResendCooldown(0); }} className="w-full text-sm text-slate-500 transition hover:text-slate-300">Use another email</button>
-            </form>
+              <button type="button" disabled={busy} onClick={() => { setStep("email"); setError(""); setResendCooldown(0); }} className="w-full text-sm text-slate-500 transition hover:text-slate-300">Use another email</button>
+            </div>
           </section>
         ) : null}
 

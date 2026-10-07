@@ -781,16 +781,6 @@
   },
   {
     "file": "app/(dashboard)/restaurant/actions.ts",
-    "symbol": "initialRestaurantActionState",
-    "url": "/restaurant",
-    "kind": "SERVER_ACTION",
-    "category": "LEGACY_COMPATIBILITY",
-    "methods": [],
-    "boundary": "authenticated server context",
-    "scope": "dashboard layout plus entry point"
-  },
-  {
-    "file": "app/(dashboard)/restaurant/actions.ts",
     "symbol": "createRestaurantTableAction",
     "url": "/restaurant",
     "kind": "SERVER_ACTION",
@@ -1815,6 +1805,18 @@
     "scope": "entry point"
   },
   {
+    "file": "app/auth/confirm/route.ts",
+    "symbol": null,
+    "url": "/auth/confirm",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "public or signed webhook/auth protocol",
+    "scope": "entry point"
+  },
+  {
     "file": "app/auth/faisal-mosque.webp/route.ts",
     "symbol": null,
     "url": "/auth/faisal-mosque.webp",
@@ -1858,18 +1860,6 @@
     "category": "SHARED_CORE",
     "methods": [
       "GET"
-    ],
-    "boundary": "public or signed webhook/auth protocol",
-    "scope": "entry point"
-  },
-  {
-    "file": "app/auth/recovery/verify/route.ts",
-    "symbol": null,
-    "url": "/auth/recovery/verify",
-    "kind": "API",
-    "category": "SHARED_CORE",
-    "methods": [
-      "POST"
     ],
     "boundary": "public or signed webhook/auth protocol",
     "scope": "entry point"

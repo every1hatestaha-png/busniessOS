@@ -65,7 +65,7 @@ export default function RecoveryNewPasswordPage() {
 
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-        setError(payload?.error || "We could not update your password. Please request a new recovery code and try again.");
+        setError(payload?.error || "We could not update your password. Please request a new password reset link and try again.");
         setBusy(false);
         return;
       }

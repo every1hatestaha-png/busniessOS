@@ -80,4 +80,19 @@ describe("auth callback routing", () => {
     expect(issueRecoveryMarker).toHaveBeenCalledOnce();
     expect(response.headers.get("location")).toBe("https://staging.example.invalid/recovery/new-password");
   });
+
+  it("sends an expired or cross-browser recovery link back to request a fresh link", async () => {
+    exchangeCodeForSession.mockResolvedValue({ error: new Error("missing verifier") });
+    const response = await GET(new Request("https://staging.example.invalid/auth/callback?code=invalid&next=%2Frecovery%2Fnew-password"));
+    expect(response.headers.get("location")).toBe("https://staging.example.invalid/forgot-password?activation=1");
+    expect(issueRecoveryMarker).not.toHaveBeenCalled();
+  });
+
+  it.each(["unconfirmed", "stale", "claims error"])("does not grant recovery proof for %s link sessions", async (state) => {
+    if (state === "unconfirmed") getUser.mockResolvedValue({ data: { user: { email_confirmed_at: null } }, error: null });
+    if (state === "stale") getClaims.mockResolvedValue({ data: { claims: { amr: [{ method: "recovery", timestamp: Math.floor(Date.now() / 1000) - 601 }] } }, error: null });
+    if (state === "claims error") getClaims.mockResolvedValue({ data: null, error: new Error("invalid claims") });
+    await GET(new Request("https://staging.example.invalid/auth/callback?code=valid&next=%2Frecovery%2Fnew-password"));
+    expect(issueRecoveryMarker).not.toHaveBeenCalled();
+  });
 });

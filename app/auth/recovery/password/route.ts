@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     ) {
       await clearRecoveryMarker();
       return NextResponse.json(
-        { error: "Your recovery verification has expired. Request a new confirmation code." },
+        { error: "Your recovery verification has expired. Request a new password reset link." },
         { status: 403, headers: { "Cache-Control": "no-store" } },
       );
     }
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
     const { error: updateError } = await supabase.auth.updateUser({ password });
     if (updateError) {
       return NextResponse.json(
-        { error: "We could not update your password. Please request a new recovery code and try again." },
+        { error: "We could not update your password. Please request a new password reset link and try again." },
         { status: 400, headers: { "Cache-Control": "no-store" } },
       );
     }
