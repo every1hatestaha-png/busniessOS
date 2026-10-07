@@ -84,19 +84,24 @@ describe("password login, verification and logout event contracts", () => {
     expect(mocks.navigate).not.toHaveBeenCalled();
     expect(mocks.updates).toContain("Sign out failed. Please retry.");
   });
+  it("requires policy acknowledgement before creating a signup", async () => {
+    await submit(render(SignUpPage, { 2: email, 3: password, 5: false }));
+    expect(mocks.signup).not.toHaveBeenCalled();
+    expect(mocks.updates).toContain("Please agree to the Terms of Service and acknowledge the Privacy Policy before creating an account.");
+  });
   it("creates signup using the chosen password and waits for verification", async () => {
-    await submit(render(SignUpPage, { 2: email, 3: password }));
+    await submit(render(SignUpPage, { 2: email, 3: password, 5: true }));
     expect(mocks.signup.mock.calls[0][0]).toMatchObject({ email, password, options: { emailRedirectTo: "https://staging.example.invalid/auth/callback" } });
     expect(mocks.navigate).not.toHaveBeenCalled();
   });
   it("routes successful signup OTP sessions through the canonical router", async () => {
-    await submit(render(SignUpPage, { 2: email, 7: true, 8: "123456" }));
+    await submit(render(SignUpPage, { 2: email, 8: true, 9: "123456" }));
     expect(mocks.verify).toHaveBeenCalledWith({ email, token: "123456", type: "email" });
     expect(mocks.navigate).toHaveBeenCalledWith("/auth/post-login");
   });
   it.each(["invalid", "expired"])("retains verification after an %s signup OTP", async message => {
     mocks.verify.mockResolvedValue({ data: { user: null }, error: new Error(message) });
-    await submit(render(SignUpPage, { 2: email, 7: true, 8: "123456" }));
+    await submit(render(SignUpPage, { 2: email, 8: true, 9: "123456" }));
     expect(mocks.navigate).not.toHaveBeenCalled();
     expect(mocks.updates).toContain("That code is invalid or expired. Request a new code and try again.");
   });
