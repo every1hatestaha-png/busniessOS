@@ -1,11 +1,67 @@
 import type { Metadata } from "next";
-import { MarketingHeader, MarketingFooter, SectionTitle, CTA } from "@/components/marketing/site";
 import Link from "next/link";
-import { Check, ArrowRight } from "lucide-react";
-export const metadata: Metadata = { title:"Pricing | MunshiOS", description:"MunshiOS pricing for Pakistani businesses, with a 30-day trial and configurable industry modules.", alternates:{canonical:"/pricing"} };
-const plans=[
-{name:"Munshi Core",price:"Rs. 2,990",sub:"per month after trial",description:"For trading businesses that need connected sales, purchasing, inventory, khata and reports.",featured:false,features:["30-day trial","Sales & purchases","Customers & suppliers","Inventory & khata","Core reports"]},
-{name:"Custom Munshi",price:"Build yours",sub:"module-based",description:"Choose your industry and enable the operational depth your business actually needs.",featured:true,features:["Everything in Core","Industry modules","Configured workspace","Restaurant / manufacturing depth","30-day trial"]},
-{name:"Business+",price:"Custom",sub:"implementation-led",description:"For factories and larger operations that need a tailored rollout and deeper workflow setup.",featured:false,features:["Everything in Custom","Complex workflows","Migration planning","Structured implementation","Priority onboarding"]},
+import { ArrowRight, Check, Wrench, RefreshCw, ShieldCheck, Headphones } from "lucide-react";
+import { MarketingHeader, MarketingFooter, SectionTitle, CTA } from "@/components/marketing/site";
+
+export const metadata: Metadata = {
+  title: "Pricing | MunshiOS",
+  description: "MunshiOS pricing: PKR 29,000 one-time implementation and PKR 5,000 per month.",
+  alternates: { canonical: "/pricing" },
+};
+
+const setupIncludes = [
+  "Business workspace setup",
+  "Industry workflow configuration",
+  "Users, roles and initial permissions",
+  "Products / customers / suppliers structure",
+  "Guided onboarding and implementation support",
 ] as const;
-export default function PricingPage(){return <main className="min-h-screen bg-[#fbfcfa] text-slate-950"><MarketingHeader/><section className="border-b border-slate-200 bg-white py-16 text-center sm:py-20"><div className="mx-auto max-w-4xl px-5 sm:px-6"><p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">30-day trial</p><h1 className="mt-4 text-4xl font-semibold tracking-[-0.05em] sm:text-6xl">Simple starting point. Clear upgrade path.</h1><p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-slate-600">Start with the workspace that matches your business. Pricing gets deeper only when the workflow does.</p></div></section><section className="py-16 sm:py-20"><div className="mx-auto max-w-[1320px] px-5 sm:px-6 lg:px-10"><SectionTitle eyebrow="Plans" title="Pick the level that matches the operating complexity." body="No fake enterprise wall of features. The difference reflects actual workflow depth."/><div className="mt-10 grid gap-5 lg:grid-cols-3">{plans.map(plan=><article key={plan.name} className={`rounded-[26px] border p-7 ${plan.featured?"border-[#071821] bg-[#071821] text-white":"border-slate-200 bg-white"}`}><p className={`text-sm font-bold ${plan.featured?"text-emerald-300":"text-slate-950"}`}>{plan.name}</p><p className="mt-5 text-3xl font-semibold tracking-tight">{plan.price}</p><p className={`mt-1 text-xs ${plan.featured?"text-slate-400":"text-slate-500"}`}>{plan.sub}</p><p className={`mt-5 min-h-20 text-sm leading-6 ${plan.featured?"text-slate-300":"text-slate-600"}`}>{plan.description}</p><div className={`mt-6 space-y-3 border-t pt-5 ${plan.featured?"border-white/10":"border-slate-100"}`}>{plan.features.map(x=><p key={x} className="flex items-center gap-2 text-sm"><Check className="size-4 text-emerald-500"/>{x}</p>)}</div><Link href="/sign-up" className={`mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold ${plan.featured?"bg-emerald-500 text-[#06151d]":"border border-slate-200 text-slate-800"}`}>Choose plan <ArrowRight className="size-4"/></Link></article>)}</div></div></section><section className="border-y border-slate-200 bg-white py-16"><div className="mx-auto max-w-[1100px] px-5 sm:px-6"><SectionTitle eyebrow="Compare" title="What actually changes between plans." body="The comparison stays operational, not marketing-heavy."/><div className="mt-10 overflow-x-auto rounded-2xl border border-slate-200"><table className="min-w-[760px] w-full text-left text-sm"><thead className="bg-slate-50"><tr><th className="p-4">Capability</th><th className="p-4">Core</th><th className="p-4">Custom</th><th className="p-4">Business+</th></tr></thead><tbody>{[["Sales / purchases","✓","✓","✓"],["Inventory / khata","✓","✓","✓"],["Industry modules","—","✓","✓"],["Configured rollout","—","✓","✓"],["Complex implementation","—","—","✓"]].map(row=><tr key={row[0]} className="border-t border-slate-100">{row.map((x,i)=><td key={i} className={`p-4 ${i?"font-bold text-emerald-700":"text-slate-700"}`}>{x}</td>)}</tr>)}</tbody></table></div></div></section><CTA/><MarketingFooter/></main>}
+
+const monthlyIncludes = [
+  "Ongoing MunshiOS access",
+  "Configured business workspace",
+  "Product updates",
+  "Operational modules included in your setup",
+  "Standard support",
+] as const;
+
+export default function PricingPage() {
+  return <main className="min-h-screen bg-[#fbfcfa] text-slate-950">
+    <MarketingHeader/>
+    <section className="relative overflow-hidden border-b border-slate-200 bg-white py-16 sm:py-24">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_15%,rgba(16,185,129,.13),transparent_35%)]"/>
+      <div className="relative mx-auto max-w-4xl px-5 text-center sm:px-6">
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">Pricing</p>
+        <h1 className="mt-4 text-4xl font-semibold tracking-[-0.05em] sm:text-6xl">Simple pricing for a serious business system.</h1>
+        <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-slate-600">No three-plan maze. MunshiOS is implemented around your business, then runs on one clear monthly subscription.</p>
+      </div>
+    </section>
+
+    <section className="py-16 sm:py-20"><div className="mx-auto max-w-[1180px] px-5 sm:px-6">
+      <div className="grid gap-5 lg:grid-cols-2">
+        <article className="rounded-[30px] border border-slate-200 bg-white p-7 sm:p-9">
+          <div className="flex items-center justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">One-time implementation</p><p className="mt-4 text-5xl font-semibold tracking-[-0.05em]">PKR 29,000</p></div><div className="grid size-12 place-items-center rounded-2xl bg-emerald-50 text-emerald-700"><Wrench className="size-5"/></div></div>
+          <p className="mt-5 text-sm leading-7 text-slate-600">This is the setup phase where MunshiOS is configured around the way your business actually works.</p>
+          <div className="mt-7 space-y-3 border-t border-slate-100 pt-6">{setupIncludes.map(x=><p key={x} className="flex items-start gap-2 text-sm text-slate-700"><Check className="mt-0.5 size-4 shrink-0 text-emerald-600"/>{x}</p>)}</div>
+        </article>
+        <article className="rounded-[30px] bg-[#071821] p-7 text-white sm:p-9">
+          <div className="flex items-center justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-emerald-400">Monthly subscription</p><p className="mt-4 text-5xl font-semibold tracking-[-0.05em]">PKR 5,000</p><p className="mt-1 text-xs text-slate-400">per month</p></div><div className="grid size-12 place-items-center rounded-2xl bg-white/10 text-emerald-300"><RefreshCw className="size-5"/></div></div>
+          <p className="mt-5 text-sm leading-7 text-slate-400">After implementation, the monthly subscription keeps your configured workspace active and updated.</p>
+          <div className="mt-7 space-y-3 border-t border-white/10 pt-6">{monthlyIncludes.map(x=><p key={x} className="flex items-start gap-2 text-sm text-slate-300"><Check className="mt-0.5 size-4 shrink-0 text-emerald-400"/>{x}</p>)}</div>
+        </article>
+      </div>
+      <div className="mt-8 flex justify-center"><Link href="/sign-up" className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-bold text-white">Start with MunshiOS <ArrowRight className="size-4"/></Link></div>
+    </div></section>
+
+    <section className="border-y border-slate-200 bg-white py-16 sm:py-20"><div className="mx-auto max-w-[1180px] px-5 sm:px-6">
+      <SectionTitle eyebrow="What you are paying for" title="Implementation first. Software second." body="The goal is not to hand you a login and disappear. The implementation fee covers getting MunshiOS into a usable business state."/>
+      <div className="mt-10 grid gap-4 md:grid-cols-3">
+        <article className="rounded-[24px] border border-slate-200 bg-[#fbfcfa] p-6"><Wrench className="size-5 text-emerald-700"/><h3 className="mt-4 font-bold">Configure</h3><p className="mt-2 text-sm leading-6 text-slate-600">Business type, workflows, users and operating structure are set up around your use case.</p></article>
+        <article className="rounded-[24px] border border-slate-200 bg-[#fbfcfa] p-6"><ShieldCheck className="size-5 text-emerald-700"/><h3 className="mt-4 font-bold">Validate</h3><p className="mt-2 text-sm leading-6 text-slate-600">The workspace is checked with the transactions and modules your team will actually use.</p></article>
+        <article className="rounded-[24px] border border-slate-200 bg-[#fbfcfa] p-6"><Headphones className="size-5 text-emerald-700"/><h3 className="mt-4 font-bold">Onboard</h3><p className="mt-2 text-sm leading-6 text-slate-600">Your team gets a configured starting point instead of a blank ERP screen.</p></article>
+      </div>
+    </div></section>
+    <CTA title="Set up the system once. Run the business every day."/>
+    <MarketingFooter/>
+  </main>;
+}
