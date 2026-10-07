@@ -3,8 +3,12 @@ const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 
 const expectedAdvisories = new Set([
+  // Dev-only glob tooling. npm currently requires a breaking toolchain change
+  // to remove this advisory; production dependency audit remains clean.
   "GHSA-vfj7-8cjw-p6xm",
-  "GHSA-ch52-4w7c-c8xp",
+  // Dev-only Electron packaging chain. Keep explicitly contained until the
+  // builder chain can move without breaking desktop packaging.
+  "GHSA-hp3w-g68c-fv3c",
 ]);
 
 const devOnlyPaths = [
@@ -16,10 +20,14 @@ const devOnlyPaths = [
   "node_modules/@ts-morph/common",
   "node_modules/ts-morph",
   "node_modules/shadcn",
-  "node_modules/http-cache-semantics",
-  "node_modules/cacheable-request",
-  "node_modules/got",
   "node_modules/app-builder-lib/node_modules/@electron/get",
+  "node_modules/sprintf-js",
+  "node_modules/roarr",
+  "node_modules/global-agent",
+  "node_modules/app-builder-lib",
+  "node_modules/dmg-builder",
+  "node_modules/electron-builder-squirrel-windows",
+  "node_modules/electron-builder",
 ];
 
 const audit = spawnSync("npm", ["audit", "--audit-level=moderate"], {
