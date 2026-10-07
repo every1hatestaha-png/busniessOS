@@ -372,8 +372,8 @@ body:has(a[aria-label="MunshiOS home"]) main button {
 
 @media (max-width: 640px) {
   body:has(a[aria-label="MunshiOS home"]) main > section {
-    padding-top: 3.75rem;
-    padding-bottom: 3.75rem;
+    padding-top: 2.9rem;
+    padding-bottom: 2.9rem;
   }
 
   html.marketing-motion-ready body:has(a[aria-label="MunshiOS home"]) main > section.marketing-reveal-target,
@@ -432,25 +432,67 @@ body:has(a[aria-label="MunshiOS home"]) main [class*="shadow-["] {
 
 @media (max-width: 767px) {
   body:has(a[aria-label="MunshiOS home"]) main h1 {
-    font-size: clamp(2.75rem, 13vw, 4rem);
-    line-height: .98;
+    font-size: clamp(2.55rem, 11.5vw, 3.6rem);
+    line-height: .97;
+    letter-spacing: -.052em;
   }
 
   body:has(a[aria-label="MunshiOS home"]) main h2 {
-    font-size: clamp(2.15rem, 10vw, 3.25rem);
-    line-height: 1.02;
+    font-size: clamp(2rem, 8.8vw, 3rem);
+    line-height: 1.01;
+    letter-spacing: -.045em;
   }
 
   body:has(a[aria-label="MunshiOS home"]) main > section {
-    padding-top: 3.25rem;
-    padding-bottom: 3.25rem;
+    padding-top: 2.9rem;
+    padding-bottom: 2.9rem;
   }
 
   body:has(a[aria-label="MunshiOS home"]) header > div {
     min-width: 0;
   }
 
+}
+
+
+@media (max-width: 767px) {
+  body:has(a[aria-label="MunshiOS home"]) header > div {
+    height: 64px;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  body:has(a[aria-label="MunshiOS home"]) header a[aria-label="MunshiOS home"] {
+    gap: .5rem;
+  }
+
+  body:has(a[aria-label="MunshiOS home"]) header a[aria-label="MunshiOS home"] span:first-child {
+    width: 2rem;
+    height: 2rem;
+    border-radius: .65rem;
+    font-size: .72rem;
+  }
+
   body:has(a[aria-label="MunshiOS home"]) header a[aria-label="MunshiOS home"] span:last-child {
-    display: none;
+    display: inline;
+    font-size: .95rem;
+  }
+
+  body:has(a[aria-label="MunshiOS home"]) main p {
+    line-height: 1.65;
+  }
+
+  body:has(a[aria-label="MunshiOS home"]) main article.marketing-reveal-target,
+  html.marketing-motion-ready body:has(a[aria-label="MunshiOS home"]) main article.marketing-reveal-target {
+    transform: translate3d(0, 12px, 0);
+    filter: blur(2px);
+  }
+
+  body:has(a[aria-label="MunshiOS home"]) main [class*="rounded-[30px]"] {
+    border-radius: 1.35rem;
+  }
+
+  body:has(a[aria-label="MunshiOS home"]) main [class*="rounded-[28px]"] {
+    border-radius: 1.25rem;
   }
 }
