@@ -48,7 +48,7 @@ export default async function RestaurantPage() {
   const canManage = role === "OWNER" || role === "ADMIN" || role === "MANAGER";
   const occupiedTables = tables.filter((table) => table.status === "OCCUPIED").length;
   const readyTables = new Set(
-    liveOrders.filter((order) => order.status === "READY" && order.restaurantTableId).map((order) => order.restaurantTableId),
+    liveOrders.filter((order) => order.status === "READY" && order.tableName).map((order) => order.tableName),
   );
   const liveByStatus = {
     CONFIRMED: liveOrders.filter((order) => order.status === "CONFIRMED"),
@@ -115,7 +115,7 @@ export default async function RestaurantPage() {
             {tables.length ? (
               <div className="mt-4 grid grid-cols-4 gap-2 sm:grid-cols-6 xl:grid-cols-4">
                 {tables.slice(0, 24).map((table) => {
-                  const ready = readyTables.has(table.id);
+                  const ready = readyTables.has(table.name);
                   const occupied = table.status === "OCCUPIED";
                   return (
                     <div
