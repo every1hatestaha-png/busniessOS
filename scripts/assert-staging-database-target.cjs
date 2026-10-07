@@ -64,8 +64,14 @@ async function main() {
 }
 
 module.exports = { assertStagingTarget, assertPolicySchemaState };
-if (require.main === module) main().catch(() => {
-  // Connection errors can contain credentials; never serialize the driver error.
-  console.error("Staging database guard failed; no migration was authorized by this guard.");
+if (require.main === module) main().catch((error) => {
+  // Connection errors can contain credentials; never serialize arbitrary driver errors.
+  // Only surface our own fixed-format guard failures, which contain no connection values.
+  const message = error instanceof Error ? error.message : "";
+  const safe =
+    /^(Staging migration checksum mismatch: [A-Za-z0-9_]+|Staging migration history requires investigation before deployment\.|Unknown migration in staging history\.|Unexpected pending staging migration\.|Policy schema and migration ledger disagree; investigate before migration\.|Refusing staging migration outside the approved preview project\.|Refusing migration: database does not match a verified staging endpoint\.|Invalid staging database configuration\.)$/.test(message)
+      ? message
+      : "Staging database guard failed; no migration was authorized by this guard.";
+  console.error(safe);
   process.exitCode = 1;
 });
