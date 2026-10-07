@@ -1,34 +1,122 @@
 import Link from "next/link";
-import { RestaurantMutationForm } from "@/app/(dashboard)/restaurant/mutation-form";
-import { Clock3, CookingPot, CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Clock3, CookingPot } from "lucide-react";
 
+import { RestaurantMutationForm } from "@/app/(dashboard)/restaurant/mutation-form";
 import { transitionRestaurantOrderAction } from "@/app/(dashboard)/restaurant/v1-actions";
-import { PageHeader } from "@/components/business/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
 import { listRestaurantOrders } from "@/lib/server/restaurant-workspace";
+import { cn } from "@/lib/utils";
 
 const kitchenColumns = [
-  { status: "CONFIRMED", label: "New", icon: Clock3, next: "PREPARING", action: "Start preparing" },
-  { status: "PREPARING", label: "Preparing", icon: CookingPot, next: "READY", action: "Mark ready" },
-  { status: "READY", label: "Ready", icon: CheckCircle2, next: "COMPLETED", action: "Complete" },
+  { status: "CONFIRMED", label: "New", icon: Clock3, next: "PREPARING", action: "Start preparing", tone: "blue" },
+  { status: "PREPARING", label: "Preparing", icon: CookingPot, next: "READY", action: "Mark ready", tone: "amber" },
+  { status: "READY", label: "Ready", icon: CheckCircle2, next: "COMPLETED", action: "Serve order", tone: "emerald" },
 ] as const;
 
 export default async function RestaurantKitchenPage() {
-  const { workspaceId } = await requireWorkspace();
+  const { workspaceId, workspace } = await requireWorkspace();
   const orders = await listRestaurantOrders(workspaceId, 200, { statuses: ["CONFIRMED", "PREPARING", "READY"], oldestFirst: true });
+
+  const counts = {
+    CONFIRMED: orders.filter((order) => order.status === "CONFIRMED").length,
+    PREPARING: orders.filter((order) => order.status === "PREPARING").length,
+    READY: orders.filter((order) => order.status === "READY").length,
+  };
+
   return (
-    <div className="mx-auto max-w-[1800px] space-y-6">
-      <PageHeader title="Kitchen Board" description="Live preparation queue for confirmed restaurant orders. Status changes are tenant-scoped and audited." />
+    <div className="mx-auto max-w-[1560px] space-y-4">
+      <section className="flex flex-col gap-3 rounded-2xl border bg-white p-4 shadow-none sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">Kitchen display</p>
+          <h1 className="mt-1 text-xl font-semibold tracking-tight">{workspace.name} kitchen</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Live preparation queue for confirmed restaurant orders.</p>
+        </div>
+        <Link href="/restaurant/orders" className="text-sm font-semibold text-emerald-700 hover:underline">Open order board</Link>
+      </section>
+
+      <section className="grid gap-3 sm:grid-cols-3">
+        <KitchenMetric label="New" value={counts.CONFIRMED} tone="blue" />
+        <KitchenMetric label="Preparing" value={counts.PREPARING} tone="amber" />
+        <KitchenMetric label="Ready" value={counts.READY} tone="emerald" />
+      </section>
+
       {orders.length === 200 ? <p className="text-sm text-amber-700">Showing the oldest 200 kitchen orders. Finish these to advance the queue.</p> : null}
-      <div className="grid gap-4 lg:grid-cols-3">
+
+      <div className="grid gap-4 xl:grid-cols-3">
         {kitchenColumns.map((column) => {
           const matching = orders.filter((order) => order.status === column.status);
           const Icon = column.icon;
-          return <section key={column.status}><div className="mb-3 flex items-center justify-between"><div className="flex items-center gap-2"><Icon className="size-4 text-emerald-600" /><h2 className="font-semibold">{column.label}</h2></div><span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold">{matching.length}</span></div><div className="space-y-3">{matching.length ? matching.map((order) => <Card key={order.id} className="rounded-lg shadow-sm"><CardContent className="space-y-3 p-4"><div className="flex justify-between gap-3"><div><Link href={`/restaurant/orders/${order.id}/print?kind=kot`} className="font-semibold underline">{order.orderNumber}</Link><p className="text-xs text-muted-foreground">{order.source} · {order.fulfillmentType.replaceAll("_", " ")}{order.tableName ? ` · ${order.tableName}` : ""}</p></div><span className="text-xs text-muted-foreground">{new Intl.DateTimeFormat("en-PK", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Karachi" }).format(order.createdAt)}</span></div>{order.notes ? <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">{order.notes}</p> : null}<div className="flex gap-2"><RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}><input type="hidden" name="orderId" value={order.id} /><input type="hidden" name="nextStatus" value={column.next} /><Button type="submit" size="sm">{column.action}</Button></RestaurantMutationForm><RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}><input type="hidden" name="orderId" value={order.id} /><input type="hidden" name="nextStatus" value="CANCELLED" /><Button type="submit" size="sm" variant="outline">Cancel</Button></RestaurantMutationForm></div></CardContent></Card>) : <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">Queue clear</div>}</div></section>;
+          const headTone = column.tone === "amber"
+            ? "bg-amber-50 text-amber-800"
+            : column.tone === "blue"
+              ? "bg-blue-50 text-blue-800"
+              : "bg-emerald-50 text-emerald-800";
+
+          return (
+            <section key={column.status} className="min-w-0 rounded-2xl border bg-slate-50/70 p-3 sm:p-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className={cn("grid size-8 place-items-center rounded-xl", headTone)}><Icon className="size-4" /></span>
+                  <div>
+                    <h2 className="text-sm font-semibold">{column.label}</h2>
+                    <p className="text-[11px] text-muted-foreground">{matching.length} order{matching.length === 1 ? "" : "s"}</p>
+                  </div>
+                </div>
+                <span className={cn("rounded-full px-2.5 py-1 text-xs font-semibold", headTone)}>{matching.length}</span>
+              </div>
+
+              <div className="space-y-3">
+                {matching.length ? matching.map((order) => (
+                  <Card key={order.id} className={cn("rounded-2xl border bg-white shadow-none", column.status === "READY" && "border-emerald-300")}>
+                    <CardContent className="space-y-3 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <Link href={`/restaurant/orders/${order.id}/print?kind=kot`} className="text-sm font-semibold underline underline-offset-4">{order.orderNumber}</Link>
+                          <p className="mt-1 text-[11px] font-medium text-muted-foreground">
+                            {order.fulfillmentType.replaceAll("_", " ")}{order.tableName ? ` · ${order.tableName}` : ""}
+                          </p>
+                        </div>
+                        <span className="rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">
+                          {new Intl.DateTimeFormat("en-PK", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Karachi" }).format(order.createdAt)}
+                        </span>
+                      </div>
+
+                      {order.notes ? <p className="rounded-xl bg-amber-50 p-2.5 text-xs text-amber-900">{order.notes}</p> : null}
+
+                      <div className="flex flex-wrap gap-2">
+                        <RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}>
+                          <input type="hidden" name="orderId" value={order.id} />
+                          <input type="hidden" name="nextStatus" value={column.next} />
+                          <Button type="submit" size="sm" className="rounded-lg bg-emerald-600 hover:bg-emerald-500">{column.action}</Button>
+                        </RestaurantMutationForm>
+                        <RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}>
+                          <input type="hidden" name="orderId" value={order.id} />
+                          <input type="hidden" name="nextStatus" value="CANCELLED" />
+                          <Button type="submit" size="sm" variant="outline" className="rounded-lg">Cancel</Button>
+                        </RestaurantMutationForm>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )) : <div className="rounded-2xl border border-dashed bg-white p-10 text-center text-sm text-muted-foreground">Queue clear</div>}
+              </div>
+            </section>
+          );
         })}
       </div>
     </div>
+  );
+}
+
+function KitchenMetric({ label, value, tone }: { label: string; value: number; tone: "blue" | "amber" | "emerald" }) {
+  const toneClass = tone === "amber" ? "bg-amber-100 text-amber-800" : tone === "blue" ? "bg-blue-100 text-blue-800" : "bg-emerald-100 text-emerald-800";
+  return (
+    <Card className="rounded-2xl border shadow-none">
+      <CardContent className="flex items-center justify-between p-4">
+        <div><p className="text-xs font-medium text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p></div>
+        <span className={cn("rounded-xl px-3 py-2 text-xs font-semibold", toneClass)}>Live</span>
+      </CardContent>
+    </Card>
   );
 }
