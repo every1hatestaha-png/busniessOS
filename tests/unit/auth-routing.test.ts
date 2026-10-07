@@ -23,6 +23,8 @@ describe("auth routing security", () => {
   it("keeps only intended marketing routes public", () => {
     expect(isPublicMarketingPath("/")).toBe(true);
     expect(isPublicMarketingPath("/features")).toBe(true);
+    expect(isPublicMarketingPath("/product")).toBe(true);
+    expect(isPublicMarketingPath("/security")).toBe(true);
     expect(isPublicMarketingPath("/get-your-munshi")).toBe(true);
     expect(isPublicMarketingPath("/get-your-munshi/contact")).toBe(true);
     expect(isPublicMarketingPath("/dashboard")).toBe(false);
