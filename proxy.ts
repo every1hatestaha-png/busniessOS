@@ -59,9 +59,13 @@ async function getSupabaseSessionState(request: NextRequest) {
     },
   });
 
-  const { data, error } = await supabase.auth.getUser();
+  // Supabase recommends getClaims() in Next.js Proxy: it validates the JWT
+  // signature/expiry and refreshes cookies without forcing a /user network
+  // lookup on every navigation. Protected server code still resolves the
+  // current user with getUser() before returning workspace data.
+  const { data, error } = await supabase.auth.getClaims();
   return {
-    signedIn: !error && Boolean(data.user?.email_confirmed_at),
+    signedIn: !error && Boolean(data?.claims?.sub),
     response,
   };
 }
