@@ -24,9 +24,9 @@ export function MarketingStructuredData() {
         description: "Connected business software for Pakistani manufacturers, wholesalers and growing businesses.",
         offers: {
           "@type": "Offer",
-          price: "0",
+          price: "5000",
           priceCurrency: "PKR",
-          description: "First 30 days free. Paid plans start after the trial.",
+          description: "PKR 29,000 one-time implementation and PKR 5,000 monthly subscription.",
         },
         publisher: { "@id": `${siteUrl}/#organization` },
       },
