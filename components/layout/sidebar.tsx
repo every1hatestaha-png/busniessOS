@@ -85,11 +85,11 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const enabled = new Set(enabledModules);
-  const branding = getWorkspaceBranding(workspaceName);
+  const branding = getWorkspaceBranding(workspaceName);\n  const restaurantMode = vertical === "RESTAURANT";
 
   return (
-    <aside className="flex h-full w-[260px] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
-      <div className="flex h-[72px] shrink-0 items-center gap-3 border-b border-sidebar-border px-4">
+    <aside className={cn("flex h-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground", restaurantMode ? "w-[248px]" : "w-[260px]")}>
+      <div className={cn("flex shrink-0 items-center gap-3 border-b border-sidebar-border", restaurantMode ? "h-[76px] px-[18px]" : "h-[72px] px-4")}>
         {branding ? (
           <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/15 bg-black shadow-sm" aria-label={branding.logoAlt}>
             <Image
@@ -116,11 +116,11 @@ export function Sidebar({
         )}
         <div className="min-w-0 leading-tight">
           <p className="text-base font-semibold tracking-[-0.02em] text-white">MunshiOS</p>
-          <p className="mt-0.5 truncate text-[11px] text-slate-400" title={workspaceName}>{workspaceName}</p>
+          <p className="mt-0.5 truncate text-[11px] text-slate-400" title={workspaceName}>{workspaceName}</p>{restaurantMode ? <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-400">Restaurant workspace</p> : null}
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto px-2.5 py-3">
-        <nav aria-label="Primary navigation" className="space-y-4">
+      <div className={cn("flex-1 overflow-y-auto", restaurantMode ? "px-[18px] py-3" : "px-2.5 py-3")}>
+        <nav aria-label="Primary navigation" className={cn(restaurantMode ? "space-y-3" : "space-y-4")}>
           {getVerticalNavigation(vertical).map((section) => {
             const visibleRoutes = section.routes.map((href) => routeByHref.get(href)).filter((route): route is SidebarRoute => Boolean(route)).filter((route) => {
               if (role === "STAFF" && route.financial) return false;
@@ -129,7 +129,7 @@ export function Sidebar({
             });
             if (!visibleRoutes.length) return null;
             return <div key={section.label}>
-              <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{section.label}</p>
+              <p className={cn("mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500", restaurantMode ? "px-0" : "px-2")}>{section.label}</p>
               <div className="space-y-1">
                 {visibleRoutes.map((route) => {
                   const isRootRestaurant = route.href === "/restaurant";
@@ -140,14 +140,14 @@ export function Sidebar({
                       href={route.href}
                       aria-current={isActive ? "page" : undefined}
                       className={cn(
-                        "flex h-9 items-center gap-2.5 rounded-md border border-transparent px-2.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                        restaurantMode ? "flex h-[42px] items-center gap-2.5 rounded-[10px] border border-transparent px-3 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring" : "flex h-9 items-center gap-2.5 rounded-md border border-transparent px-2.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
                         isActive
                           ? "border-white/10 bg-sidebar-accent text-white"
                           : "text-slate-400 hover:bg-white/5 hover:text-slate-100"
                       )}
                     >
                       <route.icon className={cn("size-4", isActive ? "text-emerald-400" : "text-slate-500")} />
-                      <span className="truncate">{route.label}</span>
+                      <span className="truncate">{displayLabel}</span>
                     </Link>
                   );
                 })}
