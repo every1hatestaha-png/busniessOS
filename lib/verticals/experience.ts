@@ -7,10 +7,6 @@ const tradingOperations = ["/sales", "/purchases", "/goods-receipts", "/inventor
 const finance = ["/khata", "/invoices", "/collections", "/receivables", "/accounting/cash-bank", "/accounting/expenses", "/accounting/notes", "/payables", "/reports"];
 const workspace = ["/ai", "/settings"];
 
-// Composition is independent per experience. A module flag only controls whether
-// an optional entry appears; it never changes the workspace's vertical.
-// Restaurant Workspace v1 routes are currently exercised through the legacy
-// restaurant module while the persisted RESTAURANT vertical remains sealed.
 const navigation: Record<WorkspaceVertical, readonly NavigationSection[]> = {
   TRADING: [
     { label: "Overview", routes: overview },
@@ -34,29 +30,42 @@ const navigation: Record<WorkspaceVertical, readonly NavigationSection[]> = {
     { label: "Finance", routes: finance },
     { label: "Workspace", routes: workspace },
   ],
-  RESTAURANT: [], PROPERTY: [], SERVICES: [],
+  RESTAURANT: [
+    { label: "Restaurant", routes: ["/restaurant", "/restaurant/pos", "/restaurant/orders", "/restaurant/kitchen", "/restaurant/menu", "/restaurant/whatsapp"] },
+    { label: "Stock & purchasing", routes: ["/inventory", "/purchases", "/goods-receipts", "/suppliers", "/supplier-returns"] },
+    { label: "Finance", routes: ["/accounting/cash-bank", "/accounting/expenses", "/reports"] },
+    { label: "Workspace", routes: ["/settings"] },
+  ],
+  PROPERTY: [],
+  SERVICES: [],
 };
 
-export type DashboardComposition = { title: string; lead: "trade" | "production"; sharedErpPanels: boolean };
+export type DashboardComposition = { title: string; lead: "trade" | "production" | "restaurant"; sharedErpPanels: boolean };
 const dashboards: Record<WorkspaceVertical, DashboardComposition | null> = {
   TRADING: { title: "Trading overview", lead: "trade", sharedErpPanels: true },
   MANUFACTURING: { title: "Manufacturing overview", lead: "production", sharedErpPanels: true },
   LEGACY: { title: "Dashboard", lead: "trade", sharedErpPanels: true },
-  RESTAURANT: null, PROPERTY: null, SERVICES: null,
+  RESTAURANT: { title: "Restaurant overview", lead: "restaurant", sharedErpPanels: false },
+  PROPERTY: null,
+  SERVICES: null,
 };
 
 const reportOrders: Record<WorkspaceVertical, readonly string[]> = {
   TRADING: ["Financial", "Sales & Purchasing", "Accounts", "Inventory"],
   MANUFACTURING: ["Inventory", "Sales & Purchasing", "Financial", "Accounts"],
   LEGACY: ["Financial", "Sales & Purchasing", "Accounts", "Inventory"],
-  RESTAURANT: [], PROPERTY: [], SERVICES: [],
+  RESTAURANT: ["Restaurant", "Financial", "Inventory"],
+  PROPERTY: [],
+  SERVICES: [],
 };
 
 const searchTypes: Record<WorkspaceVertical, readonly string[]> = {
   TRADING: ["Customer", "Product", "Order", "Invoice"],
   MANUFACTURING: ["Product", "Order", "Customer", "Invoice"],
   LEGACY: ["Customer", "Product", "Order", "Invoice"],
-  RESTAURANT: [], PROPERTY: [], SERVICES: [],
+  RESTAURANT: ["Order", "Product"],
+  PROPERTY: [],
+  SERVICES: [],
 };
 
 export function getVerticalNavigation(vertical: WorkspaceVertical) { return navigation[vertical]; }
