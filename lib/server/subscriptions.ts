@@ -1,6 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
+import { cache } from "react";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
@@ -49,9 +50,7 @@ export async function ensureWorkspaceSubscription(workspaceId: string) {
   `;
 }
 
-export async function getWorkspaceAccess(workspaceId: string): Promise<WorkspaceAccess> {
-  const safeWorkspaceId = assertWorkspaceId(workspaceId);
-  await ensureWorkspaceSubscription(safeWorkspaceId);
+async function readWorkspaceAccessSnapshot(workspaceId: string) {
   const rows = await db.$queryRaw<SubscriptionSnapshot[]>`
     SELECT
       s."id",
@@ -70,13 +69,27 @@ export async function getWorkspaceAccess(workspaceId: string): Promise<Workspace
       s."suspensionReason"
     FROM "workspace_subscriptions" s
     LEFT JOIN "saas_plans" p ON p."id" = s."planId"
-    WHERE s."workspaceId" = ${safeWorkspaceId}
+    WHERE s."workspaceId" = ${workspaceId}
     LIMIT 1
   `;
-
-  if (!rows[0]) throw new Error("Workspace subscription could not be initialized.");
-  return computeWorkspaceAccess(rows[0]);
+  return rows[0] ?? null;
 }
+
+export const getWorkspaceAccess = cache(async (workspaceId: string): Promise<WorkspaceAccess> => {
+  const safeWorkspaceId = assertWorkspaceId(workspaceId);
+
+  // Established workspaces take the read-only fast path. Previously every page
+  // view issued an INSERT ... ON CONFLICT before reading subscription state,
+  // which added avoidable write latency and write amplification.
+  let snapshot = await readWorkspaceAccessSnapshot(safeWorkspaceId);
+  if (!snapshot) {
+    await ensureWorkspaceSubscription(safeWorkspaceId);
+    snapshot = await readWorkspaceAccessSnapshot(safeWorkspaceId);
+  }
+
+  if (!snapshot) throw new Error("Workspace subscription could not be initialized.");
+  return computeWorkspaceAccess(snapshot);
+});
 
 export async function requireWorkspaceAccess() {
   const context = await requireWorkspace();
