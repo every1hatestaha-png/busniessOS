@@ -25,6 +25,10 @@ describe("auth routing security", () => {
     expect(isPublicMarketingPath("/features")).toBe(true);
     expect(isPublicMarketingPath("/product")).toBe(true);
     expect(isPublicMarketingPath("/security")).toBe(true);
+    expect(isPublicMarketingPath("/privacy")).toBe(true);
+    expect(isPublicMarketingPath("/terms")).toBe(true);
+    expect(isPublicMarketingPath("/cookies")).toBe(true);
+    expect(isPublicMarketingPath("/refund-policy")).toBe(true);
     expect(isPublicMarketingPath("/get-your-munshi")).toBe(true);
     expect(isPublicMarketingPath("/get-your-munshi/contact")).toBe(true);
     expect(isPublicMarketingPath("/dashboard")).toBe(false);
