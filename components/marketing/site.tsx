@@ -28,7 +28,13 @@ export function SectionTitle({ eyebrow, title, body }: { eyebrow: string; title:
 }
 
 export function FeatureGrid({ items, columns = 3 }: { items: readonly { icon: LucideIcon; title: string; text: string }[]; columns?: 3 | 4 }) {
-  return <div className={`mt-10 grid gap-4 sm:grid-cols-2 ${columns === 4 ? "xl:grid-cols-4" : "lg:grid-cols-3"}`}>{items.map(({icon: Icon,title,text}) => <article key={title} className="rounded-[22px] border border-slate-200 bg-white p-5"><div className="grid size-10 place-items-center rounded-xl bg-emerald-50 text-emerald-700"><Icon className="size-5" /></div><h3 className="mt-4 font-bold text-slate-950">{title}</h3><p className="mt-2 text-sm leading-6 text-slate-600">{text}</p></article>)}</div>;
+  return <div className={`mt-10 grid gap-4 sm:grid-cols-2 ${columns === 4 ? "xl:grid-cols-4" : "lg:grid-cols-3"}`}>{items.map(({icon: Icon,title,text}, index) => <article key={title} className="group overflow-hidden rounded-[24px] border border-slate-200 bg-white transition hover:-translate-y-1 hover:border-emerald-200 hover:shadow-[0_24px_65px_-42px_rgba(15,23,42,.35)]">
+    <div className="relative h-28 overflow-hidden border-b border-slate-100 bg-[#f6f9f7] p-4">
+      <div className="absolute right-4 top-4 grid size-8 place-items-center rounded-lg border border-emerald-100 bg-white text-emerald-700"><Icon className="size-4" /></div>
+      {index % 3 === 0 ? <div className="mt-8 space-y-2"><div className="h-2 w-[76%] rounded-full bg-slate-200"><div className="h-full w-[68%] rounded-full bg-emerald-500" /></div><div className="h-2 w-[58%] rounded-full bg-slate-200"><div className="h-full w-[42%] rounded-full bg-emerald-300" /></div><div className="h-2 w-[84%] rounded-full bg-slate-200"><div className="h-full w-[75%] rounded-full bg-slate-300" /></div></div> : index % 3 === 1 ? <div className="mt-7 grid grid-cols-3 gap-2">{[72,48,84].map((v,i)=><div key={i} className="flex h-14 items-end rounded-lg border border-slate-200 bg-white p-2"><div className="w-full rounded-sm bg-emerald-400/80" style={{height:`${v}%`}} /></div>)}</div> : <div className="mt-7 rounded-xl border border-slate-200 bg-white p-2">{[0,1,2].map(i=><div key={i} className="flex items-center justify-between border-b border-slate-100 py-1.5 last:border-0"><span className="h-1.5 w-16 rounded-full bg-slate-200"/><span className={`h-1.5 rounded-full ${i===1?"w-10 bg-emerald-400":"w-7 bg-slate-300"}`}/></div>)}</div>}
+    </div>
+    <div className="p-5"><h3 className="font-bold text-slate-950">{title}</h3><p className="mt-2 text-sm leading-6 text-slate-600">{text}</p></div>
+  </article>)}</div>;
 }
 
 export function AppPreview({ title, stats, rows, dark = false }: { title: string; stats: readonly [string,string,string][]; rows: readonly [string,string,string][]; dark?: boolean }) {
