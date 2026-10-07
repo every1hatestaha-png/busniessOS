@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { resetPasswordForEmail, signInWithOtp, signUp, createUser, findLegacyUser } = vi.hoisted(() => ({
   resetPasswordForEmail: vi.fn(), signInWithOtp: vi.fn(), signUp: vi.fn(), createUser: vi.fn(), findLegacyUser: vi.fn(),
@@ -26,9 +26,17 @@ function expectNoProvisioning() {
 }
 
 describe("password recovery start", () => {
+  const originalRedirectOrigin = process.env.AUTH_REDIRECT_ORIGIN;
+
   beforeEach(() => {
+    delete process.env.AUTH_REDIRECT_ORIGIN;
     vi.resetAllMocks();
     resetPasswordForEmail.mockResolvedValue({ error: null });
+  });
+
+  afterEach(() => {
+    if (originalRedirectOrigin === undefined) delete process.env.AUTH_REDIRECT_ORIGIN;
+    else process.env.AUTH_REDIRECT_ORIGIN = originalRedirectOrigin;
   });
 
   it("requests password recovery for a canonical user without a local user row", async () => {
@@ -61,6 +69,20 @@ describe("password recovery start", () => {
   it.each(["http://localhost:3000/recovery/new-password", "https://evil.example.invalid/reset", "//evil.example.invalid/reset", "/sign-in"])("rejects unsafe redirect %s", async (redirectTo) => {
     await POST(request({ email: "canonical@example.invalid", redirectTo }));
     expect(resetPasswordForEmail).toHaveBeenCalledExactlyOnceWith("canonical@example.invalid", { redirectTo: callback });
+  });
+
+  it("rejects an insecure configured recovery origin", async () => {
+    process.env.AUTH_REDIRECT_ORIGIN = "http://evil.example.invalid";
+    await POST(request({ email: "canonical@example.invalid" }));
+    expect(resetPasswordForEmail).toHaveBeenCalledExactlyOnceWith("canonical@example.invalid", { redirectTo: callback });
+  });
+
+  it("allows local HTTP only for non-production development recovery", async () => {
+    process.env.AUTH_REDIRECT_ORIGIN = "http://localhost:3000";
+    await POST(request({ email: "canonical@example.invalid" }));
+    expect(resetPasswordForEmail).toHaveBeenCalledExactlyOnceWith("canonical@example.invalid", {
+      redirectTo: "http://localhost:3000/auth/callback?next=%2Frecovery%2Fnew-password",
+    });
   });
 
   it("preserves a safe same-origin legacy callback destination", async () => {
