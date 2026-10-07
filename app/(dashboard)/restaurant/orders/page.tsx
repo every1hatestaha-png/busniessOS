@@ -62,12 +62,12 @@ export default async function RestaurantOrdersPage() {
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">Service control</p>
           <h1 className="mt-1 text-xl font-semibold tracking-tight">{workspace.name} orders</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Move orders from review to preparation, ready and completed without leaving the service board.</p>
+          <p className="mt-1 text-sm text-muted-foreground">POS orders and saved staff reviews, from preparation to completion.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link href="/restaurant/pos" className={cn(buttonVariants(), "rounded-xl bg-emerald-600 hover:bg-emerald-500")}><Plus className="size-4" />New POS order</Link>
           <Link href="/restaurant/kitchen" className={cn(buttonVariants({ variant: "outline" }), "rounded-xl")}><ChefHat className="size-4" />Kitchen</Link>
-          <Link href="/restaurant/whatsapp" className={cn(buttonVariants({ variant: "outline" }), "rounded-xl")}><MessageCircleMore className="size-4" />WhatsApp</Link>
+          <Link href="/restaurant/whatsapp" className={cn(buttonVariants({ variant: "outline" }), "rounded-xl")}><MessageCircleMore className="size-4" />Saved WhatsApp reviews</Link>
         </div>
       </section>
 

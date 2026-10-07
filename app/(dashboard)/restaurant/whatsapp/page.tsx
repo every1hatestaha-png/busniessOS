@@ -31,8 +31,8 @@ export default async function RestaurantWhatsappPage() {
         <CardContent className="flex gap-3 p-4">
           <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-emerald-100 text-emerald-700"><ShieldCheck className="size-4" /></span>
           <div>
-            <p className="text-sm font-semibold text-emerald-950">Automatic WhatsApp intake is not enabled yet</p>
-            <p className="mt-1 max-w-3xl text-xs leading-5 text-emerald-900/70">This release safely displays previously saved messages and staff-review orders. It does not claim to receive new WhatsApp messages automatically.</p>
+            <p className="text-sm font-semibold text-emerald-950">Automatic WhatsApp intake is unavailable</p>
+            <p className="mt-1 max-w-3xl text-xs leading-5 text-emerald-900/70">This release displays previously saved messages and staff-review orders. It does not receive new WhatsApp messages automatically.</p>
           </div>
         </CardContent>
       </Card>

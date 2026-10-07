@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Prisma, type Role } from "@prisma/client";
+import { Prisma, type Role, type WorkspaceVertical } from "@prisma/client";
 import { db } from "@/lib/server/db";
 import { canUseVerticalCapability, resolveWorkspaceVertical } from "@/lib/verticals/registry";
 import { writeAudit } from "@/lib/server/audit";
@@ -100,13 +100,17 @@ export async function setWorkspaceModule(context: IndustryContext, moduleKey: In
 }
 
 export async function requireWorkspaceModule(workspaceId: string, moduleKey: IndustryModuleKey) {
-  const workspace = await db.workspace.findUnique({ where: { id: workspaceId }, select: { vertical: true } });
-  if (!workspace) throw new IndustryDomainError("NOT_FOUND", "Workspace was not found.");
-  const rows = await db.$queryRaw<Array<{ enabled: boolean }>>`
-    SELECT "enabled" FROM "workspace_modules"
-    WHERE "workspaceId" = ${workspaceId}::uuid AND "moduleKey" = ${moduleKey}
+  // One fresh tenant-scoped read, without globally caching authorization.
+  const rows = await db.$queryRaw<Array<{ vertical: WorkspaceVertical; enabled: boolean | null }>>`
+    SELECT w."vertical", m."enabled"
+    FROM "workspaces" w
+    LEFT JOIN "workspace_modules" m
+      ON m."workspaceId"=w."id"::uuid AND m."moduleKey"=${moduleKey}
+    WHERE w."id"=${workspaceId}
     LIMIT 1
   `;
+  const workspace = rows[0];
+  if (!workspace) throw new IndustryDomainError("NOT_FOUND", "Workspace was not found.");
   if (!rows[0]?.enabled || !canUseVerticalCapability(resolveWorkspaceVertical(workspace),
     moduleKey === "manufacturing" || moduleKey === "restaurant" || moduleKey === "services" ? moduleKey : "trading", [moduleKey])) {
     throw new IndustryDomainError("MODULE_DISABLED", `${moduleKey} is not enabled for this workspace.`);
@@ -757,6 +761,33 @@ export async function listKitchenTickets(workspaceId: string) {
     ORDER BY kt."createdAt" DESC
     LIMIT 50
   `;
+}
+
+export async function getRestaurantOverviewReadiness(workspaceId: string) {
+  await requireWorkspaceModule(workspaceId, "restaurant");
+  const rows = await db.$queryRaw<Array<{
+    recipes: number; activeRecipes: number; openKitchenTickets: number;
+    openShiftId: string | null; openingCash: Prisma.Decimal | null;
+  }>>`
+    SELECT
+      (SELECT count(*)::int FROM "recipes" WHERE "workspaceId"=${workspaceId}::uuid) AS "recipes",
+      (SELECT count(*)::int FROM "recipes" WHERE "workspaceId"=${workspaceId}::uuid AND "isActive"=true) AS "activeRecipes",
+      (SELECT count(*)::int FROM "kitchen_tickets" WHERE "workspaceId"=${workspaceId}::uuid AND "status" IN ('QUEUED','PREPARING','READY')) AS "openKitchenTickets",
+      shift."id" AS "openShiftId", shift."openingCash"
+    FROM (SELECT 1) AS summary
+    LEFT JOIN LATERAL (
+      SELECT "id", "openingCash" FROM "cash_shifts"
+      WHERE "workspaceId"=${workspaceId}::uuid AND "status"='OPEN'
+      ORDER BY "openedAt" DESC, "id" ASC LIMIT 1
+    ) shift ON true
+  `;
+  const row = rows[0];
+  return {
+    recipes: row?.recipes ?? 0,
+    activeRecipes: row?.activeRecipes ?? 0,
+    openKitchenTickets: row?.openKitchenTickets ?? 0,
+    openShift: row?.openShiftId ? { id: row.openShiftId, openingCash: Number(row.openingCash ?? 0) } : null,
+  };
 }
 
 export async function listCashShifts(workspaceId: string) {

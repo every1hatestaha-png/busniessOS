@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/server/auth", () => ({ requireWorkspace: async () => ({ workspaceId: "saved-review-workspace", role: "OWNER" }) }));
+vi.mock("@/lib/server/auth", () => ({ requireWorkspace: async () => ({ workspaceId: "saved-review-workspace", role: "OWNER", workspace: { name: "Synthetic Restaurant" } }) }));
 vi.mock("@/lib/server/products", () => ({ listProducts: async () => [] }));
 vi.mock("@/lib/server/sales", () => ({ listSales: async () => [] }));
 vi.mock("@/lib/server/accounting", () => ({ getCashBankAccounts: async () => [] }));
@@ -13,6 +13,7 @@ vi.mock("@/app/(dashboard)/restaurant/v1-actions", () => ({ confirmRestaurantOrd
 vi.mock("@/lib/server/industry-modules", () => ({
   listWorkspaceModules: async () => [{ moduleKey: "restaurant", enabled: true }],
   getIndustryHealth: async () => ({ restaurant: { tables: 0, recipes: 0, openKitchenTickets: 0 } }),
+  getRestaurantOverviewReadiness: async () => ({ recipes: 0, activeRecipes: 0, openKitchenTickets: 0, openShift: null }),
   listCashShifts: async () => [], listKitchenTickets: async () => [], listRestaurantRecipes: async () => [], listRestaurantTables: async () => [],
 }));
 vi.mock("@/lib/server/restaurant-workspace", () => ({

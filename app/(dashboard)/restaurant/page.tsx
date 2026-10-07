@@ -16,9 +16,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
 import {
-  getIndustryHealth,
-  listCashShifts,
-  listRestaurantRecipes,
+  getRestaurantOverviewReadiness,
   listRestaurantTables,
   listWorkspaceModules,
 } from "@/lib/server/industry-modules";
@@ -32,11 +30,9 @@ export default async function RestaurantPage() {
     return <ModuleDisabled />;
   }
 
-  const [health, tables, recipes, shifts, metrics, liveOrders] = await Promise.all([
-    getIndustryHealth(workspaceId),
+  const [readiness, tables, metrics, liveOrders] = await Promise.all([
+    getRestaurantOverviewReadiness(workspaceId),
     listRestaurantTables(workspaceId),
-    listRestaurantRecipes(workspaceId),
-    listCashShifts(workspaceId),
     getRestaurantWorkspaceMetrics(workspaceId),
     listRestaurantOrders(workspaceId, 40, {
       statuses: ["CONFIRMED", "PREPARING", "READY"],
@@ -44,7 +40,7 @@ export default async function RestaurantPage() {
     }),
   ]);
 
-  const openShift = shifts.find((shift) => shift.status === "OPEN");
+  const openShift = readiness.openShift;
   const canManage = role === "OWNER" || role === "ADMIN" || role === "MANAGER";
   const occupiedTables = tables.filter((table) => table.status === "OCCUPIED").length;
   const readyTables = new Set(
@@ -152,13 +148,14 @@ export default async function RestaurantPage() {
               <div>
                 <h2 className="text-base font-semibold">Restaurant readiness</h2>
                 <p className="text-xs text-muted-foreground">A quick operational pulse before service.</p>
+                <Link href="/restaurant/whatsapp" className="text-xs font-semibold text-emerald-700 hover:underline">Saved WhatsApp reviews · {metrics.pendingWhatsapp} awaiting review</Link>
               </div>
               <UtensilsCrossed className="size-4 text-emerald-600" />
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              <Readiness label="Tables" value={String(health.restaurant.tables)} detail="configured" icon={LayoutGrid} />
-              <Readiness label="Recipes" value={String(health.restaurant.recipes)} detail="inventory-linked" icon={ChefHat} />
-              <Readiness label="Open kitchen" value={String(health.restaurant.openKitchenTickets)} detail="legacy tickets" icon={Clock3} />
+              <Readiness label="Tables" value={String(tables.length)} detail="configured" icon={LayoutGrid} />
+              <Readiness label="Recipes" value={String(readiness.activeRecipes)} detail="inventory-linked" icon={ChefHat} />
+              <Readiness label="Open kitchen" value={String(readiness.openKitchenTickets)} detail="legacy tickets" icon={Clock3} />
             </div>
           </CardContent>
         </Card>
@@ -172,7 +169,7 @@ export default async function RestaurantPage() {
             <div className="mt-4 space-y-3 text-sm">
               <Checklist ok={Boolean(openShift)} text={openShift ? "Cash shift is open" : "Open cash shift"} />
               <Checklist ok={tables.length > 0} text={tables.length ? `${tables.length} tables ready` : "Configure restaurant tables"} />
-              <Checklist ok={recipes.length > 0} text={recipes.length ? `${recipes.length} recipes connected` : "Connect menu recipes to stock"} />
+              <Checklist ok={readiness.recipes > 0} text={readiness.recipes ? `${readiness.recipes} recipes connected` : "Connect menu recipes to stock"} />
             </div>
           </CardContent>
         </Card>
