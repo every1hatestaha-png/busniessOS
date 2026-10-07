@@ -80,7 +80,7 @@ export default async function RestaurantPage() {
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Metric label="Today's sales" value={`Rs ${metrics.todaySales.toLocaleString()}`} detail={`${metrics.todayOrders} orders today`} tone="emerald" />
         <Metric label="Live orders" value={String(metrics.liveOrders)} detail={`${metrics.readyOrders} ready for service`} tone="amber" />
-        <Metric label="Avg prep time" value={metrics.averagePrepMinutes ? `${metrics.averagePrepMinutes.toFixed(0)} min` : "—"} detail="Kitchen cycle today" tone="blue" />
+        <Metric label="Ready now" value={String(metrics.readyOrders)} detail="Orders waiting for service" tone="blue" />
         <Metric label="Tables occupied" value={`${occupiedTables} / ${tables.length}`} detail={tables.length ? `${Math.round((occupiedTables / tables.length) * 100)}% floor occupancy` : "No tables configured"} tone="emerald" />
         <Metric label="Cash shift" value={openShift ? "OPEN" : "CLOSED"} detail={openShift ? `Rs ${openShift.openingCash.toLocaleString()} opening cash` : "Open a shift before cash service"} tone={openShift ? "emerald" : "red"} />
       </section>
