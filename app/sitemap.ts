@@ -6,7 +6,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const routes = [
     "/",
     "/get-your-munshi",
-    "/features",
+    "/product",
+    "/security",
     "/industries",
     "/industries/manufacturing",
     "/industries/wholesale",
