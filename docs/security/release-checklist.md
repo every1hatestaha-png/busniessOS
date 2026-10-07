@@ -12,12 +12,17 @@ Use this checklist for a production release that changes authentication, legal/c
 - Redirect targets are restricted to safe internal paths.
 - Legacy Clerk paths cannot silently authenticate normal web traffic.
 - Recovery and verification endpoints are rate-limited.
+- Configured recovery origins are HTTPS in hosted environments; HTTP is limited to local development.
+- Password recovery mutations reject cross-origin browser requests.
+- Supabase leaked-password protection is enabled for the production Auth project and security advisors no longer report it as disabled.
 
 ## Authorization and tenant isolation
 
 - Every protected read/write resolves the current authenticated user server-side.
 - Workspace membership and role are checked before mutations.
 - Cross-workspace IDs are rejected.
+- Current Terms/Privacy acceptance is enforced at post-login, onboarding, workspace resolution and protected API boundaries.
+- Platform-owner audit attribution resolves from the verified Clerk owner identity, not from an unrelated customer Supabase session.
 - Stale membership/role changes are rejected.
 - Restaurant, finance, inventory and other vertical boundaries remain covered by regression tests.
 
@@ -37,6 +42,7 @@ Use this checklist for a production release that changes authentication, legal/c
 - Vercel runtime errors reviewed.
 - Supabase security advisors reviewed.
 - Database migration chain validates on a clean database.
+- The target database has the current user policy-acceptance migration before code that reads those columns is deployed.
 - Readiness endpoint passes in staging.
 - Backup/restore procedure is current for the release.
 
