@@ -1878,6 +1878,16 @@
     "scope": "entry point"
   },
   {
+    "file": "app/cookies/page.tsx",
+    "symbol": null,
+    "url": "/cookies",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
     "file": "app/desktop-auth/page.tsx",
     "symbol": null,
     "url": "/desktop-auth",
@@ -2151,6 +2161,16 @@
     "file": "app/recovery/new-password/page.tsx",
     "symbol": null,
     "url": "/recovery/new-password",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/refund-policy/page.tsx",
+    "symbol": null,
+    "url": "/refund-policy",
     "kind": "PAGE",
     "category": "SHARED_CORE",
     "methods": [],
