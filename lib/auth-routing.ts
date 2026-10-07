@@ -1,6 +1,8 @@
 export const PUBLIC_MARKETING_PATHS = new Set([
   "/",
   "/features",
+  "/product",
+  "/security",
   "/industries",
   "/industries/manufacturing",
   "/industries/wholesale",
