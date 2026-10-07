@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowRight, Check, CircleDollarSign, LayoutDashboard, LockKeyhole, ReceiptText, ShieldCheck } from "lucide-react";
 import { MarketingHeader, MarketingFooter, CTA } from "@/components/marketing/site";
 
-export const metadata: Metadata = { title:"Security", description:"How MunshiOS protects workspace access, tenant isolation, authentication and operational integrity.", alternates:{canonical:"/security"} };
+export const metadata: Metadata = { title:"Security", description:"How MunshiOS protects workspace access, tenant isolation, authentication and operational integrity.", alternates:{canonical:"/security"}, openGraph:{title:"Security | MunshiOS",description:"How MunshiOS protects workspace access, tenant isolation, authentication and operational integrity.",url:"/security",type:"website"}, twitter:{card:"summary_large_image",title:"Security | MunshiOS",description:"How MunshiOS protects workspace access, tenant isolation, authentication and operational integrity."} };
 
 function AccessStack(){
   const steps=[["01","Identity","Verified user session"],["02","Membership","User belongs to this workspace"],["03","Role","Permission allows the action"],["04","Tenant scope","Query stays inside the workspace"],["05","Invariant","Server validates the business rule"]] as const;
