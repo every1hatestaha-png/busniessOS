@@ -101,6 +101,14 @@ const nextConfig: NextConfig = {
         source: "/onboarding/:path*",
         headers: noStoreHeaders,
       },
+      {
+        source: "/legal/:path*",
+        headers: noStoreHeaders,
+      },
+      {
+        source: "/api/legal/:path*",
+        headers: noStoreHeaders,
+      },
     ];
   },
 };
