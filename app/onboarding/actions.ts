@@ -12,6 +12,8 @@ import {
 } from "@/lib/saas/provisioning-selection";
 import { getCurrentUser } from "@/lib/server/auth";
 import { createInitialWorkspace } from "@/lib/server/onboarding";
+import { db } from "@/lib/server/db";
+import { resolveVerticalDashboard } from "@/lib/verticals/registry";
 import { onboardingSchema } from "@/lib/validation/onboarding";
 
 export type OnboardingState = { error: string | null };
@@ -86,9 +88,19 @@ export async function createWorkspace(
       path: "/",
       maxAge: 60 * 60 * 24 * 365,
     });
-  } catch {
+
+    const workspace = await db.workspace.findUnique({
+      where: { id: result.workspaceId },
+      select: { vertical: true },
+    });
+    if (!workspace) return { error: "We could not open your workspace. Please try again." };
+
+    const destination = resolveVerticalDashboard(workspace.vertical) ?? "/dashboard";
+    redirect(destination);
+  } catch (error) {
+    if (error && typeof error === "object" && "digest" in error && String((error as { digest?: unknown }).digest ?? "").startsWith("NEXT_REDIRECT")) {
+      throw error;
+    }
     return { error: "We could not create your workspace. Please try again." };
   }
-
-  redirect("/dashboard");
 }
