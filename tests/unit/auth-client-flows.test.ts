@@ -42,7 +42,12 @@ describe("password login, verification and logout event contracts", () => {
     mocks.login.mockResolvedValue({ error: null }); mocks.logout.mockResolvedValue({ error: null });
     mocks.verify.mockResolvedValue({ data: { user: { id: "synthetic-user" }, session: {} }, error: null });
     mocks.signup.mockResolvedValue({ data: { user: { id: "synthetic-user" }, session: null }, error: null });
-    mocks.policy.mockResolvedValue({ ok: true });
+    mocks.policy.mockResolvedValue({
+      ok: true,
+      type: "basic",
+      headers: new Headers({ "content-type": "application/json" }),
+      json: vi.fn(async () => ({ ok: true })),
+    });
     vi.stubGlobal("fetch", mocks.policy);
     vi.stubGlobal("window", { location: { href: "https://staging.example.invalid/sign-in", origin: "https://staging.example.invalid", assign: mocks.navigate } });
   });
@@ -102,11 +107,22 @@ describe("password login, verification and logout event contracts", () => {
     expect(mocks.policy).toHaveBeenCalledWith("/api/legal/acceptance", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      redirect: "manual",
     });
     expect(mocks.navigate).toHaveBeenCalledWith("/auth/post-login");
   });
   it("falls back to the policy screen when signup acceptance cannot be recorded", async () => {
     mocks.policy.mockRejectedValueOnce(new Error("network"));
+    await submit(render(SignUpPage, { 2: email, 8: true, 9: "123456" }));
+    expect(mocks.navigate).toHaveBeenCalledWith("/legal/acceptance");
+  });
+  it("does not mistake an auth redirect or HTML response for policy acceptance", async () => {
+    mocks.policy.mockResolvedValueOnce({
+      ok: true,
+      type: "opaqueredirect",
+      headers: new Headers({ "content-type": "text/html" }),
+      json: vi.fn(),
+    });
     await submit(render(SignUpPage, { 2: email, 8: true, 9: "123456" }));
     expect(mocks.navigate).toHaveBeenCalledWith("/legal/acceptance");
   });
