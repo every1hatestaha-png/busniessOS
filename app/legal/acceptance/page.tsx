@@ -8,7 +8,7 @@ import {
   CURRENT_TERMS_VERSION,
   hasCurrentPolicyAcceptance,
 } from "@/lib/legal/policies";
-import { getCurrentUser } from "@/lib/server/auth";
+import { getAuthenticatedUser } from "@/lib/server/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +22,7 @@ export default async function PolicyAcceptancePage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const user = await getCurrentUser();
+  const user = await getAuthenticatedUser();
   if (hasCurrentPolicyAcceptance(user)) redirect("/auth/post-login");
 
   const params = await searchParams;
