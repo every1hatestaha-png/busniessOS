@@ -4,7 +4,7 @@ import { ArrowRight, Check, Headphones, RefreshCw, ShieldCheck, Wrench } from "l
 import { MarketingHeader, MarketingFooter, CTA } from "@/components/marketing/site";
 
 export const metadata: Metadata = {
-  title: "Pricing | MunshiOS",
+  title: "Pricing",
   description: "MunshiOS pricing: PKR 29,000 one-time implementation and PKR 5,000 per month.",
   alternates: { canonical: "/pricing" },
 };
