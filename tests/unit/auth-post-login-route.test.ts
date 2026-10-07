@@ -15,7 +15,7 @@ vi.mock("next/navigation", () => ({ redirect: (path: string) => { throw new Erro
 vi.mock("@/lib/supabase/server", () => ({ getSupabaseAuthUser: mocks.provider }));
 vi.mock("@/lib/server/db", () => ({ db: { user: { findUnique: mocks.find, findFirst: mocks.byEmail }, workspaceMember: { findMany: mocks.memberships } } }));
 import { GET } from "@/app/auth/post-login/route";
-import { listCurrentUserWorkspaces } from "@/lib/server/auth";
+import { getCurrentWorkspace, listCurrentUserWorkspaces } from "@/lib/server/auth";
 
 const origin = "https://staging.example.invalid";
 const local = {
@@ -60,6 +60,21 @@ describe("canonical Supabase post-login workspace routing", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(mocks.memberships).not.toHaveBeenCalled();
   });
+  it("blocks direct workspace resolution before current policy acceptance", async () => {
+    const unaccepted = {
+      ...local,
+      termsAcceptedAt: null,
+      termsVersion: null,
+      privacyAcknowledgedAt: null,
+      privacyVersion: null,
+    };
+    mocks.find.mockResolvedValue(unaccepted);
+    mocks.byEmail.mockResolvedValue(unaccepted);
+
+    await expect(getCurrentWorkspace()).rejects.toThrow("redirect:/legal/acceptance");
+    expect(mocks.memberships).not.toHaveBeenCalled();
+  });
+
   it("routes a verified user without memberships to onboarding", async () => {
     mocks.memberships.mockResolvedValue([]);
     expect((await open("/restaurant")).headers.get("location")).toBe(origin + "/onboarding");
