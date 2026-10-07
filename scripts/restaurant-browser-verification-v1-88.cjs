@@ -90,6 +90,8 @@ async function main() {
     await page.waitForFunction(() => document.querySelector("form")?.dataset.pending === "false" && document.querySelector('[role="alert"]'));
     assert.equal(requests, 5, "Previous pending-only stateful form did not reproduce the duplicate request");
     await page.goto(url + "/?kind=pos");
+    const posSubmit = page.locator('form button[type="submit"]').last();
+    await posSubmit.waitFor();
     await page.getByRole("button", { name: /Synthetic meal/ }).click();
     await page.evaluate(() => { const form = document.querySelector("form"); form.requestSubmit(); form.requestSubmit(); });
     await page.waitForFunction(() => document.querySelector("fieldset")?.disabled === true);
@@ -98,10 +100,10 @@ async function main() {
     assert.equal(requests, 6, "POS double submit created another request");
     assert.equal(submittedOrderRequests.length, 1);
     assert.match(submittedOrderRequests[0], /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
-    assert.equal(await page.getByRole("button", { name: "Confirm order" }).isDisabled(), true, "Successful POS order leaves the old basket submit-ready");
+    assert.equal(await posSubmit.isDisabled(), true, "Successful POS order leaves the old basket submit-ready");
     assert.equal(await page.getByText("Your order is empty.").isVisible(), true);
     await page.getByRole("button", { name: /Synthetic meal/ }).click();
-    await page.getByRole("button", { name: "Confirm order" }).click();
+    await posSubmit.click();
     await page.getByText("Your order is empty.").waitFor();
     assert.equal(requests, 7);
     assert.equal(submittedOrderRequests.length, 2);
