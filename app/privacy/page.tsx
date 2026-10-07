@@ -25,7 +25,7 @@ export default function PrivacyPage() {
 
             <section>
               <h2 className="text-lg font-semibold text-slate-950">Information we process</h2>
-              <p className="mt-2">We may process account identity and contact details, workspace and membership information, authentication and security events, customer and supplier records, tax identifiers, invoices, payments, inventory, purchasing, sales, restaurant or manufacturing records, device and diagnostic information, support communications, and other information authorized users choose to enter.</p>
+              <p className="mt-2">We may process account identity and contact details, workspace and membership information, authentication and security events, policy acceptance records, customer and supplier records, tax identifiers, invoices, payments, inventory, purchasing, sales, restaurant or manufacturing records, device and diagnostic information, support communications, and other information authorized users choose to enter.</p>
             </section>
 
             <section>
