@@ -11,7 +11,7 @@ vi.mock("@/lib/server/auth", () => ({
   requireWorkspace: async () => {
     const { db } = await import("@/lib/server/db");
     const member = await db.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId: session.activeId, userId: session.userId } }, include: { workspace: true } });
-    if (!member || ["RESTAURANT", "PROPERTY", "SERVICES"].includes(member.workspace.vertical)) throw new Error("WORKSPACE_UNAVAILABLE");
+    if (!member || ["PROPERTY", "SERVICES"].includes(member.workspace.vertical)) throw new Error("WORKSPACE_UNAVAILABLE");
     return { workspaceId: member.workspaceId, role: member.role, vertical: member.workspace.vertical, user: { id: session.userId } };
   },
 }));
@@ -55,8 +55,8 @@ describe("vertical boundaries with isolated PostgreSQL", () => {
       const customer = await db.customer.create({ data: { workspaceId: ws.id, name: `unique-${name}-${runId}` } });
       customers[name] = customer.id;
       await db.product.create({ data: { workspaceId: ws.id, name: `unique-product-${name}-${runId}`, sku: `V-${name}-${runId}`, stockQuantity: 1 } });
-      if (["trading", "manufacturing", "legacy"].includes(name)) {
-        const modules = name === "legacy" ? ["restaurant", "services"] : name === "trading" ? ["manufacturing"] : ["manufacturing"];
+      if (["trading", "manufacturing", "legacy", "restaurant"].includes(name)) {
+        const modules = name === "restaurant" ? ["restaurant", "inventory"] : name === "legacy" ? ["restaurant", "services"] : ["manufacturing"];
         for (const moduleKey of modules) await db.$executeRaw`INSERT INTO "workspace_modules" ("workspaceId","moduleKey",enabled) VALUES (${ws.id}::uuid, ${moduleKey}, true)`;
       }
     }
@@ -72,7 +72,7 @@ describe("vertical boundaries with isolated PostgreSQL", () => {
   });
 
   it("switches across active verticals and picks the matching membership role", async () => {
-    for (const name of ["manufacturing", "trading", "legacy", "manufacturing", "trading"] as const) {
+    for (const name of ["manufacturing", "trading", "legacy", "restaurant", "manufacturing", "trading"] as const) {
       expect((await switchTo(workspaces[name])).status).toBe(200);
       const ctx = await requireApiContext("business.read");
       expect(ctx).toMatchObject({ workspaceId: workspaces[name], vertical: name.toUpperCase(), role: name === "manufacturing" ? "STAFF" : "OWNER" });
@@ -134,7 +134,7 @@ describe("vertical boundaries with isolated PostgreSQL", () => {
   });
 
   it("denies unavailable vertical APIs but allows switching away", async () => {
-    for (const name of ["restaurant", "property", "services"] as const) {
+    for (const name of ["property", "services"] as const) {
       expect((await switchTo(workspaces[name])).status).toBe(200);
       await expect(requireApiContext()).rejects.toMatchObject({ status: 403, code: "VERTICAL_UNAVAILABLE" });
       expect((await listWithQuery(new Request("http://localhost/api/v1/customers"))).status).toBe(403);
