@@ -47,8 +47,13 @@ export default function SignUpPage() {
       const response = await fetch("/api/legal/acceptance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        redirect: "manual",
       });
-      return response.ok;
+      if (!response.ok || response.type === "opaqueredirect") return false;
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) return false;
+      const body = await response.json() as { ok?: unknown };
+      return body.ok === true;
     } catch {
       return false;
     }
