@@ -8,6 +8,8 @@ export const metadata: Metadata = {
   title: "Wholesale Distribution Software Pakistan",
   description: "Wholesale software for Pakistani businesses with purchasing, GRN, stock, credit sales, receivables, cash and reporting.",
   alternates: { canonical: "/industries/wholesale" },
+  openGraph: { title: "Wholesale Distribution Software Pakistan | MunshiOS", description: "Wholesale software for Pakistani businesses with purchasing, GRN, stock, credit sales, receivables, cash and reporting.", url: "/industries/wholesale", type: "website" },
+  twitter: { card: "summary_large_image", title: "Wholesale Distribution Software Pakistan | MunshiOS", description: "Wholesale software for Pakistani businesses with purchasing, GRN, stock, credit sales, receivables, cash and reporting." },
 };
 
 const flow = [
