@@ -1,7 +1,7 @@
 import { RestaurantMutationForm } from "@/app/(dashboard)/restaurant/mutation-form";
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
-import { MessageCircleMore, Plus, RotateCcw, ShoppingBag } from "lucide-react";
+import { CheckCircle2, ChefHat, Clock3, MessageCircleMore, Plus, RotateCcw, ShoppingBag, Sparkles } from "lucide-react";
 
 import {
   confirmRestaurantOrderAction,
@@ -9,7 +9,6 @@ import {
   transitionRestaurantOrderAction,
   voidRestaurantPaymentAction,
 } from "@/app/(dashboard)/restaurant/v1-actions";
-import { PageHeader } from "@/components/business/page-header";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getCashBankAccounts } from "@/lib/server/accounting";
@@ -36,7 +35,7 @@ function primaryNext(status: RestaurantOrderStatus): { label: string; next: Rest
 type PaymentSummary = Awaited<ReturnType<typeof listRestaurantNetPaymentSummaries>>[number];
 
 export default async function RestaurantOrdersPage() {
-  const { workspaceId, role } = await requireWorkspace();
+  const { workspaceId, role, workspace } = await requireWorkspace();
   const [active, recentClosed, completedOutstanding, cashAccounts] = await Promise.all([
     listRestaurantOrders(workspaceId, 200, { statuses: ["PENDING_REVIEW", "CONFIRMED", "PREPARING", "READY"], oldestFirst: true }),
     listRestaurantOrders(workspaceId, 30, { statuses: ["COMPLETED", "CANCELLED"] }),
@@ -59,18 +58,32 @@ export default async function RestaurantOrdersPage() {
 
   return (
     <div className="mx-auto max-w-[1800px] space-y-6">
-      <PageHeader title="Restaurant Orders" description="One operational queue for POS orders and saved staff reviews. Payments are recorded against real cash or bank accounts and completion posts stock and accounting atomically." />
-      <div className="flex flex-wrap gap-2">
-        <Link href="/restaurant/pos" className={cn(buttonVariants())}><Plus className="mr-1 size-4" />New POS order</Link>
-        <Link href="/restaurant/whatsapp" className={cn(buttonVariants({ variant: "outline" }))}><MessageCircleMore className="mr-1 size-4" />Saved WhatsApp reviews</Link>
-      </div>
+      <section className="flex flex-col gap-4 rounded-2xl border bg-white p-4 shadow-none sm:p-5 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">Service control</p>
+          <h1 className="mt-1 text-xl font-semibold tracking-tight">{workspace.name} orders</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Move orders from review to preparation, ready and completed without leaving the service board.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/restaurant/pos" className={cn(buttonVariants(), "rounded-xl bg-emerald-600 hover:bg-emerald-500")}><Plus className="size-4" />New POS order</Link>
+          <Link href="/restaurant/kitchen" className={cn(buttonVariants({ variant: "outline" }), "rounded-xl")}><ChefHat className="size-4" />Kitchen</Link>
+          <Link href="/restaurant/whatsapp" className={cn(buttonVariants({ variant: "outline" }), "rounded-xl")}><MessageCircleMore className="size-4" />WhatsApp</Link>
+        </div>
+      </section>
+
+      <section className="grid gap-3 sm:grid-cols-4">
+        <StatusMetric label="Needs review" value={active.filter((order) => order.status === "PENDING_REVIEW").length} icon={MessageCircleMore} tone="amber" />
+        <StatusMetric label="Confirmed" value={active.filter((order) => order.status === "CONFIRMED").length} icon={Clock3} tone="blue" />
+        <StatusMetric label="Preparing" value={active.filter((order) => order.status === "PREPARING").length} icon={ChefHat} tone="amber" />
+        <StatusMetric label="Ready" value={active.filter((order) => order.status === "READY").length} icon={CheckCircle2} tone="emerald" />
+      </section>
 
       {payments.length === 500 ? <p className="text-sm text-amber-700">Showing the latest 500 payments for these orders. Open an order receipt for its complete payment history.</p> : null}
       {active.length === 200 ? <p className="text-sm text-amber-700">Showing the oldest 200 active orders. Finish these to advance the queue.</p> : null}
       <div className="grid gap-4 xl:grid-cols-4">
         {columns.map((column) => {
           const matching = active.filter((order) => order.status === column.status);
-          return <section key={column.status} className="min-w-0"><div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-semibold">{column.label}</h2><span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold">{matching.length}</span></div><div className="space-y-3">{matching.length ? matching.map((order) => <OrderCard workspaceId={workspaceId} key={order.id} order={order} cashAccounts={cashAccounts} payments={paymentsByOrder.get(order.id) ?? []} paymentSummary={paymentSummaryByOrder.get(order.id)} canVoidPayments={canManageFinancialActions} />) : <div className="rounded-lg border border-dashed p-5 text-center text-xs text-muted-foreground">No orders</div>}</div></section>;
+          return <section key={column.status} className="min-w-0 rounded-2xl border bg-slate-50/70 p-3"><div className="mb-3 flex items-center justify-between"><h2 className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">{column.label}</h2><span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold shadow-sm">{matching.length}</span></div><div className="space-y-3">{matching.length ? matching.map((order) => <OrderCard workspaceId={workspaceId} key={order.id} order={order} cashAccounts={cashAccounts} payments={paymentsByOrder.get(order.id) ?? []} paymentSummary={paymentSummaryByOrder.get(order.id)} canVoidPayments={canManageFinancialActions} />) : <div className="rounded-2xl border border-dashed bg-white p-8 text-center"><Sparkles className="mx-auto size-4 text-emerald-500" /><p className="mt-2 text-xs text-muted-foreground">Queue clear</p></div>}</div></section>;
         })}
       </div>
 
@@ -98,11 +111,11 @@ function OrderCard({
   canVoidPayments: boolean;
 }) {
   const next = primaryNext(order.status);
-  return <Card className={order.source === "WHATSAPP" ? "rounded-lg border-emerald-300 shadow-sm" : "rounded-lg shadow-sm"}><CardContent className="space-y-3 p-4"><div className="flex items-start justify-between gap-2"><div><div className="flex items-center gap-1.5">{order.source === "WHATSAPP" ? <MessageCircleMore className="size-4 text-emerald-600" /> : <ShoppingBag className="size-4 text-muted-foreground" />}<Link href={`/restaurant/orders/${order.id}/print`} className="font-semibold underline">{order.orderNumber}</Link></div><p className="mt-1 text-xs text-muted-foreground">{order.source} · {order.fulfillmentType.replaceAll("_", " ")}{order.tableName ? ` · ${order.tableName}` : ""}</p></div><p className="font-semibold">Rs {(paymentSummary?.adjustedDue ?? order.total).toLocaleString()}</p></div><div className="text-xs text-muted-foreground"><p>{order.customerName || "Walk-in customer"}{order.customerPhone ? ` · ${order.customerPhone}` : ""}</p><p>{new Intl.DateTimeFormat("en-PK", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Karachi" }).format(order.createdAt)}</p>{order.notes ? <p className="mt-1 rounded bg-muted/50 p-2">{order.notes}</p> : null}</div>
+  return <Card className={order.source === "WHATSAPP" ? "rounded-2xl border-emerald-300 bg-white shadow-none" : "rounded-2xl bg-white shadow-none"}><CardContent className="space-y-3 p-4"><div className="flex items-start justify-between gap-2"><div><div className="flex items-center gap-1.5">{order.source === "WHATSAPP" ? <MessageCircleMore className="size-4 text-emerald-600" /> : <ShoppingBag className="size-4 text-muted-foreground" />}<Link href={`/restaurant/orders/${order.id}/print`} className="font-semibold underline">{order.orderNumber}</Link></div><p className="mt-1 text-xs text-muted-foreground">{order.source} · {order.fulfillmentType.replaceAll("_", " ")}{order.tableName ? ` · ${order.tableName}` : ""}</p></div><p className="font-semibold">Rs {(paymentSummary?.adjustedDue ?? order.total).toLocaleString()}</p></div><div className="text-xs text-muted-foreground"><p>{order.customerName || "Walk-in customer"}{order.customerPhone ? ` · ${order.customerPhone}` : ""}</p><p>{new Intl.DateTimeFormat("en-PK", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Karachi" }).format(order.createdAt)}</p>{order.notes ? <p className="mt-1 rounded bg-muted/50 p-2">{order.notes}</p> : null}</div>
     <div className="flex flex-wrap gap-2">
-      {order.status === "PENDING_REVIEW" ? <RestaurantMutationForm action={confirmRestaurantOrderAction} workspaceId={workspaceId}><input type="hidden" name="orderId" value={order.id} /><Button size="sm" type="submit">Confirm order</Button></RestaurantMutationForm> : null}
-      {next ? <RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}><input type="hidden" name="orderId" value={order.id} /><input type="hidden" name="nextStatus" value={next.next} /><Button size="sm" type="submit">{next.label}</Button></RestaurantMutationForm> : null}
-      {!["COMPLETED", "CANCELLED"].includes(order.status) ? <RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}><input type="hidden" name="orderId" value={order.id} /><input type="hidden" name="nextStatus" value="CANCELLED" /><Button size="sm" variant="outline" type="submit">Cancel</Button></RestaurantMutationForm> : null}
+      {order.status === "PENDING_REVIEW" ? <RestaurantMutationForm action={confirmRestaurantOrderAction} workspaceId={workspaceId}><input type="hidden" name="orderId" value={order.id} /><Button size="sm" className="rounded-lg bg-emerald-600 hover:bg-emerald-500" type="submit">Confirm order</Button></RestaurantMutationForm> : null}
+      {next ? <RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}><input type="hidden" name="orderId" value={order.id} /><input type="hidden" name="nextStatus" value={next.next} /><Button size="sm" className="rounded-lg bg-emerald-600 hover:bg-emerald-500" type="submit">{next.label}</Button></RestaurantMutationForm> : null}
+      {!["COMPLETED", "CANCELLED"].includes(order.status) ? <RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}><input type="hidden" name="orderId" value={order.id} /><input type="hidden" name="nextStatus" value="CANCELLED" /><Button size="sm" className="rounded-lg" variant="outline" type="submit">Cancel</Button></RestaurantMutationForm> : null}
     </div>
     <PaymentPanel workspaceId={workspaceId} orderId={order.id} paymentStatus={order.paymentStatus} cashAccounts={cashAccounts} payments={payments} paymentSummary={paymentSummary} canVoidPayments={canVoidPayments} />
   </CardContent></Card>;
@@ -131,4 +144,21 @@ function PaymentPanel({
     {outstanding > 0 ? cashAccounts.length ? <RestaurantMutationForm action={recordRestaurantPaymentAction} workspaceId={workspaceId} className="grid gap-2 sm:grid-cols-2"><input type="hidden" name="orderId" value={orderId} /><input type="hidden" name="paymentRequestId" value={`rp:${randomUUID()}`} /><select name="cashBankAccountId" required className="h-8 rounded-md border bg-background px-2 text-xs">{cashAccounts.map((account) => <option key={account.cashBankAccountId} value={account.cashBankAccountId}>{account.name}</option>)}</select><select name="method" defaultValue="CASH" className="h-8 rounded-md border bg-background px-2 text-xs"><option value="CASH">Cash</option><option value="CREDIT_CARD">Card</option><option value="BANK_TRANSFER">Bank transfer</option><option value="JAZZCASH">JazzCash</option><option value="EASYPAISA">Easypaisa</option><option value="MOBILE_WALLET">Mobile wallet</option><option value="CHEQUE">Cheque</option><option value="OTHER">Other</option></select><input name="amount" type="number" min="0.01" max={outstanding} step="0.01" defaultValue={outstanding} required className="h-8 rounded-md border bg-background px-2 text-xs" /><input name="reference" maxLength={120} placeholder="Reference (optional)" className="h-8 rounded-md border bg-background px-2 text-xs" /><div className="sm:col-span-2 flex justify-end"><Button size="sm" type="submit">Record payment</Button></div></RestaurantMutationForm> : <p className="text-xs text-amber-700">Create an active cash or bank account before recording restaurant payments. <Link href="/accounting/cash-bank" className="font-semibold underline">Open Cash & Bank</Link></p> : null}
     {payments.length ? <div className="space-y-1.5">{payments.slice(0, 5).map((payment) => <div key={payment.id} className={payment.voidedAt ? "flex items-center justify-between rounded bg-muted/40 px-2 py-1.5 text-xs text-muted-foreground line-through" : "flex items-center justify-between rounded bg-muted/40 px-2 py-1.5 text-xs"}><span>{payment.method.replaceAll("_", " ")} · {payment.cashBankAccountName} · Rs {payment.amount.toLocaleString()}</span>{canVoidPayments && !payment.voidedAt ? <RestaurantMutationForm action={voidRestaurantPaymentAction} workspaceId={workspaceId} className="flex items-center gap-1"><input type="hidden" name="paymentId" value={payment.id} /><input name="reason" required minLength={3} maxLength={500} placeholder="Void reason" className="h-7 w-28 rounded border bg-background px-1.5 text-[11px]" /><Button type="submit" size="xs" variant="outline">Void</Button></RestaurantMutationForm> : payment.voidedAt ? <span>VOID</span> : null}</div>)}</div> : null}
   </div>;
+}
+
+
+function StatusMetric({ label, value, icon: Icon, tone }: { label: string; value: number; icon: typeof ChefHat; tone: "emerald" | "amber" | "blue" }) {
+  const toneClass = tone === "emerald"
+    ? "bg-emerald-100 text-emerald-700"
+    : tone === "blue"
+      ? "bg-blue-100 text-blue-700"
+      : "bg-amber-100 text-amber-700";
+  return (
+    <Card className="rounded-2xl border shadow-none">
+      <CardContent className="flex items-center justify-between p-4">
+        <div><p className="text-xs font-medium text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p></div>
+        <span className={cn("grid size-10 place-items-center rounded-xl", toneClass)}><Icon className="size-4" /></span>
+      </CardContent>
+    </Card>
+  );
 }
