@@ -216,14 +216,16 @@ export const getCurrentUser = cache(async () => {
   return user;
 });
 
+const getUserWorkspaceMemberships = cache(async (userId: string) => db.workspaceMember.findMany({
+  where: { userId },
+  orderBy: [{ createdAt: "asc" }, { workspaceId: "asc" }],
+  select: { workspaceId: true, role: true, workspace: true },
+}));
+
 const getCurrentUserWorkspaceMemberships = cache(async () => {
   const user = await getCurrentUser();
   const activeWorkspaceId = (await cookies()).get("businessos_workspace")?.value;
-  const memberships = await db.workspaceMember.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "asc" },
-    select: { workspaceId: true, role: true, workspace: true },
-  });
+  const memberships = await getUserWorkspaceMemberships(user.id);
   return { user, activeWorkspaceId, memberships };
 });
 
@@ -232,11 +234,7 @@ export const getCurrentWorkspace = cache(async () => {
   if (!user) return null;
 
   const activeWorkspaceId = (await cookies()).get("businessos_workspace")?.value;
-  const memberships = await db.workspaceMember.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "asc" },
-    select: { workspaceId: true, role: true, workspace: true },
-  });
+  const memberships = await getUserWorkspaceMemberships(user.id);
   const membership = memberships.find((entry) => entry.workspaceId === activeWorkspaceId) ?? memberships[0];
   if (!membership) return null;
 

@@ -70,7 +70,7 @@ export default function RecoveryNewPasswordPage() {
         return;
       }
 
-      window.location.assign("/dashboard");
+      window.location.assign("/auth/post-login");
     } catch {
       setError("We could not update your password right now. Please try again.");
       setBusy(false);

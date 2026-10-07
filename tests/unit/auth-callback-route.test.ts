@@ -45,13 +45,13 @@ describe("auth callback routing", () => {
   it("keeps successful signup exchange routing to onboarding", async () => {
     const response = await GET(new Request("https://www.munshios.tech/auth/callback?code=valid&next=/onboarding"));
     expect(exchangeCodeForSession).toHaveBeenCalledWith("valid");
-    expect(response.headers.get("location")).toBe("https://www.munshios.tech/onboarding");
+    expect(response.headers.get("location")).toBe("https://www.munshios.tech/auth/post-login?next=%2Fonboarding");
   });
 
   it("sanitizes external redirect destinations on failed exchanges", async () => {
     exchangeCodeForSession.mockResolvedValue({ error: new Error("invalid code") });
     const response = await GET(new Request("https://www.munshios.tech/auth/callback?code=invalid&next=https%3A%2F%2Fevil.example"));
-    expect(new URL(response.headers.get("location")!).searchParams.get("next")).toBe("/dashboard");
+    expect(new URL(response.headers.get("location")!).searchParams.get("next")).toBe("/auth/post-login");
   });
 
   it("preserves the cross-device recovery activation path", async () => {

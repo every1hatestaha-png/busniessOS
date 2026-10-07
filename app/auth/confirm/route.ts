@@ -1,7 +1,7 @@
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
-import { safeInternalDestination } from "@/lib/auth-routing";
+import { POST_AUTH_PATH, postAuthDestination, safeInternalDestination } from "@/lib/auth-routing";
 import { issueRecoveryMarker } from "@/lib/server/recovery-session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -87,7 +87,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const tokenHash = url.searchParams.get("token_hash");
   const rawType = url.searchParams.get("type");
-  const fallbackNext = rawType === "recovery" ? "/recovery/new-password" : "/onboarding";
+  const fallbackNext = rawType === "recovery" ? "/recovery/new-password" : POST_AUTH_PATH;
   const next = safeInternalDestination(url.searchParams.get("next"), request.url, fallbackNext);
 
   if (!tokenHash || !rawType || !ALLOWED_CONFIRMATION_TYPES.has(rawType as EmailOtpType)) {
@@ -113,7 +113,7 @@ export async function GET(request: Request) {
     return confirmationFailure(request.url, "expired");
   }
 
-  return NextResponse.redirect(new URL(next, request.url));
+  return NextResponse.redirect(new URL(postAuthDestination(next, request.url), request.url));
 }
 
 export async function POST(request: Request) {

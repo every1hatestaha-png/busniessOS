@@ -1811,7 +1811,8 @@
     "kind": "API",
     "category": "SHARED_CORE",
     "methods": [
-      "GET"
+      "GET",
+      "POST"
     ],
     "boundary": "public or signed webhook/auth protocol",
     "scope": "entry point"
@@ -1826,6 +1827,18 @@
       "GET"
     ],
     "boundary": "public or signed webhook/auth protocol",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/auth/post-login/route.ts",
+    "symbol": null,
+    "url": "/auth/post-login",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "authenticated server context",
     "scope": "entry point"
   },
   {

@@ -39,7 +39,7 @@ describe("auth confirmation route", () => {
     );
 
     expect(verifyOtp).toHaveBeenCalledWith({ token_hash: "abc", type: "signup" });
-    expect(response.headers.get("location")).toBe("https://www.munshios.tech/onboarding");
+    expect(response.headers.get("location")).toBe("https://www.munshios.tech/auth/post-login?next=%2Fonboarding");
   });
 
   it("blocks external redirect destinations", async () => {
@@ -50,7 +50,7 @@ describe("auth confirmation route", () => {
       ),
     );
 
-    expect(response.headers.get("location")).toBe("https://www.munshios.tech/onboarding");
+    expect(response.headers.get("location")).toBe("https://www.munshios.tech/auth/post-login");
   });
 
   it("sends invalid or expired signup tokens to a recoverable sign-in state", async () => {
@@ -103,6 +103,17 @@ describe("auth confirmation route", () => {
     expect(response.headers.get("location")).toBe(
       "https://www.munshios.tech/recovery/new-password",
     );
+  });
+
+  it("rejects a consumed recovery token on a second confirmation", async () => {
+    verifyOtp.mockResolvedValueOnce({ data: { user: { email_confirmed_at: "2026-10-07" } }, error: null })
+      .mockResolvedValueOnce({ data: { user: null }, error: new Error("expired") });
+    const request = () => new Request("https://staging.example.invalid/auth/confirm", {
+      method: "POST", body: new URLSearchParams({ token_hash: "single-use", type: "recovery", next: "/recovery/new-password" }),
+    });
+    expect((await POST(request())).headers.get("location")).toContain("/recovery/new-password");
+    expect((await POST(request())).headers.get("location")).toContain("confirmation_error=expired");
+    expect(issueRecoveryMarker).toHaveBeenCalledOnce();
   });
 
   it("rejects expired recovery tokens without issuing a marker", async () => {

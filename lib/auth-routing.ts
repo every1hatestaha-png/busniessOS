@@ -50,3 +50,11 @@ export function safeInternalDestination(value: string | null, requestUrl: string
     return fallback;
   }
 }
+
+export const POST_AUTH_PATH = "/auth/post-login";
+
+export function postAuthDestination(value: string | null, requestUrl: string) {
+  const next = safeInternalDestination(value, requestUrl, "");
+  if (!next || new URL(next, requestUrl).pathname === POST_AUTH_PATH) return POST_AUTH_PATH;
+  return `${POST_AUTH_PATH}?next=${encodeURIComponent(next)}`;
+}

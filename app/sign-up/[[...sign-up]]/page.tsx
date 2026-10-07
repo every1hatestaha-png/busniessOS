@@ -59,7 +59,7 @@ export default function SignUpPage() {
       email: identifier,
       password,
       options: {
-        emailRedirectTo: `${origin}/auth/callback?next=/onboarding`,
+        emailRedirectTo: `${origin}/auth/callback`,
         data: {
           first_name: firstName.trim() || null,
           last_name: lastName.trim() || null,
@@ -87,7 +87,7 @@ export default function SignUpPage() {
     }
 
     if (data.session) {
-      window.location.assign("/onboarding");
+      window.location.assign("/auth/post-login");
       return;
     }
 
@@ -129,11 +129,11 @@ export default function SignUpPage() {
     }
 
     if (!data.session) {
-      window.location.assign("/sign-in?confirmed=1&next=/onboarding");
+      window.location.assign("/sign-in?confirmed=1");
       return;
     }
 
-    window.location.assign("/onboarding");
+    window.location.assign("/auth/post-login");
   }
 
   async function resendVerification() {
@@ -146,7 +146,7 @@ export default function SignUpPage() {
       type: "signup",
       email,
       options: {
-        emailRedirectTo: `${origin}/auth/callback?next=/onboarding`,
+        emailRedirectTo: `${origin}/auth/callback`,
       },
     });
 

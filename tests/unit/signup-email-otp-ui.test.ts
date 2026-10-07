@@ -23,7 +23,7 @@ describe("signup email OTP UI", () => {
     expect(source).toContain('type: "email"');
     expect(source).toContain("isValidEmailOtp");
     expect(source).toContain("normalizeEmailOtp");
-    expect(source).toContain('window.location.assign("/onboarding")');
+    expect(source).toContain('window.location.assign("/auth/post-login")');
   });
 
   it("keeps resend recovery aligned with OTP wording", () => {

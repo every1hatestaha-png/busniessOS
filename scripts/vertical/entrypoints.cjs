@@ -28,7 +28,7 @@ for (const file of files) {
   const url = urlFor(file);
   const scope = file.startsWith('app/(dashboard)/') ? 'dashboard layout plus entry point' : file.startsWith('app/api/v1/') ? 'API context or authenticated provisioning/switch' : 'entry point';
   const boundary = kind === 'PAGE' && file.startsWith('app/(dashboard)/') ? 'requireWorkspace in dashboard layout' :
-    /requireApiContext|requireApiUser|requireWorkspace|requirePermission|requirePlatform|requestWorkspaceActivation|requireRecentPlatformMfa|strict_mfa|listCurrentUserWorkspaces|getCurrentUser/.test(source) ? 'authenticated server context' :
+    (file === 'app/auth/post-login/route.ts' || /requireApiContext|requireApiUser|requireWorkspace|requirePermission|requirePlatform|requestWorkspaceActivation|requireRecentPlatformMfa|strict_mfa|listCurrentUserWorkspaces|getCurrentUser/.test(source)) ? 'authenticated server context' :
     /^(app\/api\/(health|readiness|desktop-config|webhooks|auth)|app\/auth\/)/.test(file) ? 'public or signed webhook/auth protocol' :
     kind === 'PAGE' && !file.startsWith('app/(dashboard)/') ? 'public, onboarding, or separate authenticated layout' : 'REVIEW';
   const methods = kind === 'API' ? [...source.matchAll(/export (?:const|(?:async )?function) (GET|POST|PATCH|PUT|DELETE)\b/g)].map(x => x[1]) : [];

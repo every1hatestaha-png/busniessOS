@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { hasFreshRecoveryProof } from "@/lib/auth-recovery-proof";
-import { safeInternalDestination } from "@/lib/auth-routing";
+import { POST_AUTH_PATH, postAuthDestination, safeInternalDestination } from "@/lib/auth-routing";
 import { issueRecoveryMarker } from "@/lib/server/recovery-session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -25,7 +25,7 @@ function recoveryActivationFallback(requestUrl: string) {
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
-  const next = safeInternalDestination(url.searchParams.get("next"), request.url, "/dashboard");
+  const next = safeInternalDestination(url.searchParams.get("next"), request.url, POST_AUTH_PATH);
 
   if (!code) {
     return NextResponse.redirect(new URL(`/sign-in?error=${encodeURIComponent("Missing authentication code.")}`, request.url));
@@ -62,5 +62,5 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.redirect(new URL(next, request.url));
+  return NextResponse.redirect(new URL(isRecoveryDestination(next) ? next : postAuthDestination(next, request.url), request.url));
 }
