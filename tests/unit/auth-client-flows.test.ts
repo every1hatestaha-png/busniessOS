@@ -2,7 +2,7 @@ import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   cursor: 0, state: new Map<number, unknown>(), updates: [] as unknown[],
-  login: vi.fn(), signup: vi.fn(), verify: vi.fn(), logout: vi.fn(), navigate: vi.fn(),
+  login: vi.fn(), signup: vi.fn(), verify: vi.fn(), logout: vi.fn(), navigate: vi.fn(), policy: vi.fn(),
 }));
 vi.mock("react", async importOriginal => {
   const actual = await importOriginal<typeof import("react")>();
@@ -42,6 +42,8 @@ describe("password login, verification and logout event contracts", () => {
     mocks.login.mockResolvedValue({ error: null }); mocks.logout.mockResolvedValue({ error: null });
     mocks.verify.mockResolvedValue({ data: { user: { id: "synthetic-user" }, session: {} }, error: null });
     mocks.signup.mockResolvedValue({ data: { user: { id: "synthetic-user" }, session: null }, error: null });
+    mocks.policy.mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", mocks.policy);
     vi.stubGlobal("window", { location: { href: "https://staging.example.invalid/sign-in", origin: "https://staging.example.invalid", assign: mocks.navigate } });
   });
   it("uses password login and routes success through workspace resolution", async () => {
@@ -94,10 +96,19 @@ describe("password login, verification and logout event contracts", () => {
     expect(mocks.signup.mock.calls[0][0]).toMatchObject({ email, password, options: { emailRedirectTo: "https://staging.example.invalid/auth/callback" } });
     expect(mocks.navigate).not.toHaveBeenCalled();
   });
-  it("routes successful signup OTP sessions through the canonical router", async () => {
+  it("records policy acceptance before routing a verified signup", async () => {
     await submit(render(SignUpPage, { 2: email, 8: true, 9: "123456" }));
     expect(mocks.verify).toHaveBeenCalledWith({ email, token: "123456", type: "email" });
+    expect(mocks.policy).toHaveBeenCalledWith("/api/legal/acceptance", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
     expect(mocks.navigate).toHaveBeenCalledWith("/auth/post-login");
+  });
+  it("falls back to the policy screen when signup acceptance cannot be recorded", async () => {
+    mocks.policy.mockRejectedValueOnce(new Error("network"));
+    await submit(render(SignUpPage, { 2: email, 8: true, 9: "123456" }));
+    expect(mocks.navigate).toHaveBeenCalledWith("/legal/acceptance");
   });
   it.each(["invalid", "expired"])("retains verification after an %s signup OTP", async message => {
     mocks.verify.mockResolvedValue({ data: { user: null }, error: new Error(message) });
