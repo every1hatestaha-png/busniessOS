@@ -5,7 +5,7 @@ import { MarketingHeader, MarketingFooter, CTA } from "@/components/marketing/si
 import { ConnectedOperationsCanvas, ManufacturingVisual, RestaurantVisual, RetailVisual, WholesaleVisual } from "@/components/marketing/premium-visuals";
 
 export const metadata: Metadata = {
-  title: "Product | MunshiOS",
+  title: "Product",
   description: "See how MunshiOS connects purchasing, GRN, inventory, sales, khata, accounting and reporting in one system.",
   alternates: { canonical: "/product" },
 };
