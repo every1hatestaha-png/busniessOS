@@ -31,6 +31,8 @@ export function checkAppRateLimit(request: Request, pathname: string) {
     limit = 20;
   } else if (pathname === "/auth/recovery/password" && request.method === "POST") {
     limit = 10;
+  } else if (pathname === "/api/legal/acceptance" && request.method === "POST") {
+    limit = 10;
   } else if (pathname === "/api/search") {
     limit = 90;
   } else if (pathname === "/platform" && request.method === "POST") {
