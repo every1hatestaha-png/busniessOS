@@ -22,12 +22,15 @@ const securityHeaders = [
   { key: "Content-Security-Policy", value: customerContentSecurityPolicy },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
+  { key: "X-DNS-Prefetch-Control", value: "off" },
+  { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
+  { key: "Origin-Agent-Cluster", value: "?1" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=()" },
   { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
   { key: "Cross-Origin-Resource-Policy", value: "same-site" },
   ...(isProduction
-    ? [{ key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" }]
+    ? [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" }]
     : []),
 ];
 
@@ -88,6 +91,14 @@ const nextConfig: NextConfig = {
       },
       {
         source: "/recovery/:path*",
+        headers: noStoreHeaders,
+      },
+      {
+        source: "/auth/:path*",
+        headers: noStoreHeaders,
+      },
+      {
+        source: "/onboarding/:path*",
         headers: noStoreHeaders,
       },
     ];
