@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { assertStagingTarget } = require("../../scripts/assert-staging-database-target.cjs");
+const { assertStagingTarget, assertPolicySchemaState } = require("../../scripts/assert-staging-database-target.cjs");
 const env = {
   VERCEL_ENV: "preview", VERCEL: "1", MUNSHIOS_DEPLOYMENT_ENVIRONMENT: "staging", VERCEL_PROJECT_ID: "prj_ytXqF1zAoJjcsBIICz7PryfAczLz",
   DATABASE_URL: "postgresql://synthetic:synthetic@ep-fragrant-heart-b578tydw-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require",
 };
 describe("explicit staging release database guard", () => {
+  it("rejects prepared DDL with a pending ledger entry before attempting migration", () => {
+    const columns = ["termsAcceptedAt", "termsVersion", "privacyAcknowledgedAt", "privacyVersion"].map(column_name => ({ column_name }));
+    expect(() => assertPolicySchemaState(["20261007183000_user_policy_acceptance"], [])).not.toThrow();
+    expect(() => assertPolicySchemaState([], columns)).not.toThrow();
+    expect(() => assertPolicySchemaState(["20261007183000_user_policy_acceptance"], columns)).toThrow();
+    expect(() => assertPolicySchemaState([], columns.slice(1))).toThrow();
+  });
   it("maps only verified staging endpoints to their branch without returning credentials", () => {
     const target = assertStagingTarget(env);
     expect(target.branch).toBe("br-delicate-credit-b5lttgnc");

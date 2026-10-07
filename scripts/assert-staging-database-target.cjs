@@ -26,6 +26,14 @@ function assertStagingTarget(env) {
   return { host: url.hostname, database: "neondb", schema: "public", project: "wandering-moon-51932710", branch };
 }
 
+function assertPolicySchemaState(pending, columns) {
+  const names = new Set(columns.map(row => row.column_name));
+  const required = ["termsAcceptedAt", "termsVersion", "privacyAcknowledgedAt", "privacyVersion"];
+  if (pending.length ? names.size !== 0 : !required.every(name => names.has(name))) {
+    throw new Error("Policy schema and migration ledger disagree; investigate before migration.");
+  }
+}
+
 async function main() {
   const target = assertStagingTarget(process.env);
   const client = new Client({ connectionString: process.env.DATABASE_URL });
@@ -46,6 +54,8 @@ async function main() {
     }
     const pending = expected.filter(name => !applied.some(row => row.migration_name === name));
     if (pending.some(name => name !== "20261007183000_user_policy_acceptance")) throw new Error("Unexpected pending staging migration.");
+    const columns = await client.query("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='users' AND column_name IN ('termsAcceptedAt','termsVersion','privacyAcknowledgedAt','privacyVersion')");
+    assertPolicySchemaState(pending, columns.rows);
     const counts = await client.query('SELECT (SELECT count(*) FROM users) AS users, (SELECT count(*) FROM workspace_members) AS memberships, (SELECT count(*) FROM workspaces) AS workspaces, (SELECT count(*) FROM restaurant_orders) AS restaurant_orders');
     console.log(JSON.stringify({ stagingDatabase: target, migrations: applied.length, pending, before: counts.rows[0], checksumValidation: "PASS" }));
   } finally {
@@ -53,7 +63,7 @@ async function main() {
   }
 }
 
-module.exports = { assertStagingTarget };
+module.exports = { assertStagingTarget, assertPolicySchemaState };
 if (require.main === module) main().catch(() => {
   // Connection errors can contain credentials; never serialize the driver error.
   console.error("Staging database guard failed; no migration was authorized by this guard.");
