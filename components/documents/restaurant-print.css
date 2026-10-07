@@ -1,0 +1,23 @@
+@media print {
+  /* CSS page size cannot combine a width with auto. Use a valid 80mm page
+     and paginate long tickets. Hardware feed/cutter settings need validation. */
+  @page restaurant-thermal {
+    size: 80mm 297mm;
+    margin: 4mm;
+  }
+  html[data-print-format="thermal"] [data-restaurant-print],
+  html[data-print-format="thermal"] [data-restaurant-print] [data-document] {
+    page: restaurant-thermal !important;
+  }
+  html[data-print-format="thermal"] [data-restaurant-print] header {
+    overflow-wrap: anywhere;
+  }
+  html[data-print-format="thermal"] [data-restaurant-print] header > div {
+    flex-direction: column !important;
+    gap: 2mm !important;
+  }
+  html[data-print-format="thermal"] [data-restaurant-print] header > div > div {
+    max-width: 100% !important;
+    text-align: left !important;
+  }
+}

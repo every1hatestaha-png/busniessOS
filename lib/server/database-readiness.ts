@@ -4,6 +4,7 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import { assertApprovedProductionDatabaseTarget } from "@/lib/database-target";
+import { assertApprovedStagingDatabaseTarget } from "@/lib/staging-database-target";
 import { db } from "@/lib/server/db";
 
 type AppliedMigrationRow = { migration_name: string };
@@ -19,7 +20,15 @@ async function expectedMigrationNames() {
 }
 
 export async function checkDatabaseReadiness() {
-  assertApprovedProductionDatabaseTarget(process.env.DATABASE_URL);
+  if (process.env.MUNSHIOS_DEPLOYMENT_ENVIRONMENT === "staging") {
+    assertApprovedStagingDatabaseTarget(process.env.DATABASE_URL, {
+      MUNSHIOS_DEPLOYMENT_ENVIRONMENT: process.env.MUNSHIOS_DEPLOYMENT_ENVIRONMENT,
+      VERCEL: process.env.VERCEL,
+      VERCEL_PROJECT_ID: process.env.VERCEL_PROJECT_ID,
+    });
+  } else {
+    assertApprovedProductionDatabaseTarget(process.env.DATABASE_URL);
+  }
 
   const [expected, rows] = await Promise.all([
     expectedMigrationNames(),

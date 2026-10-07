@@ -1,0 +1,171 @@
+name: Restaurant V1.96 final staging certification
+
+on:
+  pull_request:
+    branches:
+      - architecture/restaurant-server-action-state-v1-95
+
+permissions:
+  contents: read
+
+jobs:
+  pg18-certification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_restaurant_v196
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_restaurant_v196"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_restaurant_v196?sslmode=disable
+      RUN_INTEGRATION_TESTS: "true"
+      NODE_ENV: test
+      V195_HEAD: de8d4986e4b5a8ab8e38b92d6ee723eedd651a7e
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - name: Preserve V1.95 ancestry and production safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$V195_HEAD" HEAD
+          git diff --check "$V195_HEAD...HEAD"
+          git diff --quiet "$V195_HEAD...HEAD" -- lib/server/auth.ts lib/supabase proxy.ts .github/workflows/main_munshios.yml
+          node <<'NODE'
+          const fs = require("node:fs");
+          const cfg = JSON.parse(fs.readFileSync("vercel.json","utf8"));
+          const branch = "architecture/restaurant-final-staging-certification-v1-96";
+          if (cfg.git?.deploymentEnabled?.[branch] !== false) {
+            throw new Error("V1.96 must remain deployment-disabled.");
+          }
+          NODE
+
+      - run: npm ci
+      - name: Full audit advisory containment
+        run: node scripts/restaurant-audit-dev-advisories-v1-96.cjs
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=moderate
+      - name: Prisma validate
+        run: npx prisma validate
+      - name: Deploy complete migration chain to PostgreSQL 18
+        run: |
+          set -euo pipefail
+          npx prisma migrate deploy
+          npx prisma migrate status
+
+      - name: F07 and race-focused regressions
+        run: >
+          npx vitest run
+          tests/integration/restaurant-release-acceptance-v1-88.test.ts
+          tests/integration/restaurant-pos-replay-v1-90.test.ts
+          tests/integration/restaurant-shared-account-contention-v1-91.test.ts
+          tests/integration/restaurant-payment-concurrency-v1-28.test.ts
+          tests/integration/restaurant-payment-terminal-concurrency-v1-29.test.ts
+          tests/integration/restaurant-refund-concurrency-v1-27.test.ts
+          tests/integration/restaurant-refund-return-concurrency-v1-30.test.ts
+          tests/integration/restaurant-item-return-concurrency-v1-31.test.ts
+          tests/integration/restaurant-stock-concurrency-v1-56.test.ts
+          tests/integration/restaurant-table-concurrency-v1-67.test.ts
+          tests/integration/restaurant-table-settlement-v1-82.test.ts
+
+      - name: Full Restaurant and warehouse regressions
+        run: >
+          npx vitest run
+          tests/integration/restaurant-*.test.ts
+          tests/unit/restaurant-*.test.ts
+          tests/integration/warehouse-stock-tenant-tuple-integrity-v1-50.test.ts
+          tests/integration/managed-warehouse-stock.test.ts
+
+      - name: Full application regression
+        run: npm test
+
+      - name: Finance suite
+        run: npm run test:finance
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      - name: Production web build
+        env:
+          NODE_ENV: production
+        run: npm run build:web
+
+  isolated-print-certification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Restaurant print unit contracts
+        run: >
+          npx vitest run
+          tests/unit/restaurant-print-v1-88.test.ts
+          tests/unit/restaurant-print-route-v1-90.test.ts
+          tests/unit/thermal-print.test.ts
+      - name: Install isolated browser harness tooling
+        run: |
+          mkdir -p "$RUNNER_TEMP/restaurant-browser-tools"
+          npm install --prefix "$RUNNER_TEMP/restaurant-browser-tools" --ignore-scripts playwright@1.62.1
+          echo "NODE_PATH=$RUNNER_TEMP/restaurant-browser-tools/node_modules" >> "$GITHUB_ENV"
+          echo "RESTAURANT_PLAYWRIGHT_CLI=$RUNNER_TEMP/restaurant-browser-tools/node_modules/playwright/cli.js" >> "$GITHUB_ENV"
+      - name: Install Chromium
+        run: node "$RESTAURANT_PLAYWRIGHT_CLI" install --with-deps chromium
+      - name: Build Restaurant print harness
+        run: npx vite build --config tests/browser/restaurant-v1-88/vite.config.mjs
+      - name: Browser and 80mm print verification
+        run: node scripts/restaurant-browser-verification-v1-88.cjs
+      - name: Verify thermal PDF evidence
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const assert = require("node:assert/strict");
+          const { execFileSync } = require("node:child_process");
+          const root = ".tmp-restaurant-browser-v188";
+          const pdfs = fs.readdirSync(root).filter(name => name.endsWith(".pdf")).sort();
+          assert.ok(pdfs.length >= 2, "Expected receipt and KOT thermal PDFs.");
+          for (const name of pdfs) {
+            const file = path.join(root,name);
+            const xml = execFileSync("pdftotext",["-bbox",file,"-"],{encoding:"utf8"});
+            const historical = [...xml.matchAll(/<word\b([^>]+)>Historical<\/word>/g)];
+            assert.equal(historical.length,30,"PDF lost a long-order item label");
+            const heights = historical.map(match => {
+              const attrs = match[1];
+              const yMax = Number(attrs.match(/yMax="([^"]+)"/)[1]);
+              const yMin = Number(attrs.match(/yMin="([^"]+)"/)[1]);
+              return yMax-yMin;
+            });
+            assert.ok(Math.min(...heights) >= 5.5,"Thermal text shrank below readable evidence threshold");
+          }
+          NODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: restaurant-v196-thermal-evidence
+          path: |
+            .tmp-restaurant-browser-v188/*.pdf
+            .tmp-restaurant-browser-v188/*.png
+          include-hidden-files: true
+          if-no-files-found: error

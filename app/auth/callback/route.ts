@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { hasFreshRecoveryProof } from "@/lib/auth-recovery-proof";
-import { safeInternalDestination } from "@/lib/auth-routing";
+import { POST_AUTH_PATH, postAuthDestination, safeInternalDestination } from "@/lib/auth-routing";
 import { issueRecoveryMarker } from "@/lib/server/recovery-session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -25,7 +25,7 @@ function recoveryActivationFallback(requestUrl: string) {
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
-  const next = safeInternalDestination(url.searchParams.get("next"), request.url, "/dashboard");
+  const next = safeInternalDestination(url.searchParams.get("next"), request.url, POST_AUTH_PATH);
 
   if (!code) {
     return NextResponse.redirect(new URL(`/sign-in?error=${encodeURIComponent("Missing authentication code.")}`, request.url));
@@ -34,12 +34,9 @@ export async function GET(request: Request) {
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
-    // A first-time legacy customer can receive an account-activation link before
-    // they have a Supabase password. When that link is opened on another
-    // browser/device, PKCE exchange can fail even though Supabase has confirmed
-    // the email. Sending that user to password sign-in would create a dead end,
-    // so keep recovery destinations inside the activation flow and let them
-    // request the follow-up verification code safely.
+    // Recovery links opened on another browser/device can lack the PKCE
+    // verifier. Keep recovery destinations in recovery so the user can request
+    // a fresh reset email without falsely granting proof or creating an identity.
     if (isRecoveryDestination(next)) {
       return recoveryActivationFallback(request.url);
     }
@@ -65,5 +62,5 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.redirect(new URL(next, request.url));
+  return NextResponse.redirect(new URL(isRecoveryDestination(next) ? next : postAuthDestination(next, request.url), request.url));
 }

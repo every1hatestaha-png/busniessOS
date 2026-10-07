@@ -1,0 +1,31 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+
+import { restaurantMutationFeedback, restaurantFormWorkspaceChanged } from "@/lib/server/restaurant-action-errors";
+import { requireWorkspace } from "@/lib/server/auth";
+import { assertRestaurantMutationAccess } from "@/lib/server/restaurant-mutation-access";
+import { reverseRestaurantItemReturn } from "@/lib/server/restaurant-return-reversals";
+
+export async function reverseRestaurantReturnAction(formData: FormData) {
+  const orderId = String(formData.get("orderId") ?? "").trim();
+  const returnId = String(formData.get("returnId") ?? "").trim();
+  const reason = String(formData.get("reason") ?? "").trim();
+  const workspace = await requireWorkspace();
+
+  if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return { status: "error" as const, message: "Your workspace changed. Refresh this page before submitting." };
+  return restaurantMutationFeedback(async () => {
+    await assertRestaurantMutationAccess(workspace.workspaceId);
+  await reverseRestaurantItemReturn(
+    { workspaceId: workspace.workspaceId, role: workspace.role, userId: workspace.user.id },
+    returnId,
+    reason,
+  );
+
+  for (const path of [
+    "/restaurant",
+    "/restaurant/orders",
+    `/restaurant/orders/${orderId}/return`,
+  ]) revalidatePath(path);
+  }, "Return reversed.", "We could not reverse this return. Refresh its status before trying again.");
+}

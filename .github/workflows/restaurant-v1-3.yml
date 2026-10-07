@@ -1,0 +1,89 @@
+name: Restaurant V1.3 native PostgreSQL gate
+
+on:
+  pull_request:
+    branches:
+      - architecture/restaurant-refunds-v1-2
+      - architecture/restaurant-item-returns-v1-3
+      - architecture/restaurant-item-returns-ui-v1-3-1
+      - architecture/restaurant-return-reversal-v1-4
+      - architecture/restaurant-cash-shift-integrity-v1-5
+      - architecture/restaurant-legacy-kot-hardening-v1-6
+      - architecture/restaurant-payment-timing-v1-7
+      - architecture/restaurant-cash-shift-auth-v1-8
+
+permissions:
+  contents: read
+
+jobs:
+  native-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_restaurant_v13
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_restaurant_v13"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_restaurant_v13?sslmode=disable
+      RUN_INTEGRATION_TESTS: "true"
+      NODE_ENV: test
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Zml4dHVyZS5jbGVyay5hY2NvdW50cy5kZXYk
+      CLERK_SECRET_KEY: sk_test_fixture
+      CLERK_OAUTH_CLIENT_ID: fixture-client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci
+      - run: npx prisma validate
+      - run: node scripts/vertical/entrypoints.cjs
+      - name: Deploy full migration chain to native PostgreSQL 16
+        run: |
+          set -euo pipefail
+          npx prisma migrate deploy
+          npx prisma migrate status
+      - name: Restaurant integrity integration suite
+        id: restaurant_return_tests
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npx vitest run tests/integration/restaurant-item-returns-v1-3.test.ts tests/integration/restaurant-return-reversal-v1-4.test.ts tests/integration/restaurant-cash-shift-v1-5.test.ts tests/integration/restaurant-legacy-kot-v1-6.test.ts tests/integration/restaurant-legacy-kot-db-guard-v1-6.test.ts tests/integration/restaurant-table-occupancy-v1-6.test.ts tests/integration/restaurant-payment-timing-v1-7.test.ts tests/integration/restaurant-cash-shift-auth-v1-8.test.ts tests/integration/restaurant-whatsapp-approval-v1-9.test.ts 2>&1 | tee restaurant-v1-3-test.log
+      - name: Full unit and database-backed regression suite
+        id: regression_tests
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee restaurant-v1-3-regression.log
+      - name: Upload restaurant V1.3 diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: restaurant-v1-3-diagnostics
+          path: |
+            restaurant-v1-3-test.log
+            restaurant-v1-3-regression.log
+      - name: Fail if restaurant verification failed
+        if: steps.restaurant_return_tests.outcome == 'failure' || steps.regression_tests.outcome == 'failure'
+        run: exit 1
+      - name: Finance scenario suite
+        run: npm run test:finance
+      - name: TypeScript typecheck
+        run: npx tsc --noEmit
+      - name: Production build
+        env:
+          NODE_ENV: production
+        run: npm run build:web

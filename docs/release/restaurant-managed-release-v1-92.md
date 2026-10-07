@@ -1,0 +1,34 @@
+# Managed release evidence supplement V1.92
+
+Read with `restaurant-operator-runbook-v1-91.md`. This is an operator procedure, not authorization to execute production actions. No managed resource or production endpoint was contacted by this audit.
+
+## Provider-specific recovery prerequisite
+
+Fill: approved Neon project/organization/region, source branch ID/type, database, compute endpoint ID, direct host fingerprint, role, plan, actual history window and earliest retained recovery point, backup/snapshot/export identifier and timestamp, approved isolated recovery target, retention/deletion owner, RPO/RTO and write-freeze/reconciliation owner. Credentials stay in the approved secret manager.
+
+Neon's current docs distinguish root branches and child branches: instant restore supports root branches and replaces the branch timeline, including **all databases and schema**. Restore is an overwrite, not a merge, and interrupts connections. Its automatic backup branch preserves the pre-restore state; it is not an independently executed recovery test. Do not assume a child test branch supports root PITR. Verify the actual plan and branch operation offered before designing a rehearsal. [Neon instant restore](https://neon.com/docs/postgres/backup-restore/branch-restore).
+
+Current documented defaults: Free 6 hours (1 GB cap), Launch/Scale 1 day; maxima are 6 hours, 7 days and 30 days respectively. The project's actual setting, retained WAL and recovery-point availability must be recorded. Zero history disables instant restore. Do not shorten/change project-wide retention during this audit. [Neon history window](https://neon.com/docs/postgres/backup-restore/history-window).
+
+Rehearse only on an explicitly approved nonproduction target. Verify a selected historical point with read-only Time Travel queries where supported, perform the approved restore/branch/export method, and compare critical counts, canonical hashes, migration checksums and finance/inventory invariants. Record observed recovery duration and achievable recovery point, then run authenticated smoke against the isolated restored target. Managed Better Auth data, if present in the database timeline, follows that restore; external Supabase/Clerk identities do not become certified by a database restore. Object Storage and Functions are outside the database timeline. [Time Travel](https://neon.com/docs/postgres/backup-restore/time-travel-assist).
+
+For independent exports, use version-compatible PostgreSQL clients and an approved **direct/unpooled** endpoint; secure custom-format `pg_dump`, content listing/hash, encrypted external storage and target-guarded `pg_restore --exit-on-error`. Separately provision roles/permissions/settings/extensions not represented by a database dump. Verify backup retention and ability to retrieve it. The earlier 2,354-file local cold-copy/20-table hash rehearsal does not cover these managed operations. [Neon backup strategies](https://neon.com/docs/postgres/backup-restore/backups).
+
+## Exact release ordering and stop conditions
+
+The repository's main workflow is unchanged: main-push gates and manual-dispatch-only production migrations; release-wide GitHub concurrency; approved database allow-list/name assertion; pooler-to-direct conversion; Prisma advisory serialization and migration status; readiness check dependent on migration success. Readiness does not promote a deployment, take a backup or authenticate a customer. The allow-listed pooler hosts currently map to allow-listed direct hosts. Check the effective direct target again in the operator procedure; do not bypass the guard or change its allow-list for convenience.
+
+GitHub concurrency serializes this workflow, not outside migration clients or Vercel. Repository branch deployment exclusions prevent automatic builds of Restaurant draft branches; they do not certify the live Production environment. An unspecified branch defaults to deployment enabled. [Vercel Git configuration](https://vercel.com/docs/project-configuration/git-configuration).
+
+Before any authorized merge/dispatch, an operator must record the Vercel project and Production environment setting: disable **Auto-assign Custom Production Domains** under Environments → Production → Branch Tracking, or prove an equivalent approved staged deployment process. Record evidence that a new main deployment cannot receive customer domains before successful migration. No live setting was read or changed here. A repository-only change cannot establish that live setting or exclude external migration workers. [Vercel staged production promotion](https://vercel.com/docs/deployments/promoting-a-deployment).
+
+1. Approve the complete scope, final SHA, exact CI run/head, source/target identities, backup/restore evidence, migration names/checksums, previous compatible SHA, synthetic smoke actors and devices.
+2. Verify/freeze automatic customer-domain assignment, migration-on-build (`RUN_PRISMA_MIGRATIONS_ON_BUILD=0`) and background writes/jobs. Confirm one designated migration executor; prohibit developer CLI migrations, parallel workflows and external deployment migrators.
+3. Rehearse historical preflight and pending migrations on the approved isolated source restore. Require no failed/unresolved migration, no checksum drift and zero unexplained finance/inventory exceptions.
+4. After separate release authorization, freeze the authorized main revision; require workflow `head_sha` and deployment source SHA to match it. Assert scheme, host fingerprint, approved decoded database and effective direct host before migration.
+5. Execute migrations through the designated workflow only. On any target/migration/status/invariant failure, stop promotion and writes; retain evidence. Do not start another executor, resolve migration history blindly or promote because a build succeeded.
+6. Require migration success, expected migration ledger and post-migration tenant/stock/payment/GL invariants. Only then manually promote the approved exact deployment; promotion reuses that deployment and does not rebuild it. Revalidate deployment-time environment/schema compatibility rather than assuming new settings are picked up.
+7. Verify customer-domain health/readiness and the exact revision; run authenticated smoke and physical acceptance, then lift the controlled freeze with monitoring ownership recorded.
+8. On failure, prefer a reviewed forward fix. Previous application rollback requires proven schema and financial compatibility. Database restore needs an approved outage and reconciliation of transactions after the recovery point; immutable history cannot be repaired with arbitrary SQL.
+
+Status: operator configuration/managed restore/authenticated acceptance **PENDING**. No production workflow was dispatched, no Vercel deployment promoted, and no Neon settings changed.

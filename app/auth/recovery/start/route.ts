@@ -1,17 +1,31 @@
 import { NextResponse } from "next/server";
 
 import { safeInternalDestination } from "@/lib/auth-routing";
-import { db } from "@/lib/server/db";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const GENERIC_RESPONSE = { ok: true };
-const DEFAULT_RECOVERY_REDIRECT = "/auth/callback?next=%2Fforgot-password%3Fverified%3D1";
+const DEFAULT_RECOVERY_REDIRECT = "/auth/callback?next=%2Frecovery%2Fnew-password";
 
 function genericResponse() {
   return NextResponse.json(GENERIC_RESPONSE, {
     status: 200,
     headers: { "Cache-Control": "no-store" },
   });
+}
+
+function recoveryOrigin(requestUrl: string) {
+  const fallback = new URL(requestUrl).origin;
+  const configured = process.env.AUTH_REDIRECT_ORIGIN?.trim();
+
+  if (!configured) return fallback;
+
+  try {
+    const parsed = new URL(configured);
+    if (!["https:", "http:"].includes(parsed.protocol)) return fallback;
+    return parsed.origin;
+  } catch {
+    return fallback;
+  }
 }
 
 export async function POST(request: Request) {
@@ -23,23 +37,7 @@ export async function POST(request: Request) {
       return genericResponse();
     }
 
-    const existingUser = await db.user.findFirst({
-      where: {
-        email: {
-          equals: email,
-          mode: "insensitive",
-        },
-      },
-      select: { id: true },
-    });
-
-    // Always return the same public response so the recovery endpoint does not
-    // disclose whether an email belongs to a MunshiOS customer.
-    if (!existingUser) {
-      return genericResponse();
-    }
-
-    const origin = new URL(request.url).origin;
+    const origin = recoveryOrigin(request.url);
     const requestedRedirect = typeof body.redirectTo === "string" ? body.redirectTo : null;
     const safeRedirectPath = safeInternalDestination(
       requestedRedirect,
@@ -49,20 +47,13 @@ export async function POST(request: Request) {
     const redirectTo = `${origin}${safeRedirectPath}`;
 
     const supabase = await createSupabaseServerClient();
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        shouldCreateUser: true,
-        emailRedirectTo: redirectTo,
-      },
-    });
+    // Recovery targets existing Supabase identities only. Shared verified-email
+    // linking still preserves legacy MunshiOS users and their memberships after
+    // authentication; recovery must never provision a missing provider identity.
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
 
     if (error) {
-      // Do not reflect provider-specific failures or cooldowns to the caller.
-      // Returning different statuses for an existing email would turn recovery
-      // into an account-enumeration oracle. App-level rate limiting still runs
-      // before this handler and remains email-agnostic.
-      console.warn("[auth] recovery OTP request failed", {
+      console.warn("[auth] password recovery request failed", {
         code: error.code ?? null,
         status: error.status ?? null,
       });
@@ -70,8 +61,6 @@ export async function POST(request: Request) {
 
     return genericResponse();
   } catch {
-    // Recovery responses intentionally stay generic to avoid disclosing whether
-    // an account exists. Operational failures are observable in server logs.
     console.warn("[auth] recovery request could not be processed");
     return genericResponse();
   }

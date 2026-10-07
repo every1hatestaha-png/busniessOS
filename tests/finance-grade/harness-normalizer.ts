@@ -13,6 +13,7 @@ export function financeGradeHarnessNormalizer() {
     enforce: "pre" as const,
     transform(code: string, id: string) {
       const normalized = id.replaceAll("\\", "/");
+      code = code.replaceAll("\r\n", "\n");
 
       if (normalized.endsWith("/tests/finance-grade/scenarios/long-running-simulation.test.ts")) {
         let next = code

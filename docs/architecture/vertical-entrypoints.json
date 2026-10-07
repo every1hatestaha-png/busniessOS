@@ -1,0 +1,2230 @@
+[
+  {
+    "file": "app/(dashboard)/accounting/cash-bank/[id]/actions.ts",
+    "symbol": "recordCashDrawerReconciliationAction",
+    "url": "/accounting/cash-bank/[id]",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/accounting/cash-bank/[id]/page.tsx",
+    "symbol": null,
+    "url": "/accounting/cash-bank/[id]",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/accounting/cash-bank/page.tsx",
+    "symbol": null,
+    "url": "/accounting/cash-bank",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/accounting/expenses/[id]/page.tsx",
+    "symbol": null,
+    "url": "/accounting/expenses/[id]",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/accounting/expenses/page.tsx",
+    "symbol": null,
+    "url": "/accounting/expenses",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/accounting/notes/actions.ts",
+    "symbol": "createManualCustomerCreditNoteAction",
+    "url": "/accounting/notes",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/accounting/notes/actions.ts",
+    "symbol": "createManualSupplierDebitNoteAction",
+    "url": "/accounting/notes",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/accounting/notes/actions.ts",
+    "symbol": "cancelManualCustomerCreditNoteAction",
+    "url": "/accounting/notes",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/accounting/notes/actions.ts",
+    "symbol": "cancelManualSupplierDebitNoteAction",
+    "url": "/accounting/notes",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/accounting/notes/page.tsx",
+    "symbol": null,
+    "url": "/accounting/notes",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/accounting/payment-vouchers/[id]/cheque/page.tsx",
+    "symbol": null,
+    "url": "/accounting/payment-vouchers/[id]/cheque",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/accounting/payment-vouchers/[id]/page.tsx",
+    "symbol": null,
+    "url": "/accounting/payment-vouchers/[id]",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/ai/page.tsx",
+    "symbol": null,
+    "url": "/ai",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/collections/page.tsx",
+    "symbol": null,
+    "url": "/collections",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/collections/promise-actions.ts",
+    "symbol": "saveCollectionPromiseAction",
+    "url": "/collections",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/collections/promise-actions.ts",
+    "symbol": "resolveCollectionPromiseAction",
+    "url": "/collections",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/customer-returns/[id]/page.tsx",
+    "symbol": null,
+    "url": "/customer-returns/[id]",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/customers/[id]/edit/page.tsx",
+    "symbol": null,
+    "url": "/customers/[id]/edit",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/customers/[id]/page.tsx",
+    "symbol": null,
+    "url": "/customers/[id]",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/customers/[id]/pricing/actions.ts",
+    "symbol": "saveCustomerPriceRuleAction",
+    "url": "/customers/[id]/pricing",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/customers/[id]/pricing/actions.ts",
+    "symbol": "deleteCustomerPriceRuleAction",
+    "url": "/customers/[id]/pricing",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/customers/[id]/pricing/page.tsx",
+    "symbol": null,
+    "url": "/customers/[id]/pricing",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/customers/[id]/products/actions.ts",
+    "symbol": "saveCustomerSalesBomAction",
+    "url": "/customers/[id]/products",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/customers/[id]/products/actions.ts",
+    "symbol": "deleteCustomerSalesBomAction",
+    "url": "/customers/[id]/products",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/customers/[id]/products/page.tsx",
+    "symbol": null,
+    "url": "/customers/[id]/products",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/customers/actions.ts",
+    "symbol": "createCustomerAction",
+    "url": "/customers",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/customers/actions.ts",
+    "symbol": "updateCustomerAction",
+    "url": "/customers",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/customers/new/page.tsx",
+    "symbol": null,
+    "url": "/customers/new",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/customers/page.tsx",
+    "symbol": null,
+    "url": "/customers",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/dashboard/page.tsx",
+    "symbol": null,
+    "url": "/dashboard",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/desktop-account-actions.ts",
+    "symbol": "authorizeDesktopAccountSwitchAction",
+    "url": "/desktop-account-actions.ts",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/goods-receipts/[id]/page.tsx",
+    "symbol": null,
+    "url": "/goods-receipts/[id]",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/goods-receipts/[id]/print/page.tsx",
+    "symbol": null,
+    "url": "/goods-receipts/[id]/print",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/goods-receipts/page.tsx",
+    "symbol": null,
+    "url": "/goods-receipts",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/inventory/[id]/edit/page.tsx",
+    "symbol": null,
+    "url": "/inventory/[id]/edit",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/inventory/[id]/page.tsx",
+    "symbol": null,
+    "url": "/inventory/[id]",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/inventory/actions.ts",
+    "symbol": "loadFbrReferenceOptionsAction",
+    "url": "/inventory",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/inventory/actions.ts",
+    "symbol": "verifyFbrProductMappingAction",
+    "url": "/inventory",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/inventory/actions.ts",
+    "symbol": "createProductAction",
+    "url": "/inventory",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/inventory/actions.ts",
+    "symbol": "updateProductAction",
+    "url": "/inventory",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/inventory/actions.ts",
+    "symbol": "archiveProductAction",
+    "url": "/inventory",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/inventory/actions.ts",
+    "symbol": "adjustStockAction",
+    "url": "/inventory",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/inventory/actions.ts",
+    "symbol": "transferWarehouseStockAction",
+    "url": "/inventory",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/inventory/new/page.tsx",
+    "symbol": null,
+    "url": "/inventory/new",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/inventory/page.tsx",
+    "symbol": null,
+    "url": "/inventory",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/invoices/[id]/gate-pass/page.tsx",
+    "symbol": null,
+    "url": "/invoices/[id]/gate-pass",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/invoices/[id]/page.tsx",
+    "symbol": null,
+    "url": "/invoices/[id]",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/invoices/actions.ts",
+    "symbol": "prepareFbrSandboxAction",
+    "url": "/invoices",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/invoices/actions.ts",
+    "symbol": "validateFbrSandboxAction",
+    "url": "/invoices",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/invoices/actions.ts",
+    "symbol": "submitFbrSandboxAction",
+    "url": "/invoices",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/invoices/actions.ts",
+    "symbol": "recordPaymentAction",
+    "url": "/invoices",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/invoices/page.tsx",
+    "symbol": null,
+    "url": "/invoices",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/khata/page.tsx",
+    "symbol": null,
+    "url": "/khata",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/manufacturing/actions.ts",
+    "symbol": "createWarehouseAction",
+    "url": "/manufacturing",
+    "kind": "SERVER_ACTION",
+    "category": "MANUFACTURING",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/manufacturing/actions.ts",
+    "symbol": "createBomAction",
+    "url": "/manufacturing",
+    "kind": "SERVER_ACTION",
+    "category": "MANUFACTURING",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/manufacturing/actions.ts",
+    "symbol": "createProductionRunAction",
+    "url": "/manufacturing",
+    "kind": "SERVER_ACTION",
+    "category": "MANUFACTURING",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/manufacturing/actions.ts",
+    "symbol": "approveProductionRunAction",
+    "url": "/manufacturing",
+    "kind": "SERVER_ACTION",
+    "category": "MANUFACTURING",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/manufacturing/actions.ts",
+    "symbol": "postProductionRunAction",
+    "url": "/manufacturing",
+    "kind": "SERVER_ACTION",
+    "category": "MANUFACTURING",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/manufacturing/actions.ts",
+    "symbol": "cancelProductionRunAction",
+    "url": "/manufacturing",
+    "kind": "SERVER_ACTION",
+    "category": "MANUFACTURING",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/manufacturing/page.tsx",
+    "symbol": null,
+    "url": "/manufacturing",
+    "kind": "PAGE",
+    "category": "MANUFACTURING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/manufacturing/runs/[id]/page.tsx",
+    "symbol": null,
+    "url": "/manufacturing/runs/[id]",
+    "kind": "PAGE",
+    "category": "MANUFACTURING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/payables/page.tsx",
+    "symbol": null,
+    "url": "/payables",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/payments/[id]/page.tsx",
+    "symbol": null,
+    "url": "/payments/[id]",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/purchases/[id]/page.tsx",
+    "symbol": null,
+    "url": "/purchases/[id]",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/purchases/[id]/print/page.tsx",
+    "symbol": null,
+    "url": "/purchases/[id]/print",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/purchases/[id]/receive/page.tsx",
+    "symbol": null,
+    "url": "/purchases/[id]/receive",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/purchases/new/page.tsx",
+    "symbol": null,
+    "url": "/purchases/new",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/purchases/page.tsx",
+    "symbol": null,
+    "url": "/purchases",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/receivables/page.tsx",
+    "symbol": null,
+    "url": "/receivables",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/reports/cash-bank/page.tsx",
+    "symbol": null,
+    "url": "/reports/cash-bank",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/reports/current-stock/page.tsx",
+    "symbol": null,
+    "url": "/reports/current-stock",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/reports/customer-statement/page.tsx",
+    "symbol": null,
+    "url": "/reports/customer-statement",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/reports/general-ledger/page.tsx",
+    "symbol": null,
+    "url": "/reports/general-ledger",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/reports/page.tsx",
+    "symbol": null,
+    "url": "/reports",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/reports/profit-loss/page.tsx",
+    "symbol": null,
+    "url": "/reports/profit-loss",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/reports/purchase-price-history/page.tsx",
+    "symbol": null,
+    "url": "/reports/purchase-price-history",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/reports/stock-movement/page.tsx",
+    "symbol": null,
+    "url": "/reports/stock-movement",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/reports/supplier-statement/page.tsx",
+    "symbol": null,
+    "url": "/reports/supplier-statement",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/restaurant/actions.ts",
+    "symbol": "createRestaurantTableAction",
+    "url": "/restaurant",
+    "kind": "SERVER_ACTION",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/restaurant/actions.ts",
+    "symbol": "openCashShiftAction",
+    "url": "/restaurant",
+    "kind": "SERVER_ACTION",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/restaurant/actions.ts",
+    "symbol": "closeCashShiftAction",
+    "url": "/restaurant",
+    "kind": "SERVER_ACTION",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/restaurant/actions.ts",
+    "symbol": "createRecipeAction",
+    "url": "/restaurant",
+    "kind": "SERVER_ACTION",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/restaurant/actions.ts",
+    "symbol": "createKitchenTicketAction",
+    "url": "/restaurant",
+    "kind": "SERVER_ACTION",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/restaurant/actions.ts",
+    "symbol": "updateKitchenTicketStatusAction",
+    "url": "/restaurant",
+    "kind": "SERVER_ACTION",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/restaurant/page.tsx",
+    "symbol": null,
+    "url": "/restaurant",
+    "kind": "PAGE",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/sales/[id]/edit/page.tsx",
+    "symbol": null,
+    "url": "/sales/[id]/edit",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/sales/[id]/page.tsx",
+    "symbol": null,
+    "url": "/sales/[id]",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/sales/actions.ts",
+    "symbol": "createSaleAction",
+    "url": "/sales",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/sales/actions.ts",
+    "symbol": "updateSaleAction",
+    "url": "/sales",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/sales/new/page.tsx",
+    "symbol": null,
+    "url": "/sales/new",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/sales/page.tsx",
+    "symbol": null,
+    "url": "/sales",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/services/actions.ts",
+    "symbol": "initialServicesActionState",
+    "url": "/services",
+    "kind": "SERVER_ACTION",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/services/actions.ts",
+    "symbol": "createServiceQuoteAction",
+    "url": "/services",
+    "kind": "SERVER_ACTION",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/services/actions.ts",
+    "symbol": "createServiceJobAction",
+    "url": "/services",
+    "kind": "SERVER_ACTION",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/services/actions.ts",
+    "symbol": "updateServiceQuoteStatusAction",
+    "url": "/services",
+    "kind": "SERVER_ACTION",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/services/actions.ts",
+    "symbol": "updateServiceJobStatusAction",
+    "url": "/services",
+    "kind": "SERVER_ACTION",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/services/jobs/[id]/page.tsx",
+    "symbol": null,
+    "url": "/services/jobs/[id]",
+    "kind": "PAGE",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/services/page.tsx",
+    "symbol": null,
+    "url": "/services",
+    "kind": "PAGE",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/services/quotes/[id]/page.tsx",
+    "symbol": null,
+    "url": "/services/quotes/[id]",
+    "kind": "PAGE",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/services/quotes/[id]/print/page.tsx",
+    "symbol": null,
+    "url": "/services/quotes/[id]/print",
+    "kind": "PAGE",
+    "category": "LEGACY_COMPATIBILITY",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/settings/actions.ts",
+    "symbol": "updateWorkspaceProfileAction",
+    "url": "/settings",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/settings/actions.ts",
+    "symbol": "saveFbrWorkspaceCredentialAction",
+    "url": "/settings",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/settings/actions.ts",
+    "symbol": "updateFbrSandboxConfigAction",
+    "url": "/settings",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/settings/actions.ts",
+    "symbol": "confirmFbrHsUomAnnexureAction",
+    "url": "/settings",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/settings/actions.ts",
+    "symbol": "confirmFbrProductionRouteAction",
+    "url": "/settings",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/settings/page.tsx",
+    "symbol": null,
+    "url": "/settings",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/supplier-returns/[id]/page.tsx",
+    "symbol": null,
+    "url": "/supplier-returns/[id]",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/supplier-returns/page.tsx",
+    "symbol": null,
+    "url": "/supplier-returns",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/suppliers/[id]/edit/page.tsx",
+    "symbol": null,
+    "url": "/suppliers/[id]/edit",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/suppliers/[id]/page.tsx",
+    "symbol": null,
+    "url": "/suppliers/[id]",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/suppliers/actions.ts",
+    "symbol": "createSupplierAction",
+    "url": "/suppliers",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/suppliers/actions.ts",
+    "symbol": "updateSupplierAction",
+    "url": "/suppliers",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/suppliers/new/page.tsx",
+    "symbol": null,
+    "url": "/suppliers/new",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/suppliers/page.tsx",
+    "symbol": null,
+    "url": "/suppliers",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requireWorkspace in dashboard layout",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/account-recovery/[[...account-recovery]]/page.tsx",
+    "symbol": null,
+    "url": "/account-recovery/[[...account-recovery]]",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/admin/page.tsx",
+    "symbol": null,
+    "url": "/admin",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/api/ai/chat/route.ts",
+    "symbol": null,
+    "url": "/api/ai/chat",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/api/desktop-config/route.ts",
+    "symbol": null,
+    "url": "/api/desktop-config",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "public or signed webhook/auth protocol",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/api/health/route.ts",
+    "symbol": null,
+    "url": "/api/health",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "public or signed webhook/auth protocol",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/api/readiness/route.ts",
+    "symbol": null,
+    "url": "/api/readiness",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "public or signed webhook/auth protocol",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/api/search/route.ts",
+    "symbol": null,
+    "url": "/api/search",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/api/v1/accounting/accounts/route.ts",
+    "symbol": null,
+    "url": "/api/v1/accounting/accounts",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/accounting/cash-bank/route.ts",
+    "symbol": null,
+    "url": "/api/v1/accounting/cash-bank",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/accounting/dashboard/route.ts",
+    "symbol": null,
+    "url": "/api/v1/accounting/dashboard",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/accounting/expenses/[id]/reverse/route.ts",
+    "symbol": null,
+    "url": "/api/v1/accounting/expenses/[id]/reverse",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/accounting/expenses/route.ts",
+    "symbol": null,
+    "url": "/api/v1/accounting/expenses",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/accounting/general-ledger/route.ts",
+    "symbol": null,
+    "url": "/api/v1/accounting/general-ledger",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/accounting/profit-loss/route.ts",
+    "symbol": null,
+    "url": "/api/v1/accounting/profit-loss",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/audit/route.ts",
+    "symbol": null,
+    "url": "/api/v1/audit",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/customer-credits/[id]/allocations/route.ts",
+    "symbol": null,
+    "url": "/api/v1/customer-credits/[id]/allocations",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/customer-returns/[id]/cancel/route.ts",
+    "symbol": null,
+    "url": "/api/v1/customer-returns/[id]/cancel",
+    "kind": "API",
+    "category": "TRADING",
+    "methods": [
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/customer-returns/route.ts",
+    "symbol": null,
+    "url": "/api/v1/customer-returns",
+    "kind": "API",
+    "category": "TRADING",
+    "methods": [
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/customers/[id]/pricing/route.ts",
+    "symbol": null,
+    "url": "/api/v1/customers/[id]/pricing",
+    "kind": "API",
+    "category": "TRADING",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/customers/[id]/receivables/route.ts",
+    "symbol": null,
+    "url": "/api/v1/customers/[id]/receivables",
+    "kind": "API",
+    "category": "TRADING",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/customers/[id]/route.ts",
+    "symbol": null,
+    "url": "/api/v1/customers/[id]",
+    "kind": "API",
+    "category": "TRADING",
+    "methods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/customers/route.ts",
+    "symbol": null,
+    "url": "/api/v1/customers",
+    "kind": "API",
+    "category": "TRADING",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/goods-receipts/[id]/route.ts",
+    "symbol": null,
+    "url": "/api/v1/goods-receipts/[id]",
+    "kind": "API",
+    "category": "TRADING",
+    "methods": [
+      "GET",
+      "PATCH",
+      "POST",
+      "DELETE"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/goods-receipts/route.ts",
+    "symbol": null,
+    "url": "/api/v1/goods-receipts",
+    "kind": "API",
+    "category": "TRADING",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/invitations/[id]/route.ts",
+    "symbol": null,
+    "url": "/api/v1/invitations/[id]",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "DELETE"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/khata/summary/route.ts",
+    "symbol": null,
+    "url": "/api/v1/khata/summary",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/me/route.ts",
+    "symbol": null,
+    "url": "/api/v1/me",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/members/[id]/route.ts",
+    "symbol": null,
+    "url": "/api/v1/members/[id]",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "PATCH",
+      "DELETE"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/members/route.ts",
+    "symbol": null,
+    "url": "/api/v1/members",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/payables/aging/route.ts",
+    "symbol": null,
+    "url": "/api/v1/payables/aging",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/payments/[id]/reverse/route.ts",
+    "symbol": null,
+    "url": "/api/v1/payments/[id]/reverse",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/payments/route.ts",
+    "symbol": null,
+    "url": "/api/v1/payments",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/products/[id]/route.ts",
+    "symbol": null,
+    "url": "/api/v1/products/[id]",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/products/route.ts",
+    "symbol": null,
+    "url": "/api/v1/products",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/purchases/[id]/cancel/route.ts",
+    "symbol": null,
+    "url": "/api/v1/purchases/[id]/cancel",
+    "kind": "API",
+    "category": "TRADING",
+    "methods": [
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/purchases/[id]/items/route.ts",
+    "symbol": null,
+    "url": "/api/v1/purchases/[id]/items",
+    "kind": "API",
+    "category": "TRADING",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/purchases/[id]/route.ts",
+    "symbol": null,
+    "url": "/api/v1/purchases/[id]",
+    "kind": "API",
+    "category": "TRADING",
+    "methods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/purchases/route.ts",
+    "symbol": null,
+    "url": "/api/v1/purchases",
+    "kind": "API",
+    "category": "TRADING",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/receivables/aging/route.ts",
+    "symbol": null,
+    "url": "/api/v1/receivables/aging",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/sales/[id]/cancel/route.ts",
+    "symbol": null,
+    "url": "/api/v1/sales/[id]/cancel",
+    "kind": "API",
+    "category": "TRADING",
+    "methods": [
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/sales/[id]/route.ts",
+    "symbol": null,
+    "url": "/api/v1/sales/[id]",
+    "kind": "API",
+    "category": "TRADING",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/sales/route.ts",
+    "symbol": null,
+    "url": "/api/v1/sales",
+    "kind": "API",
+    "category": "TRADING",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/supplier-payments/[id]/reverse/route.ts",
+    "symbol": null,
+    "url": "/api/v1/supplier-payments/[id]/reverse",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/supplier-returns/[id]/cancel/route.ts",
+    "symbol": null,
+    "url": "/api/v1/supplier-returns/[id]/cancel",
+    "kind": "API",
+    "category": "TRADING",
+    "methods": [
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/supplier-returns/route.ts",
+    "symbol": null,
+    "url": "/api/v1/supplier-returns",
+    "kind": "API",
+    "category": "TRADING",
+    "methods": [
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/suppliers/[id]/payables/route.ts",
+    "symbol": null,
+    "url": "/api/v1/suppliers/[id]/payables",
+    "kind": "API",
+    "category": "TRADING",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/suppliers/[id]/payments/route.ts",
+    "symbol": null,
+    "url": "/api/v1/suppliers/[id]/payments",
+    "kind": "API",
+    "category": "TRADING",
+    "methods": [
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/suppliers/[id]/purchases/route.ts",
+    "symbol": null,
+    "url": "/api/v1/suppliers/[id]/purchases",
+    "kind": "API",
+    "category": "TRADING",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/suppliers/[id]/route.ts",
+    "symbol": null,
+    "url": "/api/v1/suppliers/[id]",
+    "kind": "API",
+    "category": "TRADING",
+    "methods": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/suppliers/route.ts",
+    "symbol": null,
+    "url": "/api/v1/suppliers",
+    "kind": "API",
+    "category": "TRADING",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/workspace/route.ts",
+    "symbol": null,
+    "url": "/api/v1/workspace",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/v1/workspace/switch/route.ts",
+    "symbol": null,
+    "url": "/api/v1/workspace/switch",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "API context or authenticated provisioning/switch"
+  },
+  {
+    "file": "app/api/webhooks/clerk/route.ts",
+    "symbol": null,
+    "url": "/api/webhooks/clerk",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "POST"
+    ],
+    "boundary": "public or signed webhook/auth protocol",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/auth/callback/route.ts",
+    "symbol": null,
+    "url": "/auth/callback",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "public or signed webhook/auth protocol",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/auth/confirm/route.ts",
+    "symbol": null,
+    "url": "/auth/confirm",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "boundary": "public or signed webhook/auth protocol",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/auth/faisal-mosque.webp/route.ts",
+    "symbol": null,
+    "url": "/auth/faisal-mosque.webp",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "public or signed webhook/auth protocol",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/auth/post-login/route.ts",
+    "symbol": null,
+    "url": "/auth/post-login",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/auth/recovery/password/route.ts",
+    "symbol": null,
+    "url": "/auth/recovery/password",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "POST"
+    ],
+    "boundary": "public or signed webhook/auth protocol",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/auth/recovery/start/route.ts",
+    "symbol": null,
+    "url": "/auth/recovery/start",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "POST"
+    ],
+    "boundary": "public or signed webhook/auth protocol",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/auth/recovery/status/route.ts",
+    "symbol": null,
+    "url": "/auth/recovery/status",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "GET"
+    ],
+    "boundary": "public or signed webhook/auth protocol",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/desktop-auth/page.tsx",
+    "symbol": null,
+    "url": "/desktop-auth",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/faq/page.tsx",
+    "symbol": null,
+    "url": "/faq",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/features/page.tsx",
+    "symbol": null,
+    "url": "/features",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/forgot-password/page.tsx",
+    "symbol": null,
+    "url": "/forgot-password",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/get-your-munshi/page.tsx",
+    "symbol": null,
+    "url": "/get-your-munshi",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/industries/manufacturing/page.tsx",
+    "symbol": null,
+    "url": "/industries/manufacturing",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/industries/page.tsx",
+    "symbol": null,
+    "url": "/industries",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/industries/restaurant/page.tsx",
+    "symbol": null,
+    "url": "/industries/restaurant",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/industries/retail/page.tsx",
+    "symbol": null,
+    "url": "/industries/retail",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/industries/services/page.tsx",
+    "symbol": null,
+    "url": "/industries/services",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/industries/wholesale/page.tsx",
+    "symbol": null,
+    "url": "/industries/wholesale",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/onboarding/actions.ts",
+    "symbol": "createWorkspace",
+    "url": "/onboarding",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/onboarding/invitation-actions.ts",
+    "symbol": "acceptWorkspaceInvitation",
+    "url": "/onboarding",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/onboarding/invitation-actions.ts",
+    "symbol": "declineWorkspaceInvitation",
+    "url": "/onboarding",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/onboarding/page.tsx",
+    "symbol": null,
+    "url": "/onboarding",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/page.tsx",
+    "symbol": null,
+    "url": "/",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/platform/actions.ts",
+    "symbol": "extendTrialAction",
+    "url": "/platform",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/platform/actions.ts",
+    "symbol": "activateSubscriptionAction",
+    "url": "/platform",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/platform/actions.ts",
+    "symbol": "grantGraceAction",
+    "url": "/platform",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/platform/actions.ts",
+    "symbol": "suspendSubscriptionAction",
+    "url": "/platform",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/platform/actions.ts",
+    "symbol": "deleteCustomerAccountAction",
+    "url": "/platform",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/platform/page.tsx",
+    "symbol": null,
+    "url": "/platform",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/platform/security/[[...security]]/page.tsx",
+    "symbol": null,
+    "url": "/platform/security/[[...security]]",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/platform/sign-in/[[...sign-in]]/page.tsx",
+    "symbol": null,
+    "url": "/platform/sign-in/[[...sign-in]]",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/pricing/page.tsx",
+    "symbol": null,
+    "url": "/pricing",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/privacy/page.tsx",
+    "symbol": null,
+    "url": "/privacy",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/product/page.tsx",
+    "symbol": null,
+    "url": "/product",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/recovery/new-password/page.tsx",
+    "symbol": null,
+    "url": "/recovery/new-password",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/security/page.tsx",
+    "symbol": null,
+    "url": "/security",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/sign-in/[[...sign-in]]/page.tsx",
+    "symbol": null,
+    "url": "/sign-in/[[...sign-in]]",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/sign-up/[[...sign-up]]/page.tsx",
+    "symbol": null,
+    "url": "/sign-up/[[...sign-up]]",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/subscription/actions.ts",
+    "symbol": "requestActivationAction",
+    "url": "/subscription",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/subscription/page.tsx",
+    "symbol": null,
+    "url": "/subscription",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/terms/page.tsx",
+    "symbol": null,
+    "url": "/terms",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/workspace-unavailable/page.tsx",
+    "symbol": null,
+    "url": "/workspace-unavailable",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "entry point"
+  }
+]

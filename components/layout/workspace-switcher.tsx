@@ -3,10 +3,8 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 export function WorkspaceSwitcher({ activeId, workspaces }: { activeId: string; workspaces: Array<{ workspaceId: string; workspace: { name: string } }> }) {
-  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -34,8 +32,10 @@ export function WorkspaceSwitcher({ activeId, workspaces }: { activeId: string; 
         return;
       }
 
-      router.push("/dashboard");
-      router.refresh();
+      // A full document navigation drops the previous tenant's Router Cache,
+      // mounted client state and pending requests before rendering the new one.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+      window.location.assign("/dashboard");
     } catch {
       setMessage("Network error. Please try again.");
     } finally {

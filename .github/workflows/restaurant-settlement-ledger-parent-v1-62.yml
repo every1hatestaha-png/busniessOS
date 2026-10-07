@@ -1,0 +1,58 @@
+name: Restaurant V1.62 settlement ledger parent gate
+
+on:
+  pull_request:
+    branches:
+      - architecture/restaurant-settlement-account-concurrency-v1-61
+
+permissions:
+  contents: read
+
+jobs:
+  native-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_restaurant_v162
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_restaurant_v162"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_restaurant_v162?sslmode=disable
+      RUN_INTEGRATION_TESTS: "true"
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci
+      - run: npx prisma validate
+      - run: node scripts/vertical/entrypoints.cjs
+      - name: Deploy full migration chain to native PostgreSQL 16
+        run: |
+          set -euo pipefail
+          npx prisma migrate deploy
+          npx prisma migrate status
+      - name: Restaurant settlement ledger parent integration
+        run: npx vitest run tests/integration/restaurant-settlement-ledger-parent-v1-62.test.ts
+      - name: Full unit and database-backed regression suite
+        run: npm test
+      - name: Finance scenario suite
+        run: npm run test:finance
+      - name: TypeScript typecheck
+        run: npx tsc --noEmit
+      - name: Production build
+        env:
+          NODE_ENV: production
+        run: npm run build:web

@@ -9,14 +9,19 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 export function WebAccountMenu() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
   async function signOut() {
     if (busy) return;
     setBusy(true);
+    setError("");
     try {
-      await supabase.auth.signOut();
-    } finally {
+      const { error: signOutError } = await supabase.auth.signOut();
+      if (signOutError) throw signOutError;
       window.location.assign("/sign-in");
+    } catch {
+      setError("Sign out failed. Please retry.");
+      setBusy(false);
     }
   }
 
@@ -26,6 +31,7 @@ export function WebAccountMenu() {
       <Button type="button" variant="ghost" size="icon" onClick={signOut} disabled={busy} aria-label="Sign out">
         <LogOut className="size-4" />
       </Button>
+      {error ? <span role="alert" className="text-xs text-destructive">{error}</span> : null}
     </div>
   );
 }

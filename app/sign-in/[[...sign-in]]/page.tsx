@@ -7,7 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { ArrowRight, CheckCircle2, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 
 import { MAX_EMAIL_OTP_LENGTH, isValidEmailOtp, normalizeEmailOtp } from "@/lib/auth-email-otp";
-import { safeInternalDestination } from "@/lib/auth-routing";
+import { postAuthDestination } from "@/lib/auth-routing";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const LOGIN_VISUAL = "/auth/faisal-mosque.webp";
@@ -77,10 +77,9 @@ export default function SignInPage() {
       return;
     }
 
-    const destination = safeInternalDestination(
+    const destination = postAuthDestination(
       searchParams.get("redirect_url") ?? searchParams.get("next"),
       window.location.href,
-      "/dashboard",
     );
     window.location.assign(destination);
   }
@@ -128,10 +127,9 @@ export default function SignInPage() {
       return;
     }
 
-    const destination = safeInternalDestination(
+    const destination = postAuthDestination(
       searchParams.get("redirect_url") ?? searchParams.get("next"),
       window.location.href,
-      "/onboarding",
     );
     window.location.assign(destination);
   }
@@ -147,7 +145,7 @@ export default function SignInPage() {
       type: "signup",
       email: identifier,
       options: {
-        emailRedirectTo: `${origin}/auth/callback?next=/onboarding`,
+        emailRedirectTo: `${origin}/auth/callback`,
       },
     });
 
@@ -273,7 +271,7 @@ export default function SignInPage() {
 
               {showMigrationHelp ? (
                 <div className="rounded-xl border border-emerald-400/15 bg-emerald-400/[0.05] px-4 py-3 text-sm leading-6 text-slate-300">
-                  Used MunshiOS before the login upgrade? Your old password was not transferred to the new login system. <Link href="/forgot-password" className="font-medium text-emerald-300 hover:text-emerald-200">Get a verification code and set a new password once.</Link>
+                  If you used MunshiOS before the login upgrade, you may need to establish a password once. <Link href="/forgot-password" className="font-medium text-emerald-300 hover:text-emerald-200">Request a reset link.</Link> After setting it, use the same email and password for later logins.
                 </div>
               ) : null}
 

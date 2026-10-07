@@ -1,0 +1,80 @@
+name: Restaurant password recovery V1.98
+
+on:
+  push:
+    branches: [architecture/restaurant-recovery-compat-v1-98]
+  pull_request:
+    branches: [architecture/restaurant-main-converged-v1-97]
+
+permissions:
+  contents: read
+
+jobs:
+  offline-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RUN_INTEGRATION_TESTS: "false"
+      RUN_PRISMA_MIGRATIONS_ON_BUILD: "0"
+      DATABASE_URL: postgresql://synthetic:synthetic@127.0.0.1:19999/offline_unit_tests?sslmode=disable
+      VERCEL_ENV: preview
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx prisma generate
+      - run: npx prisma validate
+      - name: Auth and Restaurant offline unit regressions
+        run: npm test
+      - run: npx tsc --noEmit
+      - name: Release code and regression test lint
+        run: npx eslint app components lib proxy.ts next.config.ts scripts/production-build.cjs tests/unit/auth-recovery-start-route.test.ts tests/unit/auth-callback-route.test.ts tests/unit/recovery-email-link-ui.test.ts
+      - name: Build with migrations disabled
+        run: npm run build
+
+  pg18-provisioning-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_auth_provisioning
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_auth_provisioning"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_auth_provisioning?sslmode=disable
+      RUN_INTEGRATION_TESTS: "true"
+      RUN_PRISMA_MIGRATIONS_ON_BUILD: "0"
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_synthetic_auth_provisioning
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_live_fixture
+      CLERK_SECRET_KEY: sk_live_fixture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx prisma generate
+      - run: npx prisma validate
+      - name: Rehearse migrations on disposable PostgreSQL only
+        run: npx prisma migrate deploy && npx prisma migrate status
+      - run: node scripts/vertical/entrypoints.cjs
+      - name: Full application and tenant regressions
+        run: npx vitest run --reporter=default --reporter=json --outputFile=regression-results.json
+      - name: Finance invariants
+        run: npm run test:finance
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: auth-provisioning-pg18-${{ github.run_id }}
+          path: regression-results.json

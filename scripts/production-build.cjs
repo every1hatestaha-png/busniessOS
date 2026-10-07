@@ -1,8 +1,15 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const { spawnSync } = require("node:child_process");
 
 function run(command, args) {
   const executable = process.platform === "win32" && command === "npx" ? "npx.cmd" : command;
-  const result = spawnSync(executable, args, { stdio: "inherit", env: process.env });
+  // Windows batch launchers require cmd.exe; all npx arguments here are fixed
+  // build/migration commands, never values supplied by a request or environment.
+  const result = spawnSync(executable, args, {
+    stdio: "inherit",
+    env: process.env,
+    shell: process.platform === "win32" && command === "npx",
+  });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
@@ -43,6 +50,9 @@ assertProductionAuthConfiguration();
 const shouldRunMigrations = process.env.RUN_PRISMA_MIGRATIONS_ON_BUILD === "1";
 
 if (shouldRunMigrations) {
+  if (process.env.VERCEL_ENV === "production") {
+    run(process.execPath, [require("node:path").join(__dirname, "assert-production-database-target.cjs")]);
+  }
   console.log("[build] Applying pending Prisma migrations...");
   run("npx", ["prisma", "migrate", "deploy"]);
 } else {

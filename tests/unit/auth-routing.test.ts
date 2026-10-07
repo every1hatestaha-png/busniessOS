@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { isAuthEntryPath, isPublicMarketingPath, safeInternalDestination } from "@/lib/auth-routing";
+import { isAuthEntryPath, isPublicMarketingPath, postAuthDestination, safeInternalDestination } from "@/lib/auth-routing";
 
 const BASE = "https://munshios.example/sign-in";
 
 describe("auth routing security", () => {
+  it.each([null, "https://evil.example", "//evil.example", "/sign-in", "/auth/post-login?next=/restaurant"])("routes default or unsafe next %s through workspace resolution", next => {
+    expect(postAuthDestination(next, BASE)).toBe("/auth/post-login");
+  });
+  it("preserves a safe explicit next behind post-login membership resolution", () => {
+    expect(postAuthDestination("/inventory?view=stock", BASE)).toBe("/auth/post-login?next=%2Finventory%3Fview%3Dstock");
+  });
   it("recognizes authentication entry routes", () => {
     expect(isAuthEntryPath("/sign-in")).toBe(true);
     expect(isAuthEntryPath("/sign-in/verify")).toBe(true);
@@ -17,6 +23,8 @@ describe("auth routing security", () => {
   it("keeps only intended marketing routes public", () => {
     expect(isPublicMarketingPath("/")).toBe(true);
     expect(isPublicMarketingPath("/features")).toBe(true);
+    expect(isPublicMarketingPath("/product")).toBe(true);
+    expect(isPublicMarketingPath("/security")).toBe(true);
     expect(isPublicMarketingPath("/get-your-munshi")).toBe(true);
     expect(isPublicMarketingPath("/get-your-munshi/contact")).toBe(true);
     expect(isPublicMarketingPath("/dashboard")).toBe(false);

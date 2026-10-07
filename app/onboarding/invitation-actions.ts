@@ -35,7 +35,7 @@ export async function acceptWorkspaceInvitation(
     throw error;
   }
 
-  redirect("/dashboard");
+  redirect("/auth/post-login");
 }
 
 export async function declineWorkspaceInvitation(

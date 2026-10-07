@@ -1,0 +1,118 @@
+name: Restaurant V1.79 production certification gate
+
+on:
+  pull_request:
+    branches:
+      - architecture/restaurant-dependency-security-v1-78
+
+permissions:
+  contents: read
+
+jobs:
+  native-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_restaurant_v179
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_restaurant_v179"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_restaurant_v179?sslmode=disable
+      RUN_INTEGRATION_TESTS: "true"
+      NODE_ENV: test
+      CERTIFIED_BASELINE: 8b9feaf33effbc71b34f43b87f70921bc2d16bc8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - name: Verify cumulative ancestry and repository hygiene
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$CERTIFIED_BASELINE" HEAD
+          git diff --check "$CERTIFIED_BASELINE...HEAD"
+          git diff --quiet "$CERTIFIED_BASELINE...HEAD" -- .github/workflows/main_munshios.yml
+          node <<'NODE'
+          const { execFileSync } = require("node:child_process");
+          const fs = require("node:fs");
+
+          const baseline = process.env.CERTIFIED_BASELINE;
+          const codeDiff = execFileSync(
+            "git",
+            ["diff", "--unified=0", `${baseline}...HEAD`, "--", "*.ts", "*.tsx", "*.js", "*.cjs", "*.mjs"],
+            { encoding: "utf8" },
+          );
+          if (/^\+.*\b(?:console\.(?:log|debug)|debugger)\b/m.test(codeDiff)) {
+            throw new Error("Added debug logging or a debugger statement found in the certified lineage.");
+          }
+
+          const stackDiff = execFileSync(
+            "git",
+            ["diff", "--unified=0", `${baseline}...HEAD`, "--", ".", ":!package-lock.json"],
+            { encoding: "utf8" },
+          );
+          const secretPatterns = [
+            ["Stripe live key", new RegExp("sk" + "_live_" + "[A-Za-z0-9]+")],
+            ["GitHub token", new RegExp("gh" + "[pousr]_" + "[A-Za-z0-9]{30,}")],
+            ["AWS access key", new RegExp("AK" + "IA[A-Z0-9]{16}")],
+            ["private key", new RegExp("BEGIN (?:RSA|OPENSSH|EC|DSA) PRIVATE" + " KEY")],
+          ];
+          for (const [label, pattern] of secretPatterns) {
+            if (pattern.test(stackDiff)) throw new Error(`${label} pattern found in the certified lineage.`);
+          }
+
+          const deployment = JSON.parse(fs.readFileSync("vercel.json", "utf8"));
+          const disabled = deployment.git?.deploymentEnabled ?? {};
+          const required = [
+            "architecture/restaurant-hardening-convergence-v1-73",
+            "architecture/restaurant-cash-shift-snapshot-v1-74",
+            "architecture/restaurant-payment-evidence-v1-75",
+            "architecture/restaurant-terminal-evidence-v1-76",
+            "architecture/restaurant-posting-evidence-v1-77",
+            "architecture/restaurant-dependency-security-v1-78",
+            "architecture/restaurant-production-certification-v1-79",
+          ];
+          for (const branch of required) {
+            if (disabled[branch] !== false) throw new Error(`Deployment must stay disabled for ${branch}.`);
+          }
+          NODE
+      - run: npm ci
+      - name: Reject dependency advisories
+        run: npm audit --audit-level=moderate
+      - run: npx prisma validate
+      - run: node scripts/vertical/entrypoints.cjs
+      - name: Deploy complete migration chain to native PostgreSQL 16
+        run: |
+          set -euo pipefail
+          npx prisma migrate deploy
+          npx prisma migrate status
+      - name: All focused Restaurant integrity and concurrency tests
+        run: >
+          npx vitest run
+          tests/integration/restaurant-*.test.ts
+          tests/integration/warehouse-stock-tenant-tuple-integrity-v1-50.test.ts
+          tests/integration/managed-warehouse-stock.test.ts
+      - name: Full unit and database-backed regression suite
+        run: npm test
+      - name: Finance scenario suite
+        run: npm run test:finance
+      - name: TypeScript typecheck
+        run: npx tsc --noEmit
+      - name: Production build
+        env:
+          NODE_ENV: production
+        run: npm run build:web

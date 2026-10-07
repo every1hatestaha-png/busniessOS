@@ -27,10 +27,11 @@ const errorClass = "text-xs text-red-600";
 const DRAFT_KEY = "businessos-product-draft";
 
 type ProductFormProps = {
+  workspaceId: string;
   product?: ProductEditInput & { id: string };
 };
 
-export function ProductForm({ product }: ProductFormProps) {
+export function ProductForm({ product, workspaceId }: ProductFormProps) {
   const action = product ? updateProductAction.bind(null, product.id) : createProductAction;
   const [actionState, formAction, isPending] = useActionState(action, {});
   const [referenceState, loadReferenceAction, referencePending] = useActionState(
@@ -46,7 +47,7 @@ export function ProductForm({ product }: ProductFormProps) {
   const isKgMode = selectedUnit === "KG";
   const qtyStep = isKgMode ? "0.01" : "1";
   const allValues = useWatch({ control });
-  const draftKey = product ? `${DRAFT_KEY}-${product.id}` : DRAFT_KEY;
+  const draftKey = `${DRAFT_KEY}-${workspaceId}${product ? `-${product.id}` : ""}`;
   const restoreRef = useRef(false);
 
   useEffect(() => {

@@ -4,20 +4,41 @@ import { db } from "@/lib/server/db";
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 150;
 
-function isRetryableError(err: unknown): boolean {
+function retryableMessage(err: unknown) {
+  if (!(err instanceof Error)) return "";
+  let meta = "";
+  if (err instanceof Prisma.PrismaClientKnownRequestError && err.meta) {
+    try {
+      meta = JSON.stringify(err.meta);
+    } catch {
+      meta = "";
+    }
+  }
+  return `${err.message ?? ""} ${meta}`;
+}
+
+function isRetryableError(err: unknown, retryUniqueConstraints: readonly string[] = []): boolean {
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
-    return err.code === "P2034" || err.code === "P2028";
+    if (err.code === "P2034" || err.code === "P2028") return true;
+    if (err.code === "P2002") {
+      const adapter = err.meta?.driverAdapterError as { cause?: { constraint?: { index?: string } } } | undefined;
+      const constraint = adapter?.cause?.constraint?.index;
+      if (constraint && retryUniqueConstraints.includes(constraint)) return true;
+    }
   }
-  if (err instanceof Error) {
-    const msg = err.message ?? "";
-    return msg.includes("TransactionWriteConflict") || msg.includes("deadlock") || msg.includes("serialization failure") || msg.includes("Unable to start a transaction");
-  }
-  return false;
+
+  const msg = retryableMessage(err);
+  return msg.includes("TransactionWriteConflict")
+    || msg.includes("could not serialize access")
+    || msg.includes("serialization failure")
+    || msg.includes('"originalCode":"40001"')
+    || msg.includes("deadlock")
+    || msg.includes("Unable to start a transaction");
 }
 
 export async function withSerializableRetry<T>(
   fn: (tx: Prisma.TransactionClient) => Promise<T>,
-  options?: { maxWait?: number; timeout?: number },
+  options?: { maxWait?: number; timeout?: number; retryUniqueConstraints?: readonly string[] },
 ): Promise<T> {
   const txOptions = {
     isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -31,7 +52,7 @@ export async function withSerializableRetry<T>(
       return await db.$transaction(fn, txOptions);
     } catch (err) {
       lastError = err;
-      if (attempt < MAX_RETRIES && isRetryableError(err)) {
+      if (attempt < MAX_RETRIES && isRetryableError(err, options?.retryUniqueConstraints)) {
         await new Promise((resolve) => setTimeout(resolve, BASE_DELAY_MS * 2 ** attempt));
         continue;
       }

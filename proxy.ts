@@ -2,7 +2,7 @@ import { clerkMiddleware } from "@clerk/nextjs/server";
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 
-import { isAuthEntryPath, isPublicMarketingPath, safeInternalDestination } from "@/lib/auth-routing";
+import { POST_AUTH_PATH, postAuthDestination, isAuthEntryPath, isPublicMarketingPath, safeInternalDestination } from "@/lib/auth-routing";
 import { getSupabasePublicConfig } from "@/lib/supabase/config";
 import { checkAppRateLimit } from "@/lib/request-rate-limit";
 import { applyCorsHeaders, corsPreflightResponse, isApiV1Request, isTrustedMutationOrigin } from "@/lib/server/cors";
@@ -98,7 +98,7 @@ async function routeWebRequest(request: NextRequest, signedIn: boolean, authResp
   const path = request.nextUrl.pathname;
 
   if (path === "/login" || path.startsWith("/login/")) {
-    if (signedIn) return redirectWithCookies(new URL("/dashboard", request.url), authResponse);
+    if (signedIn) return redirectWithCookies(new URL(postAuthDestination(request.nextUrl.searchParams.get("redirect_url") ?? request.nextUrl.searchParams.get("next"), request.url), request.url), authResponse);
     const signInUrl = new URL("/sign-in", request.url);
     const redirectUrl = request.nextUrl.searchParams.get("redirect_url");
     const sanitizedRedirect = redirectUrl ? safeInternalDestination(redirectUrl, request.url, "") : "";
@@ -107,7 +107,7 @@ async function routeWebRequest(request: NextRequest, signedIn: boolean, authResp
   }
 
   if (path === "/signup" || path.startsWith("/signup/")) {
-    if (signedIn) return redirectWithCookies(new URL("/dashboard", request.url), authResponse);
+    if (signedIn) return redirectWithCookies(new URL(POST_AUTH_PATH, request.url), authResponse);
     return redirectWithCookies(new URL("/sign-up", request.url), authResponse);
   }
 
@@ -115,7 +115,7 @@ async function routeWebRequest(request: NextRequest, signedIn: boolean, authResp
     const redirectUrl = request.nextUrl.searchParams.get("redirect_url");
     if (signedIn) {
       return redirectWithCookies(
-        new URL(safeInternalDestination(redirectUrl, request.url), request.url),
+        new URL(postAuthDestination(redirectUrl ?? request.nextUrl.searchParams.get("next"), request.url), request.url),
         authResponse,
       );
     }
@@ -132,7 +132,7 @@ async function routeWebRequest(request: NextRequest, signedIn: boolean, authResp
   }
 
   if (path === "/" && signedIn) {
-    return redirectWithCookies(new URL("/dashboard", request.url), authResponse);
+    return redirectWithCookies(new URL(POST_AUTH_PATH, request.url), authResponse);
   }
   if (isPublicMarketingPath(path) || publicAuthPath(path)) return authResponse;
 

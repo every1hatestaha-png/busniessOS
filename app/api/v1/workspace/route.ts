@@ -14,5 +14,6 @@ export const GET = apiHandler(async () => {
 export const POST = apiHandler(async (request: Request) => {
   const user = await requireApiUser();
   const input = await parseApiBody(request, onboardingSchema);
-  return apiData(await createInitialWorkspace(user.id, input), 201);
+  const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() || undefined;
+  return apiData(await createInitialWorkspace(user.id, input, undefined, { provisioningRequestId: idempotencyKey }), 201);
 });

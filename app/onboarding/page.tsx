@@ -22,7 +22,7 @@ export default async function OnboardingPage({
   const rawMode = Array.isArray(params.mode) ? params.mode[0] : params.mode;
   const createAdditional = rawMode === "new";
 
-  if (context && !createAdditional) redirect("/dashboard");
+  if (context && !createAdditional) redirect("/auth/post-login");
   const pendingInvitations = createAdditional ? [] : await listPendingInvitationsForEmail(user.email);
   const rawBusiness = Array.isArray(params.business) ? params.business[0] : params.business;
   const builderBusiness = isBuilderBusinessType(rawBusiness) ? rawBusiness : null;

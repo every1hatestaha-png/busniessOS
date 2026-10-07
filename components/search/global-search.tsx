@@ -24,7 +24,7 @@ export function GlobalSearch({ className, autoFocus = false, onNavigate }: { cla
       if (!wrapperRef.current?.contains(event.target as Node)) setOpen(false);
     }
     document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    return () => { document.removeEventListener("mousedown", close); requestRef.current?.abort(); };
   }, []);
 
   useEffect(() => {

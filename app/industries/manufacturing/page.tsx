@@ -1,94 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Boxes, Check, Factory, PackageCheck, ShieldCheck, Warehouse } from "lucide-react";
+import { ArrowRight, BarChart3, Boxes, Factory, PackageCheck, ShoppingCart, Warehouse } from "lucide-react";
+import { MarketingHeader, MarketingFooter, CTA } from "@/components/marketing/site";
+import { ManufacturingVisual } from "@/components/marketing/premium-visuals";
 
-export const metadata: Metadata = {
-  title: "Manufacturing ERP Software Pakistan",
-  description: "Manufacturing software for Pakistani factories with raw materials, BOMs, production runs, wastage, finished goods, warehouses, purchasing and accounting.",
-  alternates: { canonical: "/industries/manufacturing" },
-  openGraph: {
-    title: "Manufacturing ERP Software Pakistan | MunshiOS",
-    description: "Connect raw materials, BOMs, production, finished goods, warehouses and accounting in one system.",
-    url: "/industries/manufacturing",
-  },
-};
+export const metadata: Metadata = { title:"Manufacturing ERP Software Pakistan", description:"Manufacturing software for Pakistani factories with raw materials, BOMs, production runs, wastage, finished goods, warehouses, purchasing and accounting.", alternates:{canonical:"/industries/manufacturing"}, openGraph:{title:"Manufacturing ERP Software Pakistan | MunshiOS",description:"Manufacturing software for Pakistani factories with raw materials, BOMs, production runs, wastage, finished goods, warehouses, purchasing and accounting.",url:"/industries/manufacturing",type:"website"}, twitter:{card:"summary_large_image",title:"Manufacturing ERP Software Pakistan | MunshiOS",description:"Manufacturing software for Pakistani factories with raw materials, BOMs, production runs, wastage, finished goods, warehouses, purchasing and accounting."} };
 
-const flows = [
-  ["Raw material purchasing", "Create purchase orders, receive stock through GRN and keep supplier balances connected."],
-  ["BOM control", "Define versioned bills of materials for the products you manufacture."],
-  ["Production runs", "Consume materials, record finished output and capture wastage inside the production flow."],
-  ["Warehouse stock", "Track stock movements, adjustments and transfers across managed warehouses."],
-  ["Approvals and controls", "Use roles, permissions and approval steps around sensitive operational actions."],
-  ["Connected accounting", "Keep receivables, payables, cash, bank and general ledger connected to business activity."],
-];
-
-export default function ManufacturingPage() {
-  return (
-    <main className="min-h-screen bg-[#fbfcfa] text-slate-950">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5 sm:px-6">
-          <Link href="/" className="font-semibold tracking-tight">MunshiOS</Link>
-          <div className="flex items-center gap-2">
-            <Link href="/industries" className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700">Industries</Link>
-            <Link href="/get-your-munshi" className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">Start free</Link>
-          </div>
-        </div>
-      </header>
-
-      <section className="border-b border-slate-200 bg-white">
-        <div className="mx-auto grid max-w-6xl gap-10 px-5 py-16 sm:px-6 sm:py-20 lg:grid-cols-[.9fr_1.1fr] lg:items-center">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">Manufacturing ERP Pakistan</p>
-            <h1 className="mt-4 text-4xl font-semibold tracking-[-0.045em] sm:text-6xl">Run purchasing, production, stock and accounting from one connected system.</h1>
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">
-              MunshiOS is built for factories and production businesses that need raw materials, BOMs, production runs, finished goods, wastage, warehouses and finance to stay connected.
-            </p>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Link href="/get-your-munshi" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white">
-                Build my manufacturing Munshi <ArrowRight className="size-4" />
-              </Link>
-              <Link href="/pricing" className="inline-flex min-h-12 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-800">See pricing</Link>
-            </div>
-          </div>
-
-          <div className="rounded-[30px] border border-emerald-100 bg-emerald-50 p-6 sm:p-8">
-            <Factory className="size-7 text-emerald-700" />
-            <h2 className="mt-5 text-2xl font-semibold">Manufacturing workflow</h2>
-            <div className="mt-6 space-y-3">
-              {["Purchase raw materials", "Receive through GRN", "Move into warehouse stock", "Run BOM-based production", "Record output and wastage", "Update inventory and accounting"].map((item, index) => (
-                <div key={item} className="flex items-center gap-3 rounded-2xl bg-white p-4">
-                  <span className="grid size-8 shrink-0 place-items-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-800">{index + 1}</span>
-                  <span className="text-sm font-medium text-slate-700">{item}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-6xl px-5 py-16 sm:px-6 sm:py-20">
-        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-          {flows.map(([title, text], index) => {
-            const Icon = [PackageCheck, Boxes, Factory, Warehouse, ShieldCheck, Check][index];
-            return (
-              <article key={title} className="rounded-[26px] border border-slate-200 bg-white p-6">
-                <Icon className="size-5 text-emerald-700" />
-                <h2 className="mt-4 font-semibold">{title}</h2>
-                <p className="mt-2 text-sm leading-6 text-slate-600">{text}</p>
-              </article>
-            );
-          })}
-        </div>
-
-        <div className="mt-14 rounded-[30px] bg-[#071821] p-7 text-white sm:p-10">
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-400">Switch safely</p>
-          <h2 className="mt-3 max-w-3xl text-3xl font-semibold tracking-[-0.035em]">You can test MunshiOS beside your current Excel sheets or ERP during the free first month.</h2>
-          <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-400">Set up products, suppliers, customers and opening balances first. Run real transactions before you decide whether to move your daily operation.</p>
-          <Link href="/get-your-munshi" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-3 text-sm font-bold text-[#06151d]">
-            Start the free month <ArrowRight className="size-4" />
-          </Link>
-        </div>
-      </section>
-    </main>
-  );
-}
+export default function ManufacturingPage(){return <main className="min-h-screen bg-[#fbfcfa] text-slate-950"><MarketingHeader/>
+<section className="bg-white"><div className="mx-auto grid max-w-[1400px] gap-12 px-5 py-14 sm:px-6 lg:grid-cols-[.76fr_1.24fr] lg:items-center lg:px-10 lg:py-20"><div className="max-w-xl"><div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.16em] text-emerald-800"><span className="h-px w-6 bg-emerald-500"/>Manufacturing control</div><h1 className="mt-6 text-5xl font-semibold leading-[.98] tracking-[-.058em] sm:text-6xl">Raw material in. Finished goods out. Trail intact.</h1><p className="mt-6 text-base leading-8 text-slate-600 sm:text-lg">BOMs, raw materials, production runs, consumption, wastage, finished goods and warehouses in one production flow.</p><div className="mt-8 flex gap-3"><Link href="/sign-up" className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-[#061D2E] px-5 py-3 text-sm font-bold text-white">Get MunshiOS <ArrowRight className="size-4"/></Link><Link href="/pricing" className="inline-flex min-h-12 items-center rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold">Pricing</Link></div></div><ManufacturingVisual/></div></section>
+<section className="border-y border-slate-200 bg-white py-16 sm:py-20"><div className="mx-auto max-w-[1320px] px-5 sm:px-6 lg:px-10"><div className="grid gap-10 lg:grid-cols-[.7fr_1.3fr]"><div><p className="text-[11px] font-bold uppercase tracking-[.16em] text-emerald-700">Production logic</p><h2 className="mt-4 text-4xl font-semibold tracking-[-.05em] sm:text-5xl">Production should consume stock and create stock without a spreadsheet in the middle.</h2><p className="mt-5 text-sm leading-7 text-slate-600">The point is to know what was planned, what was issued, what was produced, what was wasted and where the finished output landed.</p></div><div className="grid gap-x-5 sm:grid-cols-2">{[["01","Purchase raw material","Supplier order"],["02","GRN","Receive into warehouse"],["03","Raw stock","Available quantity"],["04","BOM","Required components"],["05","Production run","Issue + consume"],["06","Finished goods","Output into stock"],["07","Sale","Move finished product"],["08","Reports","Yield, usage and value"]].map(([n,a,b],i)=><div key={a} className="border-t border-slate-200 py-5"><div className="flex gap-4"><span className={`text-[10px] font-bold ${i===7?"text-emerald-700":"text-slate-400"}`}>{n}</span><div><p className="text-sm font-bold">{a}</p><p className="mt-1 text-xs text-slate-500">{b}</p></div></div></div>)}</div></div></div></section>
+<section className="bg-[#061D2E] py-16 text-white sm:py-20"><div className="mx-auto grid max-w-[1320px] gap-10 px-5 sm:px-6 lg:grid-cols-[1.1fr_.9fr] lg:px-10"><div><p className="text-[11px] font-bold uppercase tracking-[.16em] text-emerald-300">What the production team needs</p><h2 className="mt-4 text-4xl font-semibold tracking-[-.05em] sm:text-5xl">See the run, not just the final number.</h2><p className="mt-5 max-w-xl text-sm leading-7 text-slate-400">When output is low or wastage is high, the system should preserve enough context to understand the run rather than just show a stock adjustment.</p></div><div className="divide-y divide-white/10 border-y border-white/10">{[[Boxes,"BOMs","What should this product consume?"],[Warehouse,"Raw materials","What is actually available?"],[Factory,"Production runs","What was issued and produced?"],[PackageCheck,"Wastage","What was lost and why?"],[BarChart3,"Finished goods","What moved into sellable stock?"]].map(([Icon,a,b])=>{const I=Icon as typeof Factory;return <div key={a as string} className="flex items-center gap-4 py-4"><I className="size-4 text-emerald-300"/><div><p className="text-sm font-bold">{a as string}</p><p className="mt-1 text-xs text-slate-500">{b as string}</p></div></div>})}</div></div></section>
+<CTA title="Connect production to the rest of the business."/><MarketingFooter/></main>}

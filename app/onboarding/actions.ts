@@ -1,5 +1,6 @@
 "use server";
 
+import { createHash } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -11,9 +12,24 @@ import {
 } from "@/lib/saas/provisioning-selection";
 import { getCurrentUser } from "@/lib/server/auth";
 import { createInitialWorkspace } from "@/lib/server/onboarding";
+import { db } from "@/lib/server/db";
+import { resolveVerticalDashboard } from "@/lib/verticals/registry";
 import { onboardingSchema } from "@/lib/validation/onboarding";
 
 export type OnboardingState = { error: string | null };
+
+function provisioningRequestId(input: {
+  userId: string;
+  workspace: unknown;
+  modules: string[];
+  billing: string;
+  builderBusiness: string | null;
+  createAdditional: boolean;
+}) {
+  const bucket = Math.floor(Date.now() / (5 * 60_000));
+  const digest = createHash("sha256").update(JSON.stringify({ ...input, bucket })).digest("hex").slice(0, 40);
+  return `onboarding:${digest}`;
+}
 
 export async function createWorkspace(
   _previousState: OnboardingState,
@@ -46,6 +62,15 @@ export async function createWorkspace(
   const createAdditional = formData.get("creationMode") === "additional";
 
   const user = await getCurrentUser();
+  const requestId = provisioningRequestId({
+    userId: user.id,
+    workspace: parsed.data,
+    modules,
+    billing,
+    builderBusiness,
+    createAdditional,
+  });
+
   try {
     const result = await createInitialWorkspace(user.id, parsed.data, {
       modules,
@@ -53,6 +78,8 @@ export async function createWorkspace(
       builderBusiness,
     }, {
       allowAdditional: createAdditional,
+      provisioningRequestId: requestId,
+      dedupeRecentMatch: createAdditional,
     });
     (await cookies()).set("businessos_workspace", result.workspaceId, {
       httpOnly: true,
@@ -61,9 +88,19 @@ export async function createWorkspace(
       path: "/",
       maxAge: 60 * 60 * 24 * 365,
     });
-  } catch {
+
+    const workspace = await db.workspace.findUnique({
+      where: { id: result.workspaceId },
+      select: { vertical: true },
+    });
+    if (!workspace) return { error: "We could not open your workspace. Please try again." };
+
+    const destination = resolveVerticalDashboard(workspace.vertical) ?? "/dashboard";
+    redirect(destination);
+  } catch (error) {
+    if (error && typeof error === "object" && "digest" in error && String((error as { digest?: unknown }).digest ?? "").startsWith("NEXT_REDIRECT")) {
+      throw error;
+    }
     return { error: "We could not create your workspace. Please try again." };
   }
-
-  redirect("/dashboard");
 }

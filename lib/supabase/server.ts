@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
@@ -27,9 +28,9 @@ export async function createSupabaseServerClient() {
   });
 }
 
-export async function getSupabaseAuthUser() {
+export const getSupabaseAuthUser = cache(async () => {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.getUser();
   if (error || !data.user) return null;
   return data.user;
-}
+});

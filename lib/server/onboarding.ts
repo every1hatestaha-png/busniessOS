@@ -1,14 +1,14 @@
 import "server-only";
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
-import type { BusinessType } from "@prisma/client";
+import { Prisma, type BusinessType } from "@prisma/client";
 
-import { PROVISIONING_MODULE_KEYS, type ProvisioningModuleKey } from "@/lib/saas/provisioning-selection";
-import { db } from "@/lib/server/db";
-import { ensureWorkspaceSubscription } from "@/lib/server/subscriptions";
+import { DEFAULT_MODULES_BY_BUSINESS, PROVISIONING_MODULE_KEYS, isBuilderBusinessType, resolveProvisioningModules, type ProvisioningModuleKey } from "@/lib/saas/provisioning-selection";
+import { writeAudit } from "@/lib/server/audit";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 import { onboardingSchema, type OnboardingInput } from "@/lib/validation/onboarding";
+import { initialVerticalForProvisioning } from "@/lib/verticals/registry";
 
 type ProvisioningInput = {
   modules: ProvisioningModuleKey[];
@@ -18,6 +18,8 @@ type ProvisioningInput = {
 
 type WorkspaceCreationOptions = {
   allowAdditional?: boolean;
+  provisioningRequestId?: string;
+  dedupeRecentMatch?: boolean;
 };
 
 function defaultModulesForBusinessType(businessType: BusinessType): ProvisioningModuleKey[] {
@@ -35,12 +37,59 @@ function defaultModulesForBusinessType(businessType: BusinessType): Provisioning
   }
 }
 
-async function ensureWorkspaceModules(
+function effectiveModules(businessType: BusinessType, provisioning?: ProvisioningInput) {
+  const selected = provisioning?.modules.length ? provisioning.modules
+    : provisioning?.builderBusiness === "restaurant" ? DEFAULT_MODULES_BY_BUSINESS.restaurant
+      : defaultModulesForBusinessType(businessType);
+  return resolveProvisioningModules(selected, isBuilderBusinessType(provisioning?.builderBusiness) ? provisioning.builderBusiness : null);
+}
+
+function sanitizeProvisioningRequestId(value?: string) {
+  const requestId = value?.trim();
+  if (!requestId) return randomUUID();
+  if (!/^[A-Za-z0-9:_-]{8,128}$/.test(requestId)) throw new Error("Invalid workspace provisioning request.");
+  return requestId;
+}
+
+function provisioningFingerprint(
+  data: OnboardingInput,
+  provisioning: ProvisioningInput | undefined,
+  allowAdditional: boolean,
+) {
+  return createHash("sha256").update(JSON.stringify({
+    data,
+    modules: [...effectiveModules(data.businessType, provisioning)].sort(),
+    billing: provisioning?.billing ?? null,
+    builderBusiness: provisioning?.builderBusiness ?? null,
+    allowAdditional,
+  })).digest("hex");
+}
+
+async function ensureWorkspaceSubscriptionInTransaction(tx: Prisma.TransactionClient, workspaceId: string) {
+  const id = `sub_${randomUUID().replaceAll("-", "")}`;
+  await tx.$executeRaw`
+    INSERT INTO "workspace_subscriptions" (
+      "id", "workspaceId", "planId", "status", "trialStartedAt", "trialEndsAt"
+    )
+    VALUES (
+      ${id},
+      ${workspaceId},
+      (SELECT "id" FROM "saas_plans" WHERE "code" = 'starter' LIMIT 1),
+      'TRIALING',
+      CURRENT_TIMESTAMP,
+      CURRENT_TIMESTAMP + INTERVAL '30 days'
+    )
+    ON CONFLICT ("workspaceId") DO NOTHING
+  `;
+}
+
+async function ensureWorkspaceModulesInTransaction(
+  tx: Prisma.TransactionClient,
   workspaceId: string,
   businessType: BusinessType,
   provisioning?: ProvisioningInput,
 ) {
-  const existing = await db.$queryRaw<Array<{ count: number }>>`
+  const existing = await tx.$queryRaw<Array<{ count: number }>>`
     SELECT COUNT(*)::int AS "count"
     FROM "workspace_modules"
     WHERE "workspaceId" = ${workspaceId}::uuid
@@ -49,36 +98,32 @@ async function ensureWorkspaceModules(
   const hasExplicitSelection = Boolean(provisioning?.modules.length);
   if ((existing[0]?.count ?? 0) > 0 && !hasExplicitSelection) return;
 
-  const enabled = new Set<ProvisioningModuleKey>(
-    hasExplicitSelection ? provisioning!.modules : defaultModulesForBusinessType(businessType),
-  );
-
-  await db.$transaction(
-    PROVISIONING_MODULE_KEYS.map((moduleKey) =>
-      db.$executeRaw`
-        INSERT INTO "workspace_modules" ("workspaceId", "moduleKey", "enabled", "config", "updatedAt")
-        VALUES (${workspaceId}::uuid, ${moduleKey}, ${enabled.has(moduleKey)}, '{}'::jsonb, now())
-        ON CONFLICT ("workspaceId", "moduleKey")
-        DO UPDATE SET "enabled" = EXCLUDED."enabled", "updatedAt" = now()
-      `,
-    ),
-  );
+  const enabled = new Set<ProvisioningModuleKey>(effectiveModules(businessType, provisioning));
+  for (const moduleKey of PROVISIONING_MODULE_KEYS) {
+    await tx.$executeRaw`
+      INSERT INTO "workspace_modules" ("workspaceId", "moduleKey", "enabled", "config", "updatedAt")
+      VALUES (${workspaceId}::uuid, ${moduleKey}, ${enabled.has(moduleKey)}, '{}'::jsonb, now())
+      ON CONFLICT ("workspaceId", "moduleKey")
+      DO UPDATE SET "enabled" = EXCLUDED."enabled", "updatedAt" = now()
+    `;
+  }
 }
 
-async function recordCheckoutPreference(
+async function recordCheckoutPreferenceInTransaction(
+  tx: Prisma.TransactionClient,
   workspaceId: string,
   userId: string,
   provisioning?: ProvisioningInput,
 ) {
   if (!provisioning) return;
 
-  const rows = await db.$queryRaw<Array<{ id: string }>>`
+  const rows = await tx.$queryRaw<Array<{ id: string }>>`
     SELECT "id" FROM "workspace_subscriptions"
     WHERE "workspaceId" = ${workspaceId}
     LIMIT 1
   `;
   const subscriptionId = rows[0]?.id;
-  if (!subscriptionId) return;
+  if (!subscriptionId) throw new Error("Workspace subscription could not be initialized.");
 
   const metadata = JSON.stringify({
     billing: provisioning.billing,
@@ -87,7 +132,7 @@ async function recordCheckoutPreference(
     source: "get-your-munshi",
   });
 
-  await db.$executeRaw`
+  await tx.$executeRaw`
     INSERT INTO "subscription_events" (
       "id", "workspaceId", "subscriptionId", "actorUserId", "type", "metadata"
     )
@@ -102,6 +147,27 @@ async function recordCheckoutPreference(
   `;
 }
 
+async function findProvisionedWorkspace(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  provisioningRequestId: string,
+) {
+  const rows = await tx.$queryRaw<Array<{ workspaceId: string; fingerprint: string | null }>>`
+    SELECT a."entityId" AS "workspaceId", a."metadata"->>'fingerprint' AS "fingerprint"
+    FROM "audit_logs" a
+    INNER JOIN "workspace_members" m
+      ON m."workspaceId" = a."entityId"
+      AND m."userId" = ${userId}
+    WHERE a."actorId" = ${userId}
+      AND a."action" = 'workspace.provisioned'
+      AND a."entityType" = 'Workspace'
+      AND a."metadata"->>'provisioningRequestId' = ${provisioningRequestId}
+    ORDER BY a."createdAt" DESC
+    LIMIT 1
+  `;
+  return rows[0] ?? null;
+}
+
 export async function createInitialWorkspace(
   userId: string,
   input: OnboardingInput,
@@ -109,72 +175,95 @@ export async function createInitialWorkspace(
   options: WorkspaceCreationOptions = {},
 ) {
   const data = onboardingSchema.parse(input);
+  const provisioningRequestId = sanitizeProvisioningRequestId(options.provisioningRequestId);
+  const fingerprint = provisioningFingerprint(data, provisioning, Boolean(options.allowAdditional));
+  const selectedModules = effectiveModules(data.businessType, provisioning);
   const nameParts = data.ownerName.split(/\s+/);
   const firstName = nameParts.shift() ?? data.ownerName;
   const lastName = nameParts.join(" ") || null;
 
-  try {
-    const result = await withSerializableRetry(async (tx) => {
-      const existing = await tx.workspaceMember.findFirst({ where: { userId }, select: { workspaceId: true } });
-      if (existing && !options.allowAdditional) return existing;
+  return withSerializableRetry(async (tx) => {
+    const lockedUsers = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "users" WHERE "id" = ${userId} FOR UPDATE
+    `;
+    if (!lockedUsers[0]) throw new Error("User not found.");
 
-      if (options.allowAdditional) {
-        const recentMatch = await tx.workspaceMember.findFirst({
-          where: {
-            userId,
-            role: "OWNER",
-            workspace: {
-              name: data.businessName,
-              phone: data.phone,
-              email: data.email,
-              address: data.address,
-              city: data.city,
-              country: data.country,
-              createdAt: { gte: new Date(Date.now() - 5 * 60_000) },
-            },
-          },
-          select: { workspaceId: true },
-          orderBy: { workspace: { createdAt: "desc" } },
-        });
-        if (recentMatch) return recentMatch;
+    const alreadyProvisioned = await findProvisionedWorkspace(tx, userId, provisioningRequestId);
+    if (alreadyProvisioned) {
+      if (alreadyProvisioned.fingerprint && alreadyProvisioned.fingerprint !== fingerprint) {
+        throw new Error("Idempotency key was already used for a different workspace provisioning request.");
       }
+      return { workspaceId: alreadyProvisioned.workspaceId };
+    }
 
-      const workspace = await tx.workspace.create({
-        data: {
-          name: data.businessName,
-          phone: data.phone,
-          email: data.email,
-          address: data.address,
-          city: data.city,
-          country: data.country,
-          currency: data.currency.toUpperCase(),
-          timezone: data.timezone,
-          businessType: data.businessType,
+    const existing = await tx.workspaceMember.findFirst({ where: { userId }, select: { workspaceId: true } });
+    if (existing && !options.allowAdditional) {
+      // Onboarding is not an administrative module/subscription editor. A
+      // returning member must not rewrite another owner's workspace settings.
+      return existing;
+    }
+
+    if (options.allowAdditional && options.dedupeRecentMatch) {
+      const recentMatch = await tx.workspaceMember.findFirst({
+        where: {
+          userId,
+          role: "OWNER",
+          workspace: {
+            name: data.businessName,
+            phone: data.phone,
+            email: data.email,
+            address: data.address,
+            city: data.city,
+            country: data.country,
+            businessType: data.businessType,
+            createdAt: { gte: new Date(Date.now() - 5 * 60_000) },
+          },
         },
-        select: { id: true },
+        select: { workspaceId: true },
+        orderBy: { workspace: { createdAt: "desc" } },
       });
-      await tx.workspaceMember.create({ data: { workspaceId: workspace.id, userId, role: "OWNER" } });
-      await tx.user.update({ where: { id: userId }, data: { firstName, lastName } });
-      return { workspaceId: workspace.id };
+      if (recentMatch) return recentMatch;
+    }
+
+    const workspace = await tx.workspace.create({
+      data: {
+        name: data.businessName,
+        phone: data.phone,
+        email: data.email,
+        address: data.address,
+        city: data.city,
+        country: data.country,
+        currency: data.currency.toUpperCase(),
+        timezone: data.timezone,
+        businessType: data.businessType,
+        vertical: initialVerticalForProvisioning(data.businessType, provisioning?.builderBusiness, selectedModules),
+      },
+      select: { id: true, vertical: true },
     });
 
-    await ensureWorkspaceSubscription(result.workspaceId);
-    await ensureWorkspaceModules(result.workspaceId, data.businessType, provisioning);
-    await recordCheckoutPreference(result.workspaceId, userId, provisioning);
-    return result;
-  } catch (error) {
-    if (!options.allowAdditional) {
-      const existing = await db.workspaceMember.findFirst({ where: { userId }, select: { workspaceId: true } });
-      if (existing) {
-        const workspace = await db.workspace.findUnique({
-          where: { id: existing.workspaceId },
-          select: { businessType: true },
-        });
-        await ensureWorkspaceSubscription(existing.workspaceId);
-        if (workspace) await ensureWorkspaceModules(existing.workspaceId, workspace.businessType, provisioning);
-        return existing;
-      }
-    }
-    throw error;
-  }
+    await tx.workspaceMember.create({ data: { workspaceId: workspace.id, userId, role: "OWNER" } });
+    await tx.user.update({ where: { id: userId }, data: { firstName, lastName } });
+    await ensureWorkspaceSubscriptionInTransaction(tx, workspace.id);
+    await ensureWorkspaceModulesInTransaction(tx, workspace.id, data.businessType, provisioning);
+    await recordCheckoutPreferenceInTransaction(tx, workspace.id, userId, provisioning);
+    await writeAudit(tx, {
+      workspaceId: workspace.id,
+      actorId: userId,
+      action: "workspace.provisioned",
+      entityType: "Workspace",
+      entityId: workspace.id,
+      metadata: {
+        provisioningRequestId,
+        fingerprint,
+        vertical: workspace.vertical,
+        businessType: data.businessType,
+        modules: selectedModules,
+        billing: provisioning?.billing ?? null,
+        builderBusiness: provisioning?.builderBusiness ?? null,
+        source: provisioning ? "get-your-munshi" : "onboarding",
+      },
+    });
+
+    return { workspaceId: workspace.id };
+  });
 }

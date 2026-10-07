@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
 
 import { db } from "@/lib/server/db";
+import { isAvailableVertical, resolveWorkspaceVertical } from "@/lib/verticals/registry";
 import { getSupabaseAuthUser } from "@/lib/supabase/server";
 
 const CLERK_SERVER_CONFIGURED = Boolean(process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
@@ -215,14 +216,16 @@ export const getCurrentUser = cache(async () => {
   return user;
 });
 
+const getUserWorkspaceMemberships = cache(async (userId: string) => db.workspaceMember.findMany({
+  where: { userId },
+  orderBy: [{ createdAt: "asc" }, { workspaceId: "asc" }],
+  select: { workspaceId: true, role: true, workspace: true },
+}));
+
 const getCurrentUserWorkspaceMemberships = cache(async () => {
   const user = await getCurrentUser();
   const activeWorkspaceId = (await cookies()).get("businessos_workspace")?.value;
-  const memberships = await db.workspaceMember.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "asc" },
-    select: { workspaceId: true, role: true, workspace: true },
-  });
+  const memberships = await getUserWorkspaceMemberships(user.id);
   return { user, activeWorkspaceId, memberships };
 });
 
@@ -231,19 +234,19 @@ export const getCurrentWorkspace = cache(async () => {
   if (!user) return null;
 
   const activeWorkspaceId = (await cookies()).get("businessos_workspace")?.value;
-  const memberships = await db.workspaceMember.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "asc" },
-    select: { workspaceId: true, role: true, workspace: true },
-  });
+  const memberships = await getUserWorkspaceMemberships(user.id);
   const membership = memberships.find((entry) => entry.workspaceId === activeWorkspaceId) ?? memberships[0];
   if (!membership) return null;
+
+  const vertical = resolveWorkspaceVertical(membership.workspace);
+  if (!isAvailableVertical(vertical)) redirect("/workspace-unavailable");
 
   return {
     user,
     workspace: membership.workspace,
     workspaceId: membership.workspaceId,
     role: membership.role,
+    vertical,
   };
 });
 
