@@ -8,6 +8,8 @@ export const metadata: Metadata = {
   title: "Product",
   description: "See how MunshiOS connects purchasing, GRN, inventory, sales, khata, accounting and reporting in one system.",
   alternates: { canonical: "/product" },
+  openGraph: { title: "Product | MunshiOS", description: "See how MunshiOS connects purchasing, GRN, inventory, sales, khata, accounting and reporting in one system.", url: "/product", type: "website" },
+  twitter: { card: "summary_large_image", title: "Product | MunshiOS", description: "See how MunshiOS connects purchasing, GRN, inventory, sales, khata, accounting and reporting in one system." },
 };
 
 function ProductLedgerVisual() {
