@@ -21,8 +21,13 @@ function recoveryOrigin(requestUrl: string) {
 
   try {
     const parsed = new URL(configured);
-    if (!["https:", "http:"].includes(parsed.protocol)) return fallback;
-    return parsed.origin;
+    if (parsed.protocol === "https:") return parsed.origin;
+
+    const localHttp =
+      parsed.protocol === "http:"
+      && process.env.NODE_ENV !== "production"
+      && ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname);
+    return localHttp ? parsed.origin : fallback;
   } catch {
     return fallback;
   }
