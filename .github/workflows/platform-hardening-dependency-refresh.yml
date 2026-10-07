@@ -1,0 +1,40 @@
+name: Platform dependency lock refresh
+
+on:
+  push:
+    branches:
+      - architecture/platform-hardening-v1-99
+    paths:
+      - ".github/workflows/platform-hardening-dependency-refresh.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-lock:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: architecture/platform-hardening-v1-99
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Refresh vulnerable transitive packages within compatible ranges
+        run: |
+          npm audit fix --package-lock-only || true
+          npm audit --omit=dev --audit-level=high || true
+      - name: Commit compatible lockfile security updates
+        run: |
+          if git diff --quiet -- package-lock.json; then
+            echo "No lockfile changes were needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "chore(deps): refresh compatible security fixes"
+          git push origin HEAD:architecture/platform-hardening-v1-99
