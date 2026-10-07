@@ -33,6 +33,10 @@ export function checkAppRateLimit(request: Request, pathname: string) {
     limit = 10;
   } else if (pathname === "/api/legal/acceptance" && request.method === "POST") {
     limit = 10;
+  } else if (pathname === "/api/readiness" && request.method === "GET") {
+    // Readiness reaches the database. Keep public monitors usable while
+    // preventing a single client from turning it into an unbounded DB probe.
+    limit = 60;
   } else if (pathname === "/api/search") {
     limit = 90;
   } else if (pathname === "/platform" && request.method === "POST") {
