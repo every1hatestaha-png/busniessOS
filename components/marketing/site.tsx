@@ -42,7 +42,7 @@ export function AppPreview({ title, stats, rows, dark = false }: { title: string
 }
 
 export function CTA({ title = "Give your business its own Munshi." }: { title?: string }) {
-  return <section className="bg-[#071821] px-5 py-16 text-center text-white sm:px-6 sm:py-20"><h2 className="mx-auto max-w-3xl text-3xl font-semibold tracking-[-0.04em] sm:text-5xl">{title}</h2><p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-slate-400">Create your workspace, choose your business type, and start with a 30-day trial.</p><div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row"><Link href="/sign-up" className="rounded-xl bg-emerald-500 px-5 py-3 text-sm font-bold text-[#06151d]">Sign up</Link><Link href="/sign-in" className="rounded-xl border border-white/15 px-5 py-3 text-sm font-bold text-white">Login</Link></div></section>;
+  return <section className="bg-[#071821] px-5 py-16 text-center text-white sm:px-6 sm:py-20"><h2 className="mx-auto max-w-3xl text-3xl font-semibold tracking-[-0.04em] sm:text-5xl">{title}</h2><p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-slate-400">PKR 29,000 one-time implementation, then PKR 5,000 per month.</p><div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row"><Link href="/sign-up" className="rounded-xl bg-emerald-500 px-5 py-3 text-sm font-bold text-[#06151d]">Sign up</Link><Link href="/sign-in" className="rounded-xl border border-white/15 px-5 py-3 text-sm font-bold text-white">Login</Link></div></section>;
 }
 
 export const marketingIcons = { BarChart3, Boxes, Check, CircleDollarSign, Factory, LayoutDashboard, LockKeyhole, PackageCheck, ReceiptText, ShieldCheck, ShoppingCart, Store, UtensilsCrossed, Warehouse };
