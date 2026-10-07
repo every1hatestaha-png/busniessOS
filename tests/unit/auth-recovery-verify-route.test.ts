@@ -33,7 +33,7 @@ describe("recovery verification route", () => {
     expect(verifyOtp).toHaveBeenCalledWith({
       email: "user@example.com",
       token: "12345678",
-      type: "email",
+      type: "recovery",
     });
     expect(issueRecoveryMarker).toHaveBeenCalledOnce();
   });
@@ -48,7 +48,7 @@ describe("recovery verification route", () => {
     expect(verifyOtp).toHaveBeenCalledWith({
       email: "user@example.com",
       token: "12345678",
-      type: "email",
+      type: "recovery",
     });
   });
 
@@ -60,6 +60,16 @@ describe("recovery verification route", () => {
 
     expect(response.status).toBe(400);
     expect(verifyOtp).not.toHaveBeenCalled();
+    expect(issueRecoveryMarker).not.toHaveBeenCalled();
+  });
+
+  it("does not issue password recovery proof for a rejected sign-in code", async () => {
+    verifyOtp.mockResolvedValue({ data: { user: null }, error: { code: "otp_expired" } });
+    const response = await POST(new Request("https://staging.example.invalid/auth/recovery/verify", {
+      method: "POST", body: JSON.stringify({ email: "user@example.invalid", token: "12345678" }),
+    }));
+    expect(response.status).toBe(400);
+    expect(verifyOtp).toHaveBeenCalledWith({ email: "user@example.invalid", token: "12345678", type: "recovery" });
     expect(issueRecoveryMarker).not.toHaveBeenCalled();
   });
 });

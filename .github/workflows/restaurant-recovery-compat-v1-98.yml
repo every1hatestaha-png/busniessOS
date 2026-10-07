@@ -1,4 +1,4 @@
-name: Restaurant recovery compatibility V1.98
+name: Restaurant password recovery V1.98
 
 on:
   push:
@@ -31,6 +31,6 @@ jobs:
         run: npm test
       - run: npx tsc --noEmit
       - name: Release code and regression test lint
-        run: npx eslint app components lib proxy.ts next.config.ts scripts/production-build.cjs tests/unit/auth-recovery-start-route.test.ts
+        run: npx eslint app components lib proxy.ts next.config.ts scripts/production-build.cjs tests/unit/auth-recovery-start-route.test.ts tests/unit/auth-recovery-verify-route.test.ts tests/unit/auth-callback-route.test.ts
       - name: Build with migrations disabled
         run: npm run build

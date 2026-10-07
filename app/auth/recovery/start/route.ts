@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { safeInternalDestination } from "@/lib/auth-routing";
-import { db } from "@/lib/server/db";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const GENERIC_RESPONSE = { ok: true };
-const DEFAULT_RECOVERY_REDIRECT = "/auth/callback?next=%2Fforgot-password%3Fverified%3D1";
+const DEFAULT_RECOVERY_REDIRECT = "/auth/callback?next=%2Frecovery%2Fnew-password";
 
 function genericResponse() {
   return NextResponse.json(GENERIC_RESPONSE, {
@@ -33,35 +32,13 @@ export async function POST(request: Request) {
     const redirectTo = `${origin}${safeRedirectPath}`;
 
     const supabase = await createSupabaseServerClient();
-    let { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        shouldCreateUser: false,
-        emailRedirectTo: redirectTo,
-      },
-    });
-
-    // Canonical Supabase users can recover before their first local-user sync.
-    // Preserve main's activation path only for a known, still-unlinked legacy
-    // MunshiOS user; unknown emails must never create a recovery identity.
-    if (error?.code === "otp_disabled") {
-      const legacyUser = await db.user.findFirst({
-        where: {
-          email: { equals: email, mode: "insensitive" },
-          supabaseId: null,
-        },
-        select: { id: true },
-      });
-      if (legacyUser) {
-        ({ error } = await supabase.auth.signInWithOtp({
-          email,
-          options: { shouldCreateUser: true, emailRedirectTo: redirectTo },
-        }));
-      }
-    }
+    // Recovery targets existing Supabase identities only. Shared verified-email
+    // linking still preserves legacy MunshiOS users and their memberships after
+    // authentication; recovery must never provision a missing provider identity.
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
 
     if (error) {
-      console.warn("[auth] recovery OTP request failed", {
+      console.warn("[auth] password recovery request failed", {
         code: error.code ?? null,
         status: error.status ?? null,
       });

@@ -72,4 +72,12 @@ describe("auth callback routing", () => {
     await GET(new Request("https://www.munshios.tech/auth/callback?code=valid&next=%2Frecovery%2Fnew-password"));
     expect(issueRecoveryMarker).not.toHaveBeenCalled();
   });
+
+  it("routes a fresh password recovery exchange to the password form on staging", async () => {
+    getClaims.mockResolvedValue({ data: { claims: { amr: [{ method: "recovery", timestamp: Math.floor(Date.now() / 1000) }] } }, error: null });
+    const response = await GET(new Request("https://staging.example.invalid/auth/callback?code=valid&next=%2Frecovery%2Fnew-password"));
+    expect(exchangeCodeForSession).toHaveBeenCalledWith("valid");
+    expect(issueRecoveryMarker).toHaveBeenCalledOnce();
+    expect(response.headers.get("location")).toBe("https://staging.example.invalid/recovery/new-password");
+  });
 });

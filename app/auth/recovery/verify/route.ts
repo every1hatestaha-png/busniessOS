@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     const { data, error } = await supabase.auth.verifyOtp({
       email,
       token,
-      type: "email",
+      type: "recovery",
     });
 
     if (error || !data.user?.email_confirmed_at) {
