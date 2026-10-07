@@ -18,7 +18,16 @@ import { GET } from "@/app/auth/post-login/route";
 import { listCurrentUserWorkspaces } from "@/lib/server/auth";
 
 const origin = "https://staging.example.invalid";
-const local = { id: "local-owner", email: "synthetic@example.invalid", firstName: null, lastName: null };
+const local = {
+  id: "local-owner",
+  email: "synthetic@example.invalid",
+  firstName: null,
+  lastName: null,
+  termsAcceptedAt: new Date("2026-10-07T12:00:00.000Z"),
+  termsVersion: "2026-10-07",
+  privacyAcknowledgedAt: new Date("2026-10-07T12:00:00.000Z"),
+  privacyVersion: "2026-10-07",
+};
 const membership = (id: string, vertical = "RESTAURANT") => ({ workspaceId: id, role: "OWNER", workspace: { id, name: "Synthetic", vertical } });
 const open = (next = "") => GET(new Request(`${origin}/auth/post-login${next ? `?next=${encodeURIComponent(next)}` : ""}`));
 
@@ -35,6 +44,21 @@ describe("canonical Supabase post-login workspace routing", () => {
     expect(response.headers.get("location")).toBe(origin + (vertical === "RESTAURANT" ? "/restaurant" : "/dashboard"));
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.cookies.get("businessos_workspace")?.value).toBe("owned-a");
+  });
+  it("requires current policy acceptance before workspace resolution", async () => {
+    const unaccepted = {
+      ...local,
+      termsAcceptedAt: null,
+      termsVersion: null,
+      privacyAcknowledgedAt: null,
+      privacyVersion: null,
+    };
+    mocks.find.mockResolvedValue(unaccepted);
+    mocks.byEmail.mockResolvedValue(unaccepted);
+    const response = await open();
+    expect(response.headers.get("location")).toBe(origin + "/legal/acceptance");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(mocks.memberships).not.toHaveBeenCalled();
   });
   it("routes a verified user without memberships to onboarding", async () => {
     mocks.memberships.mockResolvedValue([]);
