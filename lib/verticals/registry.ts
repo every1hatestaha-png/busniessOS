@@ -1,12 +1,13 @@
 import type { BusinessType, WorkspaceVertical as PersistedVertical } from "@prisma/client";
 
-// Legacy module entitlements remain authoritative while existing customers transition.
-// New vertical experiences require an explicit persisted identity.
+// Verticals are first-class workspace experiences. Module entitlements still gate
+// optional capabilities inside a vertical, but a Restaurant workspace must not
+// fall back to the generic ERP shell.
 export const VERTICALS = {
   TRADING: { status: "active", dashboard: "/dashboard", navigation: "erp" },
   MANUFACTURING: { status: "active", dashboard: "/dashboard", navigation: "erp" },
   LEGACY: { status: "active", dashboard: "/dashboard", navigation: "erp" },
-  RESTAURANT: { status: "unavailable", dashboard: null, navigation: null },
+  RESTAURANT: { status: "active", dashboard: "/restaurant", navigation: "restaurant" },
   PROPERTY: { status: "unavailable", dashboard: null, navigation: null },
   SERVICES: { status: "unavailable", dashboard: null, navigation: null },
 } as const;
@@ -19,6 +20,15 @@ export function initialVerticalForBusinessType(businessType: BusinessType): Work
   if (businessType === "MANUFACTURER") return "MANUFACTURING";
   if (businessType === "OTHER") return "LEGACY";
   return "TRADING";
+}
+
+export function initialVerticalForProvisioning(
+  businessType: BusinessType,
+  builderBusiness?: string | null,
+  enabledModules: readonly string[] = [],
+): WorkspaceVertical {
+  if (builderBusiness === "restaurant" || enabledModules.includes("restaurant")) return "RESTAURANT";
+  return initialVerticalForBusinessType(businessType);
 }
 
 export function canSaveBusinessType(current: BusinessType, submitted: BusinessType): boolean {
