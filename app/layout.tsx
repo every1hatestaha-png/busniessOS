@@ -25,13 +25,13 @@ export const metadata: Metadata = {
     type: "website",
     url: "/",
     title: "MunshiOS | Business software for Pakistan",
-    description: "Sales, purchases, stock, khata and accounting in one connected system. First month free.",
+    description: "Sales, purchases, stock, khata and accounting in one connected system for Pakistani businesses.",
     siteName: "MunshiOS",
   },
   twitter: {
     card: "summary",
     title: "MunshiOS | Business software for Pakistan",
-    description: "Sales, purchases, stock, khata and accounting in one connected system. First month free.",
+    description: "Sales, purchases, stock, khata and accounting in one connected system for Pakistani businesses.",
   },
   icons: {
     icon: "/brand/munshios-mark.svg",
