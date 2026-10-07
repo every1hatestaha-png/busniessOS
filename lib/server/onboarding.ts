@@ -9,7 +9,7 @@ import { writeAudit } from "@/lib/server/audit";
 import { db } from "@/lib/server/db";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 import { onboardingSchema, type OnboardingInput } from "@/lib/validation/onboarding";
-import { initialVerticalForBusinessType } from "@/lib/verticals/registry";
+import { initialVerticalForProvisioning } from "@/lib/verticals/registry";
 
 type ProvisioningInput = {
   modules: ProvisioningModuleKey[];
@@ -173,11 +173,6 @@ export async function createInitialWorkspace(
   options: WorkspaceCreationOptions = {},
 ) {
   const data = onboardingSchema.parse(input);
-  if (provisioning?.builderBusiness === "restaurant" || provisioning?.builderBusiness === "services"
-    || provisioning?.modules.some((module) => module === "restaurant" || module === "services")) {
-    throw new Error("This workspace experience is not available for new workspaces yet.");
-  }
-
   const provisioningRequestId = sanitizeProvisioningRequestId(options.provisioningRequestId);
   const fingerprint = provisioningFingerprint(data, provisioning, Boolean(options.allowAdditional));
   const selectedModules = effectiveModules(data.businessType, provisioning);
@@ -240,7 +235,7 @@ export async function createInitialWorkspace(
         currency: data.currency.toUpperCase(),
         timezone: data.timezone,
         businessType: data.businessType,
-        vertical: initialVerticalForBusinessType(data.businessType),
+        vertical: initialVerticalForProvisioning(data.businessType, provisioning?.builderBusiness, selectedModules),
       },
       select: { id: true, vertical: true },
     });
