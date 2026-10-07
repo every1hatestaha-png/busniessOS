@@ -2138,9 +2138,29 @@
     "scope": "entry point"
   },
   {
+    "file": "app/product/page.tsx",
+    "symbol": null,
+    "url": "/product",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
     "file": "app/recovery/new-password/page.tsx",
     "symbol": null,
     "url": "/recovery/new-password",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/security/page.tsx",
+    "symbol": null,
+    "url": "/security",
     "kind": "PAGE",
     "category": "SHARED_CORE",
     "methods": [],
