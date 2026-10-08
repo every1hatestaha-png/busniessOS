@@ -250,12 +250,17 @@ export async function createRestaurantMenuCategory(context: IndustryContext, inp
   if (!name || name.length > 80) throw new IndustryDomainError("INVALID_STATE", "Category name must be 1-80 characters.");
   const sortOrder = input.sortOrder ?? 0;
   if (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > 10_000) throw new IndustryDomainError("INVALID_STATE", "Category order is invalid.");
-  const rows = await db.$queryRaw<Array<{ id: string; name: string }>>`
+  return db.$transaction(async (tx) => {
+    // Prevent a stale OWNER/MANAGER browser context from modifying the menu
+    // after persisted membership has been downgraded or removed.
+    await assertRestaurantActorAccess(tx, context, "FINANCIAL", "Restaurant menu category management");
+    const rows = await tx.$queryRaw<Array<{ id: string; name: string }>>`
     INSERT INTO "restaurant_menu_categories" ("workspaceId", "name", "sortOrder")
     VALUES (${context.workspaceId}::uuid, ${name}, ${sortOrder})
     RETURNING "id", "name"
   `;
-  return rows[0]!;
+    return rows[0]!;
+  });
 }
 
 export async function createRestaurantMenuItem(context: IndustryContext, input: {
@@ -271,6 +276,7 @@ export async function createRestaurantMenuItem(context: IndustryContext, input: 
   if (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > 10_000) throw new IndustryDomainError("INVALID_STATE", "Menu item order is invalid.");
 
   return db.$transaction(async (tx) => {
+    await assertRestaurantActorAccess(tx, context, "FINANCIAL", "Restaurant menu item management");
     const category = await tx.$queryRaw<Array<{ id: string }>>`
       SELECT "id" FROM "restaurant_menu_categories"
       WHERE "id"=${input.categoryId}::uuid AND "workspaceId"=${context.workspaceId}::uuid AND "isActive"=true
@@ -310,14 +316,17 @@ export async function setRestaurantMenuItemAvailability(context: IndustryContext
   assertManager(context);
   await requireWorkspaceModule(context.workspaceId, "restaurant");
   assertUuid(menuItemId, "Menu item");
-  const rows = await db.$queryRaw<Array<{ id: string; name: string; isAvailable: boolean }>>`
+  return db.$transaction(async (tx) => {
+    await assertRestaurantActorAccess(tx, context, "FINANCIAL", "Restaurant menu availability management");
+    const rows = await tx.$queryRaw<Array<{ id: string; name: string; isAvailable: boolean }>>`
     UPDATE "restaurant_menu_items"
     SET "isAvailable"=${isAvailable}, "updatedAt"=now()
     WHERE "id"=${menuItemId}::uuid AND "workspaceId"=${context.workspaceId}::uuid AND "isActive"=true
     RETURNING "id", "name", "isAvailable"
   `;
-  if (!rows[0]) throw new IndustryDomainError("NOT_FOUND", "Menu item was not found in this workspace.");
-  return rows[0];
+    if (!rows[0]) throw new IndustryDomainError("NOT_FOUND", "Menu item was not found in this workspace.");
+    return rows[0];
+  });
 }
 
 export async function createPosRestaurantOrder(context: IndustryContext, input: RestaurantOrderInput) {
