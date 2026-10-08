@@ -28,7 +28,7 @@ const local = {
   privacyAcknowledgedAt: new Date("2026-10-07T12:00:00.000Z"),
   privacyVersion: "2026-10-07",
 };
-const membership = (id: string, vertical = "RESTAURANT") => ({ workspaceId: id, role: "OWNER", workspace: { id, name: "Synthetic", vertical } });
+const membership = (id: string, vertical = "RESTAURANT") => ({ workspaceId: id, role: "OWNER", restaurantStation: "ALL", workspace: { id, name: "Synthetic", vertical } });
 const open = (next = "") => GET(new Request(`${origin}/auth/post-login${next ? `?next=${encodeURIComponent(next)}` : ""}`));
 
 describe("canonical Supabase post-login workspace routing", () => {
@@ -88,7 +88,7 @@ describe("canonical Supabase post-login workspace routing", () => {
     mocks.cookie = "owned-b";
     mocks.memberships.mockResolvedValue([membership("owned-a", "TRADING"), membership("owned-b")]);
     expect((await open()).headers.get("location")).toBe(origin + "/restaurant");
-    expect(mocks.memberships).toHaveBeenCalledWith({ where: { userId: local.id }, orderBy: [{ createdAt: "asc" }, { workspaceId: "asc" }], select: { workspaceId: true, role: true, workspace: true } });
+    expect(mocks.memberships).toHaveBeenCalledWith({ where: { userId: local.id }, orderBy: [{ createdAt: "asc" }, { workspaceId: "asc" }], select: { workspaceId: true, role: true, restaurantStation: true, workspace: true } });
   });
   it.each(["foreign-workspace", "stale-workspace"])("repairs an invalid active cookie %s without selecting that tenant", async cookie => {
     mocks.cookie = cookie;
