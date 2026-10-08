@@ -78,6 +78,20 @@ function assertRecoverySchemaState(pending, state) {
   }
 }
 
+// Single read-only projection shared by the live preflight and the disposable
+// PostgreSQL integration test. Never make staging connection checks optional.
+async function inspectRecoverySchemaState(client) {
+  const result = await client.query(`SELECT
+        to_regclass('public.auth_recovery_buckets') IS NOT NULL AS table_present,
+        (SELECT count(*) = 3 FROM information_schema.columns WHERE table_schema='public' AND table_name='auth_recovery_buckets' AND is_nullable='NO' AND
+          ((column_name='emailHash' AND data_type='text') OR (column_name='windowStartedAt' AND data_type='timestamp with time zone' AND datetime_precision=3) OR (column_name='attempts' AND data_type='integer'))) AS columns_valid,
+        (SELECT count(*) = 3 FROM pg_constraint WHERE conrelid=to_regclass('public.auth_recovery_buckets') AND convalidated AND
+          ((conname='auth_recovery_buckets_pkey' AND contype='p') OR (conname IN ('auth_recovery_buckets_attempts_check','auth_recovery_buckets_hash_check') AND contype='c'))) AS constraints_valid,
+        EXISTS (SELECT 1 FROM pg_index i WHERE i.indexrelid=to_regclass('public."auth_recovery_buckets_windowStartedAt_idx"') AND i.indrelid=to_regclass('public.auth_recovery_buckets') AND i.indisvalid AND i.indisready AND i.indpred IS NULL AND pg_get_indexdef(i.indexrelid) LIKE '% USING btree ("windowStartedAt")') AS bucket_index_valid,
+        EXISTS (SELECT 1 FROM pg_index i WHERE i.indexrelid=to_regclass('public."sales_orders_workspaceId_orderDate_id_idx"') AND i.indrelid=to_regclass('public.sales_orders') AND i.indisvalid AND i.indisready AND i.indpred IS NULL AND pg_get_indexdef(i.indexrelid) LIKE '% USING btree ("workspaceId", "orderDate", id)') AS sales_index_valid`);
+  return result.rows[0];
+}
+
 async function main() {
   const target = assertStagingTarget(process.env);
   const client = new Client({ connectionString: process.env.DATABASE_URL });
@@ -102,15 +116,8 @@ async function main() {
       throw new Error("Station schema and migration ledger disagree; investigate before migration.");
     }
     if (expected.includes(recoveryMigration)) {
-      const recovery = await client.query(`SELECT
-        to_regclass('public.auth_recovery_buckets') IS NOT NULL AS table_present,
-        (SELECT count(*) = 3 FROM information_schema.columns WHERE table_schema='public' AND table_name='auth_recovery_buckets' AND is_nullable='NO' AND
-          ((column_name='emailHash' AND data_type='text') OR (column_name='windowStartedAt' AND data_type='timestamp with time zone' AND datetime_precision=3) OR (column_name='attempts' AND data_type='integer'))) AS columns_valid,
-        (SELECT count(*) = 3 FROM pg_constraint WHERE conrelid=to_regclass('public.auth_recovery_buckets') AND convalidated AND
-          ((conname='auth_recovery_buckets_pkey' AND contype='p') OR (conname IN ('auth_recovery_buckets_attempts_check','auth_recovery_buckets_hash_check') AND contype='c'))) AS constraints_valid,
-        EXISTS (SELECT 1 FROM pg_index i WHERE i.indexrelid=to_regclass('public."auth_recovery_buckets_windowStartedAt_idx"') AND i.indrelid=to_regclass('public.auth_recovery_buckets') AND i.indisvalid AND i.indisready AND i.indpred IS NULL AND pg_get_indexdef(i.indexrelid) LIKE '% USING btree ("windowStartedAt")') AS bucket_index_valid,
-        EXISTS (SELECT 1 FROM pg_index i WHERE i.indexrelid=to_regclass('public."sales_orders_workspaceId_orderDate_id_idx"') AND i.indrelid=to_regclass('public.sales_orders') AND i.indisvalid AND i.indisready AND i.indpred IS NULL AND pg_get_indexdef(i.indexrelid) LIKE '% USING btree ("workspaceId", "orderDate", id)') AS sales_index_valid`);
-      assertRecoverySchemaState(pending.includes(recoveryMigration), recovery.rows[0]);
+      const recoveryState = await inspectRecoverySchemaState(client);
+      assertRecoverySchemaState(pending.includes(recoveryMigration), recoveryState);
     }
     const counts = await client.query('SELECT (SELECT count(*) FROM users) AS users, (SELECT count(*) FROM workspace_members) AS memberships, (SELECT count(*) FROM workspaces) AS workspaces, (SELECT count(*) FROM restaurant_orders) AS restaurant_orders');
     console.log(JSON.stringify({ stagingDatabase: target, migrations: applied.length, pending, before: counts.rows[0], checksumValidation: "PASS" }));
@@ -119,7 +126,7 @@ async function main() {
   }
 }
 
-module.exports = { assertStagingTarget, assertPolicySchemaState, migrationChecksumMatches, assertStagingMigrationHistory, assertRecoverySchemaState };
+module.exports = { assertStagingTarget, assertPolicySchemaState, migrationChecksumMatches, assertStagingMigrationHistory, assertRecoverySchemaState, inspectRecoverySchemaState };
 if (require.main === module) main().catch((error) => {
   // Connection errors can contain credentials; never serialize arbitrary driver errors.
   // Only surface our own fixed-format guard failures, which contain no connection values.
