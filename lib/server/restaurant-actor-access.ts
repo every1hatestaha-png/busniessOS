@@ -23,4 +23,7 @@ export async function assertRestaurantActorAccess(
       ? `${label} requires a manager actor from the same workspace`
       : `${label} requires current ${operation} station membership in the same workspace`);
   }
+  // The locked, persisted role is authoritative for downstream ownership
+  // decisions. A caller-supplied or cached context.role may be stale.
+  return member;
 }
