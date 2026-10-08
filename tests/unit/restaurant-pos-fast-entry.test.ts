@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isPosSearchShortcut, parsePosFastEntry } from "@/lib/restaurant/pos-fast-entry";
+import { isPosSearchShortcut, parsePosFastEntry, resolvePosFastEntryItem } from "@/lib/restaurant/pos-fast-entry";
 
 describe("Restaurant keyboard POS", () => {
   it("parses a plain dish name as one item", () => {
@@ -28,5 +28,27 @@ describe("Restaurant keyboard POS", () => {
     }
     expect(isPosSearchShortcut(Object.assign(new EventTarget(), { tagName: "DIV", isContentEditable: true }))).toBe(false);
     expect(isPosSearchShortcut(Object.assign(new EventTarget(), { tagName: "BODY", isContentEditable: false }))).toBe(true);
+  });
+});
+
+describe("safe POS quick selection", () => {
+  const available = (name: string, isAvailable = true) => ({ name, isAvailable });
+
+  it("refuses ambiguous partial names instead of picking the first dish", () => {
+    const menu = [available("Chicken Burger"), available("Chicken Biryani"), available("Tea")];
+    expect(resolvePosFastEntryItem(menu, "chicken")).toBeNull();
+    expect(resolvePosFastEntryItem(menu, "burger")).toEqual(menu[0]);
+  });
+
+  it("prefers one exact name even with substring matches", () => {
+    const menu = [available("Chicken Curry"), available("Chicken")];
+    expect(resolvePosFastEntryItem(menu, "  CHICKEN ")).toEqual(menu[1]);
+  });
+
+  it("rejects identical menu names and unavailable matches", () => {
+    const duplicate = [available("Fries"), available("Fries")];
+    expect(resolvePosFastEntryItem(duplicate, "fries")).toBeNull();
+    expect(resolvePosFastEntryItem([available("Burger", false)], "burger")).toBeNull();
+    expect(resolvePosFastEntryItem([available("Burger")], " ")).toBeNull();
   });
 });
