@@ -30,4 +30,11 @@ describe("Restaurant order board mirrors server-side completion authorization", 
     expect(canShowOrderBoardTransition("STAFF", "ALL", "READY")).toBe(true);
     expect(canShowOrderBoardTransition("STAFF", "ALL", "COMPLETED")).toBe(false);
   });
+  it("fails closed for any unsupported or non-actionable order transition", () => {
+    for (const status of ["PENDING_REVIEW", "CONFIRMED", "CANCELLED"] as const) {
+      expect(canShowOrderBoardTransition("OWNER", "ALL", status)).toBe(false);
+      expect(canShowOrderBoardTransition("STAFF", "ALL", status)).toBe(false);
+    }
+  });
+
 });
