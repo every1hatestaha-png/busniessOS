@@ -252,44 +252,17 @@ export async function updateKitchenTicketStatus(context: IndustryContext, ticket
 }
 
 export async function openCashShift(context: IndustryContext, openingCash = 0, notes?: string) {
-  await requireWorkspaceModule(context.workspaceId, "restaurant");
-  if (openingCash < 0) throw new IndustryDomainError("INVALID_STATE", "Opening cash cannot be negative.");
-  const rows = await db.$queryRaw<Array<{ id: string; openedAt: Date; openingCash: Prisma.Decimal }>>`
-    INSERT INTO "cash_shifts" ("workspaceId", "openedById", "openingCash", "notes")
-    VALUES (${context.workspaceId}::uuid, ${context.userId ?? null}::uuid, ${openingCash}, ${notes?.trim() || null})
-    RETURNING "id", "openedAt", "openingCash"
-  `;
-  return rows[0]!;
+  // Compatibility entry point. The ledger-aware service enforces current POS
+  // membership, immutable opener identity, audit evidence and one open drawer.
+  const { openRestaurantCashShiftSafely } = await import("@/lib/server/restaurant-cash-shifts");
+  return openRestaurantCashShiftSafely(context, openingCash, notes);
 }
 
 export async function closeCashShift(context: IndustryContext, shiftId: string, closingCash: number, notes?: string) {
-  await requireWorkspaceModule(context.workspaceId, "restaurant");
-  if (closingCash < 0) throw new IndustryDomainError("INVALID_STATE", "Closing cash cannot be negative.");
-  return db.$transaction(async (tx) => {
-    const shifts = await tx.$queryRaw<Array<{ id: string; openedAt: Date; openingCash: Prisma.Decimal; status: string }>>`
-      SELECT "id", "openedAt", "openingCash", "status" FROM "cash_shifts"
-      WHERE "id"=${shiftId}::uuid AND "workspaceId"=${context.workspaceId}::uuid FOR UPDATE
-    `;
-    const shift = shifts[0];
-    if (!shift) throw new IndustryDomainError("NOT_FOUND", "Cash shift was not found.");
-    if (shift.status !== "OPEN") throw new IndustryDomainError("INVALID_STATE", "Cash shift is already closed.");
-    const receipts = await tx.payment.aggregate({
-      where: { workspaceId: context.workspaceId, paymentDate: { gte: shift.openedAt }, customerId: { not: null }, isReversed: false, method: "CASH" },
-      _sum: { netAmount: true, amount: true },
-    });
-    const supplierCash = await tx.payment.aggregate({
-      where: { workspaceId: context.workspaceId, paymentDate: { gte: shift.openedAt }, supplierId: { not: null }, isReversed: false, method: "CASH" },
-      _sum: { netAmount: true, amount: true },
-    });
-    const expectedCash = Number(shift.openingCash) + Number(receipts._sum.netAmount ?? receipts._sum.amount ?? 0) - Number(supplierCash._sum.netAmount ?? supplierCash._sum.amount ?? 0);
-    const variance = closingCash - expectedCash;
-    await tx.$executeRaw`
-      UPDATE "cash_shifts" SET "status"='CLOSED', "closedAt"=now(), "closedById"=${context.userId ?? null}::uuid,
-        "expectedCash"=${expectedCash}, "closingCash"=${closingCash}, "variance"=${variance}, "notes"=COALESCE(${notes?.trim() || null}, "notes")
-      WHERE "id"=${shiftId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
-    `;
-    return { id: shiftId, expectedCash, closingCash, variance };
-  });
+  // Historical payment-aggregate reconciliation is intentionally retired.
+  // Use the authoritative GL-based closing path and persisted-role check.
+  const { closeRestaurantCashShiftFromLedger } = await import("@/lib/server/restaurant-cash-shifts");
+  return closeRestaurantCashShiftFromLedger(context, shiftId, closingCash, notes);
 }
 
 // ---------------- Warehouses / Manufacturing ----------------
