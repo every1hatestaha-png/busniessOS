@@ -11,6 +11,7 @@ import {
   isAcceptableNewPassword,
 } from "@/lib/auth-password-policy";
 import { MAX_EMAIL_OTP_LENGTH, isValidEmailOtp, normalizeEmailOtp } from "@/lib/auth-email-otp";
+import { signupPolicyConsent } from "@/lib/legal/consent-request";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const LOGIN_VISUAL = "/auth/faisal-mosque.webp";
@@ -43,10 +44,13 @@ export default function SignUpPage() {
   }, [resendCooldown]);
 
   async function persistPolicyAcceptance() {
+    const consent = signupPolicyConsent(acceptedPolicies);
+    if (!consent) return false;
     try {
       const response = await fetch("/api/legal/acceptance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(consent),
         redirect: "manual",
       });
       if (!response.ok || response.type === "opaqueredirect") return false;
