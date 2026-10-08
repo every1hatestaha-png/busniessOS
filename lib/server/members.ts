@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomBytes } from "node:crypto";
 import type { Role } from "@prisma/client";
+import type { RestaurantStation } from "@/lib/restaurant/station-access";
 import { writeAudit } from "@/lib/server/audit";
 import { db } from "@/lib/server/db";
 import type { ServiceContext } from "@/lib/server/sales";
@@ -39,13 +40,44 @@ export async function revokeInvitation(context: ServiceContext, invitationId: st
 export async function updateMemberRole(context: ServiceContext, memberId: string, role: Role) {
   if (!assignableRoles.includes(role)) throw new MemberDomainError("Ownership cannot be assigned here.");
   return db.$transaction(async (tx) => {
-    const member = await tx.workspaceMember.findFirst({ where: { id: memberId, workspaceId: context.workspaceId } });
+    const member = await tx.workspaceMember.findFirst({ where: { id: memberId, workspaceId: context.workspaceId }, include: { workspace: { select: { vertical: true } } } });
     if (!member || member.role === "OWNER") throw new MemberDomainError("Owner role cannot be changed.");
-    const updated = await tx.workspaceMember.update({ where: { id: memberId }, data: { role } });
+    const resettingStaff = member.role !== "STAFF" && role === "STAFF" && member.workspace.vertical === "RESTAURANT";
+    const updated = await tx.workspaceMember.update({ where: { id: memberId }, data: { role, ...(resettingStaff ? { restaurantStation: "POS" } : {}) } });
     await writeAudit(tx, { workspaceId: context.workspaceId, actorId: context.userId, action: "member.role_updated", entityType: "WorkspaceMember", entityId: memberId, metadata: { role } });
     return updated;
   });
 }
+export async function updateMemberRestaurantStation(
+  context: ServiceContext, memberId: string, station: RestaurantStation,
+) {
+  if (!["ALL", "POS", "KITCHEN"].includes(station)) throw new MemberDomainError("Invalid restaurant station.");
+  return db.$transaction(async (tx) => {
+    const member = await tx.workspaceMember.findFirst({
+      where: { id: memberId, workspaceId: context.workspaceId },
+      include: { workspace: { select: { vertical: true } } },
+    });
+    if (!member || member.role !== "STAFF" || member.workspace.vertical !== "RESTAURANT") {
+      throw new MemberDomainError("Only Restaurant staff members can receive station access.");
+    }
+    if (member.restaurantStation === station) return member;
+    const result = await tx.workspaceMember.updateMany({
+      where: { id: memberId, workspaceId: context.workspaceId, role: "STAFF" },
+      data: { restaurantStation: station },
+    });
+    if (result.count !== 1) throw new MemberDomainError("Member changed while updating station.");
+    await writeAudit(tx, {
+      workspaceId: context.workspaceId,
+      actorId: context.userId,
+      action: "member.restaurant_station_updated",
+      entityType: "WorkspaceMember",
+      entityId: memberId,
+      metadata: { station, previousStation: member.restaurantStation },
+    });
+    return { ...member, restaurantStation: station };
+  });
+}
+
 export async function removeMember(context: ServiceContext, memberId: string) {
   return db.$transaction(async (tx) => {
     const member = await tx.workspaceMember.findFirst({ where: { id: memberId, workspaceId: context.workspaceId } });
@@ -76,7 +108,7 @@ export async function acceptInvitationForUser(userId: string, email: string, inv
   return db.$transaction(async (tx) => {
     const invitation = await tx.workspaceInvitation.findFirst({
       where: { id: invitationId, email: normalized, status: "PENDING", expiresAt: { gt: now } },
-      select: { id: true, workspaceId: true, role: true },
+      select: { id: true, workspaceId: true, role: true, workspace: { select: { vertical: true } } },
     });
     if (!invitation) throw new MemberDomainError("Invitation was not found, does not match your verified email, or is no longer pending.");
 
@@ -88,7 +120,10 @@ export async function acceptInvitationForUser(userId: string, email: string, inv
 
     await tx.workspaceMember.upsert({
       where: { workspaceId_userId: { workspaceId: invitation.workspaceId, userId } },
-      create: { workspaceId: invitation.workspaceId, userId, role: invitation.role },
+      create: {
+        workspaceId: invitation.workspaceId, userId, role: invitation.role,
+        restaurantStation: invitation.role === "STAFF" && invitation.workspace.vertical === "RESTAURANT" ? "POS" : "ALL",
+      },
       update: {},
     });
     await writeAudit(tx, {

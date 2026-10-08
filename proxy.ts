@@ -264,6 +264,9 @@ function needsLegacyClerk(request: NextRequest) {
 }
 
 export async function proxy(request: NextRequest, event: NextFetchEvent) {
+  // Overwrite any client-supplied value before forwarding to server authorization.
+  // Auth and API server code fails closed for restricted staff if this is absent.
+  request.headers.set("x-munshios-internal-path", request.nextUrl.pathname);
   // Customer web traffic is always Supabase-only. Clerk is invoked only for
   // explicit legacy desktop/platform/bearer-token paths, so a Clerk outage or
   // missing Clerk configuration cannot break normal customer sign-in.

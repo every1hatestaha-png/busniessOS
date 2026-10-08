@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 
 import type { RestaurantV1ActionState } from "@/app/(dashboard)/restaurant/v1-action-state";
 import { requireWorkspace } from "@/lib/server/auth";
+import { canPerformRestaurantStationAction } from "@/lib/restaurant/station-access";
 import { assertRestaurantMutationAccess } from "@/lib/server/restaurant-mutation-access";
 import { restaurantActionErrorMessage, restaurantMutationFeedback, restaurantFormWorkspaceChanged } from "@/lib/server/restaurant-action-errors";
 import {
@@ -51,6 +52,10 @@ function contextFrom(workspace: Awaited<ReturnType<typeof requireWorkspace>>) {
 
 function canManageRestaurant(role: string) {
   return role === "OWNER" || role === "ADMIN" || role === "MANAGER";
+}
+
+function stationAllows(workspace: Awaited<ReturnType<typeof requireWorkspace>>, action: "POS" | "KITCHEN") {
+  return canPerformRestaurantStationAction(workspace.role, workspace.vertical, workspace.restaurantStation, action);
 }
 
 export async function createMenuCategoryAction(
@@ -165,6 +170,7 @@ export async function createPosOrderAction(
   const taxAmount = Number(formData.get("taxAmount") ?? 0);
   const workspace = await requireWorkspace();
   if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
+  if (!stationAllows(workspace, "POS")) return fail("POS station access is required to create orders.");
   try {
     await assertRestaurantMutationAccess(workspace.workspaceId);
     const order = await createPosRestaurantOrder(contextFrom(workspace), {
@@ -180,7 +186,7 @@ export async function createPosOrderAction(
       items,
     });
     refreshRestaurant();
-    return { status: "success", message: `${order.orderNumber} confirmed and sent to the kitchen.` };
+    return { status: "success", message: `${order.orderNumber} confirmed and sent to the kitchen.`, orderId: order.id };
   } catch (error) {
     return fail(messageFor(error, "We could not create this restaurant order."));
   }
@@ -190,6 +196,7 @@ export async function confirmRestaurantOrderAction(formData: FormData) {
   const orderId = String(formData.get("orderId") ?? "").trim();
   const workspace = await requireWorkspace();
   if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
+  if (!stationAllows(workspace, "POS")) return fail("POS station access is required to confirm orders.");
   return restaurantMutationFeedback(async () => {
     await assertRestaurantMutationAccess(workspace.workspaceId);
     await confirmRestaurantOrder(contextFrom(workspace), orderId);
@@ -205,6 +212,8 @@ export async function transitionRestaurantOrderAction(formData: FormData) {
   }
   const workspace = await requireWorkspace();
   if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
+  const stationOperation = nextStatus === "PREPARING" || nextStatus === "READY" ? "KITCHEN" : "POS";
+  if (!stationAllows(workspace, stationOperation)) return fail("This restaurant station cannot perform that order transition.");
   return restaurantMutationFeedback(async () => {
     await assertRestaurantMutationAccess(workspace.workspaceId);
     await transitionRestaurantOrderWithIntegrity(contextFrom(workspace), orderId, nextStatus);
@@ -226,6 +235,7 @@ export async function recordRestaurantPaymentAction(formData: FormData) {
   const idempotencyKey = String(formData.get("paymentRequestId") ?? "").trim();
   const workspace = await requireWorkspace();
   if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
+  if (!stationAllows(workspace, "POS")) return fail("POS station access is required to record payments.");
   return restaurantMutationFeedback(async () => {
     await assertRestaurantMutationAccess(workspace.workspaceId);
     await recordRestaurantPaymentAtCollection(contextFrom(workspace), {

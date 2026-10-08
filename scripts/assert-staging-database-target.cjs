@@ -59,7 +59,7 @@ async function main() {
     const root = path.join(__dirname, "../prisma/migrations");
     const expected = fs.readdirSync(root).filter(name => fs.existsSync(path.join(root, name, "migration.sql")));
     const applied = rows.filter(row => row.finished_at && !row.rolled_back_at);
-    if (expected.length !== 130 || ![129, 130].includes(applied.length) || rows.some(row => !row.finished_at && !row.rolled_back_at)) {
+    if (expected.length !== 131 || ![130, 131].includes(applied.length) || rows.some(row => !row.finished_at && !row.rolled_back_at)) {
       throw new Error("Staging migration history requires investigation before deployment.");
     }
     for (const row of applied) {
@@ -70,9 +70,14 @@ async function main() {
       }
     }
     const pending = expected.filter(name => !applied.some(row => row.migration_name === name));
-    if (pending.some(name => name !== "20261007183000_user_policy_acceptance")) throw new Error("Unexpected pending staging migration.");
+    if (pending.some(name => name !== "20261008112000_restaurant_staff_stations")) throw new Error("Unexpected pending staging migration.");
     const columns = await client.query("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='users' AND column_name IN ('termsAcceptedAt','termsVersion','privacyAcknowledgedAt','privacyVersion')");
-    assertPolicySchemaState(pending, columns.rows);
+    assertPolicySchemaState(pending.filter(name => name === "20261007183000_user_policy_acceptance"), columns.rows);
+    const stationColumns = await client.query("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='workspace_members' AND column_name='restaurantStation'");
+    const stationPending = pending.includes("20261008112000_restaurant_staff_stations");
+    if ((stationPending && stationColumns.rows.length !== 0) || (!stationPending && stationColumns.rows.length !== 1)) {
+      throw new Error("Station schema and migration ledger disagree; investigate before migration.");
+    }
     const counts = await client.query('SELECT (SELECT count(*) FROM users) AS users, (SELECT count(*) FROM workspace_members) AS memberships, (SELECT count(*) FROM workspaces) AS workspaces, (SELECT count(*) FROM restaurant_orders) AS restaurant_orders');
     console.log(JSON.stringify({ stagingDatabase: target, migrations: applied.length, pending, before: counts.rows[0], checksumValidation: "PASS" }));
   } finally {
@@ -86,7 +91,7 @@ if (require.main === module) main().catch((error) => {
   // Only surface our own fixed-format guard failures, which contain no connection values.
   const message = error instanceof Error ? error.message : "";
   const safe =
-    /^(Staging migration checksum mismatch: [A-Za-z0-9_]+|Staging migration history requires investigation before deployment\.|Unknown migration in staging history\.|Unexpected pending staging migration\.|Policy schema and migration ledger disagree; investigate before migration\.|Refusing staging migration outside the approved preview project\.|Refusing migration: database does not match a verified staging endpoint\.|Invalid staging database configuration\.)$/.test(message)
+    /^(Staging migration checksum mismatch: [A-Za-z0-9_]+|Staging migration history requires investigation before deployment\.|Unknown migration in staging history\.|Unexpected pending staging migration\.|Policy schema and migration ledger disagree; investigate before migration\.|Station schema and migration ledger disagree; investigate before migration\.|Refusing staging migration outside the approved preview project\.|Refusing migration: database does not match a verified staging endpoint\.|Invalid staging database configuration\.)$/.test(message)
       ? message
       : "Staging database guard failed; no migration was authorized by this guard.";
   console.error(safe);

@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { Minus, Plus, Search, ShoppingCart, Trash2, UtensilsCrossed } from "lucide-react";
 
 import { useRestaurantActionState } from "@/app/(dashboard)/restaurant/use-restaurant-action-state";
@@ -9,6 +10,7 @@ import { createPosOrderAction } from "@/app/(dashboard)/restaurant/v1-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { isPosSearchShortcut, parsePosFastEntry } from "@/lib/restaurant/pos-fast-entry";
 
 type Category = { id: string; name: string; sortOrder: number; isActive: boolean };
 type MenuItem = { id: string; categoryId: string; categoryName: string; name: string; description: string | null; price: number; isAvailable: boolean };
@@ -30,6 +32,7 @@ export function RestaurantPos({
 }) {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [query, setQuery] = useState("");
+  const searchInput = useRef<HTMLInputElement>(null);
   const requestId = useRef<string | null>(null);
   const requestField = useRef<HTMLInputElement>(null);
   const [state, action, pending, onSubmit] = useRestaurantActionState(async (previous, form) => {
@@ -45,29 +48,49 @@ export function RestaurantPos({
   const [activeCategory, setActiveCategory] = useState(categories[0]?.id ?? "all");
   const [fulfillmentType, setFulfillmentType] = useState("TAKEAWAY");
 
+  const fastEntry = parsePosFastEntry(query);
   const visibleItems = items.filter((item) => {
-    const categoryMatch = activeCategory === "all" || item.categoryId === activeCategory;
-    const queryMatch = !query.trim() || item.name.toLowerCase().includes(query.trim().toLowerCase());
+    const categoryMatch = Boolean(fastEntry.term) || activeCategory === "all" || item.categoryId === activeCategory;
+    const queryMatch = !fastEntry.term || item.name.toLowerCase().includes(fastEntry.term.toLowerCase());
     return categoryMatch && queryMatch;
   });
 
   const subtotal = useMemo(() => cart.reduce((sum, line) => sum + line.price * line.quantity, 0), [cart]);
   const itemCount = useMemo(() => cart.reduce((sum, line) => sum + line.quantity, 0), [cart]);
 
-  function add(item: MenuItem) {
+  function add(item: MenuItem, quantity = 1) {
     if (!item.isAvailable) return;
     setCart((current) => {
       const found = current.find((line) => line.menuItemId === item.id);
       return found
-        ? current.map((line) => line.menuItemId === item.id ? { ...line, quantity: line.quantity + 1 } : line)
-        : [...current, { menuItemId: item.id, name: item.name, price: item.price, quantity: 1 }];
+        ? current.map((line) => line.menuItemId === item.id ? { ...line, quantity: Math.min(99, line.quantity + quantity) } : line)
+        : [...current, { menuItemId: item.id, name: item.name, price: item.price, quantity }];
     });
   }
 
   function change(menuItemId: string, delta: number) {
     setCart((current) => current
-      .map((line) => line.menuItemId === menuItemId ? { ...line, quantity: Math.max(0, line.quantity + delta) } : line)
+      .map((line) => line.menuItemId === menuItemId ? { ...line, quantity: Math.min(99, Math.max(0, line.quantity + delta)) } : line)
       .filter((line) => line.quantity > 0));
+  }
+
+  useEffect(() => {
+    function onShortcut(event: KeyboardEvent) {
+      if (event.key !== "/" || event.altKey || event.ctrlKey || event.metaKey || event.repeat) return;
+      if (!isPosSearchShortcut(event.target)) return;
+      event.preventDefault();
+      searchInput.current?.focus();
+    }
+    window.addEventListener("keydown", onShortcut);
+    return () => window.removeEventListener("keydown", onShortcut);
+  }, []);
+
+  function addFirstMatchingItem() {
+    if (!fastEntry.term || pending) return;
+    const match = visibleItems.find((item) => item.isAvailable);
+    if (!match) return;
+    add(match, fastEntry.quantity);
+    setQuery("");
   }
 
   return (
@@ -80,11 +103,20 @@ export function RestaurantPos({
           </div>
           <div className="relative w-full lg:max-w-sm">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <Input value={query} onChange={(event) => setQuery(event.target.value)} className="h-10 rounded-xl bg-slate-50 pl-9" placeholder="Search menu items…" />
+            <Input ref={searchInput} value={query} onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") { event.preventDefault(); addFirstMatchingItem(); }
+                if (event.key === "Escape") setQuery("");
+              }}
+              aria-label="Quick-add menu search"
+              className="h-10 rounded-xl bg-slate-50 pl-9"
+              placeholder="Type dish or 2x biryani, then Enter"
+            />
           </div>
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <p className="text-xs text-slate-500">Press / to search, type a dish name or 2x dish, then Enter to add it. Escape clears search.</p>
+        <div className="flex flex-wrap gap-2 pb-1" aria-label="Menu categories">
           <button
             type="button"
             onClick={() => setActiveCategory("all")}
@@ -242,6 +274,12 @@ export function RestaurantPos({
             </div>
 
             {state.message ? <p role={state.status === "error" ? "alert" : "status"} className={state.status === "error" ? "text-xs text-destructive" : "text-xs font-medium text-emerald-700"}>{state.message}</p> : null}
+            {state.status === "success" && state.orderId ? (
+              <Link href={`/restaurant/orders/${state.orderId}/print`} target="_blank" rel="noopener noreferrer"
+                className="flex h-11 items-center justify-center rounded-xl border border-emerald-600 bg-emerald-50 text-sm font-semibold text-emerald-800 hover:bg-emerald-100">
+                Open & print last order receipt (80mm)
+              </Link>
+            ) : null}
 
             <Button type="submit" className="h-11 w-full rounded-xl bg-emerald-600 text-sm font-semibold hover:bg-emerald-500" disabled={pending || cart.length === 0}>
               {pending ? "Creating order..." : fulfillmentType === "DINE_IN" ? "Send to kitchen" : "Confirm order"}
