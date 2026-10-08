@@ -113,6 +113,10 @@ jobs:
           tests/integration/restaurant-cash-shift-auth-v1-8.test.ts
           tests/integration/restaurant-cash-shift-v1-5.test.ts
           tests/integration/restaurant-payment-timing-v1-7.test.ts
+      - name: Round3 schema registry portability and rollback-only drift gate (local PG18)
+        env:
+          RUN_INTEGRATION_TESTS: "true"
+        run: npx vitest run tests/integration/round3-schema-registry.test.ts
       - name: Full app unit regressions
         run: npm test
       - name: Full Restaurant and warehouse integrity regressions (disposable PG18)
