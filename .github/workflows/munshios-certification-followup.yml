@@ -10,7 +10,21 @@ permissions:
 jobs:
   focused-ui-and-release-gates:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_preflight_disposable
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_preflight_disposable"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
     env:
       DATABASE_URL: postgresql://synthetic:synthetic@127.0.0.1:5432/unused?sslmode=disable
       NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
@@ -40,6 +54,14 @@ jobs:
           done < "$RUNNER_TEMP/certification-files"
           node -e "if(require('./vercel.json').git.deploymentEnabled['fix/munshios-release-certification']!==false) process.exit(1)"
       - run: npm ci --no-audit --no-fund
+      - name: Certify full 132 migration ledger and schema on disposable PostgreSQL 18
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_preflight_disposable?sslmode=disable
+          RUN_DISPOSABLE_PG18_PREFLIGHT: '1'
+        run: |
+          npx prisma migrate deploy
+          npx prisma migrate status
+          npx vitest run tests/unit/staging-database-guard.test.ts
       - name: Focused POS, printing and release target tests
         run: >-
           npx vitest run tests/unit/restaurant-pos-fast-entry.test.ts
