@@ -10,6 +10,7 @@ import { requirePermission } from "@/lib/server/authorization";
 import { db } from "@/lib/server/db";
 import { FbrCredentialError, resolveFbrBearerTokenForRequest } from "@/lib/server/fbr-credentials";
 import { checkFbrSubmissionFreshness } from "@/lib/server/fbr-digital-invoicing";
+import { assertFbrEnabled } from "@/lib/server/fbr-enabled";
 
 type PostBody = {
   invoiceNumber?: string | null;
@@ -65,6 +66,7 @@ export function interpretFbrPostResult(remote: FbrRemoteResult): FbrPostDisposit
 
 export async function runFbrInvoiceSubmission(submissionId: string, expectedEnvironment?: FbrEnvironment) {
   const context = await requirePermission("financial.manage");
+  await assertFbrEnabled(context.workspaceId);
   const submission = await db.fbrInvoiceSubmission.findFirst({
     where: { id: submissionId, workspaceId: context.workspaceId },
   });
