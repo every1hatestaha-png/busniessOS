@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
 
 import { hasCurrentPolicyAcceptance } from "@/lib/legal/policies";
+import { canOpenRestaurantStationPath, isRestrictedRestaurantStaff, restaurantStationHome } from "@/lib/restaurant/station-access";
 import { db } from "@/lib/server/db";
 import { isAvailableVertical, resolveWorkspaceVertical } from "@/lib/verticals/registry";
 import { getSupabaseAuthUser } from "@/lib/supabase/server";
@@ -226,7 +227,7 @@ export const getCurrentUser = cache(async () => {
 const getUserWorkspaceMemberships = cache(async (userId: string) => db.workspaceMember.findMany({
   where: { userId },
   orderBy: [{ createdAt: "asc" }, { workspaceId: "asc" }],
-  select: { workspaceId: true, role: true, workspace: true },
+  select: { workspaceId: true, role: true, restaurantStation: true, workspace: true },
 }));
 
 const getCurrentUserWorkspaceMemberships = cache(async () => {
@@ -249,11 +250,19 @@ export const getCurrentWorkspace = cache(async () => {
   const vertical = resolveWorkspaceVertical(membership.workspace);
   if (!isAvailableVertical(vertical)) redirect("/workspace-unavailable");
 
+  if (isRestrictedRestaurantStaff(membership.role, vertical, membership.restaurantStation)) {
+    const trustedPath = (await headers()).get("x-munshios-internal-path");
+    if (!canOpenRestaurantStationPath(membership.role, vertical, membership.restaurantStation, trustedPath)) {
+      redirect(restaurantStationHome(membership.restaurantStation));
+    }
+  }
+
   return {
     user,
     workspace: membership.workspace,
     workspaceId: membership.workspaceId,
     role: membership.role,
+    restaurantStation: membership.restaurantStation,
     vertical,
   };
 });
