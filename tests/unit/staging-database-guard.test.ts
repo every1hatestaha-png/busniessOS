@@ -5,7 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { migrationChecksumMatches, assertStagingMigrationHistory, assertRecoverySchemaState } = require("../../scripts/assert-staging-database-target.cjs");
+const { migrationChecksumMatches, assertStagingMigrationHistory, assertPolicySchemaState, assertRecoverySchemaState, inspectRecoverySchemaState } = require("../../scripts/assert-staging-database-target.cjs");
 
 describe("staging migration checksum guard", () => {
   it("accepts exact bytes", () => {
@@ -85,4 +85,74 @@ describe("recovery schema and migration ledger", () => {
     delete unknown[key];
     expect(() => assertRecoverySchemaState(false, unknown)).toThrow();
   });
+});
+
+/**
+ * This runs only inside the disposable GitHub PostgreSQL 18 service.
+ * It does not accept arbitrary DB URLs, staging branches, or live credentials.
+ */
+describe("actual disposable PostgreSQL 18 schema preflight", () => {
+  it.skipIf(process.env.RUN_DISPOSABLE_PG18_PREFLIGHT !== "1")(
+    "matches all 132 applied ledger entries and the actual recovery/index DDL",
+    async () => {
+      const raw = process.env.DATABASE_URL ?? "";
+      let uri: URL;
+      try {
+        uri = new URL(raw);
+      } catch {
+        throw new Error("Disposable preflight requires an explicit local PostgreSQL 18 URL.");
+      }
+      expect(uri.protocol).toBe("postgresql:");
+      expect(uri.hostname).toBe("127.0.0.1");
+      expect(uri.pathname).toBe("/munshios_preflight_disposable");
+      expect(uri.username).toBe("postgres");
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { Client } = require("pg");
+      const client = new Client({ connectionString: raw });
+      await client.connect();
+      try {
+        const migrations = await client.query(
+          'SELECT migration_name, finished_at, rolled_back_at FROM "_prisma_migrations"',
+        );
+        const catalog = fs.readdirSync(path.resolve("prisma/migrations"))
+          .filter(name => fs.existsSync(path.join(path.resolve("prisma/migrations"), name, "migration.sql")))
+          .sort();
+        expect(catalog).toHaveLength(132);
+        const history = assertStagingMigrationHistory(catalog, migrations.rows);
+        expect(history.applied).toHaveLength(132);
+        expect(history.pending).toEqual([]);
+
+        const terms = await client.query(
+          "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='users' AND column_name IN ('termsAcceptedAt','termsVersion','privacyAcknowledgedAt','privacyVersion')",
+        );
+        expect(() => assertPolicySchemaState([], terms.rows)).not.toThrow();
+        const station = await client.query(
+          "SELECT column_name, is_nullable, column_default FROM information_schema.columns WHERE table_schema='public' AND table_name='workspace_members' AND column_name='restaurantStation'",
+        );
+        expect(station.rows).toHaveLength(1);
+        expect(station.rows[0].is_nullable).toBe("NO");
+        expect(station.rows[0].column_default).toContain("ALL");
+
+        const recovery = await inspectRecoverySchemaState(client);
+        expect(recovery).toEqual({
+          table_present: true,
+          columns_valid: true,
+          constraints_valid: true,
+          bucket_index_valid: true,
+          sales_index_valid: true,
+        });
+        expect(() => assertRecoverySchemaState(false, recovery)).not.toThrow();
+        for (const property of Object.keys(recovery)) {
+          expect(() => assertRecoverySchemaState(false, { ...recovery, [property]: false })).toThrow(
+            "Recovery schema and migration ledger disagree",
+          );
+          expect(() => assertRecoverySchemaState(true, { ...recovery, [property]: false })).toThrow(
+            "Recovery schema and migration ledger disagree",
+          );
+        }
+      } finally {
+        await client.end();
+      }
+    },
+  );
 });
