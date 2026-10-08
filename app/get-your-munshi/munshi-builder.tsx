@@ -77,7 +77,8 @@ export function MunshiBuilder() {
 
   function isRequiredModule(key: ModuleKey) {
     return (key === "inventory" && (businessType === "restaurant" || businessType === "wholesale" || businessType === "manufacturing"))
-      || (key === "wholesale" && businessType === "manufacturing");
+      || (key === "wholesale" && (businessType === "wholesale" || businessType === "manufacturing"))
+      || (key === "manufacturing" && businessType === "manufacturing");
   }
 
   function toggleModule(key: ModuleKey) {
