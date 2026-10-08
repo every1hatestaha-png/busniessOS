@@ -1,0 +1,83 @@
+name: MunshiOS RC132 isolated staging gate
+
+on:
+  push:
+    branches:
+      - staging/munshios-rc132-isolated-20261008
+  pull_request:
+    branches:
+      - fix/munshios-release-certification
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-staging-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_preflight_disposable
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_preflight_disposable"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_preflight_disposable?sslmode=disable
+      RUN_DISPOSABLE_PG18_PREFLIGHT: "1"
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_synthetic_rc132
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_live_fixture
+      CLERK_SECRET_KEY: sk_live_fixture
+      CLERK_OAUTH_CLIENT_ID: fixture-client
+      RUN_PRISMA_MIGRATIONS_ON_BUILD: "0"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288ca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Confirm isolated branch target, no automatic deployments
+        run: |
+          node <<'NODE'
+          const assert = require("node:assert/strict");
+          const fs = require("node:fs");
+          const v = require("./vercel.json");
+          const target = require("./config/staging-database-targets.json");
+          const branch = "staging/munshios-rc132-isolated-20261008";
+          const host = "ep-muddy-sea-b51k2gi3.c-7.us-east-2.aws.neon.tech";
+          const code = fs.readFileSync("scripts/assert-staging-database-target.cjs", "utf8");
+          assert.equal(v.git.deploymentEnabled[branch], false);
+          assert.equal(target.vercelProjectId, "prj_ytXqF1zAoJjcsBIICz7PryfAczLz");
+          assert.ok(target.hosts.includes(host));
+          assert.ok(code.includes('target.branch !== "br-sweet-hat-b5x5nzzz"'));
+          assert.ok(code.includes('VERCEL_GIT_COMMIT_REF !== "' + branch + '"'));
+          assert.ok(fs.readFileSync("scripts/production-build.cjs", "utf8").includes('assert-staging-database-target.cjs'));
+          console.log("Isolated staging guard PASS; no production or staging-root mutation");
+          NODE
+      - name: Full 132 migrations on synthetic PG18
+        run: |
+          npx prisma migrate deploy
+          npx prisma migrate status
+          npx vitest run tests/unit/staging-database-guard.test.ts tests/unit/staging-release-target.test.ts tests/unit/restaurant-release-build-guard-v1-88.test.ts
+      - name: TS, schema and guard syntax
+        run: |
+          npx prisma validate
+          npx tsc --noEmit
+          node --check scripts/assert-staging-database-target.cjs
+          node --check scripts/production-build.cjs
+      - name: Build without any live credentials or migrations
+        env:
+          NODE_ENV: production
+          VERCEL_ENV: production
+        run: npm run build
