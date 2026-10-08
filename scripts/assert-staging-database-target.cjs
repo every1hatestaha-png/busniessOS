@@ -9,6 +9,7 @@ const { Client } = require("pg");
 const stagingBranches = {
   "ep-fragrant-heart-b578tydw": "br-delicate-credit-b5lttgnc",
   "ep-fragrant-sun-b5xzle76": "br-dry-mouse-b5kctz0n",
+  "ep-muddy-sea-b51k2gi3": "br-sweet-hat-b5x5nzzz",
 };
 
 function assertStagingTarget(env) {
