@@ -102,18 +102,30 @@ describe("password login, verification and logout event contracts", () => {
     expect(mocks.navigate).not.toHaveBeenCalled();
   });
   it("records policy acceptance before routing a verified signup", async () => {
-    await submit(render(SignUpPage, { 2: email, 8: true, 9: "123456" }));
+    await submit(render(SignUpPage, { 2: email, 5: true, 8: true, 9: "123456" }));
     expect(mocks.verify).toHaveBeenCalledWith({ email, token: "123456", type: "email" });
     expect(mocks.policy).toHaveBeenCalledWith("/api/legal/acceptance", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        terms: true,
+        privacy: true,
+        termsVersion: "2026-10-07",
+        privacyVersion: "2026-10-07",
+      }),
       redirect: "manual",
     });
     expect(mocks.navigate).toHaveBeenCalledWith("/auth/post-login");
   });
+  it("never sends accepted policy confirmation after an unchecked signup state", async () => {
+    await submit(render(SignUpPage, { 2: email, 5: false, 8: true, 9: "123456" }));
+    expect(mocks.verify).toHaveBeenCalled();
+    expect(mocks.policy).not.toHaveBeenCalled();
+    expect(mocks.navigate).toHaveBeenCalledWith("/legal/acceptance");
+  });
   it("falls back to the policy screen when signup acceptance cannot be recorded", async () => {
     mocks.policy.mockRejectedValueOnce(new Error("network"));
-    await submit(render(SignUpPage, { 2: email, 8: true, 9: "123456" }));
+    await submit(render(SignUpPage, { 2: email, 5: true, 8: true, 9: "123456" }));
     expect(mocks.navigate).toHaveBeenCalledWith("/legal/acceptance");
   });
   it("does not mistake an auth redirect or HTML response for policy acceptance", async () => {
@@ -123,12 +135,12 @@ describe("password login, verification and logout event contracts", () => {
       headers: new Headers({ "content-type": "text/html" }),
       json: vi.fn(),
     });
-    await submit(render(SignUpPage, { 2: email, 8: true, 9: "123456" }));
+    await submit(render(SignUpPage, { 2: email, 5: true, 8: true, 9: "123456" }));
     expect(mocks.navigate).toHaveBeenCalledWith("/legal/acceptance");
   });
   it.each(["invalid", "expired"])("retains verification after an %s signup OTP", async message => {
     mocks.verify.mockResolvedValue({ data: { user: null }, error: new Error(message) });
-    await submit(render(SignUpPage, { 2: email, 8: true, 9: "123456" }));
+    await submit(render(SignUpPage, { 2: email, 5: true, 8: true, 9: "123456" }));
     expect(mocks.navigate).not.toHaveBeenCalled();
     expect(mocks.updates).toContain("That code is invalid or expired. Request a new code and try again.");
   });
