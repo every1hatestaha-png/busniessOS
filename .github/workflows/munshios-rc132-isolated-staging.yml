@@ -60,6 +60,7 @@ jobs:
           const host = "ep-muddy-sea-b51k2gi3.c-7.us-east-2.aws.neon.tech";
           const code = fs.readFileSync("scripts/assert-staging-database-target.cjs", "utf8");
           assert.equal(v.git.deploymentEnabled[branch], false);
+          assert.equal(v.git.deploymentEnabled["test/munshios-rc132-hosted-smoke"], false);
           assert.equal(target.vercelProjectId, "prj_ytXqF1zAoJjcsBIICz7PryfAczLz");
           assert.ok(target.hosts.includes(host));
           assert.ok(code.includes('target.branch !== "br-sweet-hat-b5x5nzzz"'));
