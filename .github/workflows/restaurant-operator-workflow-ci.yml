@@ -9,6 +9,7 @@ on:
   pull_request:
     branches:
       - fix/legal-explicit-consent-v1-99
+      - feat/restaurant-staff-stations-v2-01
 
 permissions:
   contents: read
