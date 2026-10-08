@@ -7,11 +7,13 @@ on:
       - feat/restaurant-staff-stations-v2-01
       - fix/restaurant-audit-findings-v2-02
       - fix/auth-login-clarity-v2-03
+      - fix/signup-consent-contract-v2-04
   pull_request:
     branches:
       - fix/legal-explicit-consent-v1-99
       - feat/restaurant-staff-stations-v2-01
       - fix/restaurant-audit-findings-v2-02
+      - fix/auth-login-clarity-v2-03
 
 permissions:
   contents: read
@@ -68,6 +70,12 @@ jobs:
             files+=(tests/unit/restaurant-staff-stations.test.ts)
           fi
           npx vitest run "${files[@]}"
+      - name: Sign-up and legal consent contract
+        run: >
+          npx vitest run
+          tests/unit/signup-policy-consent.test.ts
+          tests/unit/legal-acceptance.test.ts
+          tests/unit/auth-sign-in-feedback.test.ts
       - name: Full unit regressions
         run: npm test
       - name: Restaurant replay, tenant and access integration
