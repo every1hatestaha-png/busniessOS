@@ -55,7 +55,8 @@
       "fix/restaurant-pos-service-station-v2-08": false,
       "fix/restaurant-menu-persisted-role-v2-09": false,
       "fix/restaurant-legacy-kot-safe-service-v2-10": false,
-      "fix/restaurant-cash-shift-persisted-actor-v2-11": false
+      "fix/restaurant-cash-shift-persisted-actor-v2-11": false,
+      "fix/preview-migration-target-guard-v2-14": false
     }
   }
 }
