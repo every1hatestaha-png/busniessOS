@@ -8,11 +8,41 @@ const registry = require("../../scripts/restaurant-schema-registry.cjs") as {
   captureRegistry: (client: Client, tables: string[]) => Promise<unknown>;
   checkRegistry: (url: string) => Promise<void>;
 };
-it("rejects managed targets before connecting and passes the migrated local contract", async () => {
-  await expect(registry.checkRegistry("postgresql://fixture@production.invalid/munshios_round3")).rejects.toThrow("disposable loopback");
-  await registry.checkRegistry(process.env.DATABASE_URL!);
+// Separate the CLI's intentionally *narrow* Round3 target policy from the
+// schema drift tests that also run against other disposable GitHub CI DB names.
+// Never relax scripts/restaurant-schema-registry.cjs for a generic test runner.
+function safeDisposableDatabaseUrl(): URL {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) throw new Error("Schema registry tests require an explicit disposable local DATABASE_URL.");
+  let target: URL;
+  try { target = new URL(raw); }
+  catch { throw new Error("Schema registry tests require a valid disposable local DATABASE_URL."); }
+  if (
+    !["127.0.0.1", "localhost", "[::1]"].includes(target.hostname) ||
+    !/^\\/munshios_[a-z0-9_]+$/.test(target.pathname) ||
+    !["postgresql:", "postgres:"].includes(target.protocol)
+  ) {
+    throw new Error("Schema registry tests may only inspect disposable local MunshiOS databases.");
+  }
+  return target;
+}
+
+it("rejects managed targets and checks CLI is restricted to Round3 disposable databases", async () => {
+  await expect(registry.checkRegistry("postgresql://fixture@production.invalid/munshios_round3"))
+    .rejects.toThrow("disposable loopback");
+  const local = safeDisposableDatabaseUrl();
+  if (/^\\/munshios_round3(?:_[a-z0-9_]+)?$/.test(local.pathname)) {
+    await registry.checkRegistry(local.href);
+  } else {
+    // Other GitHub jobs use their own isolated loopback database names. A
+    // rejected CLI target is correct; the following test still compares the
+    // actual migrated schema and runs rollback-only drift checks on that DB.
+    await expect(registry.checkRegistry(local.href))
+      .rejects.toThrow("disposable loopback");
+  }
 });
 it("detects column, constraint, index and trigger drift without persisting fixture DDL", async () => {
+  safeDisposableDatabaseUrl(); // Fail closed BEFORE connecting to any DB.
   const client = new Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
   const expected = JSON.parse(readFileSync("docs/architecture/restaurant-schema-registry.json", "utf8"));
