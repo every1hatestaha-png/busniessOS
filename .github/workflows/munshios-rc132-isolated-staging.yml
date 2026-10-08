@@ -12,6 +12,7 @@ on:
       - fix/munshios-release-certification
       - staging/munshios-rc132-isolated-20261008
       - test/munshios-rc132-hosted-smoke
+      - fix/restaurant-staff-completion-ui-v2-06
 
 permissions:
   contents: read
