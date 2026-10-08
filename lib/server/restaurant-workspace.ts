@@ -7,6 +7,7 @@ import { writeAudit } from "@/lib/server/audit";
 import { db } from "@/lib/server/db";
 import { IndustryDomainError, requireWorkspaceModule, type IndustryContext } from "@/lib/server/industry-modules";
 import { releaseRestaurantTableIfSettled } from "@/lib/server/restaurant-table-settlement";
+import { assertRestaurantActorAccess } from "@/lib/server/restaurant-actor-access";
 
 export type RestaurantOrderSource = "POS" | "WHATSAPP" | "MANUAL";
 export type RestaurantFulfillmentType = "DINE_IN" | "TAKEAWAY" | "DELIVERY";
@@ -478,9 +479,13 @@ const kitchenStatusForOrder: Partial<Record<RestaurantOrderStatus, string>> = {
 };
 
 export async function transitionRestaurantOrder(context: IndustryContext, orderId: string, nextStatus: RestaurantOrderStatus) {
+  if (nextStatus === "COMPLETED" || nextStatus === "CANCELLED") {
+    throw new IndustryDomainError("INVALID_STATE", "Terminal orders must use the Restaurant integrity service.");
+  }
   await requireWorkspaceModule(context.workspaceId, "restaurant");
   assertUuid(orderId, "Restaurant order");
   return db.$transaction(async (tx) => {
+    await assertRestaurantActorAccess(tx, context, nextStatus === "PREPARING" || nextStatus === "READY" ? "KITCHEN" : "POS", "Restaurant order transition");
     const rows = await tx.$queryRaw<Array<{ id: string; orderNumber: string; status: RestaurantOrderStatus; restaurantTableId: string | null }>>`
       SELECT "id", "orderNumber", "status", "restaurantTableId"
       FROM "restaurant_orders"
@@ -500,8 +505,6 @@ export async function transitionRestaurantOrder(context: IndustryContext, orderI
     await tx.$executeRaw`
       UPDATE "restaurant_orders"
       SET "status"=${nextStatus},
-          "completedAt"=CASE WHEN ${nextStatus}='COMPLETED' THEN now() ELSE "completedAt" END,
-          "cancelledAt"=CASE WHEN ${nextStatus}='CANCELLED' THEN now() ELSE "cancelledAt" END,
           "updatedAt"=now()
       WHERE "id"=${order.id}::uuid AND "workspaceId"=${context.workspaceId}::uuid
     `;
@@ -517,10 +520,6 @@ export async function transitionRestaurantOrder(context: IndustryContext, orderI
             "updatedAt"=now()
         WHERE "workspaceId"=${context.workspaceId}::uuid AND "restaurantOrderId"=${order.id}::uuid
       `;
-    }
-
-    if (order.restaurantTableId && (nextStatus === "COMPLETED" || nextStatus === "CANCELLED")) {
-      await releaseRestaurantTableIfSettled(tx, context.workspaceId, order.restaurantTableId);
     }
 
     await writeAudit(tx, {
