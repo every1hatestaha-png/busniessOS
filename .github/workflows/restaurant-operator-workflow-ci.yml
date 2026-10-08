@@ -21,7 +21,7 @@ permissions:
 jobs:
   isolated-restaurant-acceptance:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 70
     services:
       postgres:
         image: postgres:18
@@ -85,5 +85,24 @@ jobs:
           npx vitest run
           tests/integration/restaurant-pos-replay-v1-90.test.ts
           tests/integration/restaurant-access-policy-v1-91.test.ts
+      - name: Full Restaurant and warehouse regressions
+        env:
+          RUN_INTEGRATION_TESTS: "true"
+        run: >
+          npx vitest run
+          tests/integration/restaurant-*.test.ts
+          tests/unit/restaurant-*.test.ts
+          tests/integration/warehouse-stock-tenant-tuple-integrity-v1-50.test.ts
+          tests/integration/managed-warehouse-stock.test.ts
+      - name: Finance correctness suite
+        run: npm run test:finance
       - name: TypeScript safety
         run: npx tsc --noEmit
+      - name: Production-mode web compilation (no deployment)
+        env:
+          NODE_ENV: production
+          RUN_PRISMA_MIGRATIONS_ON_BUILD: "0"
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Zml4dHVyZS5jbGVyay5hY2NvdW50cy5kZXYk
+          CLERK_SECRET_KEY: sk_test_fixture
+          CLERK_OAUTH_CLIENT_ID: fixture-client
+        run: npm run build:web
