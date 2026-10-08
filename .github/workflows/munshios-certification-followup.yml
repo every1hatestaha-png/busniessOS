@@ -1,0 +1,80 @@
+name: MunshiOS certification follow-up
+
+on:
+  pull_request:
+    branches: [impl/munshios-round3-hardening]
+
+permissions:
+  contents: read
+
+jobs:
+  focused-ui-and-release-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: postgresql://synthetic:synthetic@127.0.0.1:5432/unused?sslmode=disable
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_synthetic_certification
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_live_fixture
+      CLERK_SECRET_KEY: sk_live_fixture
+      CLERK_OAUTH_CLIENT_ID: fixture-client
+      RUN_PRISMA_MIGRATIONS_ON_BUILD: '0'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.x'
+          cache: npm
+      - name: Verify certified backend and deployment exclusion
+        run: |
+          git merge-base --is-ancestor 1fda9010740b02468bd2edb761d121fd33d81e2c HEAD
+          git diff --name-only 1fda9010740b02468bd2edb761d121fd33d81e2c HEAD > "$RUNNER_TEMP/certification-files"
+          while IFS= read -r file; do
+            case "$file" in
+              'app/(dashboard)/restaurant/pos/restaurant-pos.tsx'|'scripts/restaurant-browser-verification-v1-88.cjs'|'scripts/README-migration-recovery.txt'|'vercel.json'|'.github/workflows/munshios-certification-followup.yml'|'docs/release/platform-release-certification-20261008.md') ;;
+              *) echo "Uncertified backend change: $file"; exit 1 ;;
+            esac
+          done < "$RUNNER_TEMP/certification-files"
+          node -e "if(require('./vercel.json').git.deploymentEnabled['fix/munshios-release-certification']!==false) process.exit(1)"
+      - run: npm ci --no-audit --no-fund
+      - name: Focused POS, printing and release target tests
+        run: >-
+          npx vitest run tests/unit/restaurant-pos-fast-entry.test.ts
+          tests/unit/restaurant-print-v1-88.test.ts tests/unit/restaurant-print-route-v1-90.test.ts
+          tests/unit/thermal-print.test.ts tests/unit/staging-release-target.test.ts
+          tests/unit/restaurant-release-build-guard-v1-88.test.ts
+      - name: Prisma, TypeScript and scoped lint
+        run: |
+          npx prisma validate
+          npx tsc --noEmit
+          npx eslint 'app/(dashboard)/restaurant/pos/restaurant-pos.tsx' scripts/restaurant-browser-verification-v1-88.cjs
+          node --check scripts/restaurant-browser-verification-v1-88.cjs
+      - name: Production dependency audit
+        run: npm audit --omit=dev
+      - name: Production build, synthetic configuration, no migrations
+        env:
+          NODE_ENV: production
+          VERCEL_ENV: production
+        run: npm run build
+      - name: Install isolated browser harness tooling
+        run: |
+          mkdir -p "$RUNNER_TEMP/restaurant-browser-tools"
+          npm install --prefix "$RUNNER_TEMP/restaurant-browser-tools" --ignore-scripts playwright@1.62.1
+          echo "NODE_PATH=$RUNNER_TEMP/restaurant-browser-tools/node_modules" >> "$GITHUB_ENV"
+          echo "RESTAURANT_PLAYWRIGHT_CLI=$RUNNER_TEMP/restaurant-browser-tools/node_modules/playwright/cli.js" >> "$GITHUB_ENV"
+      - name: Install Chromium
+        run: node "$RESTAURANT_PLAYWRIGHT_CLI" install --with-deps chromium
+      - name: Build current-head POS/print fixture
+        run: npx vite build --config tests/browser/restaurant-v1-88/vite.config.mjs
+      - name: Basket accessibility, replay and 80mm PDF acceptance
+        run: node scripts/restaurant-browser-verification-v1-88.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: current-head-thermal-print-evidence
+          path: .tmp-restaurant-browser-v188/*.pdf
+          include-hidden-files: true
+          if-no-files-found: error
