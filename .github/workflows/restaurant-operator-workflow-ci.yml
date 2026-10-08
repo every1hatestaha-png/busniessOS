@@ -5,6 +5,7 @@ on:
     branches:
       - feat/restaurant-station-workflows-v2-00
       - feat/restaurant-staff-stations-v2-01
+      - fix/restaurant-audit-findings-v2-02
   pull_request:
     branches:
       - fix/legal-explicit-consent-v1-99
@@ -54,11 +55,24 @@ jobs:
         run: |
           set -euo pipefail
           files=(tests/unit/restaurant-pos-fast-entry.test.ts tests/unit/restaurant-kitchen-line-items.test.ts)
+          if test -f tests/unit/restaurant-kitchen-queue-lanes.test.ts; then
+            files+=(tests/unit/restaurant-kitchen-queue-lanes.test.ts)
+          fi
+          if test -f tests/unit/restaurant-legacy-station-boundaries.test.ts; then
+            files+=(tests/unit/restaurant-legacy-station-boundaries.test.ts)
+          fi
           if test -f tests/unit/restaurant-staff-stations.test.ts; then
             files+=(tests/unit/restaurant-staff-stations.test.ts)
           fi
           npx vitest run "${files[@]}"
       - name: Full unit regressions
         run: npm test
+      - name: Restaurant replay, tenant and access integration
+        env:
+          RUN_INTEGRATION_TESTS: "true"
+        run: >
+          npx vitest run
+          tests/integration/restaurant-pos-replay-v1-90.test.ts
+          tests/integration/restaurant-access-policy-v1-91.test.ts
       - name: TypeScript safety
         run: npx tsc --noEmit
