@@ -2,6 +2,7 @@ import "server-only";
 
 import { Prisma, type Role, type WorkspaceVertical } from "@prisma/client";
 import { db } from "@/lib/server/db";
+import { assertRestaurantActorAccess } from "@/lib/server/restaurant-actor-access";
 import { canUseVerticalCapability, resolveWorkspaceVertical } from "@/lib/verticals/registry";
 import { writeAudit } from "@/lib/server/audit";
 import { applyManagedWarehouseStockDelta, getWarehouseStockModeInTransaction, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
@@ -207,15 +208,19 @@ export async function createRecipe(context: IndustryContext, input: { finishedPr
 export async function createKitchenTicket(context: IndustryContext, input: { ticketNumber: string; salesOrderId?: string; restaurantTableId?: string; notes?: string }) {
   await requireWorkspaceModule(context.workspaceId, "restaurant");
   const ticketNumber = input.ticketNumber.trim();
-  if (!ticketNumber) throw new IndustryDomainError("INVALID_STATE", "Ticket number is required.");
+  if (!ticketNumber || ticketNumber.length > 80) throw new IndustryDomainError("INVALID_STATE", "Ticket number must be 1-80 characters.");
+  if ((input.notes?.trim().length ?? 0) > 500) throw new IndustryDomainError("INVALID_STATE", "Kitchen ticket notes must be 500 characters or fewer.");
+
+  return db.$transaction(async (tx) => {
+    await assertRestaurantActorAccess(tx, context, "KITCHEN", "Legacy kitchen ticket creation");
 
   if (input.salesOrderId) {
-    const order = await db.salesOrder.findFirst({ where: { id: input.salesOrderId, workspaceId: context.workspaceId }, select: { id: true } });
+    const order = await tx.salesOrder.findFirst({ where: { id: input.salesOrderId, workspaceId: context.workspaceId }, select: { id: true } });
     if (!order) throw new IndustryDomainError("NOT_FOUND", "Sales order was not found in this workspace.");
   }
 
   if (input.restaurantTableId) {
-    const tables = await db.$queryRaw<Array<{ id: string; status: string }>>`
+    const tables = await tx.$queryRaw<Array<{ id: string; status: string }>>`
       SELECT "id", "status" FROM "restaurant_tables"
       WHERE "id"=${input.restaurantTableId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
     `;
@@ -224,90 +229,27 @@ export async function createKitchenTicket(context: IndustryContext, input: { tic
     if (table.status === "INACTIVE") throw new IndustryDomainError("INVALID_STATE", "Inactive restaurant tables cannot receive kitchen tickets.");
   }
 
-  const rows = await db.$queryRaw<Array<{ id: string; ticketNumber: string; status: string }>>`
+  const rows = await tx.$queryRaw<Array<{ id: string; ticketNumber: string; status: string }>>`
     INSERT INTO "kitchen_tickets" ("workspaceId", "salesOrderId", "restaurantTableId", "ticketNumber", "notes")
     VALUES (${context.workspaceId}::uuid, ${input.salesOrderId ?? null}::uuid, ${input.restaurantTableId ?? null}::uuid, ${ticketNumber}, ${input.notes?.trim() || null})
     RETURNING "id", "ticketNumber", "status"
   `;
   if (input.restaurantTableId) {
-    await db.$executeRaw`
+    await tx.$executeRaw`
       UPDATE "restaurant_tables" SET "status"='OCCUPIED', "updatedAt"=now()
       WHERE "id"=${input.restaurantTableId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
     `;
   }
-  return rows[0]!;
-}
-
-async function consumeTicketRecipes(tx: Prisma.TransactionClient, workspaceId: string, ticketId: string, salesOrderId: string) {
-  const existing = await tx.inventoryTransaction.findFirst({ where: { workspaceId, reference: `KITCHEN:${ticketId}` }, select: { id: true } });
-  if (existing) return;
-
-  const warehouseMode = await getWarehouseStockModeInTransaction(tx, workspaceId);
-  const sale = warehouseMode === "MANAGED"
-    ? await tx.salesOrder.findFirst({
-        where: { id: salesOrderId, workspaceId },
-        select: { warehouseId: true },
-      })
-    : null;
-  const warehouseId = warehouseMode === "MANAGED"
-    ? (sale?.warehouseId ?? await resolveIndustryWarehouseId(tx, workspaceId))
-    : undefined;
-  const lines = await tx.salesOrderItem.findMany({ where: { salesOrderId }, select: { productId: true, quantity: true } });
-  for (const line of lines) {
-    const recipes = await tx.$queryRaw<Array<{ id: string; yieldQuantity: Prisma.Decimal }>>`
-      SELECT "id", "yieldQuantity" FROM "recipes"
-      WHERE "workspaceId"=${workspaceId}::uuid AND "finishedProductId"=${line.productId}::uuid AND "isActive"=true
-      LIMIT 1
-    `;
-    const recipe = recipes[0];
-    if (!recipe) continue;
-    const items = await tx.$queryRaw<Array<{ ingredientProductId: string; quantity: Prisma.Decimal; wastagePercent: Prisma.Decimal }>>`
-      SELECT "ingredientProductId", "quantity", "wastagePercent" FROM "recipe_items" WHERE "recipeId"=${recipe.id}::uuid
-    `;
-    const factor = Number(line.quantity) / Number(recipe.yieldQuantity);
-    for (const item of items) {
-      const required = Number(item.quantity) * factor * (1 + Number(item.wastagePercent) / 100);
-      const ingredient = await tx.product.findFirst({ where: { id: item.ingredientProductId, workspaceId }, select: { id: true, stockQuantity: true, costPrice: true } });
-      if (!ingredient) throw new IndustryDomainError("NOT_FOUND", "Recipe ingredient no longer exists.");
-      if (Number(ingredient.stockQuantity) < required) throw new IndustryDomainError("INSUFFICIENT_STOCK", "Not enough ingredient stock to serve this order.");
-      await tx.product.update({ where: { id: ingredient.id }, data: { stockQuantity: { decrement: required } } });
-      await applyIndustryWarehouseDelta(tx, { workspaceId, warehouseId, productId: ingredient.id, delta: -required });
-      await tx.inventoryTransaction.create({ data: { workspaceId, productId: ingredient.id, type: "ADJUSTMENT", quantityChanged: -required, unitCost: ingredient.costPrice, reference: `KITCHEN:${ticketId}` } });
-    }
-  }
+    return rows[0]!;
+  });
 }
 
 export async function updateKitchenTicketStatus(context: IndustryContext, ticketId: string, status: KitchenTicketStatus) {
-  await requireWorkspaceModule(context.workspaceId, "restaurant");
-  return db.$transaction(async (tx) => {
-    const rows = await tx.$queryRaw<Array<{ id: string; status: string; salesOrderId: string | null; restaurantTableId: string | null }>>`
-      SELECT "id", "status", "salesOrderId", "restaurantTableId" FROM "kitchen_tickets"
-      WHERE "id"=${ticketId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
-      FOR UPDATE
-    `;
-    const current = rows[0];
-    if (!current) throw new IndustryDomainError("NOT_FOUND", "Kitchen ticket was not found.");
-    if (current.status === status) return { id: ticketId, status };
-
-    if (!canTransitionKitchenTicket(current.status as KitchenTicketStatus, status)) {
-      throw new IndustryDomainError("INVALID_STATE", `Kitchen ticket cannot move from ${current.status} to ${status}.`);
-    }
-
-    if (status === "SERVED" && current.salesOrderId) await consumeTicketRecipes(tx, context.workspaceId, ticketId, current.salesOrderId);
-    await tx.$executeRaw`
-      UPDATE "kitchen_tickets"
-      SET "status"=${status},
-          "startedAt"=CASE WHEN ${status}='PREPARING' AND "startedAt" IS NULL THEN now() ELSE "startedAt" END,
-          "readyAt"=CASE WHEN ${status}='READY' AND "readyAt" IS NULL THEN now() ELSE "readyAt" END,
-          "servedAt"=CASE WHEN ${status}='SERVED' AND "servedAt" IS NULL THEN now() ELSE "servedAt" END,
-          "updatedAt"=now()
-      WHERE "id"=${ticketId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
-    `;
-    if ((status === "SERVED" || status === "CANCELLED") && current.restaurantTableId) {
-      await tx.$executeRaw`UPDATE "restaurant_tables" SET "status"='AVAILABLE', "updatedAt"=now() WHERE "id"=${current.restaurantTableId}::uuid AND "workspaceId"=${context.workspaceId}::uuid`;
-    }
-    return { id: ticketId, status };
-  });
+  // Compatibility API: always reuse the single authoritative legacy KOT
+  // transition service. The previous implementation could double-consume
+  // recipe inventory and prematurely release an occupied table.
+  const { updateLegacyKitchenTicketStatusSafely } = await import("@/lib/server/restaurant-legacy-kot");
+  return updateLegacyKitchenTicketStatusSafely(context, ticketId, status);
 }
 
 export async function openCashShift(context: IndustryContext, openingCash = 0, notes?: string) {
