@@ -16,7 +16,8 @@ const kitchenColumns = [
 ] as const;
 
 export default async function RestaurantKitchenPage() {
-  const { workspaceId, workspace } = await requireWorkspace();
+  const { workspaceId, workspace, role, restaurantStation } = await requireWorkspace();
+  const kitchenOnly = role === "STAFF" && restaurantStation === "KITCHEN";
   const orders = await listRestaurantOrders(workspaceId, 200, { statuses: ["CONFIRMED", "PREPARING", "READY"], oldestFirst: true });
   const kitchenItems = await listRestaurantKitchenItems(workspaceId, orders.map((order) => order.id));
 
@@ -100,16 +101,22 @@ export default async function RestaurantKitchenPage() {
                       <Link href={`/restaurant/orders/${order.id}/print?kind=kot`} className="inline-flex text-xs font-semibold text-emerald-700 underline underline-offset-4">Print kitchen ticket</Link>
 
                       <div className="flex flex-wrap gap-2">
-                        <RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}>
-                          <input type="hidden" name="orderId" value={order.id} />
-                          <input type="hidden" name="nextStatus" value={column.next} />
-                          <Button type="submit" size="sm" className="rounded-lg bg-emerald-600 hover:bg-emerald-500">{column.action}</Button>
-                        </RestaurantMutationForm>
-                        <RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}>
-                          <input type="hidden" name="orderId" value={order.id} />
-                          <input type="hidden" name="nextStatus" value="CANCELLED" />
-                          <Button type="submit" size="sm" variant="outline" className="rounded-lg">Cancel</Button>
-                        </RestaurantMutationForm>
+                        {kitchenOnly && column.status === "READY" ? (
+                          <p className="text-sm font-semibold text-emerald-700">Ready for service. Cashier will complete the order.</p>
+                        ) : (
+                          <RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}>
+                            <input type="hidden" name="orderId" value={order.id} />
+                            <input type="hidden" name="nextStatus" value={column.next} />
+                            <Button type="submit" size="sm" className="rounded-lg bg-emerald-600 hover:bg-emerald-500">{column.action}</Button>
+                          </RestaurantMutationForm>
+                        )}
+                        {!kitchenOnly ? (
+                          <RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}>
+                            <input type="hidden" name="orderId" value={order.id} />
+                            <input type="hidden" name="nextStatus" value="CANCELLED" />
+                            <Button type="submit" size="sm" variant="outline" className="rounded-lg">Cancel</Button>
+                          </RestaurantMutationForm>
+                        ) : null}
                       </div>
                     </CardContent>
                   </Card>
