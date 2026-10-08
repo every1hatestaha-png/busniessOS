@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { postInvoiceToFbr, validateInvoiceWithFbr } from "@/lib/fbr/client";
 import type { FbrInvoicePayload } from "@/lib/fbr/digital-invoicing";
 
@@ -31,6 +31,32 @@ const payload: FbrInvoicePayload = {
 };
 
 describe("FBR API client", () => {
+  beforeEach(() => {
+    vi.stubEnv("FBR_DI_PRODUCTION_TRANSMISSION_ENABLED", "1");
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("VERCEL_PROJECT_ID", "prj_iSQ7PaTAwiQMYasVAEBGJZTSjTk2");
+    vi.stubEnv("MUNSHIOS_DEPLOYMENT_ENVIRONMENT", "production");
+  });
+  afterEach(() => vi.unstubAllEnvs());
+  it.each([validateInvoiceWithFbr, postInvoiceToFbr])("blocks direct production calls without authorization: %s", async call => {
+    const fetchImpl = vi.fn();
+    vi.stubEnv("FBR_DI_PRODUCTION_TRANSMISSION_ENABLED", "0");
+    await expect(call({ environment: "PRODUCTION", token: "synthetic", payload, fetchImpl })).rejects.toThrow("disabled");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+  it.each(["preview", "development"])("cannot enable production FBR in %s even with its switch set", async deployment => {
+    const fetchImpl = vi.fn();
+    vi.stubEnv("VERCEL_ENV", deployment);
+    await expect(postInvoiceToFbr({ environment: "PRODUCTION", token: "synthetic", payload, fetchImpl })).rejects.toThrow("disabled");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+  it("cannot enable production FBR in the staging project or with an invalid provider environment", async () => {
+    const fetchImpl = vi.fn();
+    vi.stubEnv("VERCEL_PROJECT_ID", "prj_ytXqF1zAoJjcsBIICz7PryfAczLz");
+    await expect(postInvoiceToFbr({ environment: "PRODUCTION", token: "synthetic", payload, fetchImpl })).rejects.toThrow();
+    await expect(validateInvoiceWithFbr({ environment: "invalid" as "PRODUCTION", token: "synthetic", payload, fetchImpl })).rejects.toThrow("Invalid FBR environment");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
   it("sends bearer auth to the explicit v1.12 sandbox validate URL", async () => {
     const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       expect(String(url)).toBe("https://gw.fbr.gov.pk/di_data/v1/di/validateinvoicedata_sb");

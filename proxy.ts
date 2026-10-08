@@ -5,7 +5,7 @@ import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server
 import { POST_AUTH_PATH, postAuthDestination, isAuthEntryPath, isPublicMarketingPath, safeInternalDestination } from "@/lib/auth-routing";
 import { getSupabasePublicConfig } from "@/lib/supabase/config";
 import { checkAppRateLimit } from "@/lib/request-rate-limit";
-import { applyCorsHeaders, corsPreflightResponse, isApiV1Request, isTrustedMutationOrigin } from "@/lib/server/cors";
+import { applyCorsHeaders, corsPreflightResponse, isApiV1Request, isAllowedMutationRequest } from "@/lib/server/cors";
 
 const CLERK_SERVER_CONFIGURED = Boolean(process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
@@ -20,10 +20,6 @@ function isDirectSupabaseAuthEntry(path: string) {
     path === "/sign-up" ||
     path.startsWith("/sign-up/")
   );
-}
-
-function isMutationMethod(method: string) {
-  return !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase());
 }
 
 function copyResponseCookies(from: NextResponse, to: NextResponse) {
@@ -98,9 +94,8 @@ async function applyCommonGuards(request: NextRequest) {
   }
 
   if (
-    isApiV1Request(path) &&
-    isMutationMethod(request.method) &&
-    !isTrustedMutationOrigin(request.headers.get("origin"), request.nextUrl.origin)
+    path !== "/api/webhooks/clerk" &&
+    !isAllowedMutationRequest(request)
   ) {
     return NextResponse.json(
       { error: { code: "UNTRUSTED_ORIGIN", message: "This request origin is not allowed." } },
@@ -278,7 +273,7 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
 
 export const config = {
   matcher: [
-    "/((?!_next|forgot-password|account-recovery|recovery|desktop-auth|api/webhooks|api/health|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
     "/(api|trpc)(.*)",
     "/__clerk/(.*)",
   ],

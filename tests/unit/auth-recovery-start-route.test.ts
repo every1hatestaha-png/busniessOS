@@ -14,7 +14,7 @@ import { POST } from "@/app/auth/recovery/start/route";
 
 const origin = "https://staging.example.invalid";
 const callback = `${origin}/auth/callback?next=%2Frecovery%2Fnew-password`;
-const request = (body: unknown) => new Request(`${origin}/auth/recovery/start`, { method: "POST", body: JSON.stringify(body) });
+const request = (body: unknown) => new Request(`${origin}/auth/recovery/start`, { method: "POST", headers: { origin }, body: JSON.stringify(body) });
 async function expectGeneric(response: Response) {
   expect(response.status).toBe(200);
   expect(await response.json()).toEqual({ ok: true });
@@ -49,6 +49,7 @@ describe("password recovery start", () => {
   });
 
   it.each<Record<string, string>>([
+    {},
     { origin: "https://evil.example.invalid" },
     { origin: "http://localhost:8081" },
     { "sec-fetch-site": "cross-site" },

@@ -21,3 +21,16 @@ it.each(["CONFIRMED", "PREPARING", "READY", "COMPLETED", "CANCELLED"])("%s kitch
   const { default: Page } = await import("@/app/(dashboard)/restaurant/orders/[id]/print/page");
   await expect(Page({ params: Promise.resolve({ id: "order" }), searchParams: Promise.resolve({ kind: "kot" }) })).resolves.toBeTruthy();
 });
+it.each([["KITCHEN", "receipt"], ["KITCHEN", undefined], ["POS", "kot"]])("%s cannot fetch the forbidden print variant %s", async (restaurantStation, kind) => {
+  mocks.auth.mockResolvedValue({ workspaceId: "workspace-a", workspace: { name: "Synthetic" }, role: "STAFF", restaurantStation });
+  const { default: Page } = await import("@/app/(dashboard)/restaurant/orders/[id]/print/page");
+  await expect(Page({ params: Promise.resolve({ id: "order" }), searchParams: Promise.resolve({ kind }) })).rejects.toThrow("NOT_FOUND");
+  expect(mocks.document).not.toHaveBeenCalled();
+});
+it.each([["KITCHEN", "kot"], ["POS", "receipt"]])("%s retains its permitted print variant %s", async (restaurantStation, kind) => {
+  mocks.auth.mockResolvedValue({ workspaceId: "workspace-a", workspace: { name: "Synthetic" }, role: "STAFF", restaurantStation });
+  mocks.document.mockResolvedValue({ orderNumber: "R-SYNTHETIC", status: "CONFIRMED" });
+  const { default: Page } = await import("@/app/(dashboard)/restaurant/orders/[id]/print/page");
+  await expect(Page({ params: Promise.resolve({ id: "order" }), searchParams: Promise.resolve({ kind }) })).resolves.toBeTruthy();
+  expect(mocks.document).toHaveBeenCalledExactlyOnceWith("workspace-a", "order");
+});
