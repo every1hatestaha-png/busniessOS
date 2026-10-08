@@ -1,4 +1,5 @@
 import type { Role } from "@prisma/client";
+import type { RestaurantOrderStatus } from "@/lib/server/restaurant-workspace";
 
 /**
  * Match the server action + transactional integrity policy. COMPLETED
@@ -8,10 +9,11 @@ import type { Role } from "@prisma/client";
 export function canShowOrderBoardTransition(
   role: Role,
   station: string,
-  nextStatus: "PREPARING" | "READY" | "COMPLETED",
+  nextStatus: RestaurantOrderStatus,
 ): boolean {
   if (nextStatus === "COMPLETED") {
     return role === "OWNER" || role === "ADMIN" || role === "MANAGER";
   }
+  if (nextStatus !== "PREPARING" && nextStatus !== "READY") return false;
   return role !== "STAFF" || station === "ALL";
 }
