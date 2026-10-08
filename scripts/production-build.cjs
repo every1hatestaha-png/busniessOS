@@ -52,7 +52,9 @@ const shouldRunMigrations = process.env.RUN_PRISMA_MIGRATIONS_ON_BUILD === "1";
 if (shouldRunMigrations) {
   if (process.env.VERCEL_ENV === "production") {
     run(process.execPath, [require("node:path").join(__dirname, "assert-production-database-target.cjs")]);
-  } else if (process.env.MUNSHIOS_DEPLOYMENT_ENVIRONMENT === "staging") {
+  } else if (process.env.VERCEL_ENV === "preview" || process.env.MUNSHIOS_DEPLOYMENT_ENVIRONMENT === "staging") {
+    // A Preview migration must always prove its exact approved staging target.
+    // Missing staging markers must fail closed, never fall through to Prisma.
     // This release-only preview must never migrate the original staging root
     // or an arbitrary branch, even if DATABASE_URL has been misconfigured.
     run(process.execPath, [require("node:path").join(__dirname, "assert-staging-database-target.cjs")]);
