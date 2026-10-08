@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { resetPasswordForEmail, signInWithOtp, signUp, createUser, findLegacyUser } = vi.hoisted(() => ({
   resetPasswordForEmail: vi.fn(), signInWithOtp: vi.fn(), signUp: vi.fn(), createUser: vi.fn(), findLegacyUser: vi.fn(),
 }));
+const budget = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/server/auth-recovery-rate-limit", () => ({ consumeRecoveryEmailBudget: budget }));
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: vi.fn(async () => ({ auth: { resetPasswordForEmail, signInWithOtp, signUp, admin: { createUser } } })),
 }));
@@ -31,6 +33,7 @@ describe("password recovery start", () => {
   beforeEach(() => {
     delete process.env.AUTH_REDIRECT_ORIGIN;
     vi.resetAllMocks();
+    budget.mockResolvedValue(true);
     resetPasswordForEmail.mockResolvedValue({ error: null });
   });
 
@@ -120,6 +123,19 @@ describe("password recovery start", () => {
 
   it("does not call the provider for malformed input", async () => {
     await expectGeneric(await POST(request({ email: "not-an-email" })));
+    expect(resetPasswordForEmail).not.toHaveBeenCalled();
+    expectNoProvisioning();
+  });
+  it("keeps exhausted budgets generic without sending or provisioning", async () => {
+    budget.mockResolvedValue(false);
+    await expectGeneric(await POST(request({ email: " LIMITED@example.invalid " })));
+    expect(budget).toHaveBeenCalledExactlyOnceWith("limited@example.invalid");
+    expect(resetPasswordForEmail).not.toHaveBeenCalled();
+    expectNoProvisioning();
+  });
+  it("fails closed and generic when shared storage is unavailable", async () => {
+    budget.mockRejectedValue(new Error("database unavailable"));
+    await expectGeneric(await POST(request({ email: "limited@example.invalid" })));
     expect(resetPasswordForEmail).not.toHaveBeenCalled();
     expectNoProvisioning();
   });
