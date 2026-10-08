@@ -345,6 +345,10 @@ export async function createPosRestaurantOrder(context: IndustryContext, input: 
     })),
   })).digest("hex") : null;
   return db.$transaction(async (tx) => {
+    // Revalidate persisted station membership inside the SAME transaction as
+    // idempotency lookup and order creation. Removed or reassigned employees
+    // must not get a successful replay from a stale authenticated page.
+    await assertRestaurantActorAccess(tx, context, "POS", "Restaurant POS order creation");
     if (requestId) {
       // Serialise copies of this request before reading its immutable identity.
       // ReadCommitted gives the waiter a fresh snapshot after the first commit.
@@ -434,6 +438,9 @@ export async function confirmRestaurantOrder(context: IndustryContext, orderId: 
   await requireWorkspaceModule(context.workspaceId, "restaurant");
   assertUuid(orderId, "Restaurant order");
   return db.$transaction(async (tx) => {
+    // Only a current POS member may confirm (or replay the confirmation of)
+    // a saved WhatsApp order; a Kitchen-only worker must not be allowed.
+    await assertRestaurantActorAccess(tx, context, "POS", "Restaurant WhatsApp order confirmation");
     const rows = await tx.$queryRaw<Array<{ id: string; orderNumber: string; status: RestaurantOrderStatus; restaurantTableId: string | null }>>`
       SELECT "id", "orderNumber", "status", "restaurantTableId"
       FROM "restaurant_orders"
