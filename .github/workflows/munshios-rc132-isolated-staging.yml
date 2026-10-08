@@ -10,6 +10,7 @@ on:
       - fix/restaurant-pos-service-station-v2-08
       - fix/restaurant-menu-persisted-role-v2-09
       - fix/restaurant-legacy-kot-safe-service-v2-10
+      - fix/restaurant-cash-shift-persisted-actor-v2-11
   pull_request:
     branches:
       - fix/munshios-release-certification
@@ -19,6 +20,7 @@ on:
       - fix/restaurant-menu-manager-guard-v2-07
       - fix/restaurant-pos-service-station-v2-08
       - fix/restaurant-menu-persisted-role-v2-09
+      - fix/restaurant-legacy-kot-safe-service-v2-10
 
 permissions:
   contents: read
@@ -102,6 +104,15 @@ jobs:
           npx vitest run
           tests/integration/restaurant-legacy-kot-v1-6.test.ts
           tests/integration/restaurant-table-occupancy-v1-6.test.ts
+      - name: Cash shift persisted actor/ledger compatibility regressions (disposable PG18)
+        env:
+          RUN_INTEGRATION_TESTS: "true"
+        run: >
+          npx vitest run
+          tests/integration/restaurant-cash-shift-actor-integrity-v1-18.test.ts
+          tests/integration/restaurant-cash-shift-auth-v1-8.test.ts
+          tests/integration/restaurant-cash-shift-v1-5.test.ts
+          tests/integration/restaurant-payment-timing-v1-7.test.ts
       - name: Full app unit regressions
         run: npm test
       - name: Full Restaurant and warehouse integrity regressions (disposable PG18)
