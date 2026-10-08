@@ -3,6 +3,8 @@ import "server-only";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 import type { FbrEnvironment } from "@/lib/fbr/digital-invoicing";
+import { assertFbrExpectedEnvironment } from "@/lib/fbr/digital-invoicing";
+import { isFbrProductionTransmissionAllowed } from "@/lib/fbr/transmission-policy";
 import { db } from "@/lib/server/db";
 
 export type FbrCredentialErrorCode =
@@ -34,7 +36,8 @@ function sharedTokenKey(environment: FbrEnvironment) {
 }
 
 function assertTransmissionAllowed(environment: FbrEnvironment) {
-  if (environment === "PRODUCTION" && process.env.FBR_DI_PRODUCTION_TRANSMISSION_ENABLED !== "1") {
+  assertFbrExpectedEnvironment(environment);
+  if (environment === "PRODUCTION" && !isFbrProductionTransmissionAllowed()) {
     throw new FbrCredentialError(
       "PRODUCTION_TRANSMISSION_DISABLED",
       "Production FBR transmission is disabled at deployment level. Complete the live-integration release checklist and explicitly enable production transmission before using production credentials.",
@@ -47,7 +50,7 @@ export function getFbrCredentialDeploymentReadiness() {
   if (!encoded) {
     return {
       credentialEncryption: "missing" as const,
-      productionTransmission: process.env.FBR_DI_PRODUCTION_TRANSMISSION_ENABLED === "1" ? "enabled" as const : "disabled" as const,
+      productionTransmission: isFbrProductionTransmissionAllowed() ? "enabled" as const : "disabled" as const,
     };
   }
 
@@ -60,7 +63,7 @@ export function getFbrCredentialDeploymentReadiness() {
 
   return {
     credentialEncryption: valid ? "configured" as const : "invalid" as const,
-    productionTransmission: process.env.FBR_DI_PRODUCTION_TRANSMISSION_ENABLED === "1" ? "enabled" as const : "disabled" as const,
+    productionTransmission: isFbrProductionTransmissionAllowed() ? "enabled" as const : "disabled" as const,
   };
 }
 

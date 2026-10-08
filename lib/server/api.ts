@@ -12,6 +12,7 @@ import { canPerformAction, type Permission } from "@/lib/server/authorization";
 import { getOptionalCurrentUser } from "@/lib/server/auth";
 import { db } from "@/lib/server/db";
 import { getWorkspaceAccess } from "@/lib/server/subscriptions";
+import { isAllowedMutationRequest } from "@/lib/server/cors";
 import { isAvailableVertical, resolveWorkspaceVertical, type WorkspaceVertical } from "@/lib/verticals/registry";
 
 export type ApiContext = {
@@ -183,6 +184,10 @@ export function apiHandler<TArgs extends unknown[]>(
 ) {
   return async (...args: TArgs) => {
     try {
+      const request = args[0];
+      if (request instanceof Request && !isAllowedMutationRequest(request)) {
+        throw new ApiError(403, "UNTRUSTED_ORIGIN", "This request origin is not allowed.");
+      }
       return await handler(...args);
     } catch (error) {
       return apiError(error);

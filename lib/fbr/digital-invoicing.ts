@@ -140,6 +140,9 @@ export function assertFbrExpectedEnvironment(
   actual: FbrEnvironment,
   expected?: FbrEnvironment,
 ) {
+  if (!["SANDBOX", "PRODUCTION"].includes(actual) || (expected !== undefined && !["SANDBOX", "PRODUCTION"].includes(expected))) {
+    throw new Error("Invalid FBR environment.");
+  }
   if (expected && actual !== expected) {
     throw new Error(`FBR environment mismatch. Expected ${expected}, but the submission is ${actual}.`);
   }
@@ -153,6 +156,8 @@ export function requiresFbrManualReconciliation(
 }
 
 export function fbrEndpoint(environment: FbrEnvironment, kind: "VALIDATE" | "POST") {
+  assertFbrExpectedEnvironment(environment);
+  if (kind !== "VALIDATE" && kind !== "POST") throw new Error("Invalid FBR operation.");
   const method = kind === "VALIDATE" ? "validateinvoicedata" : "postinvoicedata";
   const suffix = environment === "SANDBOX" ? "_sb" : "";
   return `https://gw.fbr.gov.pk/di_data/v1/di/${method}${suffix}`;

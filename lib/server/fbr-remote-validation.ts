@@ -11,6 +11,7 @@ import { db } from "@/lib/server/db";
 import { FbrCredentialError, resolveFbrBearerTokenForRequest } from "@/lib/server/fbr-credentials";
 import { checkFbrSubmissionFreshness } from "@/lib/server/fbr-digital-invoicing";
 import { assertFbrEnabled } from "@/lib/server/fbr-enabled";
+import { assertFbrTransmissionAllowed } from "@/lib/fbr/transmission-policy";
 
 type ValidationBody = {
   validationResponse?: {
@@ -28,13 +29,16 @@ function acceptedByFbr(body: unknown) {
 
 export async function runFbrRemoteValidation(submissionId: string, expectedEnvironment?: FbrEnvironment) {
   const context = await requirePermission("financial.manage");
-  await assertFbrEnabled(context.workspaceId);
+  const config = await assertFbrEnabled(context.workspaceId);
+  assertFbrExpectedEnvironment(config.environment, expectedEnvironment);
+  assertFbrTransmissionAllowed(config.environment);
 
   const submission = await db.fbrInvoiceSubmission.findFirst({
     where: { id: submissionId, workspaceId: context.workspaceId },
   });
   if (!submission) throw new Error("FBR submission not found.");
   assertFbrExpectedEnvironment(submission.environment, expectedEnvironment);
+  assertFbrExpectedEnvironment(submission.environment, config.environment);
   if (submission.status === "SUBMITTED") return { status: "SUBMITTED" as const, submission };
   const credentialBlocked = submission.status === "BLOCKED"
     && ["CREDENTIAL_MISSING", "PRODUCTION_TRANSMISSION_DISABLED", "UNAUTHORIZED"].includes(submission.lastErrorCode ?? "");

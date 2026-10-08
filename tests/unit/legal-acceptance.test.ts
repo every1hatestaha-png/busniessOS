@@ -38,6 +38,11 @@ describe("durable policy acceptance", () => {
     expect((await POST(new Request(`${origin}/api/legal/acceptance`, { method: "POST", headers: { "sec-fetch-site": "cross-site" } }))).status).toBe(403);
     expect(mocks.update).not.toHaveBeenCalled();
   });
+  it("fails closed if Origin and Fetch Metadata are both absent", async () => {
+    expect((await POST(new Request(`${origin}/api/legal/acceptance`, { method: "POST", headers: { cookie: "sb-example-auth-token=synthetic" } }))).status).toBe(403);
+    expect(mocks.user).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
 
   it("returns JSON 401 for a missing authenticated user without writes", async () => {
     mocks.user.mockResolvedValue(null);

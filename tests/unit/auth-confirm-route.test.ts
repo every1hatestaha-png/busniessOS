@@ -24,6 +24,7 @@ describe("auth confirmation route", () => {
   });
 
   it.each<Record<string, string>>([
+    {},
     { origin: "https://evil.example.invalid" },
     { origin: "http://localhost:8081" },
     { "sec-fetch-site": "cross-site" },
@@ -41,7 +42,7 @@ describe("auth confirmation route", () => {
 
   it("handles malformed confirmation bodies without verifying tokens", async () => {
     const response = await POST(new Request("https://staging.example.invalid/auth/confirm", {
-      method: "POST", headers: { "content-type": "application/json" }, body: "{}",
+      method: "POST", headers: { origin: "https://staging.example.invalid", "content-type": "application/json" }, body: "{}",
     }));
     expect(response.headers.get("location")).toContain("confirmation_error=missing");
     expect(verifyOtp).not.toHaveBeenCalled();
@@ -110,6 +111,7 @@ describe("auth confirmation route", () => {
     const response = await POST(
       new Request("https://www.munshios.tech/auth/confirm", {
         method: "POST",
+        headers: { origin: "https://www.munshios.tech" },
         body: new URLSearchParams({
           token_hash: "recovery-token",
           type: "recovery",
@@ -133,7 +135,7 @@ describe("auth confirmation route", () => {
     verifyOtp.mockResolvedValueOnce({ data: { user: { email_confirmed_at: "2026-10-07" } }, error: null })
       .mockResolvedValueOnce({ data: { user: null }, error: new Error("expired") });
     const request = () => new Request("https://staging.example.invalid/auth/confirm", {
-      method: "POST", body: new URLSearchParams({ token_hash: "single-use", type: "recovery", next: "/recovery/new-password" }),
+      method: "POST", headers: { origin: "https://staging.example.invalid" }, body: new URLSearchParams({ token_hash: "single-use", type: "recovery", next: "/recovery/new-password" }),
     });
     expect((await POST(request())).headers.get("location")).toContain("/recovery/new-password");
     expect((await POST(request())).headers.get("location")).toContain("confirmation_error=expired");
@@ -149,6 +151,7 @@ describe("auth confirmation route", () => {
     const response = await POST(
       new Request("https://www.munshios.tech/auth/confirm", {
         method: "POST",
+        headers: { origin: "https://www.munshios.tech" },
         body: new URLSearchParams({
           token_hash: "expired-token",
           type: "recovery",
