@@ -1,4 +1,6 @@
 import { createRequire } from "node:module";
+import fs from "node:fs";
+import path from "node:path";
 import { NextRequest, type NextFetchEvent } from "next/server";
 import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -28,6 +30,33 @@ describe("Proxy protects all web mutation surfaces before provider I/O", () => {
     for (const path of ["/forgot-password", "/account-recovery", "/recovery/new-password", "/desktop-auth"]) {
       expect(unstable_doesMiddlewareMatch({ config, url: origin + path })).toBe(true);
     }
+  });
+  it.each(["/customers/synthetic.svg", "/inventory/synthetic.js", "/platform/security/state.svg", "/missing.svg", "/_nextprobe", "/_next/static/test.js", "/brand/munshios-mark.svg"])("matches and rejects missing-header cookie action dispatch on %s before provider I/O", async pathname => {
+    expect(unstable_doesMiddlewareMatch({ config, url: origin + pathname })).toBe(true);
+    const profiles: Record<string, string>[] = [{ "next-action": "synthetic-action" }, { "content-type": "application/x-www-form-urlencoded" }];
+    for (const headers of profiles) {
+      const response = await proxy(new NextRequest(origin + pathname, { method: "POST", headers: { cookie: "__session=synthetic", ...headers }, body: "$ACTION_ID_synthetic=" }), {} as NextFetchEvent);
+      expect(response?.status).toBe(403);
+      expect(m.provider).not.toHaveBeenCalled(); expect(m.clerk).not.toHaveBeenCalled();
+    }
+  });
+  it("preserves all actual public asset GETs without provider calls, forwarding only the real internal path", async () => {
+    function files(directory: string): string[] {
+      return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+        const filename = path.join(directory, entry.name);
+        return entry.isDirectory() ? files(filename) : ["/" + path.relative("public", filename).replaceAll("\\", "/")];
+      });
+    }
+    for (const pathname of [...files("public"), "/_next/static/test.js", "/_next/image", "/icon.svg", "/auth/faisal-mosque.webp", "/manifest.webmanifest"]) {
+      const response = await proxy(new NextRequest(origin + pathname, { headers: { cookie: "__session=synthetic", "x-munshios-internal-path": "/restaurant/pos" } }), {} as NextFetchEvent);
+      expect(response?.status, pathname).toBe(200);
+      expect(response?.headers.get("x-middleware-request-x-munshios-internal-path")).toBe(pathname);
+    }
+    expect(m.provider).not.toHaveBeenCalled(); expect(m.clerk).not.toHaveBeenCalled();
+  });
+  it("does not treat an asset-like dynamic page as a public asset GET", async () => {
+    await proxy(new NextRequest(origin + "/customers/synthetic.svg"), {} as NextFetchEvent);
+    expect(m.provider).toHaveBeenCalledOnce();
   });
   it.each(["/restaurant/pos", "/restaurant/kitchen", "/settings", "/platform", "/desktop-auth", "/recovery/new-password", "/api/ai/chat", "/api/v1/sales"])("denies missing web proof on %s", async path => {
     const response = await proxy(new NextRequest(origin + path, { method: "POST", headers: { cookie: "sb-example-auth-token=synthetic", "next-action": "synthetic-action" } }), {} as NextFetchEvent);
