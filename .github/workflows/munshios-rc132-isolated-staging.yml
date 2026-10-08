@@ -7,12 +7,14 @@ on:
       - test/munshios-rc132-hosted-smoke
       - fix/restaurant-staff-completion-ui-v2-06
       - fix/restaurant-menu-manager-guard-v2-07
+      - fix/restaurant-pos-service-station-v2-08
   pull_request:
     branches:
       - fix/munshios-release-certification
       - staging/munshios-rc132-isolated-20261008
       - test/munshios-rc132-hosted-smoke
       - fix/restaurant-staff-completion-ui-v2-06
+      - fix/restaurant-menu-manager-guard-v2-07
 
 permissions:
   contents: read
@@ -85,6 +87,10 @@ jobs:
         env:
           RUN_INTEGRATION_TESTS: "true"
         run: npx vitest run tests/integration/restaurant-workspace-v1.test.ts
+      - name: POS and WhatsApp persisted actor/station isolation regressions
+        env:
+          RUN_INTEGRATION_TESTS: "true"
+        run: npx vitest run tests/integration/restaurant-operational-actor-integrity-v1-16.test.ts
       - name: TS, schema and guard syntax
         run: |
           npx prisma validate
