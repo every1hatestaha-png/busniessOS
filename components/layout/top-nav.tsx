@@ -14,6 +14,7 @@ import { DesktopClerkAccountMenu } from "@/components/layout/desktop-clerk-accou
 import { WebAccountMenu } from "@/components/layout/web-account-menu";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { getWorkspaceBranding } from "@/lib/workspace-branding";
+import { canOpenRestaurantStationPath } from "@/lib/restaurant/station-access";
 import type { WorkspaceVertical } from "@/lib/verticals/registry";
 
 export function TopNav({
@@ -23,6 +24,7 @@ export function TopNav({
   role,
   enabledModules,
   vertical,
+  restaurantStation = "ALL",
 }: {
   workspaceName: string;
   workspaceId: string;
@@ -30,6 +32,7 @@ export function TopNav({
   role: Role;
   enabledModules: string[];
   vertical: WorkspaceVertical;
+  restaurantStation?: string;
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
@@ -57,7 +60,7 @@ export function TopNav({
             }}
           >
             <SheetTitle className="sr-only">Navigation menu</SheetTitle>
-            <Sidebar workspaceName={workspaceName} role={role} enabledModules={enabledModules} vertical={vertical} />
+            <Sidebar workspaceName={workspaceName} role={role} enabledModules={enabledModules} vertical={vertical} restaurantStation={restaurantStation} />
           </SheetContent>
         </Sheet>
 
@@ -83,7 +86,7 @@ export function TopNav({
         )}
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          {restaurantMode ? (
+          {restaurantMode && canOpenRestaurantStationPath(role, vertical, restaurantStation, "/restaurant/pos") ? (
             <Button
               className="hidden bg-emerald-600 hover:bg-emerald-500 sm:inline-flex"
               nativeButton={false}
