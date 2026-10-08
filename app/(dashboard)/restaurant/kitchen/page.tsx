@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
 import { listRestaurantKitchenItems, listRestaurantOrders } from "@/lib/server/restaurant-workspace";
 import { cn } from "@/lib/utils";
+import { KitchenAutoRefresh } from "./kitchen-auto-refresh";
 
 const kitchenColumns = [
   { status: "CONFIRMED", label: "New", icon: Clock3, next: "PREPARING", action: "Start preparing", tone: "blue" },
@@ -35,7 +36,7 @@ export default async function RestaurantKitchenPage() {
           <h1 className="mt-1 text-xl font-semibold tracking-tight">{workspace.name} kitchen</h1>
           <p className="mt-1 text-sm text-muted-foreground">Prepare the dishes shown on each ticket. Quantities and kitchen notes are displayed below.</p>
         </div>
-        <Link href="/restaurant/orders" className="text-sm font-semibold text-emerald-700 hover:underline">Open order board</Link>
+        <div className="flex flex-wrap items-center gap-4"><KitchenAutoRefresh />{!kitchenOnly ? <Link href="/restaurant/orders" className="text-sm font-semibold text-emerald-700 hover:underline">Open order board</Link> : null}</div>
       </section>
 
       <section className="grid gap-3 sm:grid-cols-3">
