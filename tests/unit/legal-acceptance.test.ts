@@ -12,6 +12,13 @@ const accepted = {
   privacyAcknowledgedAt: new Date("2026-10-07T12:00:00Z"), privacyVersion: "2026-10-07",
 };
 
+const currentConsent = {
+  terms: true,
+  privacy: true,
+  termsVersion: "2026-10-07",
+  privacyVersion: "2026-10-07",
+};
+
 describe("durable policy acceptance", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -40,10 +47,42 @@ describe("durable policy acceptance", () => {
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["no confirmations", {}],
+    ["only terms confirmed", { ...currentConsent, privacy: false }],
+    ["string rather than true", { ...currentConsent, terms: "on" }],
+    ["stale terms version", { ...currentConsent, termsVersion: "2026-10-01" }],
+    ["stale privacy version", { ...currentConsent, privacyVersion: "2026-10-01" }],
+    ["wrong confirmation keys", { acceptTerms: true, acknowledgePrivacy: true }],
+    ["array payload", []],
+  ])("rejects %s without recording policy acceptance", async (_reason, payload) => {
+    const response = await POST(new Request(`${origin}/api/legal/acceptance`, {
+      method: "POST",
+      headers: { origin, "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }));
+    expect(response.status).toBe(422);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(mocks.find).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects missing and malformed JSON rather than implying consent", async () => {
+    for (const body of ["", "{", "null"]) {
+      const response = await POST(new Request(`${origin}/api/legal/acceptance`, {
+        method: "POST",
+        headers: { origin, "content-type": "application/json" },
+        body,
+      }));
+      expect(response.status).toBe(422);
+    }
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
   it("writes exact versions and server timestamps only for the authenticated user, ignoring body IDs", async () => {
     const response = await POST(new Request(`${origin}/api/legal/acceptance`, {
       method: "POST", headers: { origin, "content-type": "application/json" },
-      body: JSON.stringify({ userId: "victim", termsVersion: "invented", termsAcceptedAt: "1900-01-01" }),
+      body: JSON.stringify({ ...currentConsent, userId: "victim", termsAcceptedAt: "1900-01-01" }),
     }));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true });
