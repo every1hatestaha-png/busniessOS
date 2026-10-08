@@ -3,8 +3,54 @@
 Verdict: **CONDITIONAL. Production release is not approved.** Automated backend,
 financial, tenant, migration and build evidence is green. Current-candidate hosted
 staging, provider configuration/inbox acceptance, managed restore and physical
-printer acceptance remain release gates. No cloud settings, managed database,
-production users, merges or deployments were changed during this certification.
+printer acceptance remain release gates. Production, the source staging database,
+provider settings, merges and deployments remain unchanged. Additive SQL was
+rehearsed only on a new isolated child of the approved nonproduction Neon project.
+
+## Preservation checkpoint — 2026-10-08
+
+The active project is MunshiOS only. The mistaken Apna Munshi task is stopped;
+its existing files are preserved. This checkpoint is saved at the user's request
+before the quota limit. No new expensive certification test was started.
+
+The follow-up also fixes the staging release guard's obsolete 131-migration
+ceiling. It accepts the reviewed 131/132 catalogs and 130–132 applied prefix,
+rejects gaps, duplicates, unfinished/unknown migrations and schema/ledger drift,
+and preserves the exact nonproduction endpoint allowlist. The two focused guard
+test files passed **36 tests**, with scoped lint and JavaScript syntax checks
+passing. An initial sandbox temporary-directory EPERM prevented test collection;
+rerunning with a workspace-owned TEMP/TMP directory passed. This was an
+environment failure, not an application test failure. New exact-head CI remains
+pending until the checkpoint commit is pushed and its workflow completes.
+
+Isolated Neon rehearsal: `br-shiny-base-b5mlm2vq`, named
+`munshios-rc132-migration-rehearsal-20261008`, parent
+`br-delicate-credit-b5lttgnc`, PostgreSQL 18.6, endpoint
+`ep-polished-firefly-b5taxed1`, capped at 0.25 CU. Its initial schema fingerprint
+and all 73 table fingerprints exactly matched the source. Migration #131 and
+#132 SQL ran in one transaction on that child only: all seven memberships retained
+the default ALL station, recovery table was empty, and all original row
+fingerprints matched with the new station column excluded. The child ledger
+remains at 130 deliberately: this was an **SQL rehearsal, not prisma migrate
+deploy**, and the child must not be used as a deployment database. No migration
+ledger entries were forged. A suspension request was accepted for its compute;
+data and branch are retained. Final idle state should be checked read-only.
+
+Fresh managed backup/restore is **BLOCKED**: snapshot creation returned HTTP 422
+`snapshots limit exceeded`; restoring the existing snapshot to a new root branch
+with `finalize:false` returned HTTP 422 `root branches limit exceeded`. Neither
+attempt created a backup/restore target or replaced the source. Existing snapshot
+`snap-young-firefly-b5ldlejq` dates from 2026-10-07, contains 129 migrations and
+expires 2026-10-09 00:00 UTC. Existing backups/branches were preserved; no paid
+upgrade or deletion was attempted. The normal child clone is not managed-restore
+proof. Local cold-restore and complete disposable Prisma-chain evidence below
+remain distinct, valid completed evidence.
+
+Resume from draft #297 and the saved external checkpoint. First verify the
+checkpoint HEAD and its CI; then test the new guard's database introspection on
+a disposable 132-migration database. Do not rerun the child's CREATE statements
+or mark its ledger applied. Remaining hosted/inbox/hardware/configuration gates
+below have not become PASS results.
 
 ## Candidate and evidence attribution
 
@@ -25,7 +71,7 @@ separate Restaurant staging Vercel project is an environment, not a product.
 
 The backend evidence below was executed at #296's exact SHA, not silently copied
 from a former staging deployment. Follow-up CI enforces that its diff is limited
-to POS accessibility, browser regression, release documentation, CI and the
+to POS accessibility, browser regression, release-target tooling/tests, documentation, CI and the
 branch's automatic-deployment exclusion. Backend, migrations, auth, finance and
 API implementations must remain byte-identical to #296 for that evidence reuse.
 

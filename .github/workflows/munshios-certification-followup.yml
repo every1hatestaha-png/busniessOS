@@ -34,7 +34,7 @@ jobs:
           git diff --name-only 1fda9010740b02468bd2edb761d121fd33d81e2c HEAD > "$RUNNER_TEMP/certification-files"
           while IFS= read -r file; do
             case "$file" in
-              'app/(dashboard)/restaurant/pos/restaurant-pos.tsx'|'scripts/restaurant-browser-verification-v1-88.cjs'|'scripts/README-migration-recovery.txt'|'vercel.json'|'.github/workflows/munshios-certification-followup.yml'|'docs/release/platform-release-certification-20261008.md') ;;
+              'app/(dashboard)/restaurant/pos/restaurant-pos.tsx'|'scripts/restaurant-browser-verification-v1-88.cjs'|'scripts/README-migration-recovery.txt'|'scripts/assert-staging-database-target.cjs'|'tests/unit/staging-database-guard.test.ts'|'vercel.json'|'.github/workflows/munshios-certification-followup.yml'|'docs/release/platform-release-certification-20261008.md') ;;
               *) echo "Uncertified backend change: $file"; exit 1 ;;
             esac
           done < "$RUNNER_TEMP/certification-files"
@@ -45,12 +45,14 @@ jobs:
           npx vitest run tests/unit/restaurant-pos-fast-entry.test.ts
           tests/unit/restaurant-print-v1-88.test.ts tests/unit/restaurant-print-route-v1-90.test.ts
           tests/unit/thermal-print.test.ts tests/unit/staging-release-target.test.ts
+          tests/unit/staging-database-guard.test.ts
           tests/unit/restaurant-release-build-guard-v1-88.test.ts
       - name: Prisma, TypeScript and scoped lint
         run: |
           npx prisma validate
           npx tsc --noEmit
-          npx eslint 'app/(dashboard)/restaurant/pos/restaurant-pos.tsx' scripts/restaurant-browser-verification-v1-88.cjs
+          npx eslint 'app/(dashboard)/restaurant/pos/restaurant-pos.tsx' scripts/restaurant-browser-verification-v1-88.cjs scripts/assert-staging-database-target.cjs tests/unit/staging-database-guard.test.ts
+          node --check scripts/assert-staging-database-target.cjs
           node --check scripts/restaurant-browser-verification-v1-88.cjs
       - name: Production dependency audit
         run: npm audit --omit=dev
