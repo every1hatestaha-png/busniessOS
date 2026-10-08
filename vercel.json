@@ -47,7 +47,8 @@
       "architecture/restaurant-main-converged-v1-97": false,
       "architecture/restaurant-recovery-compat-v1-98": false,
       "architecture/platform-hardening-v1-99": false,
-      "staging/munshios-rc132-isolated-20261008": false
+      "staging/munshios-rc132-isolated-20261008": false,
+      "test/munshios-rc132-hosted-smoke": false
     }
   }
 }
