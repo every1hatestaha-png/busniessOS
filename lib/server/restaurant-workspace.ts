@@ -578,6 +578,49 @@ export async function listRestaurantOrders(workspaceId: string, limit = 100, opt
   return rows.map((row) => ({ ...row, total: Number(row.total) }));
 }
 
+/**
+ * Fetch kitchen-only line data for the already-scoped active queue in one
+ * tenant-checked query. Do not fetch pricing or customer details into the KDS.
+ */
+export async function listRestaurantKitchenItems(workspaceId: string, orderIds: string[]) {
+  await requireWorkspaceModule(workspaceId, "restaurant");
+  if (orderIds.length === 0) return new Map<string, Array<{
+    itemName: string; quantity: number; notes: string | null; modifiers: string[];
+  }>>();
+  const scopedIds = [...new Set(orderIds)].slice(0, 250);
+  for (const id of scopedIds) assertUuid(id, "Restaurant order");
+  const rows = await db.$queryRaw<Array<{
+    restaurantOrderId: string;
+    itemName: string;
+    quantity: Prisma.Decimal;
+    notes: string | null;
+    modifiers: unknown;
+  }>>`
+    SELECT roi."restaurantOrderId", roi."itemName", roi."quantity", roi."notes", roi."modifiers"
+    FROM "restaurant_order_items" roi
+    INNER JOIN "restaurant_orders" ro ON ro."id" = roi."restaurantOrderId"
+    WHERE ro."workspaceId" = ${workspaceId}::uuid
+      AND ro."id" IN (${Prisma.join(scopedIds.map(id => Prisma.sql`${id}::uuid`))})
+    ORDER BY roi."createdAt", roi."id"
+  `;
+  const itemsByOrder = new Map<string, Array<{
+    itemName: string; quantity: number; notes: string | null; modifiers: string[];
+  }>>();
+  for (const row of rows) {
+    const lines = itemsByOrder.get(row.restaurantOrderId) ?? [];
+    lines.push({
+      itemName: row.itemName,
+      quantity: Number(row.quantity),
+      notes: row.notes,
+      modifiers: Array.isArray(row.modifiers)
+        ? row.modifiers.filter((value): value is string => typeof value === "string")
+        : [],
+    });
+    itemsByOrder.set(row.restaurantOrderId, lines);
+  }
+  return itemsByOrder;
+}
+
 export async function getRestaurantOrder(workspaceId: string, orderId: string) {
   await requireWorkspaceModule(workspaceId, "restaurant");
   assertUuid(orderId, "Restaurant order");

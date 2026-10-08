@@ -6,8 +6,9 @@ import { transitionRestaurantOrderAction } from "@/app/(dashboard)/restaurant/v1
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
-import { listRestaurantOrders } from "@/lib/server/restaurant-workspace";
+import { listRestaurantKitchenItems, listRestaurantOrders } from "@/lib/server/restaurant-workspace";
 import { cn } from "@/lib/utils";
+import { KitchenAutoRefresh } from "./kitchen-auto-refresh";
 
 const kitchenColumns = [
   { status: "CONFIRMED", label: "New", icon: Clock3, next: "PREPARING", action: "Start preparing", tone: "blue" },
@@ -18,6 +19,7 @@ const kitchenColumns = [
 export default async function RestaurantKitchenPage() {
   const { workspaceId, workspace } = await requireWorkspace();
   const orders = await listRestaurantOrders(workspaceId, 200, { statuses: ["CONFIRMED", "PREPARING", "READY"], oldestFirst: true });
+  const kitchenItems = await listRestaurantKitchenItems(workspaceId, orders.map((order) => order.id));
 
   const counts = {
     CONFIRMED: orders.filter((order) => order.status === "CONFIRMED").length,
@@ -31,9 +33,9 @@ export default async function RestaurantKitchenPage() {
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">Kitchen display</p>
           <h1 className="mt-1 text-xl font-semibold tracking-tight">{workspace.name} kitchen</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Live preparation queue for confirmed restaurant orders.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Prepare the dishes shown on each ticket. Quantities and kitchen notes are displayed below.</p>
         </div>
-        <Link href="/restaurant/orders" className="text-sm font-semibold text-emerald-700 hover:underline">Open order board</Link>
+        <div className="flex flex-wrap items-center gap-4"><KitchenAutoRefresh /><Link href="/restaurant/orders" className="text-sm font-semibold text-emerald-700 hover:underline">Open order board</Link></div>
       </section>
 
       <section className="grid gap-3 sm:grid-cols-3">
@@ -73,7 +75,7 @@ export default async function RestaurantKitchenPage() {
                     <CardContent className="space-y-3 p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <Link href={`/restaurant/orders/${order.id}/print?kind=kot`} className="text-sm font-semibold underline underline-offset-4">{order.orderNumber}</Link>
+                          <p className="text-xs font-semibold text-slate-500">Ticket {order.orderNumber}</p>
                           <p className="mt-1 text-[11px] font-medium text-muted-foreground">
                             {order.fulfillmentType.replaceAll("_", " ")}{order.tableName ? ` · ${order.tableName}` : ""}
                           </p>
@@ -83,7 +85,20 @@ export default async function RestaurantKitchenPage() {
                         </span>
                       </div>
 
-                      {order.notes ? <p className="rounded-xl bg-amber-50 p-2.5 text-xs text-amber-900">{order.notes}</p> : null}
+                      <div className="space-y-2 border-y py-3" aria-label={`Dishes for ${order.orderNumber}`}>
+                        {(kitchenItems.get(order.id) ?? []).length ? (kitchenItems.get(order.id) ?? []).map((item, index) => (
+                          <div key={index} className="flex items-start gap-3">
+                            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-lg font-bold tabular-nums text-emerald-800">{item.quantity}×</span>
+                            <div className="min-w-0">
+                              <p className="text-base font-semibold leading-6 text-slate-950">{item.itemName}</p>
+                              {item.modifiers.length ? <p className="text-xs text-slate-600">{item.modifiers.join(", ")}</p> : null}
+                              {item.notes ? <p className="mt-1 rounded-lg bg-amber-50 px-2 py-1 text-sm font-medium text-amber-900">{item.notes}</p> : null}
+                            </div>
+                          </div>
+                        )) : <p className="text-sm font-medium text-amber-800">No dish lines found. Check the printed kitchen ticket.</p>}
+                      </div>
+                      {order.notes ? <p className="rounded-xl bg-amber-50 p-2.5 text-sm font-medium text-amber-900">Kitchen note: {order.notes}</p> : null}
+                      <Link href={`/restaurant/orders/${order.id}/print?kind=kot`} className="inline-flex text-xs font-semibold text-emerald-700 underline underline-offset-4">Print kitchen ticket</Link>
 
                       <div className="flex flex-wrap gap-2">
                         <RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}>

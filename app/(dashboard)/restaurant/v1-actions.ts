@@ -180,7 +180,7 @@ export async function createPosOrderAction(
       items,
     });
     refreshRestaurant();
-    return { status: "success", message: `${order.orderNumber} confirmed and sent to the kitchen.` };
+    return { status: "success", message: `${order.orderNumber} confirmed and sent to the kitchen.`, orderId: order.id };
   } catch (error) {
     return fail(messageFor(error, "We could not create this restaurant order."));
   }
