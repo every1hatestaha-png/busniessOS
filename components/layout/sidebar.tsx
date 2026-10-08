@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { canOpenRestaurantStationPath } from "@/lib/restaurant/station-access";
 import { getWorkspaceBranding } from "@/lib/workspace-branding";
 import type { WorkspaceVertical } from "@/lib/verticals/registry";
 import { getVerticalNavigation } from "@/lib/verticals/experience";
@@ -79,11 +80,13 @@ export function Sidebar({
   role,
   enabledModules,
   vertical,
+  restaurantStation = "ALL",
 }: {
   workspaceName: string;
   role: Role;
   enabledModules: string[];
   vertical: WorkspaceVertical;
+  restaurantStation?: string;
 }) {
   const pathname = usePathname();
   const enabled = new Set(enabledModules);
@@ -123,6 +126,7 @@ export function Sidebar({
               .filter((route): route is SidebarRoute => Boolean(route))
               .filter((route) => {
                 if (role === "STAFF" && route.financial) return false;
+                if (!canOpenRestaurantStationPath(role, vertical, restaurantStation, route.href)) return false;
                 if (route.module && !enabled.has(route.module)) return false;
                 return true;
               });
