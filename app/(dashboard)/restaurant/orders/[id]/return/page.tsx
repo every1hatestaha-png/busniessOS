@@ -1,6 +1,7 @@
 import { RestaurantMutationForm } from "@/app/(dashboard)/restaurant/mutation-form";
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { ArrowLeft, RotateCcw, Undo2 } from "lucide-react";
 
 import { reverseRestaurantReturnAction } from "@/app/(dashboard)/restaurant/orders/[id]/return/reversal-actions";
@@ -9,6 +10,7 @@ import { PageHeader } from "@/components/business/page-header";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
+import { IndustryDomainError } from "@/lib/server/industry-modules";
 import { listRestaurantReturnReversalState } from "@/lib/server/restaurant-return-reversal-ui";
 import { getRestaurantReturnUiState } from "@/lib/server/restaurant-return-ui";
 import { cn } from "@/lib/utils";
@@ -20,7 +22,12 @@ export default async function RestaurantOrderReturnPage({ params }: { params: Pr
   const [state, reversalState] = await Promise.all([
     getRestaurantReturnUiState(workspaceId, id),
     listRestaurantReturnReversalState(workspaceId, id),
-  ]);
+  ]).catch((error: unknown) => {
+    if (error instanceof IndustryDomainError && ["NOT_FOUND", "INVALID_STATE"].includes(error.code)) {
+      notFound();
+    }
+    throw error;
+  });
   const reversalById = new Map(reversalState.map((row) => [row.id, row]));
 
   return (
