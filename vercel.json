@@ -48,7 +48,8 @@
       "architecture/restaurant-recovery-compat-v1-98": false,
       "architecture/platform-hardening-v1-99": false,
       "staging/munshios-rc132-isolated-20261008": false,
-      "test/munshios-rc132-hosted-smoke": false
+      "test/munshios-rc132-hosted-smoke": false,
+      "fix/restaurant-staff-completion-ui-v2-06": false
     }
   }
 }
