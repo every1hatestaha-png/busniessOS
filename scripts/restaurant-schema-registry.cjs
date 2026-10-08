@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { createHash } = require("node:crypto");
 const { Client } = require("pg");
+const { isDeepStrictEqual } = require("node:util");
 
 const registryPath = path.join(__dirname, "../docs/architecture/restaurant-schema-registry.json");
 const isRestaurantTable = name => name.startsWith("restaurant_") || ["recipes", "recipe_items", "kitchen_tickets", "cash_shifts"].includes(name);
@@ -30,11 +31,13 @@ async function captureRegistry(client, tables) {
   const rows = await client.query(`
     SELECT c.relname AS table_name,
       (SELECT jsonb_agg(jsonb_build_object('name',a.attname,'type',format_type(a.atttypid,a.atttypmod),'notNull',a.attnotnull,
+        'notNullValidated',COALESCE((SELECT bool_and(nc.convalidated) FROM pg_constraint nc
+          WHERE nc.conrelid=a.attrelid AND nc.contype='n' AND a.attnum=ANY(nc.conkey)),true),
         'default',pg_get_expr(d.adbin,d.adrelid)) ORDER BY a.attnum)
        FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
        WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped) AS columns,
       COALESCE((SELECT jsonb_agg(jsonb_build_object('name',k.conname,'definition',pg_get_constraintdef(k.oid),'validated',k.convalidated)
-        ORDER BY k.conname) FROM pg_constraint k WHERE k.conrelid=c.oid),'[]') AS constraints,
+        ORDER BY k.conname) FROM pg_constraint k WHERE k.conrelid=c.oid AND k.contype<>'n'),'[]') AS constraints,
       COALESCE((SELECT jsonb_agg(jsonb_build_object('name',ic.relname,'definition',pg_get_indexdef(i.indexrelid),'valid',i.indisvalid)
         ORDER BY ic.relname) FROM pg_index i JOIN pg_class ic ON ic.oid=i.indexrelid WHERE i.indrelid=c.oid),'[]') AS indexes,
       COALESCE((SELECT jsonb_agg(jsonb_build_object('name',t.tgname,'definition',pg_get_triggerdef(t.oid),'enabled',t.tgenabled,
@@ -45,7 +48,7 @@ async function captureRegistry(client, tables) {
   // pg returns jsonb keys in a stable order. Hash bodies to keep the reviewed
   // registry compact; columns and constraint/index definitions remain visible.
   return rows.rows.map(row => ({ ...row, triggers: row.triggers.map(trigger => ({
-    ...trigger, function: createHash("sha256").update(trigger.function).digest("hex"),
+    ...trigger, function: createHash("sha256").update(trigger.function.replaceAll("\r\n", "\n")).digest("hex"),
   })) }));
 }
 
@@ -61,7 +64,16 @@ async function checkRegistry(connectionString) {
   try {
     await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
     const actual = await captureRegistry(client, tables);
-    if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error("Restaurant schema registry drift: review columns, constraints, indexes and trigger bodies against migrations.");
+    if (!isDeepStrictEqual(actual, expected)) {
+      const changes = [];
+      for (let i=0; i<Math.max(actual.length,expected.length); i++) {
+        const current = actual[i], prior = expected[i];
+        for (const key of ["table_name", "columns", "constraints", "indexes", "triggers"]) {
+          if (!isDeepStrictEqual(current?.[key],prior?.[key])) changes.push(`${current?.table_name ?? prior?.table_name}.${key}: expected ${JSON.stringify(prior?.[key])}; actual ${JSON.stringify(current?.[key])}`);
+        }
+      }
+      throw new Error(`Restaurant schema registry drift:\n${changes.join("\n")}`);
+    }
     console.log(`Restaurant registry PASS: ${tables.length} SQL-owned tables; read-only catalog inspection.`);
   } finally {
     await client.query("ROLLBACK");

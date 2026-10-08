@@ -29,6 +29,13 @@ exported `captureRegistry` helper against a new disposable, fully migrated DB;
 inspect the diff before committing. Trigger hashes refer to each attached function
 body; existing integrity tests cover helper functions called by those bodies.
 
+Function definitions normalize CRLF to LF so Windows/Linux migration checkouts
+produce the same reviewed hash. NOT NULL is checked through each column's
+`attnotnull` flag and normalized validation state; PostgreSQL 18's additional `contype=n` catalog records are excluded
+from the separate constraint list to avoid duplicate, version-specific evidence.
+All other constraint definitions, validation flags, indexes and trigger state remain
+compared. JSON object key order is irrelevant; array order and values are checked.
+
 This registry is a drift gate, not a substitute for financial/tenant/race tests.
 Any future conversion needs a new ADR and explicit preservation tests; this batch
 does not convert tables or alter existing Restaurant migrations.

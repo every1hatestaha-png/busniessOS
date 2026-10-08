@@ -6,73 +6,85 @@
         "name": "id",
         "type": "uuid",
         "default": "gen_random_uuid()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "workspaceId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "openedById",
         "type": "uuid",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "closedById",
         "type": "uuid",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "openedAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "closedAt",
         "type": "timestamp with time zone",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "openingCash",
         "type": "numeric(15,2)",
         "default": "0",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "expectedCash",
         "type": "numeric(15,2)",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "closingCash",
         "type": "numeric(15,2)",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "variance",
         "type": "numeric(15,2)",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "notes",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "status",
         "type": "text",
         "default": "'OPEN'::text",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       }
     ],
     "constraints": [
@@ -142,79 +154,92 @@
         "name": "id",
         "type": "uuid",
         "default": "gen_random_uuid()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "workspaceId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "salesOrderId",
         "type": "uuid",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "restaurantTableId",
         "type": "uuid",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "ticketNumber",
         "type": "text",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "status",
         "type": "text",
         "default": "'QUEUED'::text",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "notes",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "startedAt",
         "type": "timestamp with time zone",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "readyAt",
         "type": "timestamp with time zone",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "servedAt",
         "type": "timestamp with time zone",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "createdAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "updatedAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "restaurantOrderId",
         "type": "uuid",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       }
     ],
     "constraints": [
@@ -324,37 +349,43 @@
         "name": "id",
         "type": "uuid",
         "default": "gen_random_uuid()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "recipeId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "ingredientProductId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "quantity",
         "type": "numeric(15,4)",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "wastagePercent",
         "type": "numeric(7,4)",
         "default": "0",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "createdAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       }
     ],
     "constraints": [
@@ -412,49 +443,57 @@
         "name": "id",
         "type": "uuid",
         "default": "gen_random_uuid()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "workspaceId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "finishedProductId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "yieldQuantity",
         "type": "numeric(15,4)",
         "default": "1",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "notes",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "isActive",
         "type": "boolean",
         "default": "true",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "createdAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "updatedAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       }
     ],
     "constraints": [
@@ -502,55 +541,64 @@
         "name": "id",
         "type": "uuid",
         "default": "gen_random_uuid()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "workspaceId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "restaurantOrderId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "restaurantOrderItemId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "productId",
         "type": "text",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "warehouseId",
         "type": "uuid",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "quantity",
         "type": "numeric(15,4)",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "unitCost",
         "type": "numeric(15,2)",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "createdAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       }
     ],
     "constraints": [
@@ -647,43 +695,50 @@
         "name": "id",
         "type": "uuid",
         "default": "gen_random_uuid()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "workspaceId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "name",
         "type": "text",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "sortOrder",
         "type": "integer",
         "default": "0",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "isActive",
         "type": "boolean",
         "default": "true",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "createdAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "updatedAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       }
     ],
     "constraints": [
@@ -731,73 +786,85 @@
         "name": "id",
         "type": "uuid",
         "default": "gen_random_uuid()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "workspaceId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "categoryId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "productId",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "name",
         "type": "text",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "description",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "price",
         "type": "numeric(15,2)",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "sortOrder",
         "type": "integer",
         "default": "0",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "isActive",
         "type": "boolean",
         "default": "true",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "isAvailable",
         "type": "boolean",
         "default": "true",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "createdAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "updatedAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       }
     ],
     "constraints": [
@@ -872,61 +939,71 @@
         "name": "id",
         "type": "uuid",
         "default": "gen_random_uuid()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "restaurantOrderId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "menuItemId",
         "type": "uuid",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "itemName",
         "type": "text",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "quantity",
         "type": "numeric(15,4)",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "unitPrice",
         "type": "numeric(15,2)",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "lineTotal",
         "type": "numeric(15,2)",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "notes",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "modifiers",
         "type": "jsonb",
         "default": "'[]'::jsonb",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "createdAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       }
     ],
     "constraints": [
@@ -1001,13 +1078,15 @@
         "name": "workspaceId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "nextNumber",
         "type": "bigint",
         "default": "1",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       }
     ],
     "constraints": [
@@ -1038,169 +1117,197 @@
         "name": "id",
         "type": "uuid",
         "default": "gen_random_uuid()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "workspaceId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "orderNumber",
         "type": "text",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "source",
         "type": "text",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "fulfillmentType",
         "type": "text",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "status",
         "type": "text",
         "default": "'PENDING_REVIEW'::text",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "paymentStatus",
         "type": "text",
         "default": "'UNPAID'::text",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "restaurantTableId",
         "type": "uuid",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "customerName",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "customerPhone",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "deliveryAddress",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "notes",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "subtotal",
         "type": "numeric(15,2)",
         "default": "0",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "discountAmount",
         "type": "numeric(15,2)",
         "default": "0",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "taxAmount",
         "type": "numeric(15,2)",
         "default": "0",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "total",
         "type": "numeric(15,2)",
         "default": "0",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "externalReference",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "createdById",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "confirmedById",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "confirmedAt",
         "type": "timestamp with time zone",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "completedAt",
         "type": "timestamp with time zone",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "cancelledAt",
         "type": "timestamp with time zone",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "createdAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "updatedAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "inventoryPostedAt",
         "type": "timestamp with time zone",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "accountingPostedAt",
         "type": "timestamp with time zone",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "inventoryCost",
         "type": "numeric(15,2)",
         "default": "0",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "tableReleasedAt",
         "type": "timestamp with time zone",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       }
     ],
     "constraints": [
@@ -1414,97 +1521,113 @@
         "name": "id",
         "type": "uuid",
         "default": "gen_random_uuid()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "workspaceId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "restaurantOrderId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "cashBankAccountId",
         "type": "text",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "method",
         "type": "text",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "amount",
         "type": "numeric(15,2)",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "reference",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "notes",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "idempotencyKey",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "createdById",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "postedAt",
         "type": "timestamp with time zone",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "voidedAt",
         "type": "timestamp with time zone",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "voidedById",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "voidReason",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "createdAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "cashShiftId",
         "type": "uuid",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       }
     ],
     "constraints": [
@@ -1653,61 +1776,71 @@
         "name": "id",
         "type": "uuid",
         "default": "gen_random_uuid()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "workspaceId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "restaurantOrderId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "restaurantPaymentId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "cashBankAccountId",
         "type": "text",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "amount",
         "type": "numeric(15,2)",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "reason",
         "type": "text",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "idempotencyKey",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "createdById",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "createdAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       }
     ],
     "constraints": [
@@ -1816,55 +1949,64 @@
         "name": "id",
         "type": "uuid",
         "default": "gen_random_uuid()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "workspaceId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "restaurantReturnId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "restaurantOrderItemId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "productId",
         "type": "text",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "warehouseId",
         "type": "uuid",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "quantity",
         "type": "numeric(15,4)",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "unitCost",
         "type": "numeric(15,4)",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "createdAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       }
     ],
     "constraints": [
@@ -1955,79 +2097,92 @@
         "name": "id",
         "type": "uuid",
         "default": "gen_random_uuid()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "workspaceId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "restaurantReturnId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "restaurantOrderItemId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "quantity",
         "type": "numeric(15,4)",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "subtotal",
         "type": "numeric(15,2)",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "discountAmount",
         "type": "numeric(15,2)",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "taxAmount",
         "type": "numeric(15,2)",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "total",
         "type": "numeric(15,2)",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "inventoryCost",
         "type": "numeric(15,2)",
         "default": "0",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "restocked",
         "type": "boolean",
         "default": "false",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "createdAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "isReversal",
         "type": "boolean",
         "default": "false",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       }
     ],
     "constraints": [
@@ -2127,43 +2282,50 @@
         "name": "id",
         "type": "uuid",
         "default": "gen_random_uuid()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "workspaceId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "restaurantReturnId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "restaurantPaymentId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "amount",
         "type": "numeric(15,2)",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "createdAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "isReversal",
         "type": "boolean",
         "default": "false",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       }
     ],
     "constraints": [
@@ -2255,103 +2417,120 @@
         "name": "id",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "workspaceId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "restaurantOrderId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "returnNumber",
         "type": "text",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "reason",
         "type": "text",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "subtotal",
         "type": "numeric(15,2)",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "discountAmount",
         "type": "numeric(15,2)",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "taxAmount",
         "type": "numeric(15,2)",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "total",
         "type": "numeric(15,2)",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "inventoryCost",
         "type": "numeric(15,2)",
         "default": "0",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "idempotencyKey",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "requestFingerprint",
         "type": "text",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "createdById",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "createdAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "isReversal",
         "type": "boolean",
         "default": "false",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "reversalOfId",
         "type": "uuid",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "reversalReason",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       }
     ],
     "constraints": [
@@ -2483,49 +2662,57 @@
         "name": "id",
         "type": "uuid",
         "default": "gen_random_uuid()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "workspaceId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "name",
         "type": "text",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "capacity",
         "type": "integer",
         "default": "2",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "area",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "status",
         "type": "text",
         "default": "'AVAILABLE'::text",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "createdAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "updatedAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       }
     ],
     "constraints": [
@@ -2595,55 +2782,64 @@
         "name": "id",
         "type": "uuid",
         "default": "gen_random_uuid()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "workspaceId",
         "type": "uuid",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "externalMessageId",
         "type": "text",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "customerPhone",
         "type": "text",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "customerName",
         "type": "text",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "body",
         "type": "text",
         "default": null,
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "restaurantOrderId",
         "type": "uuid",
         "default": null,
-        "notNull": false
+        "notNull": false,
+        "notNullValidated": true
       },
       {
         "name": "receivedAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       },
       {
         "name": "createdAt",
         "type": "timestamp with time zone",
         "default": "now()",
-        "notNull": true
+        "notNull": true,
+        "notNullValidated": true
       }
     ],
     "constraints": [
