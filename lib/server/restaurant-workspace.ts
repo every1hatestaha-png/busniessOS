@@ -305,6 +305,9 @@ export async function createRestaurantMenuItem(context: IndustryContext, input: 
 }
 
 export async function setRestaurantMenuItemAvailability(context: IndustryContext, menuItemId: string, isAvailable: boolean) {
+  // The service must independently enforce the menu-management permission;
+  // a server-action/UI check alone is not a durable authorization boundary.
+  assertManager(context);
   await requireWorkspaceModule(context.workspaceId, "restaurant");
   assertUuid(menuItemId, "Menu item");
   const rows = await db.$queryRaw<Array<{ id: string; name: string; isAvailable: boolean }>>`

@@ -149,6 +149,38 @@ describe("restaurant workspace v1 integrity", () => {
     })).rejects.toThrow("not available in this workspace");
   });
 
+  it("denies a direct STAFF menu availability change at the service boundary without persisting it", async () => {
+    const current = await db.$queryRaw<Array<{ isAvailable: boolean }>>`
+      SELECT "isAvailable" FROM "restaurant_menu_items"
+      WHERE "id"=${itemA}::uuid AND "workspaceId"=${workspaceA}::uuid
+    `;
+    expect(current).toHaveLength(1);
+    await expect(setRestaurantMenuItemAvailability(
+      { workspaceId: workspaceA, userId: userA, role: "STAFF" },
+      itemA,
+      !current[0]!.isAvailable,
+    )).rejects.toThrow(/Manager access is required/);
+    const after = await db.$queryRaw<Array<{ isAvailable: boolean }>>`
+      SELECT "isAvailable" FROM "restaurant_menu_items"
+      WHERE "id"=${itemA}::uuid AND "workspaceId"=${workspaceA}::uuid
+    `;
+    expect(after).toEqual(current);
+  });
+
+  it("denies cross-tenant availability mutation and preserves source workspace data", async () => {
+    const current = await db.$queryRaw<Array<{ isAvailable: boolean }>>`
+      SELECT "isAvailable" FROM "restaurant_menu_items"
+      WHERE "id"=${itemA}::uuid AND "workspaceId"=${workspaceA}::uuid
+    `;
+    await expect(setRestaurantMenuItemAvailability(contextB(), itemA, false))
+      .rejects.toThrow(/not found in this workspace/i);
+    const after = await db.$queryRaw<Array<{ isAvailable: boolean }>>`
+      SELECT "isAvailable" FROM "restaurant_menu_items"
+      WHERE "id"=${itemA}::uuid AND "workspaceId"=${workspaceA}::uuid
+    `;
+    expect(after).toEqual(current);
+  });
+
   it("rejects unavailable menu items before an order is created", async () => {
     await setRestaurantMenuItemAvailability(contextA(), itemA, false);
     await expect(createPosRestaurantOrder(contextA(), {
