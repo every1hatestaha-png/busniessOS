@@ -1,5 +1,5 @@
 /**
- * Keyboard POS syntax: "3x biryani" adds three of the first matching dish.
+ * Keyboard POS syntax: "3x biryani" adds three of one unambiguous matching dish.
  * Plain names add one. Return an empty term for incomplete prefixes.
  */
 export function parsePosFastEntry(raw: string): { term: string; quantity: number } {
@@ -15,4 +15,20 @@ export function isPosSearchShortcut(target: EventTarget | null) {
   return !["INPUT", "TEXTAREA", "SELECT"].includes(element.tagName)
     && !element.isContentEditable
     && !element.closest?.("[contenteditable='true']");
+}
+
+/**
+ * Return a candidate only if the operator identified exactly one available dish.
+ * An exact menu name wins over broader substring matches, but duplicate exact
+ * names are never guessed. No implicit first-item selection is permitted.
+ */
+export function resolvePosFastEntryItem<T extends { name: string; isAvailable: boolean }>(
+  candidates: readonly T[], term: string,
+): T | null {
+  const normalized = term.trim().toLocaleLowerCase();
+  if (!normalized) return null;
+  const available = candidates.filter((item) => item.isAvailable && item.name.toLocaleLowerCase().includes(normalized));
+  const exact = available.filter((item) => item.name.trim().toLocaleLowerCase() === normalized);
+  if (exact.length > 0) return exact.length === 1 ? exact[0]! : null;
+  return available.length === 1 ? available[0]! : null;
 }
