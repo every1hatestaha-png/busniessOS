@@ -4,10 +4,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 let db: typeof import("@/lib/server/db")["db"];
 let createRecipe: typeof import("@/lib/server/industry-modules")["createRecipe"];
 let createKitchenTicket: typeof import("@/lib/server/industry-modules")["createKitchenTicket"];
+let updateKitchenTicketStatus: typeof import("@/lib/server/industry-modules")["updateKitchenTicketStatus"];
 let updateLegacyKitchenTicketStatusSafely: typeof import("@/lib/server/restaurant-legacy-kot")["updateLegacyKitchenTicketStatusSafely"];
 
 const runId = randomUUID();
 let userId = "";
+let staffId = "";
 let workspaceId = "";
 let customerId = "";
 let finishedProductId = "";
@@ -15,6 +17,7 @@ let ingredientProductId = "";
 let salesOrderId = "";
 
 const owner = () => ({ workspaceId, role: "OWNER" as const, userId });
+const staff = () => ({ workspaceId, role: "STAFF" as const, userId: staffId });
 
 async function cleanup() {
   await db.$executeRaw`DELETE FROM "kitchen_tickets" WHERE "workspaceId"=${workspaceId}::uuid`;
@@ -34,12 +37,19 @@ describe("restaurant V1.6 legacy KOT compatibility boundary", () => {
     const { config } = await import("dotenv");
     config({ path: ".env.local", quiet: true });
     ({ db } = await import("@/lib/server/db"));
-    ({ createRecipe, createKitchenTicket } = await import("@/lib/server/industry-modules"));
+    ({ createRecipe, createKitchenTicket, updateKitchenTicketStatus } = await import("@/lib/server/industry-modules"));
     ({ updateLegacyKitchenTicketStatusSafely } = await import("@/lib/server/restaurant-legacy-kot"));
 
     const user = await db.user.create({ data: { clerkId: `legacy-kot-${runId}`, email: `legacy-kot-${runId}@example.invalid` } });
     userId = user.id;
-    const workspace = await db.workspace.create({ data: { name: `Legacy KOT ${runId}`, vertical: "LEGACY", members: { create: { userId, role: "OWNER" } } } });
+    const staffUser = await db.user.create({ data: { clerkId: `legacy-kot-staff-${runId}`, email: `legacy-kot-staff-${runId}@example.invalid` } });
+    staffId = staffUser.id;
+    const workspace = await db.workspace.create({
+      data: {
+        name: `Legacy KOT ${runId}`, vertical: "LEGACY",
+        members: { create: [{ userId, role: "OWNER" }, { userId: staffId, role: "STAFF", restaurantStation: "POS" }] },
+      },
+    });
     workspaceId = workspace.id;
     await db.$executeRaw`
       INSERT INTO "workspace_modules" ("workspaceId", "moduleKey", "enabled", "config", "updatedAt")
@@ -101,9 +111,66 @@ describe("restaurant V1.6 legacy KOT compatibility boundary", () => {
     if (!db) return;
     await cleanup();
     await db.workspace.delete({ where: { id: workspaceId } });
-    await db.user.delete({ where: { id: userId } });
+    await db.user.deleteMany({ where: { id: { in: [userId, staffId] } } });
     await db.$disconnect();
   }, 60_000);
+
+  it("denies direct POS-only legacy ticket creation and status changes before any write", async () => {
+    const before = await db.$queryRaw<Array<{ count: number }>>`
+      SELECT COUNT(*)::int AS count FROM "kitchen_tickets" WHERE "workspaceId"=${workspaceId}::uuid
+    `;
+    await expect(createKitchenTicket(staff(), { ticketNumber: `FORGED-${runId.slice(0, 8)}` }))
+      .rejects.toThrow(/requires current KITCHEN station membership/i);
+    const ticket = await createKitchenTicket(owner(), { ticketNumber: `GUARD-${runId.slice(0, 8)}`, salesOrderId });
+    await expect(updateLegacyKitchenTicketStatusSafely(staff(), ticket.id, "PREPARING"))
+      .rejects.toThrow(/requires current KITCHEN station membership/i);
+    await expect(updateKitchenTicketStatus(staff(), ticket.id, "PREPARING"))
+      .rejects.toThrow(/requires current KITCHEN station membership/i);
+    const after = await db.$queryRaw<Array<{ id: string; status: string }>>`
+      SELECT id::text AS id, status FROM "kitchen_tickets" WHERE "workspaceId"=${workspaceId}::uuid
+    `;
+    expect(after).toHaveLength(before[0]!.count + 1);
+    expect(after.find(row => row.id === ticket.id)?.status).toBe("QUEUED");
+  });
+
+  it("accepts a current KITCHEN-only staff member but denies that actor after POS reassignment", async () => {
+    await db.workspaceMember.updateMany({
+      where: { workspaceId, userId: staffId }, data: { restaurantStation: "KITCHEN" },
+    });
+    try {
+      const ticket = await createKitchenTicket(staff(), { ticketNumber: `KITCHEN-${runId.slice(0, 8)}` });
+      await updateKitchenTicketStatus(staff(), ticket.id, "PREPARING");
+      await db.workspaceMember.updateMany({
+        where: { workspaceId, userId: staffId }, data: { restaurantStation: "POS" },
+      });
+      await expect(updateKitchenTicketStatus(staff(), ticket.id, "READY"))
+        .rejects.toThrow(/requires current KITCHEN station membership/i);
+      const rows = await db.$queryRaw<Array<{ status: string }>>`
+        SELECT status FROM "kitchen_tickets" WHERE "id"=${ticket.id}::uuid
+      `;
+      expect(rows[0]?.status).toBe("PREPARING");
+    } finally {
+      await db.workspaceMember.updateMany({
+        where: { workspaceId, userId: staffId }, data: { restaurantStation: "POS" },
+      });
+    }
+  });
+
+  it("routes the historical exported updater through safe no-double-consumption logic", async () => {
+    const ticket = await createKitchenTicket(owner(), { ticketNumber: `OLD-${runId.slice(0, 8)}`, salesOrderId });
+    const before = await db.product.findUniqueOrThrow({ where: { id: ingredientProductId } });
+    await updateKitchenTicketStatus(owner(), ticket.id, "PREPARING");
+    await updateKitchenTicketStatus(owner(), ticket.id, "READY");
+    await updateKitchenTicketStatus(owner(), ticket.id, "SERVED");
+    const after = await db.product.findUniqueOrThrow({ where: { id: ingredientProductId } });
+    const kitchenMovements = await db.inventoryTransaction.findMany({
+      where: { workspaceId, reference: `KITCHEN:${ticket.id}` },
+    });
+    expect(Number(after.stockQuantity)).toBe(Number(before.stockQuantity));
+    expect(kitchenMovements).toHaveLength(0);
+    const audits = await db.auditLog.findMany({ where: { workspaceId, entityId: ticket.id, action: "restaurant.legacy_kot.status_changed" } });
+    expect(audits).toHaveLength(3);
+  });
 
   it("serves a legacy sales-linked ticket without consuming recipe inventory a second time", async () => {
     const ticket = await createKitchenTicket(owner(), {
