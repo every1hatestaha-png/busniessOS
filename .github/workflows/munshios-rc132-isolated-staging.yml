@@ -8,6 +8,7 @@ on:
       - fix/restaurant-staff-completion-ui-v2-06
       - fix/restaurant-menu-manager-guard-v2-07
       - fix/restaurant-pos-service-station-v2-08
+      - fix/restaurant-menu-persisted-role-v2-09
   pull_request:
     branches:
       - fix/munshios-release-certification
@@ -15,6 +16,7 @@ on:
       - test/munshios-rc132-hosted-smoke
       - fix/restaurant-staff-completion-ui-v2-06
       - fix/restaurant-menu-manager-guard-v2-07
+      - fix/restaurant-pos-service-station-v2-08
 
 permissions:
   contents: read
