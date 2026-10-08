@@ -4,6 +4,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 let db: typeof import("@/lib/server/db")["db"];
 let openRestaurantCashShiftSafely: typeof import("@/lib/server/restaurant-cash-shifts")["openRestaurantCashShiftSafely"];
 let closeRestaurantCashShiftFromLedger: typeof import("@/lib/server/restaurant-cash-shifts")["closeRestaurantCashShiftFromLedger"];
+let openCashShift: typeof import("@/lib/server/industry-modules")["openCashShift"];
+let closeCashShift: typeof import("@/lib/server/industry-modules")["closeCashShift"];
 
 const runId = randomUUID();
 let workspaceId = "";
@@ -24,6 +26,7 @@ describe("restaurant V1.18 cash shift actor integrity", () => {
     config({ path: ".env.local", quiet: true });
     ({ db } = await import("@/lib/server/db"));
     ({ openRestaurantCashShiftSafely, closeRestaurantCashShiftFromLedger } = await import("@/lib/server/restaurant-cash-shifts"));
+    ({ openCashShift, closeCashShift } = await import("@/lib/server/industry-modules"));
 
     const [staffAUser, staffBUser, managerUser, foreignUser] = await Promise.all([
       db.user.create({ data: { clerkId: `shift18-a-${runId}`, email: `shift18-a-${runId}@example.invalid` } }),
@@ -170,6 +173,24 @@ describe("restaurant V1.18 cash shift actor integrity", () => {
     }
     const closed = await closeRestaurantCashShiftFromLedger(manager(), shift.id, 75);
     expect(closed.closedById).toBe(managerId);
+  });
+
+  it("routes historical exported cash-shift services through persisted POS and immutable audit checks", async () => {
+    const shift = await openCashShift(staffA(), 125, "Compatibility open");
+    await expect(closeCashShift(forgedManager(), shift.id, 125, "Forbidden override"))
+      .rejects.toThrow("Staff can close only the restaurant cash shift they opened.");
+    const stillOpen = await db.$queryRaw<Array<{ status: string }>>`
+      SELECT status FROM "cash_shifts" WHERE "id"=${shift.id}::uuid
+    `;
+    expect(stillOpen[0]?.status).toBe("OPEN");
+    const closed = await closeCashShift(staffA(), shift.id, 125, "Compatibility close");
+    expect(closed.closedById).toBe(staffAId);
+    const audit = await db.auditLog.findMany({
+      where: { workspaceId, entityType: "CashShift", entityId: shift.id },
+    });
+    expect(audit.map(row => row.action).sort()).toEqual([
+      "restaurant.cash_shift.closed", "restaurant.cash_shift.opened",
+    ]);
   });
 
   it("prevents direct ownership rewrites", async () => {
