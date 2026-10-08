@@ -126,7 +126,109 @@ describe("restaurant V1.16 operational actor membership", () => {
     await expect(createPosRestaurantOrder(forgedStaff(), {
       fulfillmentType: "TAKEAWAY",
       items: [{ menuItemId, quantity: 1 }],
-    })).rejects.toThrow("Restaurant order creator must be a member of the same workspace");
+    })).rejects.toThrow("requires current POS station membership in the same workspace");
+  });
+
+
+  it("denies KITCHEN-only staff direct POS creation without changing orders or tickets", async () => {
+    const beforeOrders = await db.$queryRaw<Array<{ count: number }>>`
+      SELECT COUNT(*)::int AS count FROM "restaurant_orders" WHERE "workspaceId"=${workspaceId}::uuid
+    `;
+    const beforeTickets = await db.$queryRaw<Array<{ count: number }>>`
+      SELECT COUNT(*)::int AS count FROM "kitchen_tickets" WHERE "workspaceId"=${workspaceId}::uuid
+    `;
+    const current = await db.workspaceMember.findFirstOrThrow({
+      where: { workspaceId, userId: staffId }, select: { restaurantStation: true },
+    });
+    try {
+      await db.workspaceMember.updateMany({
+        where: { workspaceId, userId: staffId }, data: { restaurantStation: "KITCHEN" },
+      });
+      await expect(createPosRestaurantOrder(staff(), {
+        idempotencyKey: randomUUID(), fulfillmentType: "TAKEAWAY",
+        items: [{ menuItemId, quantity: 1 }],
+      })).rejects.toThrow("requires current POS station membership in the same workspace");
+      const afterOrders = await db.$queryRaw<Array<{ count: number }>>`
+        SELECT COUNT(*)::int AS count FROM "restaurant_orders" WHERE "workspaceId"=${workspaceId}::uuid
+      `;
+      const afterTickets = await db.$queryRaw<Array<{ count: number }>>`
+        SELECT COUNT(*)::int AS count FROM "kitchen_tickets" WHERE "workspaceId"=${workspaceId}::uuid
+      `;
+      expect(afterOrders).toEqual(beforeOrders);
+      expect(afterTickets).toEqual(beforeTickets);
+    } finally {
+      await db.workspaceMember.updateMany({
+        where: { workspaceId, userId: staffId }, data: { restaurantStation: current.restaurantStation },
+      });
+    }
+  });
+
+  it("rejects a formerly valid POS idempotency replay immediately after station reassignment", async () => {
+    const key = randomUUID();
+    const request = {
+      idempotencyKey: key, fulfillmentType: "TAKEAWAY" as const,
+      items: [{ menuItemId, quantity: 1 }],
+    };
+    const order = await createPosRestaurantOrder(staff(), request);
+    const current = await db.workspaceMember.findFirstOrThrow({
+      where: { workspaceId, userId: staffId }, select: { restaurantStation: true },
+    });
+    const before = await db.$queryRaw<Array<{ count: number }>>`
+      SELECT COUNT(*)::int AS count FROM "restaurant_orders"
+      WHERE "workspaceId"=${workspaceId}::uuid AND "externalReference"=${`pos:${key}`}
+    `;
+    expect(before[0]?.count).toBe(1);
+    try {
+      await db.workspaceMember.updateMany({
+        where: { workspaceId, userId: staffId }, data: { restaurantStation: "KITCHEN" },
+      });
+      await expect(createPosRestaurantOrder(staff(), request))
+        .rejects.toThrow("requires current POS station membership in the same workspace");
+      const after = await db.$queryRaw<Array<{ count: number }>>`
+        SELECT COUNT(*)::int AS count FROM "restaurant_orders"
+        WHERE "workspaceId"=${workspaceId}::uuid AND "externalReference"=${`pos:${key}`}
+      `;
+      expect(after).toEqual(before);
+      expect(order.status).toBe("CONFIRMED");
+    } finally {
+      await db.workspaceMember.updateMany({
+        where: { workspaceId, userId: staffId }, data: { restaurantStation: current.restaurantStation },
+      });
+    }
+  });
+
+  it("denies Kitchen-only staff WhatsApp confirmation and leaves the pending order unmodified", async () => {
+    const order = await ingestWhatsappRestaurantOrder(workspaceId, {
+      externalMessageId: `op-wa-kitchen-${runId}`,
+      messageBody: "One Operational Meal pending review",
+      customerPhone: "+923001234567",
+      fulfillmentType: "TAKEAWAY",
+      items: [{ menuItemId, quantity: 1 }],
+    });
+    const current = await db.workspaceMember.findFirstOrThrow({
+      where: { workspaceId, userId: staffId }, select: { restaurantStation: true },
+    });
+    try {
+      await db.workspaceMember.updateMany({
+        where: { workspaceId, userId: staffId }, data: { restaurantStation: "KITCHEN" },
+      });
+      await expect(confirmRestaurantOrder(staff(), order.id))
+        .rejects.toThrow("requires current POS station membership in the same workspace");
+      const rows = await db.$queryRaw<Array<{ status: string; confirmedById: string | null }>>`
+        SELECT "status", "confirmedById" FROM "restaurant_orders"
+        WHERE "id"=${order.id}::uuid AND "workspaceId"=${workspaceId}::uuid
+      `;
+      const tickets = await db.$queryRaw<Array<{ count: number }>>`
+        SELECT COUNT(*)::int AS count FROM "kitchen_tickets"
+        WHERE "workspaceId"=${workspaceId}::uuid AND "restaurantOrderId"=${order.id}::uuid
+      `;
+      expect(rows[0]).toMatchObject({ status: "PENDING_REVIEW", confirmedById: null });
+      expect(tickets[0]?.count).toBe(0);
+    } finally {
+      await db.workspaceMember.updateMany({
+        where: { workspaceId, userId: staffId }, data: { restaurantStation: current.restaurantStation },
+      });
+    }
   });
 
   it("requires a real workspace member when confirming a pending WhatsApp order", async () => {
@@ -139,7 +241,7 @@ describe("restaurant V1.16 operational actor membership", () => {
     });
 
     await expect(confirmRestaurantOrder(forgedStaff(), order.id))
-      .rejects.toThrow("Restaurant order confirmer must be a member of the same workspace");
+      .rejects.toThrow("requires current POS station membership in the same workspace");
 
     let rows = await db.$queryRaw<Array<{ status: string; confirmedById: string | null }>>`
       SELECT "status", "confirmedById" FROM "restaurant_orders" WHERE "id"=${order.id}::uuid

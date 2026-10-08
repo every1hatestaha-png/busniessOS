@@ -50,7 +50,8 @@
       "staging/munshios-rc132-isolated-20261008": false,
       "test/munshios-rc132-hosted-smoke": false,
       "fix/restaurant-staff-completion-ui-v2-06": false,
-      "fix/restaurant-menu-manager-guard-v2-07": false
+      "fix/restaurant-menu-manager-guard-v2-07": false,
+      "fix/restaurant-pos-service-station-v2-08": false
     }
   }
 }
