@@ -26,7 +26,7 @@ permissions:
 jobs:
   isolated-staging-gate:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 70
     services:
       postgres:
         image: postgres:18
@@ -102,6 +102,19 @@ jobs:
           npx vitest run
           tests/integration/restaurant-legacy-kot-v1-6.test.ts
           tests/integration/restaurant-table-occupancy-v1-6.test.ts
+      - name: Full app unit regressions
+        run: npm test
+      - name: Full Restaurant and warehouse integrity regressions (disposable PG18)
+        env:
+          RUN_INTEGRATION_TESTS: "true"
+        run: >
+          npx vitest run
+          tests/integration/restaurant-*.test.ts
+          tests/unit/restaurant-*.test.ts
+          tests/integration/warehouse-stock-tenant-tuple-integrity-v1-50.test.ts
+          tests/integration/managed-warehouse-stock.test.ts
+      - name: Finance correctness suite
+        run: npm run test:finance
       - name: TS, schema and guard syntax
         run: |
           npx prisma validate
