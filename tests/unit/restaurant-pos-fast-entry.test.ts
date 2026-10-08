@@ -24,9 +24,9 @@ describe("Restaurant keyboard POS", () => {
 
   it("does not capture typing inside other form fields", () => {
     for (const tagName of ["INPUT", "SELECT", "TEXTAREA"]) {
-      expect(isPosSearchShortcut({ tagName } as EventTarget)).toBe(false);
+      expect(isPosSearchShortcut(Object.assign(new EventTarget(), { tagName }))).toBe(false);
     }
-    expect(isPosSearchShortcut({ tagName: "DIV", isContentEditable: true } as EventTarget)).toBe(false);
-    expect(isPosSearchShortcut({ tagName: "BODY", isContentEditable: false } as EventTarget)).toBe(true);
+    expect(isPosSearchShortcut(Object.assign(new EventTarget(), { tagName: "DIV", isContentEditable: true }))).toBe(false);
+    expect(isPosSearchShortcut(Object.assign(new EventTarget(), { tagName: "BODY", isContentEditable: false }))).toBe(true);
   });
 });
