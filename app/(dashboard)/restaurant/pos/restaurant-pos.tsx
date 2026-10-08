@@ -279,7 +279,7 @@ export function RestaurantPos({
                 className="flex h-11 items-center justify-center rounded-xl border border-emerald-600 bg-emerald-50 text-sm font-semibold text-emerald-800 hover:bg-emerald-100">
                 Open & print last order receipt (80mm)
               </Link>
-            ) : null
+            ) : null}
 
             <Button type="submit" className="h-11 w-full rounded-xl bg-emerald-600 text-sm font-semibold hover:bg-emerald-500" disabled={pending || cart.length === 0}>
               {pending ? "Creating order..." : fulfillmentType === "DINE_IN" ? "Send to kitchen" : "Confirm order"}
