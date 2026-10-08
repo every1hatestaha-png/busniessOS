@@ -5,6 +5,9 @@ on:
     branches:
       - feat/restaurant-station-workflows-v2-00
       - feat/restaurant-staff-stations-v2-01
+  pull_request:
+    branches:
+      - fix/legal-explicit-consent-v1-99
 
 permissions:
   contents: read
