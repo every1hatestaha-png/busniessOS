@@ -102,7 +102,7 @@ export default async function RestaurantKitchenPage() {
 
                       <div className="flex flex-wrap gap-2">
                         {kitchenOnly && column.status === "READY" ? (
-                          <p className="text-sm font-semibold text-emerald-700">Ready for service. Cashier will complete the order.</p>
+                          <p className="text-sm font-semibold text-emerald-700">Ready for service. A manager will complete the order.</p>
                         ) : (
                           <RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}>
                             <input type="hidden" name="orderId" value={order.id} />
