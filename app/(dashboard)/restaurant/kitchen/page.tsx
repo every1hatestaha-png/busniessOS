@@ -6,7 +6,7 @@ import { transitionRestaurantOrderAction } from "@/app/(dashboard)/restaurant/v1
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
-import { listRestaurantKitchenItems, listRestaurantOrders } from "@/lib/server/restaurant-workspace";
+import { listRestaurantKitchenQueue } from "@/lib/server/restaurant-kitchen-queue";
 import { cn } from "@/lib/utils";
 import { KitchenAutoRefresh } from "./kitchen-auto-refresh";
 
@@ -19,8 +19,7 @@ const kitchenColumns = [
 export default async function RestaurantKitchenPage() {
   const { workspaceId, workspace, role, restaurantStation } = await requireWorkspace();
   const kitchenOnly = role === "STAFF" && restaurantStation === "KITCHEN";
-  const orders = await listRestaurantOrders(workspaceId, 200, { statuses: ["CONFIRMED", "PREPARING", "READY"], oldestFirst: true });
-  const kitchenItems = await listRestaurantKitchenItems(workspaceId, orders.map((order) => order.id));
+  const { orders, kitchenItems, cappedStatuses } = await listRestaurantKitchenQueue(workspaceId);
 
   const counts = {
     CONFIRMED: orders.filter((order) => order.status === "CONFIRMED").length,
@@ -45,7 +44,7 @@ export default async function RestaurantKitchenPage() {
         <KitchenMetric label="Ready" value={counts.READY} tone="emerald" />
       </section>
 
-      {orders.length === 200 ? <p className="text-sm text-amber-700">Showing the oldest 200 kitchen orders. Finish these to advance the queue.</p> : null}
+      {cappedStatuses.length ? <p role="status" className="text-sm text-amber-700">Displaying the oldest 100 tickets per lane. Busy lanes: {cappedStatuses.join(", ")}. New orders remain visible even if the Ready lane is full.</p> : null}
 
       <div className="grid gap-4 xl:grid-cols-3">
         {kitchenColumns.map((column) => {
