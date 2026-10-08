@@ -162,7 +162,7 @@ export default function SignInPage() {
     <main className="min-h-dvh bg-[#071821] text-white">
       <div className="grid min-h-dvh lg:grid-cols-[56%_44%]">
         <section className="relative hidden min-h-dvh overflow-hidden lg:block" aria-hidden="true">
-          <Image src={LOGIN_VISUAL} alt="" fill sizes="56vw" priority className="object-cover object-center" />
+          <Image src={LOGIN_VISUAL} alt="" fill sizes="(min-width: 1024px) 56vw, 1px" quality={70} loading="lazy" className="object-cover object-center" />
           <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(4,19,25,0.12)_0%,rgba(4,19,25,0.05)_55%,rgba(7,24,33,0.82)_100%)]" />
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#041319]/90 via-[#041319]/45 to-transparent px-10 pb-10 pt-28 xl:px-14 xl:pb-12">
             <div className="max-w-lg">

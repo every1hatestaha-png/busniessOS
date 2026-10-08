@@ -87,7 +87,7 @@ export function TopNav({
             <Button
               className="hidden bg-emerald-600 hover:bg-emerald-500 sm:inline-flex"
               nativeButton={false}
-              render={<Link href="/restaurant/pos" />}
+              render={<Link href="/restaurant/pos" prefetch={false} />}
             >
               <ShoppingCart className="size-4" />
               Open POS

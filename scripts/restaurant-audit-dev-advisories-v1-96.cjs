@@ -3,8 +3,12 @@ const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 
 const expectedAdvisories = new Set([
+  // Dev-only glob tooling. npm currently requires a breaking toolchain change
+  // to remove this advisory; production dependency audit remains clean.
   "GHSA-vfj7-8cjw-p6xm",
-  "GHSA-ch52-4w7c-c8xp",
+  // Dev-only Electron packaging chain. Keep explicitly contained until the
+  // builder chain can move without breaking desktop packaging.
+  "GHSA-hp3w-g68c-fv3c",
 ]);
 
 const devOnlyPaths = [
@@ -16,13 +20,17 @@ const devOnlyPaths = [
   "node_modules/@ts-morph/common",
   "node_modules/ts-morph",
   "node_modules/shadcn",
-  "node_modules/http-cache-semantics",
-  "node_modules/cacheable-request",
-  "node_modules/got",
   "node_modules/app-builder-lib/node_modules/@electron/get",
+  "node_modules/sprintf-js",
+  "node_modules/roarr",
+  "node_modules/global-agent",
+  "node_modules/app-builder-lib",
+  "node_modules/dmg-builder",
+  "node_modules/electron-builder-squirrel-windows",
+  "node_modules/electron-builder",
 ];
 
-const audit = spawnSync("npm", ["audit", "--audit-level=moderate"], {
+const audit = spawnSync("npm", ["audit", "--json", "--audit-level=moderate"], {
   encoding: "utf8",
   shell: process.platform === "win32",
 });
@@ -55,6 +63,18 @@ for (const advisory of expectedLower) {
 }
 
 const lock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
+const report = JSON.parse(audit.stdout);
+if (!report.vulnerabilities || report.error) throw new Error("Dependency audit did not return a complete advisory report.");
+// Validate every affected path, including nested nodes and newly introduced
+// transitive packages. The historical explicit list alone can miss those.
+for (const [name, vulnerability] of Object.entries(report.vulnerabilities)) {
+  if (!vulnerability.nodes?.length) throw new Error(`Missing advisory dependency paths: ${name}`);
+  for (const dependencyPath of vulnerability.nodes) {
+    if (lock.packages?.[dependencyPath]?.dev !== true) {
+      throw new Error(`Advisory dependency is not provably dev-only: ${dependencyPath}`);
+    }
+  }
+}
 for (const path of devOnlyPaths) {
   const entry = lock.packages?.[path];
   if (!entry) continue;

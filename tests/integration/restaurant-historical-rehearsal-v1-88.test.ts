@@ -14,7 +14,10 @@ let collect: typeof import("@/lib/server/restaurant-payments-immediate")["record
 const context = () => ({ workspaceId, userId, role: "OWNER" as const });
 const migrations = readdirSync(resolve("prisma/migrations")).filter((name) => /^\d/.test(name)).sort();
 const cutoff = "20261001123000_restaurant_other_payment_account_guard";
-const compatibilityMigrations = new Set(["20261004144500_user_supabase_identity"]);
+const compatibilityMigrations = new Set([
+  "20261004144500_user_supabase_identity",
+  "20261007183000_user_policy_acceptance",
+]);
 let pendingOrderId = "";
 
 async function createOrder(quantity = 1, dineIn = false) {
@@ -51,8 +54,9 @@ beforeAll(async () => {
   parsed.pathname = `/${name}`;
   client = new Client({ connectionString: parsed.toString() }); await client.connect();
   for (const migration of migrations.filter((name) => name < cutoff)) await client.query(readFileSync(resolve("prisma/migrations", migration, "migration.sql"), "utf8"));
-  // The current Prisma client projects User.supabaseId. Apply only that additive,
-  // auth-only compatibility migration before seeding the historical Restaurant state.
+  // The current Prisma client projects additive User auth/legal fields. Apply
+  // only those non-Restaurant compatibility migrations before seeding the
+  // historical Restaurant state.
   // Restaurant migrations at/after the cutoff remain unapplied until the rehearsal step.
   for (const migration of migrations.filter((name) => compatibilityMigrations.has(name))) {
     await client.query(readFileSync(resolve("prisma/migrations", migration, "migration.sql"), "utf8"));

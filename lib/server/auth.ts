@@ -5,6 +5,7 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
 
+import { hasCurrentPolicyAcceptance } from "@/lib/legal/policies";
 import { db } from "@/lib/server/db";
 import { isAvailableVertical, resolveWorkspaceVertical } from "@/lib/verticals/registry";
 import { getSupabaseAuthUser } from "@/lib/supabase/server";
@@ -206,13 +207,19 @@ export const getOptionalCurrentUser = cache(async () => {
   return identity ? resolveLocalUser(identity) : null;
 });
 
-export const getCurrentUser = cache(async () => {
+export const getAuthenticatedUser = cache(async () => {
   const user = await getOptionalCurrentUser();
   if (!user) {
     const requestHeaders = await headers();
     const isElectron = (requestHeaders.get("user-agent") || "").includes("Electron");
     redirect(isElectron ? "/desktop-auth" : "/sign-in");
   }
+  return user;
+});
+
+export const getCurrentUser = cache(async () => {
+  const user = await getAuthenticatedUser();
+  if (!hasCurrentPolicyAcceptance(user)) redirect("/legal/acceptance");
   return user;
 });
 
@@ -232,6 +239,7 @@ const getCurrentUserWorkspaceMemberships = cache(async () => {
 export const getCurrentWorkspace = cache(async () => {
   const user = await getOptionalCurrentUser();
   if (!user) return null;
+  if (!hasCurrentPolicyAcceptance(user)) redirect("/legal/acceptance");
 
   const activeWorkspaceId = (await cookies()).get("businessos_workspace")?.value;
   const memberships = await getUserWorkspaceMemberships(user.id);

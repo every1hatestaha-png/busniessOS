@@ -15,6 +15,8 @@ export const PUBLIC_MARKETING_PATHS = new Set([
   "/faq",
   "/privacy",
   "/terms",
+  "/cookies",
+  "/refund-policy",
 ]);
 
 export const AUTH_ENTRY_PATHS = new Set([

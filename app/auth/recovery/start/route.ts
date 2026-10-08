@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { safeInternalDestination } from "@/lib/auth-routing";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isSameOriginWebMutation } from "@/lib/server/cors";
 
 const GENERIC_RESPONSE = { ok: true };
 const DEFAULT_RECOVERY_REDIRECT = "/auth/callback?next=%2Frecovery%2Fnew-password";
@@ -21,14 +22,25 @@ function recoveryOrigin(requestUrl: string) {
 
   try {
     const parsed = new URL(configured);
-    if (!["https:", "http:"].includes(parsed.protocol)) return fallback;
-    return parsed.origin;
+    if (parsed.protocol === "https:") return parsed.origin;
+
+    const localHttp =
+      parsed.protocol === "http:"
+      && process.env.NODE_ENV !== "production"
+      && ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname);
+    return localHttp ? parsed.origin : fallback;
   } catch {
     return fallback;
   }
 }
 
 export async function POST(request: Request) {
+  if (!isSameOriginWebMutation(request)) {
+    return NextResponse.json(
+      { error: "This request origin is not allowed." },
+      { status: 403, headers: { "Cache-Control": "no-store" } },
+    );
+  }
   try {
     const body = (await request.json()) as { email?: unknown; redirectTo?: unknown };
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";

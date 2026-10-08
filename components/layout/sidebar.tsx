@@ -151,6 +151,7 @@ export function Sidebar({
                       <Link
                         key={route.href}
                         href={route.href}
+                        prefetch={false}
                         aria-current={isActive ? "page" : undefined}
                         className={cn(
                           restaurantMode

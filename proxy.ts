@@ -9,6 +9,19 @@ import { applyCorsHeaders, corsPreflightResponse, isApiV1Request, isTrustedMutat
 
 const CLERK_SERVER_CONFIGURED = Boolean(process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
+function hasSupabaseSessionCookie(request: NextRequest) {
+  return request.cookies.getAll().some(({ name }) => name.startsWith("sb-") && name.includes("-auth-token"));
+}
+
+function isDirectSupabaseAuthEntry(path: string) {
+  return (
+    path === "/sign-in" ||
+    path.startsWith("/sign-in/") ||
+    path === "/sign-up" ||
+    path.startsWith("/sign-up/")
+  );
+}
+
 function isMutationMethod(method: string) {
   return !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase());
 }
@@ -46,9 +59,13 @@ async function getSupabaseSessionState(request: NextRequest) {
     },
   });
 
-  const { data, error } = await supabase.auth.getUser();
+  // Supabase recommends getClaims() in Next.js Proxy: it validates the JWT
+  // signature/expiry and refreshes cookies without forcing a /user network
+  // lookup on every navigation. Protected server code still resolves the
+  // current user with getUser() before returning workspace data.
+  const { data, error } = await supabase.auth.getClaims();
   return {
-    signedIn: !error && Boolean(data.user?.email_confirmed_at),
+    signedIn: !error && Boolean(data?.claims?.sub),
     response,
   };
 }
@@ -167,6 +184,16 @@ async function supabaseOnlyProxy(request: NextRequest) {
       { error: { code: "CLERK_SERVER_UNAVAILABLE", message: "This protected legacy auth route is unavailable in this preview." } },
       { status: 503, headers: { "Cache-Control": "no-store" } },
     );
+  }
+
+  // Public marketing pages and the direct Supabase auth entry screens do not
+  // need a network round-trip to Supabase when the browser has no auth cookie.
+  // This keeps first-load TTFB low while preserving signed-in root redirects:
+  // browsers with an auth cookie still validate it below before routing.
+  if (!hasSupabaseSessionCookie(request)) {
+    if (isPublicMarketingPath(path) || isDirectSupabaseAuthEntry(path)) {
+      return NextResponse.next();
+    }
   }
 
   const { signedIn, response } = await getSupabaseSessionState(request);

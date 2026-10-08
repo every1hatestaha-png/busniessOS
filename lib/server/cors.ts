@@ -40,6 +40,19 @@ export function isTrustedMutationOrigin(origin: string | null, requestOrigin: st
   return Boolean(getAllowedCorsOrigin(origin));
 }
 
+// Cookie-authenticated web flows do not share the mobile API's localhost CORS
+// exception. Fetch Metadata also rejects cross-site forms with a missing Origin.
+export function isSameOriginWebMutation(request: Request) {
+  if (request.headers.get("sec-fetch-site") === "cross-site") return false;
+  const origin = request.headers.get("origin");
+  if (!origin) return true;
+  try {
+    return new URL(origin).origin === new URL(request.url).origin;
+  } catch {
+    return false;
+  }
+}
+
 export function applyCorsHeaders(response: Response, origin: string | null) {
   const allowedOrigin = getAllowedCorsOrigin(origin);
   if (!allowedOrigin) return response;

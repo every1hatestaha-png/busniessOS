@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { z, ZodError, type ZodType } from "zod";
 
+import { hasCurrentPolicyAcceptance } from "@/lib/legal/policies";
 import { canPerformAction, type Permission } from "@/lib/server/authorization";
 import { getOptionalCurrentUser } from "@/lib/server/auth";
 import { db } from "@/lib/server/db";
@@ -52,6 +53,13 @@ export async function requireApiUser() {
   const user = await getOptionalCurrentUser();
   if (!user) {
     throw new ApiError(401, "UNAUTHENTICATED", "Authentication is required.");
+  }
+  if (!hasCurrentPolicyAcceptance(user)) {
+    throw new ApiError(
+      403,
+      "POLICY_ACCEPTANCE_REQUIRED",
+      "Accept the current MunshiOS Terms of Service and acknowledge the Privacy Policy before using protected APIs.",
+    );
   }
   return user;
 }
