@@ -10,6 +10,7 @@ import { requirePermission } from "@/lib/server/authorization";
 import { db } from "@/lib/server/db";
 import { FbrCredentialError, resolveFbrBearerTokenForRequest } from "@/lib/server/fbr-credentials";
 import { checkFbrSubmissionFreshness } from "@/lib/server/fbr-digital-invoicing";
+import { assertFbrEnabled } from "@/lib/server/fbr-enabled";
 
 type ValidationBody = {
   validationResponse?: {
@@ -27,6 +28,7 @@ function acceptedByFbr(body: unknown) {
 
 export async function runFbrRemoteValidation(submissionId: string, expectedEnvironment?: FbrEnvironment) {
   const context = await requirePermission("financial.manage");
+  await assertFbrEnabled(context.workspaceId);
 
   const submission = await db.fbrInvoiceSubmission.findFirst({
     where: { id: submissionId, workspaceId: context.workspaceId },

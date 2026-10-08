@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { safeInternalDestination } from "@/lib/auth-routing";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isSameOriginWebMutation } from "@/lib/server/cors";
+import { consumeRecoveryEmailBudget } from "@/lib/server/auth-recovery-rate-limit";
 
 const GENERIC_RESPONSE = { ok: true };
 const DEFAULT_RECOVERY_REDIRECT = "/auth/callback?next=%2Frecovery%2Fnew-password";
@@ -48,6 +49,9 @@ export async function POST(request: Request) {
     if (!email || email.length > 320 || !email.includes("@")) {
       return genericResponse();
     }
+    // Budget every valid email regardless of account existence. Storage failure
+    // fails closed through the generic catch without invoking the provider.
+    if (!await consumeRecoveryEmailBudget(email)) return genericResponse();
 
     const origin = recoveryOrigin(request.url);
     const requestedRedirect = typeof body.redirectTo === "string" ? body.redirectTo : null;

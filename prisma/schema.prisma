@@ -623,6 +623,7 @@ model SalesOrder {
   @@index([workspaceId, status])
   @@index([workspaceId, customerId])
   @@index([workspaceId, orderDate, status])
+  @@index([workspaceId, orderDate, id])
   @@index([workspaceId, updatedAt])
   @@map("sales_orders")
 }
@@ -1179,6 +1180,15 @@ model SupplierReturnItem {
 // ----------------------------------------
 // FBR DIGITAL INVOICING
 // ----------------------------------------
+
+model AuthRecoveryBucket {
+  emailHash       String   @id
+  windowStartedAt DateTime @db.Timestamptz(3)
+  attempts        Int
+
+  @@index([windowStartedAt])
+  @@map("auth_recovery_buckets")
+}
 
 model FbrIntegrationConfig {
   id                String         @id @default(uuid())

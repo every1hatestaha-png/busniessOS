@@ -213,6 +213,7 @@ export async function transitionRestaurantOrderAction(formData: FormData) {
   const workspace = await requireWorkspace();
   if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   const stationOperation = nextStatus === "PREPARING" || nextStatus === "READY" ? "KITCHEN" : "POS";
+  if (nextStatus === "COMPLETED" && !canManageRestaurant(workspace.role)) return fail("Manager access is required to complete orders.");
   if (!stationAllows(workspace, stationOperation)) return fail("This restaurant station cannot perform that order transition.");
   return restaurantMutationFeedback(async () => {
     await assertRestaurantMutationAccess(workspace.workspaceId);
@@ -256,6 +257,7 @@ export async function voidRestaurantPaymentAction(formData: FormData) {
   const reason = String(formData.get("reason") ?? "").trim();
   const workspace = await requireWorkspace();
   if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
+  if (!canManageRestaurant(workspace.role)) return fail("Manager access is required to void payments.");
   return restaurantMutationFeedback(async () => {
     await assertRestaurantMutationAccess(workspace.workspaceId);
     await voidRestaurantPayment(contextFrom(workspace), paymentId, reason);
