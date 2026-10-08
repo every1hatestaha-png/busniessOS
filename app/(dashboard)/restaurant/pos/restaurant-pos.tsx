@@ -50,7 +50,7 @@ export function RestaurantPos({
 
   const fastEntry = parsePosFastEntry(query);
   const visibleItems = items.filter((item) => {
-    const categoryMatch = activeCategory === "all" || item.categoryId === activeCategory;
+    const categoryMatch = Boolean(fastEntry.term) || activeCategory === "all" || item.categoryId === activeCategory;
     const queryMatch = !fastEntry.term || item.name.toLowerCase().includes(fastEntry.term.toLowerCase());
     return categoryMatch && queryMatch;
   });
