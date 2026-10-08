@@ -3,6 +3,7 @@ import "server-only";
 import { Prisma, type Role } from "@prisma/client";
 
 import { writeAudit } from "@/lib/server/audit";
+import { assertRestaurantActorAccess } from "@/lib/server/restaurant-actor-access";
 import { IndustryDomainError, requireWorkspaceModule, type IndustryContext } from "@/lib/server/industry-modules";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 
@@ -42,6 +43,7 @@ export async function openRestaurantCashShiftSafely(
   const clean = cleanNotes(notes);
 
   return withSerializableRetry(async (tx) => {
+    const member = await assertRestaurantActorAccess(tx, context, "POS", "Restaurant cash shift opening");
     const existing = await tx.$queryRaw<Array<{ id: string; openedById: string | null }>>`
       SELECT "id"::text AS "id", "openedById"::text AS "openedById"
       FROM "cash_shifts"
@@ -68,7 +70,7 @@ export async function openRestaurantCashShiftSafely(
       metadata: {
         openingCash: openingCash.toFixed(2),
         openedAt: shift.openedAt.toISOString(),
-        role: context.role,
+        role: member.role,
       },
     });
 
@@ -92,6 +94,7 @@ export async function closeRestaurantCashShiftFromLedger(
   const clean = cleanNotes(notes);
 
   return withSerializableRetry(async (tx) => {
+    const member = await assertRestaurantActorAccess(tx, context, "POS", "Restaurant cash shift closure");
     const shifts = await tx.$queryRaw<Array<{
       id: string;
       openedAt: Date;
@@ -107,7 +110,7 @@ export async function closeRestaurantCashShiftFromLedger(
     const shift = shifts[0];
     if (!shift) throw new IndustryDomainError("NOT_FOUND", "Cash shift was not found.");
     if (shift.status !== "OPEN") throw new IndustryDomainError("INVALID_STATE", "Cash shift is already closed.");
-    if (!MANAGER_ROLES.has(context.role) && shift.openedById !== actorId) {
+    if (!MANAGER_ROLES.has(member.role) && shift.openedById !== actorId) {
       throw new IndustryDomainError("PERMISSION_DENIED", "Staff can close only the restaurant cash shift they opened.");
     }
 
@@ -174,7 +177,7 @@ export async function closeRestaurantCashShiftFromLedger(
       metadata: {
         openedById: shift.openedById,
         closedById: actorId,
-        closedByRole: context.role,
+        closedByRole: member.role,
         managerOverride: shift.openedById !== actorId,
         openedAt: shift.openedAt.toISOString(),
         closedAt: closedAt.toISOString(),

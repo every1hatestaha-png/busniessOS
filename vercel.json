@@ -2,6 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
     "deploymentEnabled": {
+      "fix/munshios-release-certification": false,
+      "impl/munshios-round3-hardening": false,
       "architecture/restaurant-return-conservation-regression-v1-55": false,
       "architecture/restaurant-stock-concurrency-v1-56": false,
       "architecture/restaurant-return-reversal-order-conservation-v1-57": false,
@@ -43,7 +45,16 @@
       "architecture/restaurant-main-convergence-v1-97": false,
       "architecture/auth-hardening-v1-1": false,
       "architecture/restaurant-main-converged-v1-97": false,
-      "architecture/restaurant-recovery-compat-v1-98": false
+      "architecture/restaurant-recovery-compat-v1-98": false,
+      "architecture/platform-hardening-v1-99": false,
+      "staging/munshios-rc132-isolated-20261008": false,
+      "test/munshios-rc132-hosted-smoke": false,
+      "fix/restaurant-staff-completion-ui-v2-06": false,
+      "fix/restaurant-menu-manager-guard-v2-07": false,
+      "fix/restaurant-pos-service-station-v2-08": false,
+      "fix/restaurant-menu-persisted-role-v2-09": false,
+      "fix/restaurant-legacy-kot-safe-service-v2-10": false,
+      "fix/restaurant-cash-shift-persisted-actor-v2-11": false
     }
   }
 }

@@ -154,7 +154,7 @@ export default async function SettingsPage() {
             <h2 className="text-lg font-semibold">Team & access</h2>
             <p className="mt-0.5 text-sm text-neutral-500">Invite teammates and control access roles.</p>
           </div>
-          <MemberManager members={members} invitations={invitations} />
+          <MemberManager members={members} invitations={invitations} restaurantMode={context.vertical === "RESTAURANT"} />
         </section>
       ) : (
         <section className="rounded-2xl border bg-slate-50/70 p-5">

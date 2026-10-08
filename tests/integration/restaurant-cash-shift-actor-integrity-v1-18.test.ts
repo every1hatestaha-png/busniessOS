@@ -4,6 +4,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 let db: typeof import("@/lib/server/db")["db"];
 let openRestaurantCashShiftSafely: typeof import("@/lib/server/restaurant-cash-shifts")["openRestaurantCashShiftSafely"];
 let closeRestaurantCashShiftFromLedger: typeof import("@/lib/server/restaurant-cash-shifts")["closeRestaurantCashShiftFromLedger"];
+let openCashShift: typeof import("@/lib/server/industry-modules")["openCashShift"];
+let closeCashShift: typeof import("@/lib/server/industry-modules")["closeCashShift"];
 
 const runId = randomUUID();
 let workspaceId = "";
@@ -24,6 +26,7 @@ describe("restaurant V1.18 cash shift actor integrity", () => {
     config({ path: ".env.local", quiet: true });
     ({ db } = await import("@/lib/server/db"));
     ({ openRestaurantCashShiftSafely, closeRestaurantCashShiftFromLedger } = await import("@/lib/server/restaurant-cash-shifts"));
+    ({ openCashShift, closeCashShift } = await import("@/lib/server/industry-modules"));
 
     const [staffAUser, staffBUser, managerUser, foreignUser] = await Promise.all([
       db.user.create({ data: { clerkId: `shift18-a-${runId}`, email: `shift18-a-${runId}@example.invalid` } }),
@@ -78,7 +81,7 @@ describe("restaurant V1.18 cash shift actor integrity", () => {
 
   it("rejects a forged opener from another workspace", async () => {
     await expect(openRestaurantCashShiftSafely(forgedForeign(), 100))
-      .rejects.toThrow("Restaurant cash shift opener must be a member of the same workspace");
+      .rejects.toThrow("Restaurant cash shift opening requires current POS station membership in the same workspace");
 
     const rows = await db.$queryRaw<Array<{ count: number }>>`
       SELECT COUNT(*)::int AS "count" FROM "cash_shifts" WHERE "workspaceId"=${workspaceId}::uuid AND "status"='OPEN'
@@ -90,7 +93,7 @@ describe("restaurant V1.18 cash shift actor integrity", () => {
     const shift = await openRestaurantCashShiftSafely(staffA(), 250, "Staff A owns this drawer");
 
     await expect(closeRestaurantCashShiftFromLedger(forgedManager(), shift.id, 250, "Forged manager close"))
-      .rejects.toThrow("Only a manager can close another user's restaurant cash shift");
+      .rejects.toThrow("Staff can close only the restaurant cash shift they opened.");
 
     let rows = await db.$queryRaw<Array<{ status: string; closedById: string | null }>>`
       SELECT "status", "closedById"::text AS "closedById" FROM "cash_shifts" WHERE "id"=${shift.id}::uuid
@@ -103,6 +106,91 @@ describe("restaurant V1.18 cash shift actor integrity", () => {
       SELECT "status", "closedById"::text AS "closedById" FROM "cash_shifts" WHERE "id"=${shift.id}::uuid
     `;
     expect(rows[0]).toMatchObject({ status: "CLOSED", closedById: managerId });
+  });
+
+  it("blocks a KITCHEN-only actor from opening a POS cash shift", async () => {
+    const prior = await db.workspaceMember.findFirstOrThrow({
+      where: { workspaceId, userId: staffBId }, select: { restaurantStation: true },
+    });
+    const before = await db.$queryRaw<Array<{ count: number }>>`
+      SELECT COUNT(*)::int AS count FROM "cash_shifts" WHERE "workspaceId"=${workspaceId}::uuid
+    `;
+    try {
+      await db.workspaceMember.updateMany({
+        where: { workspaceId, userId: staffBId }, data: { restaurantStation: "KITCHEN" },
+      });
+      await expect(openRestaurantCashShiftSafely({
+        workspaceId, role: "STAFF", userId: staffBId,
+      }, 100)).rejects.toThrow(/requires current POS station membership/i);
+      const after = await db.$queryRaw<Array<{ count: number }>>`
+        SELECT COUNT(*)::int AS count FROM "cash_shifts" WHERE "workspaceId"=${workspaceId}::uuid
+      `;
+      expect(after).toEqual(before);
+    } finally {
+      await db.workspaceMember.updateMany({
+        where: { workspaceId, userId: staffBId }, data: { restaurantStation: prior.restaurantStation },
+      });
+    }
+  });
+
+  it("rejects a cashier's drawer close after POS-to-KITCHEN reassignment", async () => {
+    const shift = await openRestaurantCashShiftSafely(staffA(), 100, "Ownerless drawer");
+    await db.workspaceMember.updateMany({
+      where: { workspaceId, userId: staffAId }, data: { restaurantStation: "KITCHEN" },
+    });
+    try {
+      await expect(closeRestaurantCashShiftFromLedger(staffA(), shift.id, 100))
+        .rejects.toThrow(/requires current POS station membership/i);
+      const status = await db.$queryRaw<Array<{ status: string; closedById: string | null }>>`
+        SELECT status, "closedById"::text AS "closedById" FROM "cash_shifts"
+        WHERE "id"=${shift.id}::uuid
+      `;
+      expect(status[0]).toMatchObject({ status: "OPEN", closedById: null });
+    } finally {
+      await db.workspaceMember.updateMany({
+        where: { workspaceId, userId: staffAId }, data: { restaurantStation: "ALL" },
+      });
+    }
+    await closeRestaurantCashShiftFromLedger(staffA(), shift.id, 100);
+  });
+
+  it("denies a demoted manager's stale override while preserving a real manager's override", async () => {
+    const shift = await openRestaurantCashShiftSafely(staffA(), 75, "Staff drawer");
+    await db.workspaceMember.updateMany({
+      where: { workspaceId, userId: managerId }, data: { role: "STAFF" },
+    });
+    try {
+      await expect(closeRestaurantCashShiftFromLedger(manager(), shift.id, 75))
+        .rejects.toThrow("Staff can close only the restaurant cash shift they opened.");
+      const stillOpen = await db.$queryRaw<Array<{ status: string }>>`
+        SELECT status FROM "cash_shifts" WHERE "id"=${shift.id}::uuid
+      `;
+      expect(stillOpen[0]?.status).toBe("OPEN");
+    } finally {
+      await db.workspaceMember.updateMany({
+        where: { workspaceId, userId: managerId }, data: { role: "MANAGER" },
+      });
+    }
+    const closed = await closeRestaurantCashShiftFromLedger(manager(), shift.id, 75);
+    expect(closed.closedById).toBe(managerId);
+  });
+
+  it("routes historical exported cash-shift services through persisted POS and immutable audit checks", async () => {
+    const shift = await openCashShift(staffA(), 125, "Compatibility open");
+    await expect(closeCashShift(forgedManager(), shift.id, 125, "Forbidden override"))
+      .rejects.toThrow("Staff can close only the restaurant cash shift they opened.");
+    const stillOpen = await db.$queryRaw<Array<{ status: string }>>`
+      SELECT status FROM "cash_shifts" WHERE "id"=${shift.id}::uuid
+    `;
+    expect(stillOpen[0]?.status).toBe("OPEN");
+    const closed = await closeCashShift(staffA(), shift.id, 125, "Compatibility close");
+    expect(closed.closedById).toBe(staffAId);
+    const audit = await db.auditLog.findMany({
+      where: { workspaceId, entityType: "CashShift", entityId: shift.id },
+    });
+    expect(audit.map(row => row.action).sort()).toEqual([
+      "restaurant.cash_shift.closed", "restaurant.cash_shift.opened",
+    ]);
   });
 
   it("prevents direct ownership rewrites", async () => {

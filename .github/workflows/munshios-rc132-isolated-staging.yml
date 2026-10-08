@@ -1,0 +1,143 @@
+name: MunshiOS RC132 isolated staging gate
+
+on:
+  push:
+    branches:
+      - staging/munshios-rc132-isolated-20261008
+      - test/munshios-rc132-hosted-smoke
+      - fix/restaurant-staff-completion-ui-v2-06
+      - fix/restaurant-menu-manager-guard-v2-07
+      - fix/restaurant-pos-service-station-v2-08
+      - fix/restaurant-menu-persisted-role-v2-09
+      - fix/restaurant-legacy-kot-safe-service-v2-10
+      - fix/restaurant-cash-shift-persisted-actor-v2-11
+  pull_request:
+    branches:
+      - fix/munshios-release-certification
+      - staging/munshios-rc132-isolated-20261008
+      - test/munshios-rc132-hosted-smoke
+      - fix/restaurant-staff-completion-ui-v2-06
+      - fix/restaurant-menu-manager-guard-v2-07
+      - fix/restaurant-pos-service-station-v2-08
+      - fix/restaurant-menu-persisted-role-v2-09
+      - fix/restaurant-legacy-kot-safe-service-v2-10
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-staging-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_preflight_disposable
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_preflight_disposable"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_preflight_disposable?sslmode=disable
+      RUN_DISPOSABLE_PG18_PREFLIGHT: "1"
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_synthetic_rc132
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_live_fixture
+      CLERK_SECRET_KEY: sk_live_fixture
+      CLERK_OAUTH_CLIENT_ID: fixture-client
+      RUN_PRISMA_MIGRATIONS_ON_BUILD: "0"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Confirm isolated branch target, no automatic deployments
+        run: |
+          node <<'NODE'
+          const assert = require("node:assert/strict");
+          const fs = require("node:fs");
+          const v = require("./vercel.json");
+          const target = require("./config/staging-database-targets.json");
+          const branch = "staging/munshios-rc132-isolated-20261008";
+          const host = "ep-muddy-sea-b51k2gi3.c-7.us-east-2.aws.neon.tech";
+          const code = fs.readFileSync("scripts/assert-staging-database-target.cjs", "utf8");
+          assert.equal(v.git.deploymentEnabled[branch], false);
+          assert.equal(v.git.deploymentEnabled["test/munshios-rc132-hosted-smoke"], false);
+          assert.equal(target.vercelProjectId, "prj_ytXqF1zAoJjcsBIICz7PryfAczLz");
+          assert.ok(target.hosts.includes(host));
+          assert.ok(code.includes('target.branch !== "br-sweet-hat-b5x5nzzz"'));
+          assert.ok(code.includes('VERCEL_GIT_COMMIT_REF !== "' + branch + '"'));
+          assert.ok(fs.readFileSync("scripts/production-build.cjs", "utf8").includes('assert-staging-database-target.cjs'));
+          console.log("Isolated staging guard PASS; no production or staging-root mutation");
+          NODE
+      - name: Full 132 migrations on synthetic PG18
+        run: |
+          npx prisma migrate deploy
+          npx prisma migrate status
+          npx vitest run tests/unit/staging-database-guard.test.ts tests/unit/staging-release-target.test.ts tests/unit/restaurant-release-build-guard-v1-88.test.ts
+      - name: Protected hosted smoke negative and positive fixtures (no live token)
+        run: npx vitest run tests/unit/rc132-protected-preview-smoke.test.ts
+      - name: Cashier/kitchen finalization UI authorization regressions
+        run: npx vitest run tests/unit/restaurant-order-board-transition-policy.test.ts tests/unit/restaurant-staff-stations.test.ts
+      - name: Restaurant menu authorization against real disposable PostgreSQL
+        env:
+          RUN_INTEGRATION_TESTS: "true"
+        run: npx vitest run tests/integration/restaurant-workspace-v1.test.ts
+      - name: POS and WhatsApp persisted actor/station isolation regressions
+        env:
+          RUN_INTEGRATION_TESTS: "true"
+        run: npx vitest run tests/integration/restaurant-operational-actor-integrity-v1-16.test.ts
+      - name: Legacy Kitchen ticket service, occupancy and station regressions (real PG18)
+        env:
+          RUN_INTEGRATION_TESTS: "true"
+        run: >
+          npx vitest run
+          tests/integration/restaurant-legacy-kot-v1-6.test.ts
+          tests/integration/restaurant-table-occupancy-v1-6.test.ts
+      - name: Cash shift persisted actor/ledger compatibility regressions (disposable PG18)
+        env:
+          RUN_INTEGRATION_TESTS: "true"
+        run: >
+          npx vitest run
+          tests/integration/restaurant-cash-shift-actor-integrity-v1-18.test.ts
+          tests/integration/restaurant-cash-shift-auth-v1-8.test.ts
+          tests/integration/restaurant-cash-shift-v1-5.test.ts
+          tests/integration/restaurant-payment-timing-v1-7.test.ts
+      - name: Round3 schema registry portability and rollback-only drift gate (local PG18)
+        env:
+          RUN_INTEGRATION_TESTS: "true"
+        run: npx vitest run tests/integration/round3-schema-registry.test.ts
+      - name: Full app unit regressions
+        run: npm test
+      - name: Full Restaurant and warehouse integrity regressions (disposable PG18)
+        env:
+          RUN_INTEGRATION_TESTS: "true"
+        run: >
+          npx vitest run
+          tests/integration/restaurant-*.test.ts
+          tests/unit/restaurant-*.test.ts
+          tests/integration/warehouse-stock-tenant-tuple-integrity-v1-50.test.ts
+          tests/integration/managed-warehouse-stock.test.ts
+      - name: Finance correctness suite
+        run: npm run test:finance
+      - name: TS, schema and guard syntax
+        run: |
+          npx prisma validate
+          npx tsc --noEmit
+          node --check scripts/assert-staging-database-target.cjs
+          node --check scripts/production-build.cjs
+      - name: Build without any live credentials or migrations
+        env:
+          NODE_ENV: production
+          VERCEL_ENV: production
+        run: npm run build

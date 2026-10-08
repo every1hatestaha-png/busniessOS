@@ -1,10 +1,17 @@
-import { createSale, listSales, SaleDomainError } from "@/lib/server/sales";
+import { NextResponse } from "next/server";
+import { createSale, listSalesPage, SaleDomainError } from "@/lib/server/sales";
+import { SalesCursorError, salesPageOptions } from "@/lib/sales-pagination";
 import { ApiError, apiData, apiHandler, requireApiContext } from "@/lib/server/api";
 import { saleSchema } from "@/lib/validation/sale";
 
-export const GET = apiHandler(async () => {
+export const GET = apiHandler(async (request: Request) => {
   const { workspaceId } = await requireApiContext("business.read");
-  return apiData(await listSales(workspaceId));
+  try {
+    return NextResponse.json(await listSalesPage(workspaceId, salesPageOptions(new URL(request.url).searchParams)));
+  } catch (error) {
+    if (error instanceof SalesCursorError) throw new ApiError(422, "INVALID_CURSOR", error.message);
+    throw error;
+  }
 });
 
 export const POST = apiHandler(async (request: Request) => {

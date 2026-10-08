@@ -7,7 +7,10 @@ vi.mock("next/headers", () => ({ cookies: async () => ({
   set: (_key: string, value: string) => { session.activeId = value; },
 }) }));
 vi.mock("@/lib/server/auth", () => ({
-  getOptionalCurrentUser: async () => ({ id: session.userId, email: "synthetic@example.invalid", firstName: null, lastName: null }),
+  getOptionalCurrentUser: async () => {
+    const { db } = await import("@/lib/server/db");
+    return db.user.findUniqueOrThrow({ where: { id: session.userId } });
+  },
   requireWorkspace: async () => {
     const { db } = await import("@/lib/server/db");
     const member = await db.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId: session.activeId, userId: session.userId } }, include: { workspace: true } });
@@ -27,6 +30,7 @@ import { GET as getCustomer } from "@/app/api/v1/customers/[id]/route";
 import { GET as search } from "@/app/api/search/route";
 import { requireWorkspaceModule } from "@/lib/server/industry-modules";
 import { createRestaurantTableAction } from "@/app/(dashboard)/restaurant/actions";
+import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } from "@/lib/legal/policies";
 
 const runId = randomUUID();
 const workspaces: Record<string,string> = {};
@@ -46,8 +50,9 @@ async function switchTo(workspaceId: string) {
 
 describe("vertical boundaries with isolated PostgreSQL", () => {
   beforeAll(async () => {
-    memberUser = (await db.user.create({ data: { clerkId: `vertical-member-${runId}`, email: `vertical-member-${runId}@example.invalid` } })).id;
-    outsiderUser = (await db.user.create({ data: { clerkId: `vertical-outsider-${runId}`, email: `vertical-outsider-${runId}@example.invalid` } })).id;
+    const acceptedPolicies = { termsAcceptedAt: new Date(), termsVersion: CURRENT_TERMS_VERSION, privacyAcknowledgedAt: new Date(), privacyVersion: CURRENT_PRIVACY_VERSION };
+    memberUser = (await db.user.create({ data: { clerkId: `vertical-member-${runId}`, email: `vertical-member-${runId}@example.invalid`, ...acceptedPolicies } })).id;
+    outsiderUser = (await db.user.create({ data: { clerkId: `vertical-outsider-${runId}`, email: `vertical-outsider-${runId}@example.invalid`, ...acceptedPolicies } })).id;
     for (const [name,vertical] of Object.entries({ trading: "TRADING", manufacturing: "MANUFACTURING", legacy: "LEGACY", restaurant: "RESTAURANT", property: "PROPERTY", services: "SERVICES" } as const)) {
       const ws = await db.workspace.create({ data: { name: `vertical-${name}-${runId}`, businessType: name === "legacy" ? "OTHER" : "WHOLESALER", vertical, currency: name === "manufacturing" ? "USD" : "PKR", timezone: name === "manufacturing" ? "Etc/UTC" : "Asia/Karachi" } });
       workspaces[name] = ws.id;
@@ -82,6 +87,18 @@ describe("vertical boundaries with isolated PostgreSQL", () => {
       const body = JSON.stringify(await listing.json());
       expect(body).toContain(`unique-${name}-${runId}`);
       expect(body).not.toContain(`unique-${name === "trading" ? "legacy" : "trading"}-${runId}`);
+    }
+  });
+
+  it("requires persisted current policy acceptance before tenant access", async () => {
+    const accepted = await db.user.findUniqueOrThrow({ where: { id: memberUser } });
+    await db.user.update({ where: { id: memberUser }, data: { termsAcceptedAt: null } });
+    try {
+      expect((await switchTo(workspaces.legacy)).status).toBe(403);
+      expect(session.activeId).toBe(workspaces.trading);
+      await expect(requireApiContext("business.read")).rejects.toMatchObject({ status: 403, code: "POLICY_ACCEPTANCE_REQUIRED" });
+    } finally {
+      await db.user.update({ where: { id: memberUser }, data: { termsAcceptedAt: accepted.termsAcceptedAt } });
     }
   });
 

@@ -3,6 +3,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 
 import { writeAudit } from "@/lib/server/audit";
+import { assertRestaurantActorAccess } from "@/lib/server/restaurant-actor-access";
 import { canTransitionKitchenTicket, type KitchenTicketStatus } from "@/lib/domain/industry-lifecycles";
 import { IndustryDomainError, requireWorkspaceModule, type IndustryContext } from "@/lib/server/industry-modules";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
@@ -18,6 +19,9 @@ export async function updateLegacyKitchenTicketStatusSafely(
   if (!UUID.test(ticketId)) throw new IndustryDomainError("INVALID_STATE", "Kitchen ticket is invalid.");
 
   return withSerializableRetry(async (tx) => {
+    // Persisted station membership is the final authority for legacy KOT
+    // updates. A stale action context or a direct service caller is insufficient.
+    await assertRestaurantActorAccess(tx, context, "KITCHEN", "Legacy kitchen ticket update");
     const rows = await tx.$queryRaw<Array<{
       id: string;
       status: KitchenTicketStatus;
