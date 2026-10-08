@@ -12,10 +12,12 @@ export default async function RestaurantPrintPage({ params, searchParams }: {
 }) {
   const { id } = await params;
   const options = await searchParams;
-  const { workspaceId, workspace } = await requireWorkspace();
+  const { workspaceId, workspace, role, restaurantStation } = await requireWorkspace();
+  const kitchen = options.kind === "kot";
+  if (role === "STAFF" && restaurantStation === "KITCHEN" && !kitchen) notFound();
+  if (role === "STAFF" && restaurantStation === "POS" && kitchen) notFound();
   const document = await getRestaurantPrintDocument(workspaceId, id);
   if (!document) notFound();
-  const kitchen = options.kind === "kot";
   if (kitchen && !["CONFIRMED", "PREPARING", "READY", "COMPLETED", "CANCELLED"].includes(document.status)) notFound();
   return <>
     <div className="mb-4 flex gap-2 print:hidden"><PrintButton /><PrintButton label="Print 80mm" format="thermal" /></div>

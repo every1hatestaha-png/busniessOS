@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { CheckCircle2, CircleOff, PackageCheck, Plus, Tags, UtensilsCrossed } from "lucide-react";
 
 import { RestaurantMutationForm } from "@/app/(dashboard)/restaurant/mutation-form";
@@ -22,6 +23,10 @@ type Product = { id: string; name: string; sku: string };
 export function RestaurantMenuManager({ workspaceId, categories, items, products, canManage }: { workspaceId: string; categories: Category[]; items: Item[]; products: Product[]; canManage: boolean }) {
   const [categoryState, categoryAction, categoryPending, categorySubmit] = useRestaurantActionState(createMenuCategoryAction, initialRestaurantV1ActionState);
   const [itemState, itemAction, itemPending, itemSubmit] = useRestaurantActionState(createMenuItemAction, initialRestaurantV1ActionState);
+  const [categoryPreference, setCategoryPreference] = useState(categories.find((category) => category.isActive)?.id ?? "");
+  const selectedCategoryId = categories.some((category) => category.id === categoryPreference && category.isActive)
+    ? categoryPreference
+    : (categories.find((category) => category.isActive)?.id ?? "");
 
   const itemsByCategory = new Map<string, Item[]>();
   for (const item of items) {
@@ -58,7 +63,23 @@ export function RestaurantMenuManager({ workspaceId, categories, items, products
               </div>
               <form action={itemAction} onSubmit={itemSubmit} aria-busy={itemPending} className="mt-4 grid gap-2.5 sm:grid-cols-2">
                 <input type="hidden" name="formWorkspaceId" value={workspaceId} />
-                <select name="categoryId" required className="h-10 rounded-xl border bg-background px-3 text-sm"><option value="">Choose category</option>{categories.filter((category) => category.isActive).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select>
+                <div className="space-y-2 sm:col-span-2">
+                  <span className="text-xs font-semibold text-slate-700">Category for new items</span>
+                  <input type="hidden" name="categoryId" value={selectedCategoryId} />
+                  <div role="group" aria-label="Choose menu category" className="flex max-h-36 flex-wrap gap-2 overflow-y-auto">
+                    {categories.filter((category) => category.isActive).map((category) => (
+                      <button key={category.id} type="button" aria-pressed={selectedCategoryId === category.id}
+                        onClick={() => setCategoryPreference(category.id)}
+                        className={cn("rounded-lg border px-3 py-2 text-xs font-semibold transition",
+                          selectedCategoryId === category.id
+                            ? "border-emerald-600 bg-emerald-600 text-white"
+                            : "border-slate-200 bg-slate-50 text-slate-700 hover:border-emerald-300")}>
+                        {category.name}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-slate-500">The selected category stays active when you add another dish.</p>
+                </div>
                 <Input name="name" placeholder="Menu item name" maxLength={120} required className="rounded-xl" />
                 <Input name="price" type="number" min={0} step="0.01" placeholder="Selling price" required className="rounded-xl" />
                 <select name="productId" className="h-10 rounded-xl border bg-background px-3 text-sm"><option value="">No inventory link</option>{products.map((product) => <option key={product.id} value={product.id}>{product.name} · {product.sku}</option>)}</select>
@@ -66,7 +87,7 @@ export function RestaurantMenuManager({ workspaceId, categories, items, products
                 <Input name="sortOrder" type="number" min={0} max={10000} defaultValue={0} aria-label="Sort order" className="rounded-xl" />
                 <div className="flex items-center justify-between gap-3 sm:col-span-2">
                   <span>{itemState.message ? <span className={cn("text-xs", itemState.status === "error" ? "text-destructive" : "text-emerald-700")}>{itemState.message}</span> : null}</span>
-                  <Button type="submit" className="rounded-xl" disabled={itemPending || categories.length === 0}><Plus className="size-4" />{itemPending ? "Adding..." : "Add menu item"}</Button>
+                  <Button type="submit" className="rounded-xl" disabled={itemPending || !selectedCategoryId}><Plus className="size-4" />{itemPending ? "Adding..." : "Add menu item"}</Button>
                 </div>
               </form>
             </CardContent>

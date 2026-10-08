@@ -42,6 +42,10 @@ const localUser = {
   email: "owner@example.com",
   firstName: "Owner",
   lastName: "User",
+  termsAcceptedAt: new Date("2026-10-07T12:00:00.000Z"),
+  termsVersion: "2026-10-07",
+  privacyAcknowledgedAt: new Date("2026-10-07T12:00:00.000Z"),
+  privacyVersion: "2026-10-07",
 };
 
 function verifiedClerkUser(email = "owner@example.com") {
@@ -201,6 +205,25 @@ describe("API authentication contract", () => {
     expect(updateMock).not.toHaveBeenCalled();
     expect(createMock).not.toHaveBeenCalled();
     expect(authMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a verified identity that has not accepted the current policies", async () => {
+    getSupabaseAuthUserMock.mockResolvedValue(verifiedSupabaseUser());
+    const unaccepted = {
+      ...localUser,
+      supabaseId: "supabase-user",
+      termsAcceptedAt: null,
+      termsVersion: null,
+      privacyAcknowledgedAt: null,
+      privacyVersion: null,
+    };
+    findUniqueMock.mockResolvedValueOnce(unaccepted);
+    findFirstMock.mockResolvedValueOnce(unaccepted);
+
+    await expect(requireApiUser()).rejects.toMatchObject({
+      status: 403,
+      code: "POLICY_ACCEPTANCE_REQUIRED",
+    });
   });
 
   it("does not fall back to Clerk when a Supabase identity exists but its email is unverified", async () => {

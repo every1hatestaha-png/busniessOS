@@ -294,10 +294,14 @@ model User {
   clerkId    String   @unique
   supabaseId String?  @unique
   email      String   @unique
-  firstName  String?
-  lastName   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  firstName              String?
+  lastName               String?
+  termsAcceptedAt        DateTime?
+  termsVersion           String?
+  privacyAcknowledgedAt  DateTime?
+  privacyVersion         String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   memberships          WorkspaceMember[]
   auditLogs            AuditLog[]
@@ -311,7 +315,8 @@ model WorkspaceMember {
   id          String   @id @default(uuid())
   workspaceId String
   userId      String
-  role        Role     @default(STAFF)
+  role              Role     @default(STAFF)
+  restaurantStation String   @default("ALL") @db.VarChar(12)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

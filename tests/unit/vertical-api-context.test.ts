@@ -13,7 +13,7 @@ import { requireApiContext } from "@/lib/server/api";
 describe("API context selects a trusted tenant and persisted vertical", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.user.mockResolvedValue({ id: "user-A", email: "a@example.com", firstName: null, lastName: null });
+    mocks.user.mockResolvedValue({ id: "user-A", email: "a@example.com", firstName: null, lastName: null, termsAcceptedAt: new Date(), termsVersion: "2026-10-07", privacyAcknowledgedAt: new Date(), privacyVersion: "2026-10-07" });
     mocks.cookies.mockResolvedValue({ get: () => ({ value: "workspace-B" }) });
     mocks.access.mockResolvedValue({ allowed: true });
     mocks.findFirst.mockResolvedValue({ workspaceId: "workspace-B", role: "STAFF", workspace: { id: "workspace-B", businessType: "OTHER", vertical: "LEGACY" } });
