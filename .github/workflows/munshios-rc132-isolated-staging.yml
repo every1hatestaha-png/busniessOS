@@ -6,6 +6,7 @@ on:
       - staging/munshios-rc132-isolated-20261008
       - test/munshios-rc132-hosted-smoke
       - fix/restaurant-staff-completion-ui-v2-06
+      - fix/restaurant-menu-manager-guard-v2-07
   pull_request:
     branches:
       - fix/munshios-release-certification
@@ -79,6 +80,10 @@ jobs:
         run: npx vitest run tests/unit/rc132-protected-preview-smoke.test.ts
       - name: Cashier/kitchen finalization UI authorization regressions
         run: npx vitest run tests/unit/restaurant-order-board-transition-policy.test.ts tests/unit/restaurant-staff-stations.test.ts
+      - name: Restaurant menu authorization against real disposable PostgreSQL
+        env:
+          RUN_INTEGRATION_TESTS: "true"
+        run: npx vitest run tests/integration/restaurant-workspace-v1.test.ts
       - name: TS, schema and guard syntax
         run: |
           npx prisma validate
