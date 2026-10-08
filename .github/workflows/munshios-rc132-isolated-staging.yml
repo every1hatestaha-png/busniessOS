@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - staging/munshios-rc132-isolated-20261008
+      - test/munshios-rc132-hosted-smoke
   pull_request:
     branches:
       - fix/munshios-release-certification
+      - staging/munshios-rc132-isolated-20261008
 
 permissions:
   contents: read
@@ -70,6 +72,8 @@ jobs:
           npx prisma migrate deploy
           npx prisma migrate status
           npx vitest run tests/unit/staging-database-guard.test.ts tests/unit/staging-release-target.test.ts tests/unit/restaurant-release-build-guard-v1-88.test.ts
+      - name: Protected hosted smoke negative and positive fixtures (no live token)
+        run: npx vitest run tests/unit/rc132-protected-preview-smoke.test.ts
       - name: TS, schema and guard syntax
         run: |
           npx prisma validate
