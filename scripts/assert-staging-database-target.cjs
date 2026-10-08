@@ -9,6 +9,7 @@ const { Client } = require("pg");
 const stagingBranches = {
   "ep-fragrant-heart-b578tydw": "br-delicate-credit-b5lttgnc",
   "ep-fragrant-sun-b5xzle76": "br-dry-mouse-b5kctz0n",
+  "ep-muddy-sea-b51k2gi3": "br-sweet-hat-b5x5nzzz",
 };
 
 function assertStagingTarget(env) {
@@ -94,6 +95,15 @@ async function inspectRecoverySchemaState(client) {
 
 async function main() {
   const target = assertStagingTarget(process.env);
+  // A Preview env-scoping error must never migrate the original staging root.
+  // Fail before connecting unless BOTH the exact Git ref and disposable Neon
+  // child fingerprint match this one-off release acceptance run.
+  if (
+    process.env.VERCEL_GIT_COMMIT_REF !== "staging/munshios-rc132-isolated-20261008" ||
+    target.branch !== "br-sweet-hat-b5x5nzzz"
+  ) {
+    throw new Error("Isolated RC132 migration requires the approved child branch and Git ref.");
+  }
   const client = new Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
   try {
@@ -132,7 +142,7 @@ if (require.main === module) main().catch((error) => {
   // Only surface our own fixed-format guard failures, which contain no connection values.
   const message = error instanceof Error ? error.message : "";
   const safe =
-    /^(Staging migration checksum mismatch: [A-Za-z0-9_]+|Staging migration history requires investigation before deployment\.|Unknown migration in staging history\.|Policy schema and migration ledger disagree; investigate before migration\.|Station schema and migration ledger disagree; investigate before migration\.|Recovery schema and migration ledger disagree; investigate before migration\.|Refusing staging migration outside the approved preview project\.|Refusing migration: database does not match a verified staging endpoint\.|Invalid staging database configuration\.)$/.test(message)
+    /^(Staging migration checksum mismatch: [A-Za-z0-9_]+|Staging migration history requires investigation before deployment\.|Unknown migration in staging history\.|Policy schema and migration ledger disagree; investigate before migration\.|Station schema and migration ledger disagree; investigate before migration\.|Recovery schema and migration ledger disagree; investigate before migration\.|Refusing staging migration outside the approved preview project\.|Refusing migration: database does not match a verified staging endpoint\.|Invalid staging database configuration\.|Isolated RC132 migration requires the approved child branch and Git ref\.)$/.test(message)
       ? message
       : "Staging database guard failed; no migration was authorized by this guard.";
   console.error(safe);
