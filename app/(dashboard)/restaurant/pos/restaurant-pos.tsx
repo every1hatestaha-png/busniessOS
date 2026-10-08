@@ -10,7 +10,7 @@ import { createPosOrderAction } from "@/app/(dashboard)/restaurant/v1-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { isPosSearchShortcut, parsePosFastEntry } from "@/lib/restaurant/pos-fast-entry";
+import { isPosSearchShortcut, parsePosFastEntry, resolvePosFastEntryItem } from "@/lib/restaurant/pos-fast-entry";
 
 type Category = { id: string; name: string; sortOrder: number; isActive: boolean };
 type MenuItem = { id: string; categoryId: string; categoryName: string; name: string; description: string | null; price: number; isAvailable: boolean };
@@ -55,6 +55,9 @@ export function RestaurantPos({
     return categoryMatch && queryMatch;
   });
 
+  const quickCandidate = resolvePosFastEntryItem(visibleItems, fastEntry.term);
+  const ambiguousSearch = Boolean(fastEntry.term) && !quickCandidate && visibleItems.filter((item) => item.isAvailable).length > 1;
+
   const subtotal = useMemo(() => cart.reduce((sum, line) => sum + line.price * line.quantity, 0), [cart]);
   const itemCount = useMemo(() => cart.reduce((sum, line) => sum + line.quantity, 0), [cart]);
 
@@ -87,9 +90,8 @@ export function RestaurantPos({
 
   function addFirstMatchingItem() {
     if (!fastEntry.term || pending) return;
-    const match = visibleItems.find((item) => item.isAvailable);
-    if (!match) return;
-    add(match, fastEntry.quantity);
+    if (!quickCandidate) return;
+    add(quickCandidate, fastEntry.quantity);
     setQuery("");
   }
 
@@ -116,6 +118,11 @@ export function RestaurantPos({
         </div>
 
         <p className="text-xs text-slate-500">Press / to search, type a dish name or 2x dish, then Enter to add it. Escape clears search.</p>
+        {ambiguousSearch ? (
+          <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+            Multiple dishes match. Type a complete menu item name or tap the specific dish below. Enter will not guess.
+          </p>
+        ) : null}
         <div className="flex flex-wrap gap-2 pb-1" aria-label="Menu categories">
           <button
             type="button"
