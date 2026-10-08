@@ -6,10 +6,12 @@ on:
       - feat/restaurant-station-workflows-v2-00
       - feat/restaurant-staff-stations-v2-01
       - fix/restaurant-audit-findings-v2-02
+      - fix/auth-login-clarity-v2-03
   pull_request:
     branches:
       - fix/legal-explicit-consent-v1-99
       - feat/restaurant-staff-stations-v2-01
+      - fix/restaurant-audit-findings-v2-02
 
 permissions:
   contents: read
