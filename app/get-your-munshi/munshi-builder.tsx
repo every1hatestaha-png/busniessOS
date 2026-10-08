@@ -15,13 +15,14 @@ import {
   Wrench,
 } from "lucide-react";
 
-import { buildProvisioningQuery } from "@/lib/saas/provisioning-selection";
+import { buildProvisioningQuery, resolveProvisioningModules } from "@/lib/saas/provisioning-selection";
 
 type BusinessType = "retail" | "restaurant" | "wholesale" | "manufacturing" | "services";
 
 type ModuleKey =
   | "inventory"
   | "restaurant"
+  | "services"
   | "wholesale"
   | "manufacturing"
   | "accounting"
@@ -38,6 +39,8 @@ const modules: Array<{
   description: string;
 }> = [
   { key: "inventory", name: "Inventory & Warehouse", description: "Stock, purchasing, receiving, returns and warehouse visibility." },
+  { key: "restaurant", name: "Restaurant POS & Kitchen", description: "Orders, tables, kitchen tickets, ingredient stock and cash closing." },
+  { key: "services", name: "Services", description: "Clients, service work, billing, payments, expenses and reporting." },
   { key: "wholesale", name: "Wholesale & Distribution", description: "GRN, credit sales, supplier flows, allocations and distribution workflows." },
   { key: "manufacturing", name: "Manufacturing", description: "Raw materials, BOMs, production, wastage and finished goods." },
   { key: "accounting", name: "Advanced Accounting", description: "GST, WHT, receivables, payables, journals and advanced financial reporting." },
@@ -57,7 +60,7 @@ const businessTypes: Array<{
   { key: "restaurant", name: "Restaurant / Cafe", subtitle: "POS, table orders, kitchen and ingredient stock", icon: UtensilsCrossed, recommended: ["inventory", "restaurant"] },
   { key: "wholesale", name: "Wholesale / Distribution", subtitle: "Trading, auto parts, distributors and wholesalers", icon: PackageCheck, recommended: ["inventory", "wholesale", "accounting"] },
   { key: "manufacturing", name: "Manufacturing / Factory", subtitle: "Factories, production units and engineering businesses", icon: Factory, recommended: ["inventory", "wholesale", "manufacturing", "accounting"] },
-  { key: "services", name: "Services", subtitle: "Workshops, agencies and professional service teams", icon: Wrench, recommended: ["accounting"] },
+  { key: "services", name: "Services", subtitle: "Workshops, agencies and professional service teams", icon: Wrench, recommended: ["services", "accounting"] },
 ];
 
 const coreFeatures = ["Sales & purchases", "Customers & suppliers", "Khata & payments", "Expenses", "Professional documents", "Basic business reports", "Roles & permissions"];
@@ -68,6 +71,8 @@ export function MunshiBuilder() {
   const [selectedModules, setSelectedModules] = useState<ModuleKey[]>([]);
   const billing = "monthly" as const;
   const monthlyTotal = MONTHLY_PRICE;
+  const effectiveModules = resolveProvisioningModules(selectedModules, businessType);
+  const visibleModules = modules.filter((module) => module.key === "restaurant" ? businessType === "restaurant" : module.key === "services" ? businessType === "services" : true);
 
   function chooseBusiness(type: BusinessType, recommended: ModuleKey[]) {
     setBusinessType(type);
@@ -76,9 +81,13 @@ export function MunshiBuilder() {
   }
 
   function isRequiredModule(key: ModuleKey) {
-    return (key === "inventory" && (businessType === "restaurant" || businessType === "wholesale" || businessType === "manufacturing"))
-      || (key === "wholesale" && (businessType === "wholesale" || businessType === "manufacturing"))
-      || (key === "manufacturing" && businessType === "manufacturing");
+    if (businessType === "restaurant" && (key === "restaurant" || key === "inventory")) return true;
+    if (businessType === "services" && key === "services") return true;
+    if (businessType === "wholesale" && (key === "wholesale" || key === "inventory")) return true;
+    if (businessType === "manufacturing" && (key === "manufacturing" || key === "wholesale" || key === "inventory")) return true;
+    if (key === "inventory" && effectiveModules.some((module) => module === "wholesale" || module === "manufacturing" || module === "restaurant")) return true;
+    if (key === "wholesale" && effectiveModules.includes("manufacturing")) return true;
+    return false;
   }
 
   function toggleModule(key: ModuleKey) {
@@ -88,7 +97,7 @@ export function MunshiBuilder() {
 
   const selectedBusiness = businessTypes.find((type) => type.key === businessType);
   const checkoutHref = businessType
-    ? `/sign-up?${buildProvisioningQuery({ businessType, modules: selectedModules, billing })}`
+    ? `/sign-up?${buildProvisioningQuery({ businessType, modules: effectiveModules, billing })}`
     : "/sign-up";
 
   return (
@@ -140,7 +149,7 @@ export function MunshiBuilder() {
             </button>
             <p className="text-sm font-semibold text-emerald-700">Step 2 of 3</p>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Customize your {selectedBusiness.name} Munshi</h1>
-            <p className="mt-3 max-w-2xl text-slate-600">We selected relevant modules for your industry. Required dependencies stay on, and you can customize optional modules.</p>
+            <p className="mt-3 max-w-2xl text-slate-600">We selected relevant modules for your industry. Required modules and dependencies stay on, and you can change optional modules.</p>
 
             <div className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
               <div className="flex items-center gap-3">
@@ -156,8 +165,8 @@ export function MunshiBuilder() {
             </div>
 
             <div className="mt-5 space-y-3">
-              {modules.map((module) => {
-                const active = selectedModules.includes(module.key);
+              {visibleModules.map((module) => {
+                const active = effectiveModules.includes(module.key);
                 const required = isRequiredModule(module.key);
                 return (
                   <button
@@ -193,7 +202,7 @@ export function MunshiBuilder() {
               <h2 className="mt-2 text-xl font-semibold">{selectedBusiness.name}</h2>
               <div className="mt-6 space-y-3 border-y border-white/10 py-5 text-sm">
                 <div className="flex justify-between gap-4"><span className="text-slate-400">Munshi Core</span><span>Rs {MONTHLY_PRICE.toLocaleString()}/mo</span></div>
-                {modules.filter((module) => selectedModules.includes(module.key)).map((module) => (
+                {visibleModules.filter((module) => effectiveModules.includes(module.key)).map((module) => (
                   <div key={module.key} className="flex justify-between gap-4"><span className="text-slate-400">{module.name}</span><span>Included</span></div>
                 ))}
               </div>
@@ -252,7 +261,7 @@ export function MunshiBuilder() {
               </div>
               <div className="mt-6 space-y-3 border-y border-white/10 py-5 text-sm">
                 <div className="flex justify-between"><span className="text-slate-400">Munshi Core</span><Check className="h-4 w-4 text-emerald-400" /></div>
-                {modules.filter((module) => selectedModules.includes(module.key)).map((module) => (
+                {visibleModules.filter((module) => effectiveModules.includes(module.key)).map((module) => (
                   <div key={module.key} className="flex justify-between gap-3"><span className="text-slate-400">{module.name}</span><Check className="h-4 w-4 shrink-0 text-emerald-400" /></div>
                 ))}
               </div>
