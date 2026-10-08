@@ -217,14 +217,14 @@ export function RestaurantPos({
                   <p className="truncate text-sm font-semibold">{line.name}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">Rs {(line.price * line.quantity).toLocaleString()}</p>
                 </div>
-                <Button type="button" variant="ghost" size="icon" className="size-7 text-destructive" disabled={pending} onClick={() => setCart((current) => current.filter((item) => item.menuItemId !== line.menuItemId))}>
+                <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${line.name} from order`} className="size-7 text-destructive" disabled={pending} onClick={() => setCart((current) => current.filter((item) => item.menuItemId !== line.menuItemId))}>
                   <Trash2 className="size-3.5" />
                 </Button>
               </div>
               <div className="mt-2 flex items-center gap-2">
-                <Button type="button" variant="outline" size="icon" className="size-7 rounded-lg" disabled={pending} onClick={() => change(line.menuItemId, -1)}><Minus className="size-3" /></Button>
+                <Button type="button" variant="outline" size="icon" aria-label={`Decrease quantity of ${line.name}`} className="size-7 rounded-lg" disabled={pending} onClick={() => change(line.menuItemId, -1)}><Minus className="size-3" /></Button>
                 <span className="w-6 text-center text-sm font-semibold">{line.quantity}</span>
-                <Button type="button" variant="outline" size="icon" className="size-7 rounded-lg" disabled={pending} onClick={() => change(line.menuItemId, 1)}><Plus className="size-3" /></Button>
+                <Button type="button" variant="outline" size="icon" aria-label={`Increase quantity of ${line.name}`} className="size-7 rounded-lg" disabled={pending} onClick={() => change(line.menuItemId, 1)}><Plus className="size-3" /></Button>
               </div>
             </div>
           )) : (
