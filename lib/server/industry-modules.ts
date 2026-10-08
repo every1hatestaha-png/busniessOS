@@ -7,7 +7,6 @@ import { canUseVerticalCapability, resolveWorkspaceVertical } from "@/lib/vertic
 import { writeAudit } from "@/lib/server/audit";
 import { applyManagedWarehouseStockDelta, getWarehouseStockModeInTransaction, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
 import {
-  canTransitionKitchenTicket,
   canTransitionProductionRun,
   canTransitionServiceJob,
   canTransitionServiceQuote,
@@ -214,32 +213,32 @@ export async function createKitchenTicket(context: IndustryContext, input: { tic
   return db.$transaction(async (tx) => {
     await assertRestaurantActorAccess(tx, context, "KITCHEN", "Legacy kitchen ticket creation");
 
-  if (input.salesOrderId) {
-    const order = await tx.salesOrder.findFirst({ where: { id: input.salesOrderId, workspaceId: context.workspaceId }, select: { id: true } });
-    if (!order) throw new IndustryDomainError("NOT_FOUND", "Sales order was not found in this workspace.");
-  }
+    if (input.salesOrderId) {
+      const order = await tx.salesOrder.findFirst({ where: { id: input.salesOrderId, workspaceId: context.workspaceId }, select: { id: true } });
+      if (!order) throw new IndustryDomainError("NOT_FOUND", "Sales order was not found in this workspace.");
+    }
 
-  if (input.restaurantTableId) {
-    const tables = await tx.$queryRaw<Array<{ id: string; status: string }>>`
-      SELECT "id", "status" FROM "restaurant_tables"
-      WHERE "id"=${input.restaurantTableId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
-    `;
-    const table = tables[0];
-    if (!table) throw new IndustryDomainError("NOT_FOUND", "Restaurant table was not found in this workspace.");
-    if (table.status === "INACTIVE") throw new IndustryDomainError("INVALID_STATE", "Inactive restaurant tables cannot receive kitchen tickets.");
-  }
+    if (input.restaurantTableId) {
+      const tables = await tx.$queryRaw<Array<{ id: string; status: string }>>`
+        SELECT "id", "status" FROM "restaurant_tables"
+        WHERE "id"=${input.restaurantTableId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
+      `;
+      const table = tables[0];
+      if (!table) throw new IndustryDomainError("NOT_FOUND", "Restaurant table was not found in this workspace.");
+      if (table.status === "INACTIVE") throw new IndustryDomainError("INVALID_STATE", "Inactive restaurant tables cannot receive kitchen tickets.");
+    }
 
-  const rows = await tx.$queryRaw<Array<{ id: string; ticketNumber: string; status: string }>>`
-    INSERT INTO "kitchen_tickets" ("workspaceId", "salesOrderId", "restaurantTableId", "ticketNumber", "notes")
-    VALUES (${context.workspaceId}::uuid, ${input.salesOrderId ?? null}::uuid, ${input.restaurantTableId ?? null}::uuid, ${ticketNumber}, ${input.notes?.trim() || null})
-    RETURNING "id", "ticketNumber", "status"
-  `;
-  if (input.restaurantTableId) {
-    await tx.$executeRaw`
-      UPDATE "restaurant_tables" SET "status"='OCCUPIED', "updatedAt"=now()
-      WHERE "id"=${input.restaurantTableId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
+    const rows = await tx.$queryRaw<Array<{ id: string; ticketNumber: string; status: string }>>`
+      INSERT INTO "kitchen_tickets" ("workspaceId", "salesOrderId", "restaurantTableId", "ticketNumber", "notes")
+      VALUES (${context.workspaceId}::uuid, ${input.salesOrderId ?? null}::uuid, ${input.restaurantTableId ?? null}::uuid, ${ticketNumber}, ${input.notes?.trim() || null})
+      RETURNING "id", "ticketNumber", "status"
     `;
-  }
+    if (input.restaurantTableId) {
+      await tx.$executeRaw`
+        UPDATE "restaurant_tables" SET "status"='OCCUPIED', "updatedAt"=now()
+        WHERE "id"=${input.restaurantTableId}::uuid AND "workspaceId"=${context.workspaceId}::uuid
+      `;
+    }
     return rows[0]!;
   });
 }
