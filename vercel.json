@@ -2,6 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
     "deploymentEnabled": {
+      "impl/munshios-round3-hardening": false,
       "architecture/restaurant-return-conservation-regression-v1-55": false,
       "architecture/restaurant-stock-concurrency-v1-56": false,
       "architecture/restaurant-return-reversal-order-conservation-v1-57": false,
