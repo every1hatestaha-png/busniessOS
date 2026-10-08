@@ -19,7 +19,7 @@ function safeDisposableDatabaseUrl(): URL {
   catch { throw new Error("Schema registry tests require a valid disposable local DATABASE_URL."); }
   if (
     !["127.0.0.1", "localhost", "[::1]"].includes(target.hostname) ||
-    !/^\\/munshios_[a-z0-9_]+$/.test(target.pathname) ||
+    !/^\/munshios_[a-z0-9_]+$/.test(target.pathname) ||
     !["postgresql:", "postgres:"].includes(target.protocol)
   ) {
     throw new Error("Schema registry tests may only inspect disposable local MunshiOS databases.");
@@ -31,7 +31,7 @@ it("rejects managed targets and checks CLI is restricted to Round3 disposable da
   await expect(registry.checkRegistry("postgresql://fixture@production.invalid/munshios_round3"))
     .rejects.toThrow("disposable loopback");
   const local = safeDisposableDatabaseUrl();
-  if (/^\\/munshios_round3(?:_[a-z0-9_]+)?$/.test(local.pathname)) {
+  if (/^\/munshios_round3(?:_[a-z0-9_]+)?$/.test(local.pathname)) {
     await registry.checkRegistry(local.href);
   } else {
     // Other GitHub jobs use their own isolated loopback database names. A
