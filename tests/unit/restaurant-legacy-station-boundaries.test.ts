@@ -17,6 +17,7 @@ vi.mock("@/lib/server/restaurant-legacy-kot", () => ({
   updateLegacyKitchenTicketStatusSafely: mocks.ticketUpdate,
 }));
 vi.mock("@/lib/server/industry-modules", () => ({
+  IndustryDomainError: class IndustryDomainError extends Error { constructor(_code: string, message: string) { super(message); } },
   createKitchenTicket: mocks.ticketCreate,
   createRecipe: mocks.recipe,
   createRestaurantTable: mocks.table,
