@@ -9,7 +9,9 @@ vi.mock("server-only", () => ({}));
 vi.mock("@/lib/server/db", () => ({ db: { $queryRaw: mocks.query } }));
 vi.mock("@/lib/server/industry-modules", () => ({
   requireWorkspaceModule: mocks.module,
-  IndustryDomainError: class IndustryDomainError extends Error {},
+  IndustryDomainError: class IndustryDomainError extends Error {
+    constructor(_code: string, message: string) { super(message); }
+  },
 }));
 vi.mock("@/lib/server/restaurant-table-settlement", () => ({
   releaseRestaurantTableIfSettled: vi.fn(),
