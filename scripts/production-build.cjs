@@ -42,6 +42,10 @@ function assertProductionAuthConfiguration() {
 
 assertProductionAuthConfiguration();
 
+// A protected, nonproduction release-candidate Preview must not fall back to
+// a generic Preview DATABASE_URL when migrations are disabled.
+require("./assert-preview-acceptance-target.cjs").assertPreviewAcceptanceTarget(process.env);
+
 // Database migrations should be an explicit release operation, not a side effect
 // of every Vercel build. Running `prisma migrate deploy` during concurrent builds
 // can contend on Postgres' advisory lock and fail an otherwise healthy frontend

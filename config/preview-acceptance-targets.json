@@ -1,0 +1,15 @@
+{
+  "vercelProjectId": "prj_ytXqF1zAoJjcsBIICz7PryfAczLz",
+  "stagingProjectId": "wandering-moon-51932710",
+  "database": "neondb",
+  "candidateBranches": [
+    "integrate/security-stack-on-marketing-20261009",
+    "fix/preview-acceptance-fail-closed-20261009"
+  ],
+  "approvedHostnames": [],
+  "forbiddenHostPrefixes": [
+    "ep-fragrant-heart-b578tydw",
+    "ep-muddy-sea-b51k2gi3",
+    "ep-fragrant-sun-b5xzle76"
+  ]
+}

@@ -1,0 +1,40 @@
+name: Candidate Preview acceptance guard (offline)
+
+on:
+  pull_request:
+    branches:
+      - integrate/security-stack-on-marketing-20261009
+
+permissions:
+  contents: read
+
+jobs:
+  protected-preview-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Node syntax and offline fail-closed acceptance tests
+        run: |
+          node --check scripts/assert-preview-acceptance-target.cjs
+          node --check scripts/production-build.cjs
+          npx vitest run tests/unit/preview-acceptance-target.test.ts tests/unit/preview-acceptance-build-integration.test.ts
+      - name: Assert acceptance host list is empty and no automatic Vercel deployment
+        run: |
+          node - <<'NODE'
+          const assert=require("node:assert/strict");
+          const cfg=require("./config/preview-acceptance-targets.json");
+          const vercel=require("./vercel.json");
+          assert.deepEqual(cfg.approvedHostnames,[]);
+          assert.equal(vercel.git.deploymentEnabled["fix/preview-acceptance-fail-closed-20261009"],false);
+          assert.equal(vercel.git.deploymentEnabled["integrate/security-stack-on-marketing-20261009"],false);
+          console.log("Pre-deployment deny-by-default: PASS");
+          NODE
