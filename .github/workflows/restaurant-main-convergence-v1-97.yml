@@ -6,6 +6,7 @@ on:
       - main
       - fix/dependency-lock-remediation-20261009
       - integrate/dependency-marketing-onboarding-20261009
+      - integrate/security-stack-on-marketing-20261009
 
 permissions:
   contents: read
@@ -65,6 +66,7 @@ jobs:
             "architecture/restaurant-main-converged-v1-97",
             "integrate/dependency-marketing-onboarding-20261009",
             "integrate/security-stack-on-marketing-20261009",
+            "fix/preview-acceptance-fail-closed-20261009",
           ]) {
             if (enabled[branch] !== false) {
               throw new Error(`Missing deployment-disable guard for ${branch}`);
