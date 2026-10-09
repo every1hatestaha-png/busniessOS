@@ -24,6 +24,7 @@ All five heads are ancestors of this branch. Main and source branches were not m
 - Retained the stronger Restaurant browser harness, including quantity controls and single-submission assertions, with the current submit control rather than an obsolete label.
 - Regenerated the lockfile normally with unchanged #314 dependency overrides. Removed the obsolete `http-cache-semantics` advisory exception after upgrading to 4.3.0. The audit still rejects production or unapproved development vulnerabilities, including nested paths.
 - Enabled the four existing exact-head CI workflows for PRs targeting #314. Added a fail-closed disposable-only runner for the existing opt-in read-performance test in the query-plan job.
+- Full CI exposed three stale vertical-isolation mutation fixtures without same-origin evidence. Corrected the successful browser fixtures, retained every tenant assertion, asserted distinct policy/membership denial codes, and added database-backed missing/cross-site proof rejection with zero customer writes. The application CSRF guard was not relaxed.
 
 ## Executed local verification
 
@@ -33,6 +34,7 @@ All five heads are ancestors of this branch. Main and source branches were not m
 | Consent/onboarding convergence | 99 passed, including 13 new policy cases |
 | Disposable performance runner negative guards | 4 passed |
 | Focused database authorization/tenant/schema/recovery/pagination | 27 passed |
+| Vertical-isolation and CSRF fixtures after full-CI diagnosis | 162 passed; application guard unchanged |
 | Finance | 49 passed |
 | TypeScript, scoped and application lint, Prisma validate | Passed; application lint has 16 existing warnings, no errors |
 | Production dependency audit | Zero vulnerabilities |
