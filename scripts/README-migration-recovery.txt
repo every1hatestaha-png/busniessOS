@@ -2,4 +2,13 @@ This temporary marker documents the two legacy migrations whose schema was alrea
 - 20260912070000_weighted_sales_defaults
 - 20260912194500_saas_control_plane
 
-Production build recovery is handled idempotently in scripts/production-build.cjs using `prisma migrate resolve --applied` and tolerates Prisma P3008 once a migration is already recorded.
+This is historical context, not a migration-recovery command or release instruction.
+scripts/production-build.cjs does not run `prisma migrate resolve --applied`.
+Builds skip migrations by default. Apply reviewed schema releases explicitly with
+`prisma migrate deploy` only after verifying the approved database identity,
+backup/restore evidence, migration checksums, and release authorization.
+
+If schema objects exist but migration history does not, stop and investigate the
+exact schema/history mismatch. Never mark a migration applied merely to bypass
+a failed build. See the current release certification/runbook for the release
+candidate's outstanding migration and staging acceptance requirements.

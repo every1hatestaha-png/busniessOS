@@ -12,6 +12,7 @@ import {
   isAcceptableNewPassword,
 } from "@/lib/auth-password-policy";
 import { MAX_EMAIL_OTP_LENGTH, isValidEmailOtp, normalizeEmailOtp } from "@/lib/auth-email-otp";
+import { signupPolicyConsent } from "@/lib/legal/consent-request";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { postAuthDestination } from "@/lib/auth-routing";
 import { onboardingRouteFromBuilderParams } from "@/lib/saas/provisioning-selection";
@@ -30,6 +31,7 @@ export default function SignUpPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [acceptedPolicies, setAcceptedPolicies] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
@@ -48,6 +50,32 @@ export default function SignUpPage() {
     return () => window.clearInterval(timer);
   }, [resendCooldown]);
 
+  async function persistPolicyAcceptance() {
+    const consent = signupPolicyConsent(acceptedPolicies);
+    if (!consent) return false;
+    try {
+      const response = await fetch("/api/legal/acceptance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(consent),
+        redirect: "manual",
+      });
+      if (!response.ok || response.type === "opaqueredirect") return false;
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) return false;
+      const body = await response.json() as { ok?: unknown };
+      return body.ok === true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function finishVerifiedSignup() {
+    const recorded = await persistPolicyAcceptance();
+    const policyPath = nextOnboarding ? `/legal/acceptance?next=${encodeURIComponent(nextOnboarding)}` : "/legal/acceptance";
+    window.location.assign(recorded ? postAuthDestination(nextOnboarding, window.location.href) : policyPath);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
@@ -57,6 +85,11 @@ export default function SignUpPage() {
     const identifier = email.trim().toLowerCase();
     if (!identifier || !isAcceptableNewPassword(password)) {
       setError(`Use a valid email and a password between ${MIN_NEW_PASSWORD_LENGTH} and ${MAX_NEW_PASSWORD_LENGTH} characters.`);
+      setBusy(false);
+      return;
+    }
+    if (!acceptedPolicies) {
+      setError("Please agree to the Terms of Service and acknowledge the Privacy Policy before creating an account.");
       setBusy(false);
       return;
     }
@@ -94,7 +127,7 @@ export default function SignUpPage() {
     }
 
     if (data.session) {
-      window.location.assign(nextOnboarding ? postAuthDestination(nextOnboarding, window.location.href) : "/auth/post-login");
+      await finishVerifiedSignup();
       return;
     }
 
@@ -140,7 +173,7 @@ export default function SignUpPage() {
       return;
     }
 
-    window.location.assign(nextOnboarding ? postAuthDestination(nextOnboarding, window.location.href) : "/auth/post-login");
+    await finishVerifiedSignup();
   }
 
   async function resendVerification() {
@@ -170,7 +203,7 @@ export default function SignUpPage() {
     <main className="min-h-dvh bg-[#071821] text-white">
       <div className="grid min-h-dvh lg:grid-cols-[56%_44%]">
         <section className="relative hidden min-h-dvh overflow-hidden lg:block" aria-hidden="true">
-          <Image src={LOGIN_VISUAL} alt="" fill sizes="56vw" priority className="object-cover object-center" />
+          <Image src={LOGIN_VISUAL} alt="" fill sizes="(min-width: 1024px) 56vw, 1px" quality={70} loading="lazy" className="object-cover object-center" />
           <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(4,19,25,0.12)_0%,rgba(4,19,25,0.05)_55%,rgba(7,24,33,0.82)_100%)]" />
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#041319]/90 via-[#041319]/45 to-transparent px-10 pb-10 pt-28 xl:px-14 xl:pb-12">
             <div className="max-w-lg">
@@ -294,10 +327,23 @@ export default function SignUpPage() {
                     <p className="mt-2 text-xs leading-5 text-slate-500">Use at least {MIN_NEW_PASSWORD_LENGTH} characters and avoid reusing a password from another service.</p>
                   </div>
 
+                  <label className="flex items-start gap-3 rounded-xl border border-white/[0.08] bg-white/[0.025] px-4 py-3 text-xs leading-5 text-slate-400">
+                    <input
+                      type="checkbox"
+                      required
+                      checked={acceptedPolicies}
+                      onChange={(event) => setAcceptedPolicies(event.target.checked)}
+                      className="mt-0.5 size-4 shrink-0 accent-emerald-500"
+                    />
+                    <span>
+                      I agree to the <Link href="/terms" target="_blank" className="font-medium text-emerald-300 hover:text-emerald-200">Terms of Service</Link> and acknowledge the <Link href="/privacy" target="_blank" className="font-medium text-emerald-300 hover:text-emerald-200">Privacy Policy</Link>.
+                    </span>
+                  </label>
+
                   {error ? <p role="alert" className="rounded-xl border border-red-400/20 bg-red-500/[0.07] px-4 py-3 text-sm leading-5 text-red-200">{error}</p> : null}
 
                   <p className="text-center text-xs leading-5 text-slate-400">Before creating an account, please review our <Link href="/terms" className="text-emerald-300 underline-offset-2 hover:underline focus-visible:underline">Terms of Service</Link> and <Link href="/privacy" className="text-emerald-300 underline-offset-2 hover:underline focus-visible:underline">Privacy Policy</Link>.</p>
-                  <button type="submit" disabled={busy} className="mt-1 h-[52px] w-full rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-[#03251b] shadow-[0_10px_30px_rgba(16,185,129,0.14)] transition hover:bg-emerald-400 disabled:opacity-60">{busy ? "Creating account..." : "Create account"}</button>
+                  <button type="submit" disabled={busy || !acceptedPolicies} className="mt-1 h-[52px] w-full rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-[#03251b] shadow-[0_10px_30px_rgba(16,185,129,0.14)] transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60">{busy ? "Creating account..." : "Create account"}</button>
                   <button
                     type="button"
                     disabled={busy}

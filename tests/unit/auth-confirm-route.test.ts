@@ -23,6 +23,30 @@ describe("auth confirmation route", () => {
     issueRecoveryMarker.mockReset();
   });
 
+  it.each<Record<string, string>>([
+    { origin: "https://evil.example.invalid" },
+    { origin: "http://localhost:8081" },
+    { "sec-fetch-site": "cross-site" },
+    { origin: "null" },
+  ])("rejects cross-origin confirmation before consuming a token: %j", async headers => {
+    const response = await POST(new Request("https://staging.example.invalid/auth/confirm", {
+      method: "POST", headers,
+      body: new URLSearchParams({ token_hash: "must-not-consume", type: "recovery" }),
+    }));
+    expect(response.status).toBe(403);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(verifyOtp).not.toHaveBeenCalled();
+    expect(issueRecoveryMarker).not.toHaveBeenCalled();
+  });
+
+  it("handles malformed confirmation bodies without verifying tokens", async () => {
+    const response = await POST(new Request("https://staging.example.invalid/auth/confirm", {
+      method: "POST", headers: { "content-type": "application/json" }, body: "{}",
+    }));
+    expect(response.headers.get("location")).toContain("confirmation_error=missing");
+    expect(verifyOtp).not.toHaveBeenCalled();
+  });
+
   it("rejects incomplete confirmation links without calling Supabase", async () => {
     const response = await GET(new Request("https://www.munshios.tech/auth/confirm?type=signup"));
     expect(response.status).toBe(307);

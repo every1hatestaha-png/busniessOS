@@ -23,7 +23,9 @@ describe("signup email OTP UI", () => {
     expect(source).toContain('type: "email"');
     expect(source).toContain("isValidEmailOtp");
     expect(source).toContain("normalizeEmailOtp");
-    expect(source).toContain('window.location.assign(nextOnboarding ? postAuthDestination(nextOnboarding, window.location.href) : "/auth/post-login")');
+    expect(source).toContain('fetch("/api/legal/acceptance"');
+    expect(source).toContain('window.location.assign(recorded ? postAuthDestination(nextOnboarding, window.location.href) : policyPath)');
+    expect(source).toContain('`/legal/acceptance?next=${encodeURIComponent(nextOnboarding)}`');
   });
 
   it("keeps resend recovery aligned with OTP wording", () => {

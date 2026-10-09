@@ -46,7 +46,18 @@
       "architecture/restaurant-recovery-compat-v1-98": false,
       "fix/dependency-lock-remediation-20261009": false,
       "integrate/dependency-marketing-onboarding-20261009": false,
-      "integrate/security-stack-on-marketing-20261009": false
+      "integrate/security-stack-on-marketing-20261009": false,
+      "fix/munshios-release-certification": false,
+      "impl/munshios-round3-hardening": false,
+      "architecture/platform-hardening-v1-99": false,
+      "staging/munshios-rc132-isolated-20261008": false,
+      "test/munshios-rc132-hosted-smoke": false,
+      "fix/restaurant-staff-completion-ui-v2-06": false,
+      "fix/restaurant-menu-manager-guard-v2-07": false,
+      "fix/restaurant-pos-service-station-v2-08": false,
+      "fix/restaurant-menu-persisted-role-v2-09": false,
+      "fix/restaurant-legacy-kot-safe-service-v2-10": false,
+      "fix/restaurant-cash-shift-persisted-actor-v2-11": false
     }
   }
 }

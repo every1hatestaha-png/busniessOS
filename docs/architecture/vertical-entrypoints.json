@@ -1196,6 +1196,18 @@
     "scope": "entry point"
   },
   {
+    "file": "app/api/legal/acceptance/route.ts",
+    "symbol": null,
+    "url": "/api/legal/acceptance",
+    "kind": "API",
+    "category": "SHARED_CORE",
+    "methods": [
+      "POST"
+    ],
+    "boundary": "authenticated server context",
+    "scope": "entry point"
+  },
+  {
     "file": "app/api/readiness/route.ts",
     "symbol": null,
     "url": "/api/readiness",
@@ -1878,6 +1890,16 @@
     "scope": "entry point"
   },
   {
+    "file": "app/cookies/page.tsx",
+    "symbol": null,
+    "url": "/cookies",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
     "file": "app/desktop-auth/page.tsx",
     "symbol": null,
     "url": "/desktop-auth",
@@ -1985,6 +2007,26 @@
     "category": "SHARED_CORE",
     "methods": [],
     "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/legal/acceptance/actions.ts",
+    "symbol": "acceptCurrentPolicies",
+    "url": "/legal/acceptance",
+    "kind": "SERVER_ACTION",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/legal/acceptance/page.tsx",
+    "symbol": null,
+    "url": "/legal/acceptance",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "authenticated server context",
     "scope": "entry point"
   },
   {
@@ -2151,6 +2193,16 @@
     "file": "app/recovery/new-password/page.tsx",
     "symbol": null,
     "url": "/recovery/new-password",
+    "kind": "PAGE",
+    "category": "SHARED_CORE",
+    "methods": [],
+    "boundary": "public, onboarding, or separate authenticated layout",
+    "scope": "entry point"
+  },
+  {
+    "file": "app/refund-policy/page.tsx",
+    "symbol": null,
+    "url": "/refund-policy",
     "kind": "PAGE",
     "category": "SHARED_CORE",
     "methods": [],
