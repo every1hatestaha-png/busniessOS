@@ -45,7 +45,8 @@
       "architecture/restaurant-main-converged-v1-97": false,
       "architecture/restaurant-recovery-compat-v1-98": false,
       "fix/dependency-lock-remediation-20261009": false,
-      "integrate/dependency-marketing-onboarding-20261009": false
+      "integrate/dependency-marketing-onboarding-20261009": false,
+      "integrate/security-stack-on-marketing-20261009": false
     }
   }
 }
