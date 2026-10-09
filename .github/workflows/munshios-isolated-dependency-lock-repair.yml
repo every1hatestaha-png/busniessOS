@@ -1,0 +1,58 @@
+name: MunshiOS isolated dependency lock repair
+
+on:
+  push:
+    branches:
+      - fix/dependency-lock-remediation-20261009
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate-and-check-lock:
+    if: github.repository == 'every1hatestaha-png/busniessOS' && github.actor == 'every1hatestaha-png'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          cache: npm
+      - name: Generate lockfile without lifecycle scripts
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Check patched transitive versions
+        run: |
+          node <<'NODE'
+          const assert = require("node:assert/strict");
+          const lock = require("./package-lock.json");
+          assert.equal(lock.packages["node_modules/@modelcontextprotocol/sdk"]?.version, "1.31.0");
+          assert.equal(lock.packages["node_modules/sharp"]?.version, "0.35.5");
+          console.log("Patched SDK and sharp versions present in regenerated lockfile");
+          NODE
+      - name: Validate clean lockfile installation without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=moderate
+      - name: Confirm narrowly scoped changes
+        run: |
+          git diff --check
+          git diff --stat -- package-lock.json
+      - name: Commit generated lockfile only on isolated branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF}" = "refs/heads/fix/dependency-lock-remediation-20261009"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- package-lock.json
+          if git diff --cached --quiet; then
+            echo "No generated lockfile change to commit"
+            exit 1
+          fi
+          git commit -m "chore(deps): regenerate audited patched transitive lockfile"
+          auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth}" push origin HEAD:refs/heads/fix/dependency-lock-remediation-20261009
