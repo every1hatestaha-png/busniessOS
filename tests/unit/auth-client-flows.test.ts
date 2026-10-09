@@ -185,4 +185,16 @@ describe("password login, verification and logout event contracts", () => {
     expect(mocks.navigate).not.toHaveBeenCalled();
     expect(mocks.signup).not.toHaveBeenCalled();
   });
+  it("preserves sanitized builder preferences when the consent request fails", async () => {
+    mocks.params = new URLSearchParams({ business: "restaurant", modules: "restaurant", role: "OWNER", next: "https://evil.example" });
+    mocks.policy.mockRejectedValueOnce(new Error("network"));
+    await submit(render(SignUpPage, { 2: email, 5: true, 8: true, 9: "123456" }));
+    expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith("/legal/acceptance?next=%2Fonboarding%3Fbusiness%3Drestaurant%26modules%3Dinventory%252Crestaurant%26billing%3Dmonthly");
+  });
+  it("does not infer consent from builder preferences after verified OTP", async () => {
+    mocks.params = new URLSearchParams({ business: "restaurant", modules: "restaurant" });
+    await submit(render(SignUpPage, { 2: email, 5: false, 8: true, 9: "123456" }));
+    expect(mocks.policy).not.toHaveBeenCalled();
+    expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith("/legal/acceptance?next=%2Fonboarding%3Fbusiness%3Drestaurant%26modules%3Dinventory%252Crestaurant%26billing%3Dmonthly");
+  });
 });

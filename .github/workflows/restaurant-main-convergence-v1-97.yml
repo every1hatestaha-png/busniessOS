@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - fix/dependency-lock-remediation-20261009
+      - integrate/dependency-marketing-onboarding-20261009
 
 permissions:
   contents: read
@@ -63,6 +64,7 @@ jobs:
             "architecture/restaurant-main-convergence-v1-97",
             "architecture/restaurant-main-converged-v1-97",
             "integrate/dependency-marketing-onboarding-20261009",
+            "integrate/security-stack-on-marketing-20261009",
           ]) {
             if (enabled[branch] !== false) {
               throw new Error(`Missing deployment-disable guard for ${branch}`);
@@ -202,6 +204,8 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/restaurant-query-plan-certification-v1-88.cjs 2>&1 | tee restaurant-query-plan-certification-v1-97.log
+      - name: Opt-in bounded read performance on disposable fixture
+        run: node scripts/restaurant-read-performance-disposable.cjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -209,6 +213,7 @@ jobs:
           path: |
             restaurant-query-plan-audit-v1-97.log
             restaurant-query-plan-certification-v1-97.log
+            restaurant-read-performance-disposable.json
           if-no-files-found: error
 
   isolated-print-certification:

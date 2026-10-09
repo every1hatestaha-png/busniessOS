@@ -74,6 +74,14 @@ describe("canonical Supabase post-login workspace routing", () => {
     await expect(getCurrentWorkspace()).rejects.toThrow("redirect:/legal/acceptance");
     expect(mocks.memberships).not.toHaveBeenCalled();
   });
+  it("keeps sanitized email-callback preferences behind the required policy gate", async () => {
+    const unaccepted = { ...local, termsAcceptedAt: null };
+    mocks.find.mockResolvedValue(unaccepted); mocks.byEmail.mockResolvedValue(unaccepted);
+    const response = await open("/onboarding?business=restaurant&modules=restaurant,unknown&billing=annual&role=OWNER&workspaceId=foreign");
+    expect(response.headers.get("location")).toBe(origin + "/legal/acceptance?next=%2Fonboarding%3Fbusiness%3Drestaurant%26modules%3Dinventory%252Crestaurant%26billing%3Dannual");
+    expect(mocks.memberships).not.toHaveBeenCalled();
+    expect(response.cookies.get("businessos_workspace")).toBeUndefined();
+  });
 
   it("routes a verified user without memberships to onboarding", async () => {
     mocks.memberships.mockResolvedValue([]);
