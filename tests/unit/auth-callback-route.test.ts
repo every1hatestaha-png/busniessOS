@@ -47,6 +47,13 @@ describe("auth callback routing", () => {
     expect(exchangeCodeForSession).toHaveBeenCalledWith("valid");
     expect(response.headers.get("location")).toBe("https://www.munshios.tech/auth/post-login?next=%2Fonboarding");
   });
+  it("keeps builder preferences behind the session exchange and workspace resolver", async () => {
+    const next = "/onboarding?business=restaurant&modules=inventory%2Crestaurant&billing=annual";
+    const response = await GET(new Request(`https://staging.example.invalid/auth/callback?code=valid&next=${encodeURIComponent(next)}`));
+    expect(exchangeCodeForSession).toHaveBeenCalledExactlyOnceWith("valid");
+    expect(response.headers.get("location")).toBe(`https://staging.example.invalid/auth/post-login?next=${encodeURIComponent(next)}`);
+    expect(issueRecoveryMarker).not.toHaveBeenCalled();
+  });
 
   it("sanitizes external redirect destinations on failed exchanges", async () => {
     exchangeCodeForSession.mockResolvedValue({ error: new Error("invalid code") });

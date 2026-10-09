@@ -40,6 +40,32 @@ describe("canonical Supabase post-login workspace routing", () => {
     mocks.memberships.mockResolvedValue([]);
     expect((await open("/restaurant")).headers.get("location")).toBe(origin + "/onboarding");
   });
+  it("retains only allowlisted preferences for a new verified user", async () => {
+    mocks.memberships.mockResolvedValue([]);
+    const response = await open("/onboarding?business=restaurant&modules=restaurant,secret&billing=annual&workspaceId=foreign&role=OWNER&creationMode=additional&next=https://evil.example");
+    expect(response.headers.get("location")).toBe(origin + "/onboarding?business=restaurant&modules=inventory%2Crestaurant&billing=annual");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.cookies.get("businessos_workspace")).toBeUndefined();
+    expect(mocks.memberships).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: local.id } }));
+  });
+  it.each(["https://evil.example/onboarding?business=restaurant", "//evil.example/onboarding?business=restaurant", "/restaurant?workspaceId=foreign", "/onboarding/../restaurant?business=restaurant", "/%6fnboarding?business=restaurant", "/onboarding?business=unknown", "/onboarding?business=restaurant\\evil"])("refuses onboarding bypass %s", async next => {
+    mocks.memberships.mockResolvedValue([]);
+    const response = await open(next);
+    expect(response.headers.get("location")).toBe(origin + "/onboarding");
+    expect(response.cookies.get("businessos_workspace")).toBeUndefined();
+  });
+  it("cannot use builder preferences without a confirmed session", async () => {
+    mocks.provider.mockResolvedValue({ email_confirmed_at: null });
+    expect((await open("/onboarding?business=restaurant")).headers.get("location")).toBe(origin + "/sign-in");
+    expect(mocks.memberships).not.toHaveBeenCalled();
+  });
+  it("retains the existing membership and active workspace despite forged builder tenant parameters", async () => {
+    mocks.cookie = "owned-a";
+    const response = await open("/onboarding?business=restaurant&workspaceId=foreign&role=OWNER");
+    expect(mocks.memberships).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: local.id } }));
+    expect(response.cookies.get("businessos_workspace")).toBeUndefined();
+    expect(mocks.find).toHaveBeenCalledWith({ where: { supabaseId: "provider-owner" } });
+  });
   it.each([null, { id: "pending", email_confirmed_at: null }])("requires a confirmed Supabase session", async provider => {
     mocks.provider.mockResolvedValue(provider);
     expect((await open()).headers.get("location")).toBe(origin + "/sign-in");
