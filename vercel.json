@@ -43,7 +43,8 @@
       "architecture/restaurant-main-convergence-v1-97": false,
       "architecture/auth-hardening-v1-1": false,
       "architecture/restaurant-main-converged-v1-97": false,
-      "architecture/restaurant-recovery-compat-v1-98": false
+      "architecture/restaurant-recovery-compat-v1-98": false,
+      "fix/restaurant-browser-fixture-labels-20261009": false
     }
   }
 }
