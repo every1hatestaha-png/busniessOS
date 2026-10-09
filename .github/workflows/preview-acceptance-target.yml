@@ -26,7 +26,7 @@ jobs:
         run: |
           node --check scripts/assert-preview-acceptance-target.cjs
           node --check scripts/production-build.cjs
-          npx vitest run tests/unit/preview-acceptance-target.test.ts
+          npx vitest run tests/unit/preview-acceptance-target.test.ts tests/unit/preview-acceptance-build-integration.test.ts
       - name: Assert acceptance host list is empty and no automatic Vercel deployment
         run: |
           node - <<'NODE'
