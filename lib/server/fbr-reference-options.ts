@@ -13,6 +13,7 @@ import {
 import { canPerformAction } from "@/lib/server/authorization";
 import { db } from "@/lib/server/db";
 import { resolveFbrBearerTokenForRequest } from "@/lib/server/fbr-credentials";
+import { assertFbrEnabled } from "@/lib/server/fbr-enabled";
 
 type ReferenceContext = { workspaceId: string; role: Role };
 
@@ -30,6 +31,7 @@ export async function getFbrReferenceOptions(
   if (!canPerformAction(context.role, "products.write")) {
     throw new FbrReferenceOptionsError("You do not have permission to load FBR product references.");
   }
+  await assertFbrEnabled(context.workspaceId);
 
   const workspace = await db.workspace.findUnique({
     where: { id: context.workspaceId },

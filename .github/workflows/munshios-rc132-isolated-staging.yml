@@ -21,6 +21,7 @@ on:
       - fix/restaurant-pos-service-station-v2-08
       - fix/restaurant-menu-persisted-role-v2-09
       - fix/restaurant-legacy-kot-safe-service-v2-10
+      - fix/restaurant-cash-shift-persisted-actor-v2-11
 
 permissions:
   contents: read
@@ -56,6 +57,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
@@ -73,6 +75,7 @@ jobs:
           const code = fs.readFileSync("scripts/assert-staging-database-target.cjs", "utf8");
           assert.equal(v.git.deploymentEnabled[branch], false);
           assert.equal(v.git.deploymentEnabled["test/munshios-rc132-hosted-smoke"], false);
+          assert.equal(v.git.deploymentEnabled["fix/web-mutation-fbr-station-audit-v2-12"], false);
           assert.equal(target.vercelProjectId, "prj_ytXqF1zAoJjcsBIICz7PryfAczLz");
           assert.ok(target.hosts.includes(host));
           assert.ok(code.includes('target.branch !== "br-sweet-hat-b5x5nzzz"'));
@@ -119,6 +122,14 @@ jobs:
         run: npx vitest run tests/integration/round3-schema-registry.test.ts
       - name: Full app unit regressions
         run: npm test
+      - name: Distributed recovery HTTP and pagination regressions (disposable PG18)
+        env:
+          RUN_INTEGRATION_TESTS: "true"
+        run: npx vitest run tests/integration/round3-recovery-http.test.ts tests/integration/round3-recovery-pagination.test.ts
+      - name: Complete mutation inventory and scoped security lint
+        run: |
+          node scripts/web-mutation-inventory.cjs > "$RUNNER_TEMP/web-mutation-inventory.json"
+          npx eslint lib/server/cors.ts lib/server/api.ts proxy.ts lib/fbr/client.ts lib/fbr/digital-invoicing.ts lib/fbr/transmission-policy.ts lib/server/fbr-enabled.ts lib/server/fbr-credentials.ts lib/server/fbr-remote-validation.ts lib/server/fbr-remote-submission.ts lib/server/fbr-reference-options.ts lib/server/fbr-product-mapping.ts 'app/(dashboard)/settings/actions.ts' scripts/web-mutation-inventory.cjs tests/unit/web-mutation-csrf.test.ts tests/unit/web-mutation-route-coverage.test.ts tests/unit/proxy-web-mutation-boundaries.test.ts tests/unit/restaurant-station-request-boundaries.test.ts tests/unit/fbr-owner-enablement.test.ts tests/unit/fbr-client.test.ts tests/unit/fbr-disabled-tenant.test.ts tests/unit/fbr-credentials.test.ts
       - name: Full Restaurant and warehouse integrity regressions (disposable PG18)
         env:
           RUN_INTEGRATION_TESTS: "true"

@@ -4,7 +4,7 @@ vi.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: async () =
 vi.mock("@/lib/server/recovery-session", () => ({ hasRecoveryMarker: mocks.marker, clearRecoveryMarker: mocks.clear }));
 import { POST } from "@/app/auth/recovery/password/route";
 const password = "SyntheticNewPassword!123";
-const request = (origin?: string) => new Request("https://staging.example.invalid/auth/recovery/password", {
+const request = (origin = "https://staging.example.invalid") => new Request("https://staging.example.invalid/auth/recovery/password", {
   method: "POST",
   headers: origin ? { Origin: origin } : undefined,
   body: JSON.stringify({ password }),
@@ -27,6 +27,12 @@ describe("password recovery update guards", () => {
     expect(response.status).toBe(403);
     expect(mocks.getUser).not.toHaveBeenCalled();
     expect(mocks.getClaims).not.toHaveBeenCalled();
+    expect(mocks.updateUser).not.toHaveBeenCalled();
+  });
+  it("denies missing Origin and Fetch Metadata before reading recovery proof", async () => {
+    expect((await POST(request(""))).status).toBe(403);
+    expect(mocks.getUser).not.toHaveBeenCalled();
+    expect(mocks.marker).not.toHaveBeenCalled();
     expect(mocks.updateUser).not.toHaveBeenCalled();
   });
   it.each(["missing marker", "unconfirmed", "password auth", "expired proof"])("rejects %s without changing the password", async state => {
