@@ -2,7 +2,7 @@ import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   cursor: 0, state: new Map<number, unknown>(), updates: [] as unknown[],
-  login: vi.fn(), signup: vi.fn(), verify: vi.fn(), logout: vi.fn(), navigate: vi.fn(),
+  login: vi.fn(), signup: vi.fn(), verify: vi.fn(), logout: vi.fn(), navigate: vi.fn(), policy: vi.fn(),
   params: new URLSearchParams(),
 }));
 vi.mock("react", async importOriginal => {
@@ -43,6 +43,13 @@ describe("password login, verification and logout event contracts", () => {
     mocks.login.mockResolvedValue({ error: null }); mocks.logout.mockResolvedValue({ error: null });
     mocks.verify.mockResolvedValue({ data: { user: { id: "synthetic-user" }, session: {} }, error: null });
     mocks.signup.mockResolvedValue({ data: { user: { id: "synthetic-user" }, session: null }, error: null });
+    mocks.policy.mockResolvedValue({
+      ok: true,
+      type: "basic",
+      headers: new Headers({ "content-type": "application/json" }),
+      json: vi.fn(async () => ({ ok: true })),
+    });
+    vi.stubGlobal("fetch", mocks.policy);
     vi.stubGlobal("window", { location: { href: "https://staging.example.invalid/sign-in", origin: "https://staging.example.invalid", assign: mocks.navigate } });
   });
   it("uses password login and routes success through workspace resolution", async () => {
@@ -85,19 +92,56 @@ describe("password login, verification and logout event contracts", () => {
     expect(mocks.navigate).not.toHaveBeenCalled();
     expect(mocks.updates).toContain("Sign out failed. Please retry.");
   });
+  it("requires policy acknowledgement before creating a signup", async () => {
+    await submit(render(SignUpPage, { 2: email, 3: password, 5: false }));
+    expect(mocks.signup).not.toHaveBeenCalled();
+    expect(mocks.updates).toContain("Please agree to the Terms of Service and acknowledge the Privacy Policy before creating an account.");
+  });
   it("creates signup using the chosen password and waits for verification", async () => {
-    await submit(render(SignUpPage, { 2: email, 3: password }));
+    await submit(render(SignUpPage, { 2: email, 3: password, 5: true }));
     expect(mocks.signup.mock.calls[0][0]).toMatchObject({ email, password, options: { emailRedirectTo: "https://staging.example.invalid/auth/callback" } });
     expect(mocks.navigate).not.toHaveBeenCalled();
   });
-  it("routes successful signup OTP sessions through the canonical router", async () => {
-    await submit(render(SignUpPage, { 2: email, 7: true, 8: "123456" }));
+  it("records policy acceptance before routing a verified signup", async () => {
+    await submit(render(SignUpPage, { 2: email, 5: true, 8: true, 9: "123456" }));
     expect(mocks.verify).toHaveBeenCalledWith({ email, token: "123456", type: "email" });
+    expect(mocks.policy).toHaveBeenCalledWith("/api/legal/acceptance", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        terms: true,
+        privacy: true,
+        termsVersion: "2026-10-07",
+        privacyVersion: "2026-10-07",
+      }),
+      redirect: "manual",
+    });
     expect(mocks.navigate).toHaveBeenCalledWith("/auth/post-login");
+  });
+  it("never sends accepted policy confirmation after an unchecked signup state", async () => {
+    await submit(render(SignUpPage, { 2: email, 5: false, 8: true, 9: "123456" }));
+    expect(mocks.verify).toHaveBeenCalled();
+    expect(mocks.policy).not.toHaveBeenCalled();
+    expect(mocks.navigate).toHaveBeenCalledWith("/legal/acceptance");
+  });
+  it("falls back to the policy screen when signup acceptance cannot be recorded", async () => {
+    mocks.policy.mockRejectedValueOnce(new Error("network"));
+    await submit(render(SignUpPage, { 2: email, 5: true, 8: true, 9: "123456" }));
+    expect(mocks.navigate).toHaveBeenCalledWith("/legal/acceptance");
+  });
+  it("does not mistake an auth redirect or HTML response for policy acceptance", async () => {
+    mocks.policy.mockResolvedValueOnce({
+      ok: true,
+      type: "opaqueredirect",
+      headers: new Headers({ "content-type": "text/html" }),
+      json: vi.fn(),
+    });
+    await submit(render(SignUpPage, { 2: email, 5: true, 8: true, 9: "123456" }));
+    expect(mocks.navigate).toHaveBeenCalledWith("/legal/acceptance");
   });
   it.each(["invalid", "expired"])("retains verification after an %s signup OTP", async message => {
     mocks.verify.mockResolvedValue({ data: { user: null }, error: new Error(message) });
-    await submit(render(SignUpPage, { 2: email, 7: true, 8: "123456" }));
+    await submit(render(SignUpPage, { 2: email, 5: true, 8: true, 9: "123456" }));
     expect(mocks.navigate).not.toHaveBeenCalled();
     expect(mocks.updates).toContain("That code is invalid or expired. Request a new code and try again.");
   });
@@ -106,10 +150,10 @@ describe("password login, verification and logout event contracts", () => {
     mocks.params = new URLSearchParams({ business, modules: "manufacturing,accounting,unknown", billing: "annual", next: "https://evil.example", workspaceId: "foreign", role: "OWNER" });
     const onboarding = `/onboarding?business=${business}&modules=inventory%2C${business === "restaurant" ? "restaurant%2C" : ""}wholesale%2Cmanufacturing%2Caccounting${business === "services" ? "%2Cservices" : ""}&billing=annual`;
     const returnPath = `/auth/post-login?next=${encodeURIComponent(onboarding)}`;
-    await submit(render(SignUpPage, { 2: email, 3: password }));
+    await submit(render(SignUpPage, { 2: email, 3: password, 5: true }));
     expect(mocks.signup).toHaveBeenCalledExactlyOnceWith({ email, password, options: { emailRedirectTo: `https://staging.example.invalid/auth/callback?next=${encodeURIComponent(onboarding)}`, data: { first_name: null, last_name: null } } });
     expect(mocks.navigate).not.toHaveBeenCalled();
-    await submit(render(SignUpPage, { 2: email, 7: true, 8: "123456" }));
+    await submit(render(SignUpPage, { 2: email, 5: true, 8: true, 9: "123456" }));
     expect(mocks.verify).toHaveBeenCalledExactlyOnceWith({ email, token: "123456", type: "email" });
     expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith(returnPath);
   });
@@ -117,28 +161,40 @@ describe("password login, verification and logout event contracts", () => {
   it("uses the same workspace resolver when signup immediately establishes a session", async () => {
     mocks.params = new URLSearchParams({ business: "restaurant", modules: "restaurant", billing: "monthly" });
     mocks.signup.mockResolvedValue({ data: { user: { id: "synthetic-user" }, session: {} }, error: null });
-    await submit(render(SignUpPage, { 2: email, 3: password }));
+    await submit(render(SignUpPage, { 2: email, 3: password, 5: true }));
     expect(mocks.navigate).toHaveBeenCalledWith("/auth/post-login?next=%2Fonboarding%3Fbusiness%3Drestaurant%26modules%3Dinventory%252Crestaurant%26billing%3Dmonthly");
   });
 
   it("retains preferences at sign-in when verified OTP establishes no session", async () => {
     mocks.params = new URLSearchParams({ business: "services", modules: "services", billing: "monthly" });
     mocks.verify.mockResolvedValue({ data: { user: { id: "synthetic-user" }, session: null }, error: null });
-    await submit(render(SignUpPage, { 2: email, 7: true, 8: "123456" }));
+    await submit(render(SignUpPage, { 2: email, 5: true, 8: true, 9: "123456" }));
     expect(mocks.navigate).toHaveBeenCalledWith("/sign-in?confirmed=1&next=%2Fonboarding%3Fbusiness%3Dservices%26modules%3Dservices%26billing%3Dmonthly");
   });
 
   it.each(["https://evil.example", "//evil.example", "javascript:alert(1)"])("ignores forged signup destination %s", async next => {
     mocks.params = new URLSearchParams({ business: next, next, workspaceId: "foreign", role: "OWNER" });
-    await submit(render(SignUpPage, { 2: email, 7: true, 8: "123456" }));
+    await submit(render(SignUpPage, { 2: email, 5: true, 8: true, 9: "123456" }));
     expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith("/auth/post-login");
   });
 
   it("does not bypass OTP failure when onboarding preferences are supplied", async () => {
     mocks.params = new URLSearchParams({ business: "restaurant", modules: "restaurant" });
     mocks.verify.mockResolvedValue({ data: { session: null }, error: new Error("expired") });
-    await submit(render(SignUpPage, { 2: email, 7: true, 8: "123456" }));
+    await submit(render(SignUpPage, { 2: email, 5: true, 8: true, 9: "123456" }));
     expect(mocks.navigate).not.toHaveBeenCalled();
     expect(mocks.signup).not.toHaveBeenCalled();
+  });
+  it("preserves sanitized builder preferences when the consent request fails", async () => {
+    mocks.params = new URLSearchParams({ business: "restaurant", modules: "restaurant", role: "OWNER", next: "https://evil.example" });
+    mocks.policy.mockRejectedValueOnce(new Error("network"));
+    await submit(render(SignUpPage, { 2: email, 5: true, 8: true, 9: "123456" }));
+    expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith("/legal/acceptance?next=%2Fonboarding%3Fbusiness%3Drestaurant%26modules%3Dinventory%252Crestaurant%26billing%3Dmonthly");
+  });
+  it("does not infer consent from builder preferences after verified OTP", async () => {
+    mocks.params = new URLSearchParams({ business: "restaurant", modules: "restaurant" });
+    await submit(render(SignUpPage, { 2: email, 5: false, 8: true, 9: "123456" }));
+    expect(mocks.policy).not.toHaveBeenCalled();
+    expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith("/legal/acceptance?next=%2Fonboarding%3Fbusiness%3Drestaurant%26modules%3Dinventory%252Crestaurant%26billing%3Dmonthly");
   });
 });

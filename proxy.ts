@@ -5,12 +5,30 @@ import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server
 import { POST_AUTH_PATH, postAuthDestination, isAuthEntryPath, isPublicMarketingPath, safeInternalDestination } from "@/lib/auth-routing";
 import { getSupabasePublicConfig } from "@/lib/supabase/config";
 import { checkAppRateLimit } from "@/lib/request-rate-limit";
-import { applyCorsHeaders, corsPreflightResponse, isApiV1Request, isTrustedMutationOrigin } from "@/lib/server/cors";
+import { applyCorsHeaders, corsPreflightResponse, isApiV1Request, isAllowedMutationRequest, isMutationMethod } from "@/lib/server/cors";
 
 const CLERK_SERVER_CONFIGURED = Boolean(process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
-function isMutationMethod(method: string) {
-  return !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase());
+// Only genuine public files bypass provider I/O on safe methods. A dynamic
+// page segment ending in .svg/.js can still dispatch a Server Action.
+const PUBLIC_STATIC_ASSETS = new Set([
+  "/window.svg", "/vercel.svg", "/next.svg", "/globe.svg", "/file.svg",
+  "/brand/munshios-mark.svg", "/brand/munshios-login-visual.webp", "/brand/munshios-login-scene.svg",
+  "/brand/arshad-sons-mark.webp", "/brand/arshad-sons-engineering-solutions.webp",
+  "/icon.svg", "/auth/faisal-mosque.webp", "/manifest.webmanifest", "/favicon.ico",
+]);
+
+function hasSupabaseSessionCookie(request: NextRequest) {
+  return request.cookies.getAll().some(({ name }) => name.startsWith("sb-") && name.includes("-auth-token"));
+}
+
+function isDirectSupabaseAuthEntry(path: string) {
+  return (
+    path === "/sign-in" ||
+    path.startsWith("/sign-in/") ||
+    path === "/sign-up" ||
+    path.startsWith("/sign-up/")
+  );
 }
 
 function copyResponseCookies(from: NextResponse, to: NextResponse) {
@@ -46,9 +64,13 @@ async function getSupabaseSessionState(request: NextRequest) {
     },
   });
 
-  const { data, error } = await supabase.auth.getUser();
+  // Supabase recommends getClaims() in Next.js Proxy: it validates the JWT
+  // signature/expiry and refreshes cookies without forcing a /user network
+  // lookup on every navigation. Protected server code still resolves the
+  // current user with getUser() before returning workspace data.
+  const { data, error } = await supabase.auth.getClaims();
   return {
-    signedIn: !error && Boolean(data.user?.email_confirmed_at),
+    signedIn: !error && Boolean(data?.claims?.sub),
     response,
   };
 }
@@ -81,9 +103,8 @@ async function applyCommonGuards(request: NextRequest) {
   }
 
   if (
-    isApiV1Request(path) &&
-    isMutationMethod(request.method) &&
-    !isTrustedMutationOrigin(request.headers.get("origin"), request.nextUrl.origin)
+    path !== "/api/webhooks/clerk" &&
+    !isAllowedMutationRequest(request)
   ) {
     return NextResponse.json(
       { error: { code: "UNTRUSTED_ORIGIN", message: "This request origin is not allowed." } },
@@ -169,6 +190,16 @@ async function supabaseOnlyProxy(request: NextRequest) {
     );
   }
 
+  // Public marketing pages and the direct Supabase auth entry screens do not
+  // need a network round-trip to Supabase when the browser has no auth cookie.
+  // This keeps first-load TTFB low while preserving signed-in root redirects:
+  // browsers with an auth cookie still validate it below before routing.
+  if (!hasSupabaseSessionCookie(request)) {
+    if (isPublicMarketingPath(path) || isDirectSupabaseAuthEntry(path)) {
+      return NextResponse.next();
+    }
+  }
+
   const { signedIn, response } = await getSupabaseSessionState(request);
 
   if (isApiV1Request(path)) {
@@ -237,6 +268,15 @@ function needsLegacyClerk(request: NextRequest) {
 }
 
 export async function proxy(request: NextRequest, event: NextFetchEvent) {
+  // Overwrite any client-supplied value before forwarding to server authorization.
+  // Auth and API server code fails closed for restricted staff if this is absent.
+  request.headers.set("x-munshios-internal-path", request.nextUrl.pathname);
+  if (!isMutationMethod(request.method) && (
+    request.nextUrl.pathname === "/_next" || request.nextUrl.pathname.startsWith("/_next/")
+    || PUBLIC_STATIC_ASSETS.has(request.nextUrl.pathname)
+  )) {
+    return NextResponse.next({ request: { headers: request.headers } });
+  }
   // Customer web traffic is always Supabase-only. Clerk is invoked only for
   // explicit legacy desktop/platform/bearer-token paths, so a Clerk outage or
   // missing Clerk configuration cannot break normal customer sign-in.
@@ -248,8 +288,6 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
 
 export const config = {
   matcher: [
-    "/((?!_next|forgot-password|account-recovery|recovery|desktop-auth|api/webhooks|api/health|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
-    "/(api|trpc)(.*)",
-    "/__clerk/(.*)",
+    "/:path*",
   ],
 };

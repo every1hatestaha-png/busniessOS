@@ -5,6 +5,7 @@ import type { RestaurantActionState } from "./action-state";
 
 import { restaurantActionErrorMessage, restaurantFormWorkspaceChanged } from "@/lib/server/restaurant-action-errors";
 import { requireWorkspace } from "@/lib/server/auth";
+import { canPerformRestaurantStationAction } from "@/lib/restaurant/station-access";
 import { assertRestaurantMutationAccess } from "@/lib/server/restaurant-mutation-access";
 import {
   closeRestaurantCashShiftFromLedger,
@@ -63,7 +64,8 @@ export async function openCashShiftAction(
   }
   if (notes.length > 500) return fail("Notes must be 500 characters or fewer.");
 
-  const { workspaceId, role, user } = await requireWorkspace();
+  const { workspaceId, role, user, vertical, restaurantStation } = await requireWorkspace();
+  if (!canPerformRestaurantStationAction(role, vertical, restaurantStation, "POS")) return fail("Sales station access is required to open cash shifts.");
   if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
     await assertRestaurantMutationAccess(workspaceId);
@@ -89,7 +91,8 @@ export async function closeCashShiftAction(
   }
   if (notes.length > 500) return fail("Notes must be 500 characters or fewer.");
 
-  const { workspaceId, role, user } = await requireWorkspace();
+  const { workspaceId, role, user, vertical, restaurantStation } = await requireWorkspace();
+  if (!canPerformRestaurantStationAction(role, vertical, restaurantStation, "POS")) return fail("Sales station access is required to close cash shifts.");
   if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
     await assertRestaurantMutationAccess(workspaceId);
@@ -177,7 +180,8 @@ export async function createKitchenTicketAction(
   if (restaurantTableId && !/^[0-9a-f-]{36}$/i.test(restaurantTableId)) return fail("Choose a valid restaurant table.");
   if (notes.length > 500) return fail("Notes must be 500 characters or fewer.");
 
-  const { workspaceId, role, user } = await requireWorkspace();
+  const { workspaceId, role, user, vertical, restaurantStation } = await requireWorkspace();
+  if (!canPerformRestaurantStationAction(role, vertical, restaurantStation, "KITCHEN")) return fail("Kitchen station access is required to create kitchen tickets.");
   if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
     await assertRestaurantMutationAccess(workspaceId);
@@ -206,7 +210,8 @@ export async function updateKitchenTicketStatusAction(
   if (!/^[0-9a-f-]{36}$/i.test(ticketId)) return fail("Kitchen ticket is invalid.");
   if (!["PREPARING", "READY", "SERVED", "CANCELLED"].includes(status)) return fail("Kitchen ticket status is invalid.");
 
-  const { workspaceId, role, user } = await requireWorkspace();
+  const { workspaceId, role, user, vertical, restaurantStation } = await requireWorkspace();
+  if (!canPerformRestaurantStationAction(role, vertical, restaurantStation, "KITCHEN")) return fail("Kitchen station access is required to update kitchen tickets.");
   if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
     await assertRestaurantMutationAccess(workspaceId);

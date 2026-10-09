@@ -1,3 +1,5 @@
+import { safeInternalDestination } from "@/lib/auth-routing";
+
 export const PROVISIONING_MODULE_KEYS = [
   "inventory",
   "restaurant",
@@ -91,4 +93,14 @@ export function onboardingRouteFromBuilderParams(params: Pick<URLSearchParams, "
     modules: sanitizeProvisioningModules(params.get("modules")),
     billing: sanitizeBilling(params.get("billing")),
   })}`;
+}
+
+/** Keep only local, allowlisted builder preferences across the policy gate. */
+export function onboardingRouteFromReturnPath(value: string | null): string | null {
+  if (!value?.startsWith("/") || value.startsWith("//")) return null;
+  const base = "https://builder-return.invalid";
+  const path = safeInternalDestination(value, base, "");
+  if (!path) return null;
+  const destination = new URL(path, base);
+  return destination.pathname === "/onboarding" ? onboardingRouteFromBuilderParams(destination.searchParams) : null;
 }

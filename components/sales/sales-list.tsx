@@ -1,6 +1,5 @@
 "use client";
 
-import { useDeferredValue, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Search, ShoppingCart } from "lucide-react";
 import { formatDate, formatPKR } from "@/lib/utils";
@@ -23,14 +22,8 @@ export type SaleListItem = {
   status: Exclude<(typeof statuses)[number], "ALL">;
 };
 
-export function SalesList({ sales }: { sales: SaleListItem[] }) {
-  const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<(typeof statuses)[number]>("ALL");
-  const deferredQuery = useDeferredValue(query.trim().toLowerCase());
-  const filteredSales = sales.filter((sale) => {
-    const matchesQuery = !deferredQuery || `${sale.orderNumber} ${sale.customerName}`.toLowerCase().includes(deferredQuery);
-    return matchesQuery && (status === "ALL" || sale.status === status);
-  });
+export function SalesList({ sales, query = "", status = "ALL" }: { sales: SaleListItem[]; query?: string; status?: string }) {
+  const filteredSales = sales;
   const total = filteredSales.filter((sale) => sale.status !== "CANCELLED" && sale.status !== "DRAFT").reduce((sum, sale) => sum + sale.total, 0);
   const balance = filteredSales.reduce((sum, sale) => sum + sale.balanceAmount, 0);
 
@@ -44,12 +37,13 @@ export function SalesList({ sales }: { sales: SaleListItem[] }) {
 
       <Card className="gap-0 rounded-md border py-0 shadow-none ring-0">
         <CardContent className="p-0">
-          <div className="flex items-center justify-between gap-3 border-b p-3">
-            <div className="relative w-full max-w-xs"><Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sale or customer" aria-label="Search sales" className="pl-8" /></div>
-            <div className="flex gap-1" aria-label="Filter by status">
-              {statuses.map((option) => <button key={option} type="button" onClick={() => setStatus(option)} className={`h-7 shrink-0 rounded px-2.5 text-[11px] font-medium transition-colors ${status === option ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"}`}>{option === "ALL" ? "All" : option.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase())}</button>)}
-            </div>
-          </div>
+          <form action="/sales" method="get" className="flex items-center gap-3 border-b p-3">
+            <div className="relative w-full max-w-xs"><Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" /><Input name="q" defaultValue={query} placeholder="Search all sales or customers" aria-label="Search sales" className="pl-8" /></div>
+            <select name="status" defaultValue={status === "ALL" ? "" : status} aria-label="Filter by status" className="rounded border p-2 text-xs">
+              {statuses.map(option => <option key={option} value={option === "ALL" ? "" : option}>{option === "ALL" ? "All statuses" : option}</option>)}
+            </select>
+            <button type="submit" className="rounded border px-3 py-2 text-xs">Apply</button>
+          </form>
 
           {filteredSales.length ? (
             <Table>

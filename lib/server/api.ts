@@ -3,13 +3,16 @@ import "server-only";
 import type { BusinessType, Role } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { z, ZodError, type ZodType } from "zod";
 
+import { hasCurrentPolicyAcceptance } from "@/lib/legal/policies";
+import { canOpenRestaurantStationPath, isRestrictedRestaurantStaff } from "@/lib/restaurant/station-access";
 import { canPerformAction, type Permission } from "@/lib/server/authorization";
 import { getOptionalCurrentUser } from "@/lib/server/auth";
 import { db } from "@/lib/server/db";
 import { getWorkspaceAccess } from "@/lib/server/subscriptions";
+import { isAllowedMutationRequest } from "@/lib/server/cors";
 import { isAvailableVertical, resolveWorkspaceVertical, type WorkspaceVertical } from "@/lib/verticals/registry";
 
 export type ApiContext = {
@@ -53,6 +56,13 @@ export async function requireApiUser() {
   if (!user) {
     throw new ApiError(401, "UNAUTHENTICATED", "Authentication is required.");
   }
+  if (!hasCurrentPolicyAcceptance(user)) {
+    throw new ApiError(
+      403,
+      "POLICY_ACCEPTANCE_REQUIRED",
+      "Accept the current MunshiOS Terms of Service and acknowledge the Privacy Policy before using protected APIs.",
+    );
+  }
   return user;
 }
 
@@ -65,6 +75,7 @@ export async function requireApiContext(permission?: Permission): Promise<ApiCon
     select: {
       workspaceId: true,
       role: true,
+      restaurantStation: true,
       workspace: true,
     },
   });
@@ -92,6 +103,12 @@ export async function requireApiContext(permission?: Permission): Promise<ApiCon
   const vertical = resolveWorkspaceVertical(membership.workspace);
   if (!isAvailableVertical(vertical)) {
     throw new ApiError(403, "VERTICAL_UNAVAILABLE", "This workspace experience is not available yet.");
+  }
+  if (isRestrictedRestaurantStaff(membership.role, vertical, membership.restaurantStation)) {
+    const trustedPath = (await headers()).get("x-munshios-internal-path");
+    if (!canOpenRestaurantStationPath(membership.role, vertical, membership.restaurantStation, trustedPath)) {
+      throw new ApiError(403, "STATION_FORBIDDEN", "Your restaurant station cannot access this operation.");
+    }
   }
 
   return {
@@ -167,6 +184,10 @@ export function apiHandler<TArgs extends unknown[]>(
 ) {
   return async (...args: TArgs) => {
     try {
+      const request = args[0];
+      if (request instanceof Request && !isAllowedMutationRequest(request)) {
+        throw new ApiError(403, "UNTRUSTED_ORIGIN", "This request origin is not allowed.");
+      }
       return await handler(...args);
     } catch (error) {
       return apiError(error);

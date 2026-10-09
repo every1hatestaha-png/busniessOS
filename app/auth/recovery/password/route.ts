@@ -10,10 +10,17 @@ import {
   clearRecoveryMarker,
   hasRecoveryMarker,
 } from "@/lib/server/recovery-session";
+import { isSameOriginWebMutation } from "@/lib/server/cors";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
   try {
+    if (!isSameOriginWebMutation(request)) {
+      return NextResponse.json(
+        { error: "This request origin is not allowed." },
+        { status: 403, headers: { "Cache-Control": "no-store" } },
+      );
+    }
     const body = (await request.json()) as { password?: unknown };
     const password = typeof body.password === "string" ? body.password : "";
 

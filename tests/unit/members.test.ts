@@ -47,7 +47,7 @@ describe("invitation consent and lifecycle", () => {
   });
 
   it("creates membership only after the matching verified user explicitly accepts", async () => {
-    mocks.findFirst.mockResolvedValue({ id: "invite_1", workspaceId: "workspace_1", role: "ADMIN" });
+    mocks.findFirst.mockResolvedValue({ id: "invite_1", workspaceId: "workspace_1", role: "ADMIN", workspace: { vertical: "RESTAURANT" } });
     mocks.updateMany.mockResolvedValue({ count: 1 });
     mocks.upsert.mockResolvedValue({ id: "member_1" });
 
@@ -56,7 +56,7 @@ describe("invitation consent and lifecycle", () => {
 
     expect(mocks.findFirst).toHaveBeenCalledWith({
       where: { id: "invite_1", email: "invitee@example.com", status: "PENDING", expiresAt: { gt: expect.any(Date) } },
-      select: { id: true, workspaceId: true, role: true },
+      select: { id: true, workspaceId: true, role: true, workspace: { select: { vertical: true } } },
     });
     expect(mocks.updateMany).toHaveBeenCalledWith({
       where: { id: "invite_1", email: "invitee@example.com", status: "PENDING", expiresAt: { gt: expect.any(Date) } },
@@ -64,13 +64,39 @@ describe("invitation consent and lifecycle", () => {
     });
     expect(mocks.upsert).toHaveBeenCalledWith({
       where: { workspaceId_userId: { workspaceId: "workspace_1", userId: "user_1" } },
-      create: { workspaceId: "workspace_1", userId: "user_1", role: "ADMIN" },
+      create: { workspaceId: "workspace_1", userId: "user_1", role: "ADMIN", restaurantStation: "ALL" },
       update: {},
     });
     expect(mocks.writeAudit).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       actorId: "user_1",
       action: "member.joined",
       entityId: "invite_1",
+    }));
+  });
+
+  it("assigns Restaurant STAFF invitations to POS-only station by default", async () => {
+    mocks.findFirst.mockResolvedValue({
+      id: "invite_1", workspaceId: "workspace_1", role: "STAFF",
+      workspace: { vertical: "RESTAURANT" },
+    });
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    mocks.upsert.mockResolvedValue({ id: "member_1" });
+    await acceptInvitationForUser("staff_1", "invitee@example.com", "invite_1");
+    expect(mocks.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ role: "STAFF", restaurantStation: "POS" }),
+    }));
+  });
+
+  it("preserves ALL station for non-Restaurant STAFF invitations", async () => {
+    mocks.findFirst.mockResolvedValue({
+      id: "invite_1", workspaceId: "workspace_1", role: "STAFF",
+      workspace: { vertical: "TRADING" },
+    });
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    mocks.upsert.mockResolvedValue({ id: "member_1" });
+    await acceptInvitationForUser("staff_1", "invitee@example.com", "invite_1");
+    expect(mocks.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ role: "STAFF", restaurantStation: "ALL" }),
     }));
   });
 
@@ -85,7 +111,7 @@ describe("invitation consent and lifecycle", () => {
   });
 
   it("does not grant membership when revocation wins the acceptance claim", async () => {
-    mocks.findFirst.mockResolvedValue({ id: "invite_1", workspaceId: "workspace_1", role: "ADMIN" });
+    mocks.findFirst.mockResolvedValue({ id: "invite_1", workspaceId: "workspace_1", role: "ADMIN", workspace: { vertical: "RESTAURANT" } });
     mocks.updateMany.mockResolvedValue({ count: 0 });
 
     await expect(acceptInvitationForUser("user_1", "invitee@example.com", "invite_1"))

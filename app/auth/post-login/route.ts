@@ -1,8 +1,9 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { POST_AUTH_PATH, safeInternalDestination } from "@/lib/auth-routing";
-import { onboardingRouteFromBuilderParams } from "@/lib/saas/provisioning-selection";
-import { getCurrentWorkspace } from "@/lib/server/auth";
+import { onboardingRouteFromBuilderParams, onboardingRouteFromReturnPath } from "@/lib/saas/provisioning-selection";
+import { hasCurrentPolicyAcceptance } from "@/lib/legal/policies";
+import { getAuthenticatedUser, getCurrentWorkspace } from "@/lib/server/auth";
 import { getSupabaseAuthUser } from "@/lib/supabase/server";
 import { resolveVerticalDashboard } from "@/lib/verticals/registry";
 
@@ -10,6 +11,17 @@ export async function GET(request: Request) {
   const user = await getSupabaseAuthUser();
   if (!user?.email_confirmed_at) {
     return NextResponse.redirect(new URL("/sign-in", request.url));
+  }
+
+  // Make policy acceptance a durable server-side prerequisite rather than a
+  // client-only checkbox. Existing accounts are routed through this once.
+  const localUser = await getAuthenticatedUser();
+  if (!hasCurrentPolicyAcceptance(localUser)) {
+    const nextOnboarding = onboardingRouteFromReturnPath(new URL(request.url).searchParams.get("next"));
+    const destination = nextOnboarding ? `/legal/acceptance?next=${encodeURIComponent(nextOnboarding)}` : "/legal/acceptance";
+    const response = NextResponse.redirect(new URL(destination, request.url));
+    response.headers.set("Cache-Control", "no-store");
+    return response;
   }
 
   // Shared resolution scopes memberships to the verified local user, validates

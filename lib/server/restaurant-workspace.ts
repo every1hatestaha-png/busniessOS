@@ -7,6 +7,7 @@ import { writeAudit } from "@/lib/server/audit";
 import { db } from "@/lib/server/db";
 import { IndustryDomainError, requireWorkspaceModule, type IndustryContext } from "@/lib/server/industry-modules";
 import { releaseRestaurantTableIfSettled } from "@/lib/server/restaurant-table-settlement";
+import { assertRestaurantActorAccess } from "@/lib/server/restaurant-actor-access";
 
 export type RestaurantOrderSource = "POS" | "WHATSAPP" | "MANUAL";
 export type RestaurantFulfillmentType = "DINE_IN" | "TAKEAWAY" | "DELIVERY";
@@ -249,12 +250,17 @@ export async function createRestaurantMenuCategory(context: IndustryContext, inp
   if (!name || name.length > 80) throw new IndustryDomainError("INVALID_STATE", "Category name must be 1-80 characters.");
   const sortOrder = input.sortOrder ?? 0;
   if (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > 10_000) throw new IndustryDomainError("INVALID_STATE", "Category order is invalid.");
-  const rows = await db.$queryRaw<Array<{ id: string; name: string }>>`
+  return db.$transaction(async (tx) => {
+    // Prevent a stale OWNER/MANAGER browser context from modifying the menu
+    // after persisted membership has been downgraded or removed.
+    await assertRestaurantActorAccess(tx, context, "FINANCIAL", "Restaurant menu category management");
+    const rows = await tx.$queryRaw<Array<{ id: string; name: string }>>`
     INSERT INTO "restaurant_menu_categories" ("workspaceId", "name", "sortOrder")
     VALUES (${context.workspaceId}::uuid, ${name}, ${sortOrder})
     RETURNING "id", "name"
   `;
-  return rows[0]!;
+    return rows[0]!;
+  });
 }
 
 export async function createRestaurantMenuItem(context: IndustryContext, input: {
@@ -270,6 +276,7 @@ export async function createRestaurantMenuItem(context: IndustryContext, input: 
   if (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > 10_000) throw new IndustryDomainError("INVALID_STATE", "Menu item order is invalid.");
 
   return db.$transaction(async (tx) => {
+    await assertRestaurantActorAccess(tx, context, "FINANCIAL", "Restaurant menu item management");
     const category = await tx.$queryRaw<Array<{ id: string }>>`
       SELECT "id" FROM "restaurant_menu_categories"
       WHERE "id"=${input.categoryId}::uuid AND "workspaceId"=${context.workspaceId}::uuid AND "isActive"=true
@@ -304,16 +311,22 @@ export async function createRestaurantMenuItem(context: IndustryContext, input: 
 }
 
 export async function setRestaurantMenuItemAvailability(context: IndustryContext, menuItemId: string, isAvailable: boolean) {
+  // The service must independently enforce the menu-management permission;
+  // a server-action/UI check alone is not a durable authorization boundary.
+  assertManager(context);
   await requireWorkspaceModule(context.workspaceId, "restaurant");
   assertUuid(menuItemId, "Menu item");
-  const rows = await db.$queryRaw<Array<{ id: string; name: string; isAvailable: boolean }>>`
+  return db.$transaction(async (tx) => {
+    await assertRestaurantActorAccess(tx, context, "FINANCIAL", "Restaurant menu availability management");
+    const rows = await tx.$queryRaw<Array<{ id: string; name: string; isAvailable: boolean }>>`
     UPDATE "restaurant_menu_items"
     SET "isAvailable"=${isAvailable}, "updatedAt"=now()
     WHERE "id"=${menuItemId}::uuid AND "workspaceId"=${context.workspaceId}::uuid AND "isActive"=true
     RETURNING "id", "name", "isAvailable"
   `;
-  if (!rows[0]) throw new IndustryDomainError("NOT_FOUND", "Menu item was not found in this workspace.");
-  return rows[0];
+    if (!rows[0]) throw new IndustryDomainError("NOT_FOUND", "Menu item was not found in this workspace.");
+    return rows[0];
+  });
 }
 
 export async function createPosRestaurantOrder(context: IndustryContext, input: RestaurantOrderInput) {
@@ -341,6 +354,10 @@ export async function createPosRestaurantOrder(context: IndustryContext, input: 
     })),
   })).digest("hex") : null;
   return db.$transaction(async (tx) => {
+    // Revalidate persisted station membership inside the SAME transaction as
+    // idempotency lookup and order creation. Removed or reassigned employees
+    // must not get a successful replay from a stale authenticated page.
+    await assertRestaurantActorAccess(tx, context, "POS", "Restaurant POS order creation");
     if (requestId) {
       // Serialise copies of this request before reading its immutable identity.
       // ReadCommitted gives the waiter a fresh snapshot after the first commit.
@@ -430,6 +447,9 @@ export async function confirmRestaurantOrder(context: IndustryContext, orderId: 
   await requireWorkspaceModule(context.workspaceId, "restaurant");
   assertUuid(orderId, "Restaurant order");
   return db.$transaction(async (tx) => {
+    // Only a current POS member may confirm (or replay the confirmation of)
+    // a saved WhatsApp order; a Kitchen-only worker must not be allowed.
+    await assertRestaurantActorAccess(tx, context, "POS", "Restaurant WhatsApp order confirmation");
     const rows = await tx.$queryRaw<Array<{ id: string; orderNumber: string; status: RestaurantOrderStatus; restaurantTableId: string | null }>>`
       SELECT "id", "orderNumber", "status", "restaurantTableId"
       FROM "restaurant_orders"
@@ -478,9 +498,13 @@ const kitchenStatusForOrder: Partial<Record<RestaurantOrderStatus, string>> = {
 };
 
 export async function transitionRestaurantOrder(context: IndustryContext, orderId: string, nextStatus: RestaurantOrderStatus) {
+  if (nextStatus === "COMPLETED" || nextStatus === "CANCELLED") {
+    throw new IndustryDomainError("INVALID_STATE", "Terminal orders must use the Restaurant integrity service.");
+  }
   await requireWorkspaceModule(context.workspaceId, "restaurant");
   assertUuid(orderId, "Restaurant order");
   return db.$transaction(async (tx) => {
+    await assertRestaurantActorAccess(tx, context, nextStatus === "PREPARING" || nextStatus === "READY" ? "KITCHEN" : "POS", "Restaurant order transition");
     const rows = await tx.$queryRaw<Array<{ id: string; orderNumber: string; status: RestaurantOrderStatus; restaurantTableId: string | null }>>`
       SELECT "id", "orderNumber", "status", "restaurantTableId"
       FROM "restaurant_orders"
@@ -500,8 +524,6 @@ export async function transitionRestaurantOrder(context: IndustryContext, orderI
     await tx.$executeRaw`
       UPDATE "restaurant_orders"
       SET "status"=${nextStatus},
-          "completedAt"=CASE WHEN ${nextStatus}='COMPLETED' THEN now() ELSE "completedAt" END,
-          "cancelledAt"=CASE WHEN ${nextStatus}='CANCELLED' THEN now() ELSE "cancelledAt" END,
           "updatedAt"=now()
       WHERE "id"=${order.id}::uuid AND "workspaceId"=${context.workspaceId}::uuid
     `;
@@ -517,10 +539,6 @@ export async function transitionRestaurantOrder(context: IndustryContext, orderI
             "updatedAt"=now()
         WHERE "workspaceId"=${context.workspaceId}::uuid AND "restaurantOrderId"=${order.id}::uuid
       `;
-    }
-
-    if (order.restaurantTableId && (nextStatus === "COMPLETED" || nextStatus === "CANCELLED")) {
-      await releaseRestaurantTableIfSettled(tx, context.workspaceId, order.restaurantTableId);
     }
 
     await writeAudit(tx, {
@@ -576,6 +594,49 @@ export async function listRestaurantOrders(workspaceId: string, limit = 100, opt
     LIMIT ${safeLimit}
   `;
   return rows.map((row) => ({ ...row, total: Number(row.total) }));
+}
+
+/**
+ * Fetch kitchen-only line data for the already-scoped active queue in one
+ * tenant-checked query. Do not fetch pricing or customer details into the KDS.
+ */
+export async function listRestaurantKitchenItems(workspaceId: string, orderIds: string[]) {
+  await requireWorkspaceModule(workspaceId, "restaurant");
+  if (orderIds.length === 0) return new Map<string, Array<{
+    itemName: string; quantity: number; notes: string | null; modifiers: string[];
+  }>>();
+  const scopedIds = [...new Set(orderIds)].slice(0, 250);
+  for (const id of scopedIds) assertUuid(id, "Restaurant order");
+  const rows = await db.$queryRaw<Array<{
+    restaurantOrderId: string;
+    itemName: string;
+    quantity: Prisma.Decimal;
+    notes: string | null;
+    modifiers: unknown;
+  }>>`
+    SELECT roi."restaurantOrderId", roi."itemName", roi."quantity", roi."notes", roi."modifiers"
+    FROM "restaurant_order_items" roi
+    INNER JOIN "restaurant_orders" ro ON ro."id" = roi."restaurantOrderId"
+    WHERE ro."workspaceId" = ${workspaceId}::uuid
+      AND ro."id" IN (${Prisma.join(scopedIds.map(id => Prisma.sql`${id}::uuid`))})
+    ORDER BY roi."createdAt", roi."id"
+  `;
+  const itemsByOrder = new Map<string, Array<{
+    itemName: string; quantity: number; notes: string | null; modifiers: string[];
+  }>>();
+  for (const row of rows) {
+    const lines = itemsByOrder.get(row.restaurantOrderId) ?? [];
+    lines.push({
+      itemName: row.itemName,
+      quantity: Number(row.quantity),
+      notes: row.notes,
+      modifiers: Array.isArray(row.modifiers)
+        ? row.modifiers.filter((value): value is string => typeof value === "string")
+        : [],
+    });
+    itemsByOrder.set(row.restaurantOrderId, lines);
+  }
+  return itemsByOrder;
 }
 
 export async function getRestaurantOrder(workspaceId: string, orderId: string) {

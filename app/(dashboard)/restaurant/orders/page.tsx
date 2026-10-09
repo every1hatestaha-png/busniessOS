@@ -13,6 +13,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getCashBankAccounts } from "@/lib/server/accounting";
 import { requireWorkspace } from "@/lib/server/auth";
+import { canShowOrderBoardTransition } from "@/lib/restaurant/order-board-transition-policy";
 import { listRestaurantPayments, type RestaurantPaymentRecord } from "@/lib/server/restaurant-integrity";
 import { listRestaurantNetPaymentSummaries } from "@/lib/server/restaurant-payment-summary";
 import { listRestaurantOrders, type RestaurantOrderStatus } from "@/lib/server/restaurant-workspace";
@@ -35,7 +36,7 @@ function primaryNext(status: RestaurantOrderStatus): { label: string; next: Rest
 type PaymentSummary = Awaited<ReturnType<typeof listRestaurantNetPaymentSummaries>>[number];
 
 export default async function RestaurantOrdersPage() {
-  const { workspaceId, role, workspace } = await requireWorkspace();
+  const { workspaceId, role, restaurantStation, workspace } = await requireWorkspace();
   const [active, recentClosed, completedOutstanding, cashAccounts] = await Promise.all([
     listRestaurantOrders(workspaceId, 200, { statuses: ["PENDING_REVIEW", "CONFIRMED", "PREPARING", "READY"], oldestFirst: true }),
     listRestaurantOrders(workspaceId, 30, { statuses: ["COMPLETED", "CANCELLED"] }),
@@ -48,6 +49,7 @@ export default async function RestaurantOrdersPage() {
     listRestaurantNetPaymentSummaries(workspaceId, visibleOrderIds),
   ]);
   const canManageFinancialActions = role === "OWNER" || role === "ADMIN" || role === "MANAGER";
+
   const paymentsByOrder = new Map<string, RestaurantPaymentRecord[]>();
   for (const payment of payments) {
     const group = paymentsByOrder.get(payment.restaurantOrderId) ?? [];
@@ -83,7 +85,7 @@ export default async function RestaurantOrdersPage() {
       <div className="grid gap-4 xl:grid-cols-4">
         {columns.map((column) => {
           const matching = active.filter((order) => order.status === column.status);
-          return <section key={column.status} className="min-w-0 rounded-2xl border bg-slate-50/70 p-3"><div className="mb-3 flex items-center justify-between"><h2 className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">{column.label}</h2><span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold shadow-sm">{matching.length}</span></div><div className="space-y-3">{matching.length ? matching.map((order) => <OrderCard workspaceId={workspaceId} key={order.id} order={order} cashAccounts={cashAccounts} payments={paymentsByOrder.get(order.id) ?? []} paymentSummary={paymentSummaryByOrder.get(order.id)} canVoidPayments={canManageFinancialActions} />) : <div className="rounded-2xl border border-dashed bg-white p-8 text-center"><Sparkles className="mx-auto size-4 text-emerald-500" /><p className="mt-2 text-xs text-muted-foreground">Queue clear</p></div>}</div></section>;
+          return <section key={column.status} className="min-w-0 rounded-2xl border bg-slate-50/70 p-3"><div className="mb-3 flex items-center justify-between"><h2 className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">{column.label}</h2><span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold shadow-sm">{matching.length}</span></div><div className="space-y-3">{matching.length ? matching.map((order) => <OrderCard workspaceId={workspaceId} key={order.id} order={order} cashAccounts={cashAccounts} payments={paymentsByOrder.get(order.id) ?? []} paymentSummary={paymentSummaryByOrder.get(order.id)} canVoidPayments={canManageFinancialActions} role={role} restaurantStation={restaurantStation} />) : <div className="rounded-2xl border border-dashed bg-white p-8 text-center"><Sparkles className="mx-auto size-4 text-emerald-500" /><p className="mt-2 text-xs text-muted-foreground">Queue clear</p></div>}</div></section>;
         })}
       </div>
 
@@ -102,6 +104,8 @@ function OrderCard({
   payments,
   paymentSummary,
   canVoidPayments,
+  role,
+  restaurantStation,
 }: {
   workspaceId: string;
   order: Awaited<ReturnType<typeof listRestaurantOrders>>[number];
@@ -109,12 +113,14 @@ function OrderCard({
   payments: RestaurantPaymentRecord[];
   paymentSummary?: PaymentSummary;
   canVoidPayments: boolean;
+  role: Awaited<ReturnType<typeof requireWorkspace>>["role"];
+  restaurantStation: string;
 }) {
   const next = primaryNext(order.status);
   return <Card className={order.source === "WHATSAPP" ? "rounded-2xl border-emerald-300 bg-white shadow-none" : "rounded-2xl bg-white shadow-none"}><CardContent className="space-y-3 p-4"><div className="flex items-start justify-between gap-2"><div><div className="flex items-center gap-1.5">{order.source === "WHATSAPP" ? <MessageCircleMore className="size-4 text-emerald-600" /> : <ShoppingBag className="size-4 text-muted-foreground" />}<Link href={`/restaurant/orders/${order.id}/print`} className="font-semibold underline">{order.orderNumber}</Link></div><p className="mt-1 text-xs text-muted-foreground">{order.source} · {order.fulfillmentType.replaceAll("_", " ")}{order.tableName ? ` · ${order.tableName}` : ""}</p></div><p className="font-semibold">Rs {(paymentSummary?.adjustedDue ?? order.total).toLocaleString()}</p></div><div className="text-xs text-muted-foreground"><p>{order.customerName || "Walk-in customer"}{order.customerPhone ? ` · ${order.customerPhone}` : ""}</p><p>{new Intl.DateTimeFormat("en-PK", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Karachi" }).format(order.createdAt)}</p>{order.notes ? <p className="mt-1 rounded bg-muted/50 p-2">{order.notes}</p> : null}</div>
     <div className="flex flex-wrap gap-2">
       {order.status === "PENDING_REVIEW" ? <RestaurantMutationForm action={confirmRestaurantOrderAction} workspaceId={workspaceId}><input type="hidden" name="orderId" value={order.id} /><Button size="sm" className="rounded-lg bg-emerald-600 hover:bg-emerald-500" type="submit">Confirm order</Button></RestaurantMutationForm> : null}
-      {next ? <RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}><input type="hidden" name="orderId" value={order.id} /><input type="hidden" name="nextStatus" value={next.next} /><Button size="sm" className="rounded-lg bg-emerald-600 hover:bg-emerald-500" type="submit">{next.label}</Button></RestaurantMutationForm> : null}
+      {next && canShowOrderBoardTransition(role, restaurantStation, next.next) ? <RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}><input type="hidden" name="orderId" value={order.id} /><input type="hidden" name="nextStatus" value={next.next} /><Button size="sm" className="rounded-lg bg-emerald-600 hover:bg-emerald-500" type="submit">{next.label}</Button></RestaurantMutationForm> : null}
       {!["COMPLETED", "CANCELLED"].includes(order.status) ? <RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}><input type="hidden" name="orderId" value={order.id} /><input type="hidden" name="nextStatus" value="CANCELLED" /><Button size="sm" className="rounded-lg" variant="outline" type="submit">Cancel</Button></RestaurantMutationForm> : null}
     </div>
     <PaymentPanel workspaceId={workspaceId} orderId={order.id} paymentStatus={order.paymentStatus} cashAccounts={cashAccounts} payments={payments} paymentSummary={paymentSummary} canVoidPayments={canVoidPayments} />
