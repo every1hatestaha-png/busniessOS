@@ -1,0 +1,67 @@
+name: MunshiOS isolated dev dependency lock repair
+
+on:
+  push:
+    branches:
+      - fix/dependency-lock-remediation-20261009
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate-and-check-lock:
+    if: github.repository == 'every1hatestaha-png/busniessOS' && github.actor == 'every1hatestaha-png'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          cache: npm
+      - name: Generate lockfile without lifecycle scripts
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Validate patched versions and dev-only classification
+        run: |
+          node <<'NODE'
+          const assert = require("node:assert/strict");
+          const lock = require("./package-lock.json");
+          const expected = {
+            sharp: "0.35.5",
+            "source-map-js": "1.2.2",
+            "@modelcontextprotocol/sdk": "1.31.0",
+            "proxy-addr": "2.0.8",
+            "postcss-selector-parser": "7.1.6",
+          };
+          for (const [name, version] of Object.entries(expected)) {
+            assert.equal(lock.packages[`node_modules/${name}`]?.version, version, name);
+          }
+          for (const name of ["proxy-addr","postcss-selector-parser","sprintf-js","http-cache-semantics","braces","roarr","global-agent"]) {
+            const entry=lock.packages[`node_modules/${name}`];
+            if (entry) assert.equal(entry.dev,true,`dev-only: ${name}`);
+          }
+          console.log("Patched graph and dev-only paths verified");
+          NODE
+      - name: Verify npm ci lockfile compatibility
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=moderate
+      - name: Explicit dev-only advisory guard
+        run: node scripts/restaurant-audit-dev-advisories-v1-96.cjs
+      - name: Confirm generated change hygiene
+        run: git diff --check
+      - name: Commit generated npm lockfile only
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF}" = "refs/heads/fix/dependency-lock-remediation-20261009"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- package-lock.json
+          git diff --cached --quiet && { echo "No lockfile changes"; exit 1; }
+          git commit -m "chore(deps): update vetted development transitive packages"
+          auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth}" push origin HEAD:refs/heads/fix/dependency-lock-remediation-20261009
