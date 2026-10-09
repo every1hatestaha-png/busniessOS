@@ -1,15 +1,19 @@
 {
   "vercelProjectId": "prj_ytXqF1zAoJjcsBIICz7PryfAczLz",
-  "stagingProjectId": "wandering-moon-51932710",
+  "stagingProjectId": "still-hill-08070011",
   "database": "neondb",
   "candidateBranches": [
     "integrate/security-stack-on-marketing-20261009",
-    "fix/preview-acceptance-fail-closed-20261009"
+    "fix/preview-acceptance-fail-closed-20261009",
+    "integrate/sterile-neon-staging-target-20261009"
   ],
-  "approvedHostnames": [],
+  "approvedHostnames": [
+    "ep-cool-recipe-b4i2kgez.c-6.us-east-2.aws.neon.tech"
+  ],
   "forbiddenHostPrefixes": [
     "ep-fragrant-heart-b578tydw",
     "ep-muddy-sea-b51k2gi3",
     "ep-fragrant-sun-b5xzle76"
-  ]
+  ],
+  "stagingBranchId": "br-calm-unit-b4hiv86y"
 }

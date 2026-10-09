@@ -9,3 +9,17 @@ Do not whitelist the generic Preview endpoint, the staging root, existing stagin
 The guard is scoped to the staging Vercel project and release-candidate refs. It can intentionally block redeployment of older staging-project previews until a new sterile database target is approved, but does not alter production project or unrelated Preview builds. The existing build-time migration guard remains unchanged, and the already disabled Vercel auto-deploy rule is preserved. Production is untouched.
 
 Local CI uses synthetic URLs only, no hosted credentials or production data. No actual staging deploy performed.
+
+
+## Sterile Neon host admission — 2026-10-09
+
+Provisioned in the existing **Neon Free** organization, not imported or cloned from any staging/production database:
+
+- Project: `munshios-rc132-sterile-preview-20261009`, ID `still-hill-08070011`; PostgreSQL 18.6, region AWS `us-east-2`.
+- Default fresh branch: `sterile-release-acceptance`, ID `br-calm-unit-b4hiv86y`; database `neondb`.
+- Provider-reported compute endpoint (not secret): `ep-cool-recipe-b4i2kgez.c-6.us-east-2.aws.neon.tech`.
+- Read-only inspection: **zero public tables**, no customer data imported. The schema remains empty; Prisma's **132 migrations are NOT yet applied**.
+- The exact endpoint above is now the sole allowlisted host in this draft. Older staging root, populated children, clones, wrong provider regions/hostnames and arbitrary URL routing overrides remain rejected. The branch is explicitly disabled in Vercel automatic deployments.
+- **No Vercel environment variable or staging auth/provider setting has been changed**. No application deployment has occurred. A checked-in allowlist is not permission to deploy to the empty schema.
+
+Before any actual Preview: run Prisma migrations through an explicitly approved controlled process **using the private Neon connection string**; verify 132 unique, complete checksums and required table/constraint state; then privately configure the exact branch-scoped `DATABASE_URL` in Vercel with `RUN_PRISMA_MIGRATIONS_ON_BUILD=0`. Re-run read-only Neon project/branch/endpoint attestation immediately before a separately approved deployment. Validate real Supabase staging identities, Vercel protection and readiness. No database credentials in GitHub files, logs or chat.

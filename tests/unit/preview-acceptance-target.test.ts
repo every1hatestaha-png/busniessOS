@@ -15,7 +15,9 @@ const base = {
 };
 
 describe("release candidate Preview acceptance database guard", () => {
-  it("rejects all release deployments while the reviewed synthetic-host allowlist is empty", () => {
+  it("accepts only the independently verified new empty Neon staging endpoint", () => {
+    const approved = { ...base, DATABASE_URL: `postgresql://synthetic:synthetic@ep-cool-recipe-b4i2kgez.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require` };
+    expect(assertPreviewAcceptanceTarget(approved)).toEqual({ candidatePreviewGuard: "approved" });
     expect(() => assertPreviewAcceptanceTarget(base)).toThrow("not an independently approved synthetic");
   });
   it("allows only an explicitly reviewed clean synthetic target in a unit-test injection", () => {
@@ -56,6 +58,8 @@ describe("release candidate Preview acceptance database guard", () => {
     expect(assertPreviewAcceptanceTarget({ ...base, VERCEL: "0" })).toEqual({ candidatePreviewGuard: "not-applicable" });
     expect(() => assertPreviewAcceptanceTarget({ ...base, VERCEL_GIT_COMMIT_REF: "main" })).toThrow();
     expect(() => assertPreviewAcceptanceTarget({ ...base, VERCEL_GIT_COMMIT_REF: undefined })).toThrow();
+    const approved = { ...base, DATABASE_URL: `postgresql://synthetic:synthetic@ep-cool-recipe-b4i2kgez.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require` };
+    expect(assertPreviewAcceptanceTarget({ ...approved, VERCEL_GIT_COMMIT_REF: undefined })).toEqual({ candidatePreviewGuard: "approved" });
     expect(assertPreviewAcceptanceTarget({ ...base, VERCEL_GIT_COMMIT_REF: "main", VERCEL_PROJECT_ID: "prj_iSQ7PaTAwiQMYasVAEBGJZTSjTk2" })).toEqual({ candidatePreviewGuard: "not-applicable" });
     expect(() => assertPreviewAcceptanceTarget({ ...base, VERCEL_GIT_COMMIT_REF: "fix/preview-acceptance-fail-closed-20261009" })).toThrow();
   });
