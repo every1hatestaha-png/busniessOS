@@ -46,7 +46,10 @@ describe("Restaurant V1.88 release migration build target guard", () => {
     });
     expect(result.status).not.toBe(0);
     expect(result.stdout).not.toContain("intercepted-command:prisma migrate deploy");
-    expect(result.stderr).toContain("Refusing staging migration");
+    // The candidate Preview guard rejects the missing staging proof before
+    // the narrower migration guard can run. No migration/build command executes.
+    expect(result.stderr).toContain("Refusing acceptance deployment");
+    expect(result.stdout).not.toContain("intercepted-command:next build");
   });
 
   it("denies a Preview migration targeting an unapproved database", () => {
@@ -59,7 +62,10 @@ describe("Restaurant V1.88 release migration build target guard", () => {
     });
     expect(result.status).not.toBe(0);
     expect(result.stdout).not.toContain("intercepted-command:prisma migrate deploy");
-    expect(result.stderr).toContain("Refusing migration");
+    // Build-time migrations are categorically disabled for an unapproved
+    // candidate Preview, so this fails before target-specific Prisma checks.
+    expect(result.stderr).toContain("Refusing acceptance deployment");
+    expect(result.stdout).not.toContain("intercepted-command:next build");
   });
 
   it.each(["", "development", "staging", "custom"])(
