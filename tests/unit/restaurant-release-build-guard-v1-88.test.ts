@@ -62,6 +62,31 @@ describe("Restaurant V1.88 release migration build target guard", () => {
     expect(result.stderr).toContain("Refusing migration");
   });
 
+  it.each(["", "development", "staging", "custom"])(
+    "rejects migrations with missing or unrecognized VERCEL_ENV (%s)",
+    (environment) => {
+      const result = runBuildGuard("1", {
+        VERCEL: "1",
+        VERCEL_ENV: environment,
+        MUNSHIOS_DEPLOYMENT_ENVIRONMENT: "",
+      });
+      expect(result.status).not.toBe(0);
+      expect(result.stdout).not.toContain("intercepted-command:prisma migrate deploy");
+      expect(result.stderr).toContain("Refusing build-time database migrations");
+    },
+  );
+
+  it("allows migration-free builds with missing deployment environment", () => {
+    const result = runBuildGuard("0", {
+      VERCEL: "1",
+      VERCEL_ENV: "",
+      MUNSHIOS_DEPLOYMENT_ENVIRONMENT: "",
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain("prisma migrate deploy");
+    expect(result.stdout).toContain("intercepted-command:next build");
+  });
+
   it("keeps ordinary Preview builds free of migration side effects", () => {
     const result = runBuildGuard("0", {
       VERCEL: "1",
