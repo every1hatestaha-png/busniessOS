@@ -58,7 +58,8 @@
       "fix/restaurant-menu-persisted-role-v2-09": false,
       "fix/restaurant-legacy-kot-safe-service-v2-10": false,
       "fix/restaurant-cash-shift-persisted-actor-v2-11": false,
-      "fix/web-mutation-fbr-station-audit-v2-12": false
+      "fix/web-mutation-fbr-station-audit-v2-12": false,
+      "fix/preview-migration-target-guard-v2-14": false
     }
   }
 }
