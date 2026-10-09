@@ -7,6 +7,7 @@ on:
       - fix/dependency-lock-remediation-20261009
       - integrate/dependency-marketing-onboarding-20261009
       - integrate/security-stack-on-marketing-20261009
+      - fix/preview-acceptance-fail-closed-20261009
 
 permissions:
   contents: read
