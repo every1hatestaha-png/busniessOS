@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 
@@ -12,11 +13,17 @@ import {
 } from "@/lib/auth-password-policy";
 import { MAX_EMAIL_OTP_LENGTH, isValidEmailOtp, normalizeEmailOtp } from "@/lib/auth-email-otp";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { postAuthDestination } from "@/lib/auth-routing";
+import { onboardingRouteFromBuilderParams } from "@/lib/saas/provisioning-selection";
 
 const LOGIN_VISUAL = "/auth/faisal-mosque.webp";
 const RESEND_COOLDOWN_SECONDS = 30;
 
 export default function SignUpPage() {
+  const searchParams = useSearchParams();
+  const nextOnboarding = onboardingRouteFromBuilderParams(searchParams);
+  const callbackPath = nextOnboarding ? `/auth/callback?next=${encodeURIComponent(nextOnboarding)}` : "/auth/callback";
+  const signInHref = nextOnboarding ? `/sign-in?next=${encodeURIComponent(nextOnboarding)}` : "/sign-in";
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -59,7 +66,7 @@ export default function SignUpPage() {
       email: identifier,
       password,
       options: {
-        emailRedirectTo: `${origin}/auth/callback`,
+        emailRedirectTo: `${origin}${callbackPath}`,
         data: {
           first_name: firstName.trim() || null,
           last_name: lastName.trim() || null,
@@ -87,7 +94,7 @@ export default function SignUpPage() {
     }
 
     if (data.session) {
-      window.location.assign("/auth/post-login");
+      window.location.assign(nextOnboarding ? postAuthDestination(nextOnboarding, window.location.href) : "/auth/post-login");
       return;
     }
 
@@ -129,11 +136,11 @@ export default function SignUpPage() {
     }
 
     if (!data.session) {
-      window.location.assign("/sign-in?confirmed=1");
+      window.location.assign(nextOnboarding ? `/sign-in?confirmed=1&next=${encodeURIComponent(nextOnboarding)}` : "/sign-in?confirmed=1");
       return;
     }
 
-    window.location.assign("/auth/post-login");
+    window.location.assign(nextOnboarding ? postAuthDestination(nextOnboarding, window.location.href) : "/auth/post-login");
   }
 
   async function resendVerification() {
@@ -146,7 +153,7 @@ export default function SignUpPage() {
       type: "signup",
       email,
       options: {
-        emailRedirectTo: `${origin}/auth/callback`,
+        emailRedirectTo: `${origin}${callbackPath}`,
       },
     });
 
@@ -247,7 +254,7 @@ export default function SignUpPage() {
                   >
                     Use another email
                   </button>
-                  <Link href="/sign-in" className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] px-5 text-sm font-medium text-slate-200 transition hover:bg-white/[0.07]">Back to sign in</Link>
+                  <Link href={signInHref} className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] px-5 text-sm font-medium text-slate-200 transition hover:bg-white/[0.07]">Back to sign in</Link>
                 </div>
               </div>
             ) : (
@@ -311,7 +318,7 @@ export default function SignUpPage() {
                   </button>
                 </form>
 
-                <p className="mt-7 border-t border-white/[0.08] pt-6 text-center text-sm text-slate-500">Already have an account? <Link href="/sign-in" className="font-medium text-emerald-300 transition hover:text-emerald-200">Sign in</Link></p>
+                <p className="mt-7 border-t border-white/[0.08] pt-6 text-center text-sm text-slate-500">Already have an account? <Link href={signInHref} className="font-medium text-emerald-300 transition hover:text-emerald-200">Sign in</Link></p>
               </>
             )}
           </div>
