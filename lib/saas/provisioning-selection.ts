@@ -77,3 +77,18 @@ export function buildProvisioningQuery(input: {
   params.set("billing", sanitizeBilling(input.billing));
   return params.toString();
 }
+
+/**
+ * Carry only recognized, non-sensitive builder preferences through the
+ * email-verification journey. This never grants access to a module or plan:
+ * the authenticated onboarding action performs the final provisioning.
+ */
+export function onboardingRouteFromBuilderParams(params: Pick<URLSearchParams, "get">): string | null {
+  const business = params.get("business");
+  if (!isBuilderBusinessType(business)) return null;
+  return `/onboarding?${buildProvisioningQuery({
+    businessType: business,
+    modules: sanitizeProvisioningModules(params.get("modules")),
+    billing: sanitizeBilling(params.get("billing")),
+  })}`;
+}
