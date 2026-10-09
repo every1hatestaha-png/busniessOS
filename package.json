@@ -68,7 +68,8 @@
     "deepmerge-ts": "8.0.2",
     "mysql2": "3.24.4",
     "@modelcontextprotocol/sdk": "1.31.0",
-    "sharp": "0.35.5"
+    "sharp": "0.35.5",
+    "source-map-js": "1.2.2"
   },
   "build": {
     "appId": "com.businessos.desktop",
