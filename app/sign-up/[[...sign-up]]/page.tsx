@@ -296,6 +296,7 @@ export default function SignUpPage() {
 
                   {error ? <p role="alert" className="rounded-xl border border-red-400/20 bg-red-500/[0.07] px-4 py-3 text-sm leading-5 text-red-200">{error}</p> : null}
 
+                  <p className="text-center text-xs leading-5 text-slate-400">Before creating an account, please review our <Link href="/terms" className="text-emerald-300 underline-offset-2 hover:underline focus-visible:underline">Terms of Service</Link> and <Link href="/privacy" className="text-emerald-300 underline-offset-2 hover:underline focus-visible:underline">Privacy Policy</Link>.</p>
                   <button type="submit" disabled={busy} className="mt-1 h-[52px] w-full rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-[#03251b] shadow-[0_10px_30px_rgba(16,185,129,0.14)] transition hover:bg-emerald-400 disabled:opacity-60">{busy ? "Creating account..." : "Create account"}</button>
                   <button
                     type="button"
