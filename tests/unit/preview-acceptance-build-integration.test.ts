@@ -52,9 +52,16 @@ describe("candidate Preview guard integrated into actual build entrypoint", () =
     expect(result.stdout).not.toContain("intercepted-command:");
   });
 
-  it("preserves unrelated Preview builds when build-time migrations are off", () => {
+  it.each(["main", undefined])("rejects an unapproved staging-project build with an unrelated or missing Git ref (%s)", (ref) => {
+    const result = simulateBuild({ VERCEL_GIT_COMMIT_REF: ref });
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).not.toContain("intercepted-command:");
+  });
+
+  it("preserves unrelated business-os Preview builds when build-time migrations are off", () => {
     const result = simulateBuild({
       VERCEL_GIT_COMMIT_REF: "main",
+      VERCEL_PROJECT_ID: "prj_iSQ7PaTAwiQMYasVAEBGJZTSjTk2",
       MUNSHIOS_DEPLOYMENT_ENVIRONMENT: "",
     });
     expect(result.status).toBe(0);

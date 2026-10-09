@@ -8,7 +8,12 @@ const policy = require("../config/preview-acceptance-targets.json");
  * No provider I/O and never logs or returns connection credentials.
  */
 function assertPreviewAcceptanceTarget(env, approvedHosts = policy.approvedHostnames) {
-  if (env.VERCEL !== "1" || !policy.candidateBranches.includes(env.VERCEL_GIT_COMMIT_REF)) {
+  // A manually triggered Preview may lack VERCEL_GIT_COMMIT_REF altogether.
+  // Always guard the staging project, and refuse deploying release candidates
+  // on any other Vercel project. Never rely on a caller-provided ref alone.
+  const stagingProject = env.VERCEL_PROJECT_ID === policy.vercelProjectId;
+  const candidateRef = policy.candidateBranches.includes(env.VERCEL_GIT_COMMIT_REF);
+  if (env.VERCEL !== "1" || (!stagingProject && !candidateRef)) {
     return { candidatePreviewGuard: "not-applicable" };
   }
   if (env.VERCEL_ENV !== "preview" || env.VERCEL_PROJECT_ID !== policy.vercelProjectId

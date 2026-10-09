@@ -54,7 +54,9 @@ describe("release candidate Preview acceptance database guard", () => {
   });
   it("does not gate ordinary unrelated builds, but guards both approved candidate refs", () => {
     expect(assertPreviewAcceptanceTarget({ ...base, VERCEL: "0" })).toEqual({ candidatePreviewGuard: "not-applicable" });
-    expect(assertPreviewAcceptanceTarget({ ...base, VERCEL_GIT_COMMIT_REF: "main" })).toEqual({ candidatePreviewGuard: "not-applicable" });
+    expect(() => assertPreviewAcceptanceTarget({ ...base, VERCEL_GIT_COMMIT_REF: "main" })).toThrow();
+    expect(() => assertPreviewAcceptanceTarget({ ...base, VERCEL_GIT_COMMIT_REF: undefined })).toThrow();
+    expect(assertPreviewAcceptanceTarget({ ...base, VERCEL_GIT_COMMIT_REF: "main", VERCEL_PROJECT_ID: "prj_iSQ7PaTAwiQMYasVAEBGJZTSjTk2" })).toEqual({ candidatePreviewGuard: "not-applicable" });
     expect(() => assertPreviewAcceptanceTarget({ ...base, VERCEL_GIT_COMMIT_REF: "fix/preview-acceptance-fail-closed-20261009" })).toThrow();
   });
   it("does not reveal database passwords in errors", () => {
