@@ -58,6 +58,15 @@ describe("candidate Preview guard integrated into actual build entrypoint", () =
     expect(result.stdout).not.toContain("intercepted-command:");
   });
 
+  it("allows reviewed sterile Neon host but never invokes Prisma migrations", () => {
+    const result = simulateBuild({
+      DATABASE_URL: "postgresql://synthetic:fixture@ep-cool-recipe-b4i2kgez.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require",
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("intercepted-command:next build");
+    expect(result.stdout).not.toContain("prisma migrate deploy");
+  });
+
   it("preserves unrelated business-os Preview builds when build-time migrations are off", () => {
     const result = simulateBuild({
       VERCEL_GIT_COMMIT_REF: "main",

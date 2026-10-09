@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - integrate/security-stack-on-marketing-20261009
+      - fix/preview-acceptance-fail-closed-20261009
 
 permissions:
   contents: read
@@ -33,8 +34,11 @@ jobs:
           const assert=require("node:assert/strict");
           const cfg=require("./config/preview-acceptance-targets.json");
           const vercel=require("./vercel.json");
-          assert.deepEqual(cfg.approvedHostnames,[]);
+          assert.deepEqual(cfg.approvedHostnames,["ep-cool-recipe-b4i2kgez.c-6.us-east-2.aws.neon.tech"]);
+          assert.equal(cfg.stagingProjectId,"still-hill-08070011");
+          assert.equal(cfg.stagingBranchId,"br-calm-unit-b4hiv86y");
           assert.equal(vercel.git.deploymentEnabled["fix/preview-acceptance-fail-closed-20261009"],false);
+          assert.equal(vercel.git.deploymentEnabled["integrate/sterile-neon-staging-target-20261009"],false);
           assert.equal(vercel.git.deploymentEnabled["integrate/security-stack-on-marketing-20261009"],false);
           console.log("Pre-deployment deny-by-default: PASS");
           NODE

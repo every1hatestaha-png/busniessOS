@@ -3,8 +3,8 @@ const policy = require("../config/preview-acceptance-targets.json");
 
 /**
  * This is a fail-closed Preview *deployment* guard, not a migration tool.
- * It intentionally has no approved hostname until a fresh synthetic,
- * independent staging database has been provisioned and reviewed.
+ * An exact-host allowlist points only to the independently verified sterile
+ * nonproduction Neon project. It does not imply database-schema or release approval.
  * No provider I/O and never logs or returns connection credentials.
  */
 function assertPreviewAcceptanceTarget(env, approvedHosts = policy.approvedHostnames) {
@@ -26,7 +26,7 @@ function assertPreviewAcceptanceTarget(env, approvedHosts = policy.approvedHostn
   let url;
   try { url = new URL(env.DATABASE_URL); }
   catch { throw new Error("Refusing acceptance deployment without a valid database target."); }
-  const prefix = url.hostname.match(/^(ep-[a-z0-9-]+?)(?:-pooler)?\.c-7\.us-east-2\.aws\.neon\.tech$/)?.[1];
+  const prefix = url.hostname.match(/^(ep-[a-z0-9-]+?)(?:-pooler)?\.c-(?:6|7)\.us-east-2\.aws\.neon\.tech$/)?.[1];
   const denied = policy.forbiddenHostPrefixes.includes(prefix);
   const routingKeys = new Set(["host", "hostaddr", "port", "database", "dbname", "service", "connectionstring", "options"]);
   if (!["postgres:", "postgresql:"].includes(url.protocol)
