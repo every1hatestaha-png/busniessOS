@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { MarketingHeader, MarketingFooter } from "@/components/marketing/site";
 
 export const metadata: Metadata = {
   title: "FAQ | MunshiOS",
   description: "Frequently asked questions about MunshiOS, trials, business data, modules, migration, support and subscriptions.",
+  alternates: { canonical: "/faq" },
 };
 
 const faqs = [
@@ -22,9 +24,10 @@ const faqs = [
 export default function FaqPage() {
   return (
     <main className="min-h-screen bg-[#fbfcfa] text-slate-950">
-      <header className="border-b border-slate-200 bg-white"><div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-5 sm:px-6"><Link href="/" className="font-semibold tracking-tight">MunshiOS</Link><Link href="/get-your-munshi" className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">Get your Munshi</Link></div></header>
+      <MarketingHeader />
       <section className="border-b border-slate-200 bg-white"><div className="mx-auto max-w-5xl px-5 py-16 sm:px-6 sm:py-20"><p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">FAQ</p><h1 className="mt-4 text-4xl font-semibold tracking-[-0.045em] sm:text-6xl">Questions worth asking before trusting your business software.</h1><p className="mt-6 max-w-3xl text-lg leading-8 text-slate-600">Straight answers about access, billing, data, workflows and how MunshiOS is built.</p></div></section>
       <section className="mx-auto max-w-5xl px-5 py-14 sm:px-6"><div className="divide-y divide-slate-200 overflow-hidden rounded-[28px] border border-slate-200 bg-white px-5 sm:px-7">{faqs.map(([question, answer]) => <details key={question} className="group py-5"><summary className="cursor-pointer list-none text-base font-semibold">{question}</summary><p className="max-w-3xl pt-3 text-sm leading-6 text-slate-600">{answer}</p></details>)}</div><div className="mt-8 text-center text-sm text-slate-600">Still deciding? <Link href="/get-your-munshi" className="font-semibold text-emerald-700 hover:underline">Build your setup</Link>.</div></section>
+      <MarketingFooter />
     </main>
   );
 }
