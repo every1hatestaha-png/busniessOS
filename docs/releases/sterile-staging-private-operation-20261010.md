@@ -59,6 +59,8 @@ Preserve ONLY sanitized PASS and approved commit/provider identity. Independentl
 
 ## 6. Failure, rollback and rerun policy
 
+The stacked diagnostic update emits sanitized stage/reason JSON rather than a generic failure. See [failure-stage guidance](sterile-runner-diagnostics-20261010.md). This changes the runner SHA: **review and explicit new-SHA owner authorization are required before another hosted attempt**, even if the schema remains empty. Do not treat this documentation as retry approval.
+
 Stop on any failure. Prisma's chain is not atomic across all migrations; partial schema may remain. Do not infer rollback from timeout, process termination, nonzero exit or failed attestation. A child engine may still be winding down after timeout; privately confirm no active migration process/session before recovery.
 
 Do not rerun against nonempty schema, edit migrations, issue `migrate resolve`, force/reset, drop tables or run down migrations. The runner intentionally refuses reruns. Read the ledger and engine/session state only privately for diagnosis; ledger `logs` must not enter shared artifacts. Preserve evidence.
