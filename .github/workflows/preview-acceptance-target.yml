@@ -6,6 +6,7 @@ on:
       - integrate/security-stack-on-marketing-20261009
       - fix/preview-acceptance-fail-closed-20261009
       - integrate/sterile-neon-staging-target-20261009
+      - fix/sterile-migration-attestation-20261010
 
 permissions:
   contents: read
@@ -44,6 +45,7 @@ jobs:
           assert.equal(vercel.git.deploymentEnabled["integrate/sterile-neon-staging-target-20261009"],false);
           assert.equal(vercel.git.deploymentEnabled["integrate/security-stack-on-marketing-20261009"],false);
           assert.equal(vercel.git.deploymentEnabled["fix/sterile-migration-attestation-20261010"],false);
+          assert.equal(vercel.git.deploymentEnabled["fix/sterile-migration-safe-stage-diagnostics-20261010"],false);
           console.log("Pre-deployment deny-by-default: PASS");
           NODE
 

@@ -68,6 +68,27 @@ describe("opt-in fresh Neon staging migration preflight", () => {
     await expect(migrateEmptyDatabase(client, [], () => { throw new Error("must not run"); })).rejects.toThrow("operator");
     expect(calls).toBe(1);
   });
+  it("reports fixed, credential-free stage names for a denied lock", async () => {
+    const stages: string[] = [];
+    const client = { query: async () => ({ rows: [{ acquired: false }] }) };
+    await expect(migrateEmptyDatabase(client, [], () => { throw new Error("never execute"); }, (s: string) => stages.push(s)))
+      .rejects.toThrow("operator");
+    expect(stages).toEqual(["ADVISORY_LOCK"]);
+    expect(JSON.stringify(stages)).not.toMatch(/postgresql|secret|password/i);
+  });
+  it("reports exact safe stage if Prisma child fails, without printing raw child output", async () => {
+    const stages: string[] = [];
+    const client = { query: async (sql: string) => (
+      sql.includes("pg_try_advisory_lock") ? { rows: [{ acquired: true }] }
+      : { rows: [{ major: 18, recovering: false, objects: 0, types: 0, routines: 0, extra_schemas: 0 }] }
+    ) };
+    await expect(migrateEmptyDatabase(client, expectedMigrationCatalog(),
+      () => ({ status: 1, stderr: "postgresql://secret:password@host/private" }),
+      (s: string) => stages.push(s))).rejects.toThrow("failed or timed out");
+    expect(stages).toEqual(["ADVISORY_LOCK", "EMPTY_SCHEMA_PRECHECK", "MIGRATION_FILE_PRECHECK", "PRISMA_MIGRATE_DEPLOY"]);
+    expect(JSON.stringify(stages)).not.toMatch(/postgresql|secret|password/i);
+  });
+
   it("fails closed after child error/timeout without reconciling or authorizing release", async () => {
     for (const failure of [{ status: 1 }, { status: null, error: new Error("private") }]) {
       const queries: string[] = [];
