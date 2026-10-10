@@ -55,10 +55,19 @@ export default function SignInPage() {
       return;
     }
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: identifier,
-      password,
-    });
+    // A rejected network request is different from an AuthError response.
+    // Keep provider/network details private and always release the busy state.
+    let signInError;
+    try {
+      ({ error: signInError } = await supabase.auth.signInWithPassword({
+        email: identifier,
+        password,
+      }));
+    } catch {
+      setError("We could not sign you in right now. Please try again.");
+      setBusy(false);
+      return;
+    }
 
     if (signInError) {
       const feedback = getSignInFeedback(signInError);

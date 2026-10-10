@@ -58,6 +58,15 @@ describe("password login, verification and logout event contracts", () => {
     expect(mocks.navigate).toHaveBeenCalledWith("/auth/post-login");
     expect(mocks.verify).not.toHaveBeenCalled();
   });
+  it("recovers safely from a rejected sign-in network request without exposing provider details", async () => {
+    mocks.login.mockRejectedValueOnce(new Error("secret-provider-network-details"));
+    await expect(submit(render(SignInPage, { 0: email, 1: password }))).resolves.toBeUndefined();
+    expect(mocks.login).toHaveBeenCalledExactlyOnceWith({ email, password });
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    expect(mocks.updates).toContain("We could not sign you in right now. Please try again.");
+    expect(mocks.updates).toContain(false);
+    expect(mocks.updates).not.toContain("secret-provider-network-details");
+  });
   it.each(["Invalid login credentials", "Email not confirmed"])("does not navigate or invoke recovery after %s", async message => {
     mocks.login.mockResolvedValue({ error: { message, code: message === "Email not confirmed" ? "email_not_confirmed" : "invalid_credentials", status: 400 } });
     await submit(render(SignInPage, { 0: email, 1: password }));
