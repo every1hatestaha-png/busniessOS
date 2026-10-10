@@ -6,7 +6,6 @@
  */
 const fs = require("node:fs");
 const path = require("node:path");
-const { spawnSync } = require("node:child_process");
 const {
   assertSterileMigrationTarget,
   assertPrivateExecution,
@@ -85,13 +84,12 @@ async function main() {
       if (row?.db !== "neondb") throw new Error("Wrong database");
     }, "database_identity_failed");
     applied = await migrateEmptyDatabase(client, migrations, async () => {
-      if (failedSession) throw new Error("Lock connection interrupted before child");
+      if (failedSession) assertPrismaResult({ status:null, cancelled:true, launchFailed:true });
       const outcome = await runPrismaSubprocess({ signal: cancel.signal });
       if (failedSession) {
-        // Fail closed, do not attest or retry if lock-owning session is lost.
-        const err = new Error("Lock connection interrupted during child");
-        err.diagnostic = { stage: "advisory_lock", reason: "session_lost_during_subprocess", migrationMayHaveStarted:true, verifyNoActiveMigrationProcess:true };
-        throw err;
+        // Abort with the original runner's fixed, no-secret cancellation
+        // classification. The child may have partially executed: do not retry.
+        assertPrismaResult({ status:null, cancelled:true });
       }
       assertPrismaResult(outcome);
       return outcome;
