@@ -6,6 +6,7 @@ on:
       - integrate/security-stack-on-marketing-20261009
       - fix/preview-acceptance-fail-closed-20261009
       - integrate/sterile-neon-staging-target-20261009
+      - fix/sterile-migration-attestation-20261010
 
 permissions:
   contents: read
@@ -30,7 +31,7 @@ jobs:
           node --check scripts/production-build.cjs
           node --check scripts/run-sterile-staging-migrations.cjs
           node --check scripts/sterile-schema-attestation.cjs
-          npx vitest run tests/unit/preview-acceptance-target.test.ts tests/unit/preview-acceptance-build-integration.test.ts tests/unit/sterile-staging-migration-preflight.test.ts
+          npx vitest run tests/unit/preview-acceptance-target.test.ts tests/unit/preview-acceptance-build-integration.test.ts tests/unit/sterile-staging-migration-preflight.test.ts tests/unit/sterile-runner-diagnostics.test.ts
       - name: Assert exclusive sterile target and no automatic Vercel deployment
         run: |
           node - <<'NODE'
@@ -44,6 +45,7 @@ jobs:
           assert.equal(vercel.git.deploymentEnabled["integrate/sterile-neon-staging-target-20261009"],false);
           assert.equal(vercel.git.deploymentEnabled["integrate/security-stack-on-marketing-20261009"],false);
           assert.equal(vercel.git.deploymentEnabled["fix/sterile-migration-attestation-20261010"],false);
+          assert.equal(vercel.git.deploymentEnabled["fix/sterile-runner-diagnostics-20261010"],false);
           console.log("Pre-deployment deny-by-default: PASS");
           NODE
 
@@ -104,7 +106,7 @@ jobs:
         run: |
           npx prisma validate
           npx tsc --noEmit
-          npx eslint scripts/run-sterile-staging-migrations.cjs scripts/assert-preview-acceptance-target.cjs scripts/safe-neon-url-options.cjs scripts/sterile-schema-attestation.cjs scripts/restaurant-schema-registry.cjs tests/integration/sterile-migration-rehearsal.test.ts tests/unit/sterile-staging-migration-preflight.test.ts tests/unit/preview-acceptance-target.test.ts tests/unit/preview-acceptance-build-integration.test.ts
+          npx eslint scripts/run-sterile-staging-migrations.cjs scripts/assert-preview-acceptance-target.cjs scripts/safe-neon-url-options.cjs scripts/sterile-schema-attestation.cjs scripts/restaurant-schema-registry.cjs tests/integration/sterile-migration-rehearsal.test.ts tests/unit/sterile-staging-migration-preflight.test.ts tests/unit/sterile-runner-diagnostics.test.ts tests/unit/preview-acceptance-target.test.ts tests/unit/preview-acceptance-build-integration.test.ts
       - name: Actual build wrapper, synthetic local data and migrations disabled
         env:
           NODE_ENV: production

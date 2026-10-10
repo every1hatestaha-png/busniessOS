@@ -65,7 +65,7 @@ describe("opt-in fresh Neon staging migration preflight", () => {
   it("refuses a concurrent operator before preflight or child execution", async () => {
     let calls = 0;
     const client = { query: async () => { calls++; return { rows: [{ acquired: false }] }; } };
-    await expect(migrateEmptyDatabase(client, [], () => { throw new Error("must not run"); })).rejects.toThrow("operator");
+    await expect(migrateEmptyDatabase(client, [], () => { throw new Error("must not run"); })).rejects.toMatchObject({ diagnostic: { stage: "advisory_lock", reason: "operator_busy" } });
     expect(calls).toBe(1);
   });
   it("fails closed after child error/timeout without reconciling or authorizing release", async () => {
@@ -76,7 +76,7 @@ describe("opt-in fresh Neon staging migration preflight", () => {
         if (sql.includes("pg_try_advisory_lock")) return { rows: [{ acquired: true }] };
         return { rows: [{ major: 18, recovering: false, objects: 0, types: 0, routines: 0, extra_schemas: 0 }] };
       } };
-      await expect(migrateEmptyDatabase(client, expectedMigrationCatalog(), () => failure)).rejects.toThrow("failed or timed out");
+      await expect(migrateEmptyDatabase(client, expectedMigrationCatalog(), () => failure)).rejects.toMatchObject({ diagnostic: { stage: "prisma_subprocess" } });
       expect(queries.some(q => q.includes("_prisma_migrations"))).toBe(false);
       expect(queries.at(-1)).toContain("pg_advisory_unlock");
     }

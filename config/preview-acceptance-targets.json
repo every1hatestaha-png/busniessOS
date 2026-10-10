@@ -6,7 +6,8 @@
     "integrate/security-stack-on-marketing-20261009",
     "fix/preview-acceptance-fail-closed-20261009",
     "integrate/sterile-neon-staging-target-20261009",
-    "fix/sterile-migration-attestation-20261010"
+    "fix/sterile-migration-attestation-20261010",
+    "fix/sterile-runner-diagnostics-20261010"
   ],
   "approvedHostnames": [
     "ep-cool-recipe-b4i2kgez.c-6.us-east-2.aws.neon.tech"
