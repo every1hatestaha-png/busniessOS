@@ -1,0 +1,31 @@
+name: Sign-in network failure regression (offline)
+
+on:
+  pull_request:
+    branches:
+      - integrate/security-stack-on-marketing-20261009
+
+permissions:
+  contents: read
+
+jobs:
+  sign-in-network-failure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://synthetic:synthetic@127.0.0.1:5432/offline_auth_test?sslmode=disable
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: synthetic-publishable-key
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx vitest run tests/unit/auth-client-flows.test.ts tests/unit/auth-sign-in-feedback.test.ts
+      - run: npx tsc --noEmit
+      - run: npx eslint 'app/sign-in/[[...sign-in]]/page.tsx' tests/unit/auth-client-flows.test.ts
