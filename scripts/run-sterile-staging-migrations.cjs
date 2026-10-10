@@ -14,6 +14,11 @@ const { assertEmptyDatabase, assertSterileSchema } = require("./sterile-schema-a
 
 const REQUIRED_APPROVAL = "I_APPROVE_NEW_STERILE_DATABASE_ONLY";
 
+// Stage identifiers are fixed literals only: never emit exceptions, Prisma logs or URLs.
+let failureStage = "TARGET_VALIDATION";
+const noteStage = stage => { failureStage = stage; };
+
+
 function assertSterileMigrationTarget(env) {
   if (env.CI || env.VERCEL || env.STERILE_MIGRATIONS_APPROVED !== REQUIRED_APPROVAL) {
     throw new Error("Sterile migration requires explicit local operator approval, outside CI/Vercel.");
@@ -95,49 +100,64 @@ function assertPrivateExecution(env) {
   }
 }
 
-async function migrateEmptyDatabase(client, names, migrate) {
+async function migrateEmptyDatabase(client, names, migrate, onStage = () => {}) {
+  onStage("ADVISORY_LOCK");
   const lock = (await client.query("SELECT pg_try_advisory_lock(132, 20261010) AS acquired")).rows[0];
   if (!lock?.acquired) throw new Error("Another sterile migration operator is active; stop without retry.");
   try {
+    onStage("EMPTY_SCHEMA_PRECHECK");
     await assertEmptyDatabase(client);
+    onStage("MIGRATION_FILE_PRECHECK");
     const before = names.map(name => createHash("sha256").update(fs.readFileSync(path.join(root,"prisma/migrations",name,"migration.sql"))).digest("hex"));
+    onStage("PRISMA_MIGRATE_DEPLOY");
     const result = await migrate();
     if (result.error || result.status !== 0) throw new Error("Prisma migration failed or timed out; stop for private operator review.");
+    onStage("MIGRATION_FILE_POSTCHECK");
     if (names.some((name,i) => createHash("sha256").update(fs.readFileSync(path.join(root,"prisma/migrations",name,"migration.sql"))).digest("hex") !== before[i])) {
       throw new Error("Migration files changed during execution.");
     }
+    onStage("POST_MIGRATION_RECONCILIATION");
     await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
     try {
+      onStage("MIGRATION_LEDGER_VERIFICATION");
       const applied = await client.query('SELECT migration_name, checksum, started_at, finished_at, rolled_back_at, applied_steps_count FROM public._prisma_migrations ORDER BY migration_name');
       assertAppliedHistory(names, applied.rows);
+      onStage("SCHEMA_AND_SEED_ATTESTATION");
       return { migrations: names.length, ...await assertSterileSchema(client) };
     } finally { await client.query("ROLLBACK"); }
   } finally { await client.query("SELECT pg_advisory_unlock(132, 20261010)"); }
 }
 
 async function main() {
+  noteStage("TARGET_VALIDATION");
   const identity = assertSterileMigrationTarget(process.env);
+  noteStage("LOCAL_EXECUTION_GUARDS");
   assertPrivateExecution(process.env);
+  noteStage("MIGRATION_CATALOG");
   const names = expectedMigrationCatalog();
   const prisma = path.join(root, "node_modules/prisma/build/index.js");
   if (!fs.existsSync(prisma)) throw new Error("Local Prisma CLI not installed.");
   // Prisma config already enforces verify-full; use the same TLS policy for pg.
   const url = new URL(process.env.DATABASE_URL);
   url.searchParams.set("sslmode", "verify-full");
+  noteStage("DATABASE_DRIVER_SETUP");
   const { Client } = require("pg");
   const client = new Client({ connectionString: url.toString(), connectionTimeoutMillis: 15000, query_timeout: 30000 });
+  noteStage("DATABASE_CONNECT");
   await client.connect();
   try {
+    noteStage("DATABASE_NAME_VERIFICATION");
     if ((await client.query("SELECT current_database() AS name")).rows[0]?.name !== identity.database) throw new Error("Database identity mismatch.");
     const result = await migrateEmptyDatabase(client, names, () => spawnSync(process.execPath, [prisma, "migrate", "deploy"], {
       cwd: root, env: process.env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 180000,
-    }));
+    }), noteStage);
     console.log(JSON.stringify({ result: "PASS", ...identity, ...result, users: 0, workspaces: 0, restaurantOrders: 0, credentialsPrinted: false }));
   } finally { await client.end(); }
 }
 
 module.exports = { assertSterileMigrationTarget, assertZeroPublicTables, expectedMigrationCatalog, assertAppliedHistory, assertPrivateExecution, migrateEmptyDatabase };
 if (require.main === module) main().catch(() => {
-  console.error("Sterile migration preflight/reconciliation FAILED. Stop and inspect locally; no Preview is authorized.");
+  console.error(`Sterile migration FAILED at stage=${failureStage}. No error details or credentials were emitted.`);
+  console.error("STOP. Do not retry, reset or deploy. Provide only this stage label for private review.");
   process.exitCode = 1;
 });
