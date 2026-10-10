@@ -46,6 +46,7 @@ describe("candidate Preview guard integrated into actual build entrypoint", () =
     ["wrong-project", { VERCEL_PROJECT_ID: "prj_iSQ7PaTAwiQMYasVAEBGJZTSjTk2" }],
     ["missing-migration-off-flag", { RUN_PRISMA_MIGRATIONS_ON_BUILD: undefined }],
     ["wrong-env", { VERCEL_ENV: "development" }],
+    ["contradictory-tls", { DATABASE_URL: "postgresql://synthetic:fixture@ep-cool-recipe-b4i2kgez.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require&sslmode=disable" }],
   ])("denies %s without running build commands", (_, override) => {
     const result = simulateBuild(override);
     expect(result.status).not.toBe(0);

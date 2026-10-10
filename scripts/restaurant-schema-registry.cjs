@@ -24,9 +24,9 @@ function discoverTables(root) {
   return [...tables].sort();
 }
 
-async function captureRegistry(client, tables) {
+async function captureRegistry(client, tables, { allPublicTables = false } = {}) {
   const actual = (await client.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).rows
-    .map(row => row.tablename).filter(isRestaurantTable);
+    .map(row => row.tablename).filter(name => allPublicTables || isRestaurantTable(name));
   if (JSON.stringify(actual) !== JSON.stringify(tables)) throw new Error("Restaurant relation inventory drift");
   const rows = await client.query(`
     SELECT c.relname AS table_name,

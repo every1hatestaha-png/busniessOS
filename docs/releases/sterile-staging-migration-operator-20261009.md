@@ -1,5 +1,7 @@
 # Operator-only sterile staging database migration
 
+**Superseded for execution:** use [the audited private operation runbook](sterile-staging-private-operation-20261010.md). The exact-SHA, clean-checkout, stronger URL and schema attestation requirements below were added after this historical checkpoint. Hosted operation remains unauthorized.
+
 **NOT EXECUTED.** This script exists to make applying the *existing* 132 Prisma migrations to the new empty nonproduction Neon project reviewable and fail closed. It is not called by CI, Vercel, build scripts or an automatic deployment.
 
 ## Approved sterile target (provider read-only evidence, Oct 9)

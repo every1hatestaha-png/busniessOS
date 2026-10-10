@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 const require = createRequire(import.meta.url);
-const { assertSterileMigrationTarget, assertZeroPublicTables, expectedMigrationCatalog } =
+const { assertSterileMigrationTarget, assertZeroPublicTables, expectedMigrationCatalog, assertAppliedHistory, assertPrivateExecution, migrateEmptyDatabase } =
   require("../../scripts/run-sterile-staging-migrations.cjs");
 const env = {
   STERILE_MIGRATIONS_APPROVED: "I_APPROVE_NEW_STERILE_DATABASE_ONLY",
@@ -39,5 +39,46 @@ describe("opt-in fresh Neon staging migration preflight", () => {
   });
   it("never includes credentials in its returned identity", () => {
     expect(JSON.stringify(assertSterileMigrationTarget(env))).not.toContain("synthetic-secret");
+  });
+  it.each(["&sslmode=disable", "&sslmode=require", "&SSLMODE=disable", "&ssl=false", "&sslcert=local", "&schema=public&schema=private", "&channel_binding=disable", "#fragment"])("rejects contradictory/unreviewed URL option %s", suffix => {
+    expect(() => assertSterileMigrationTarget({ ...env, DATABASE_URL: env.DATABASE_URL + suffix })).toThrow();
+  });
+  it.each(["PGOPTIONS", "NODE_DEBUG", "NODE_TLS_REJECT_UNAUTHORIZED", "PRISMA_SCHEMA_ENGINE_BINARY"])("rejects inherited execution override %s before connecting", key => {
+    expect(() => assertPrivateExecution({ [key]: "unsafe", STERILE_CANDIDATE_SHA: "a".repeat(40) })).toThrow("overrides");
+  });
+  it("requires an explicit exact SHA and rejects a different checkout", () => {
+    expect(() => assertPrivateExecution({})).toThrow("SHA");
+    expect(() => assertPrivateExecution({ STERILE_CANDIDATE_SHA: "a".repeat(40) })).toThrow("reviewed commit");
+  });
+  it("validates all checksums and rejects pending, duplicate and out-of-order execution", async () => {
+    const fs = await import("node:fs");
+    const crypto = await import("node:crypto");
+    const names: string[] = expectedMigrationCatalog();
+    const rows = names.map((migration_name, i) => ({ migration_name, checksum: crypto.createHash("sha256").update(fs.readFileSync(`prisma/migrations/${migration_name}/migration.sql`)).digest("hex"), started_at: new Date(i * 2000), finished_at: new Date(i * 2000 + 1000), rolled_back_at: null, applied_steps_count: 1 }));
+    expect(() => assertAppliedHistory(names, rows)).not.toThrow();
+    for (const changed of [{ checksum: "tampered" }, { finished_at: null }, { rolled_back_at: new Date() }, { applied_steps_count: 0 }, { started_at: rows[1].started_at }]) {
+      expect(() => assertAppliedHistory(names, [{ ...rows[0], ...changed }, ...rows.slice(1)])).toThrow();
+    }
+    expect(() => assertAppliedHistory(names, [...rows, rows[0]])).toThrow();
+    expect(() => assertAppliedHistory(names, rows.slice(1))).toThrow();
+  });
+  it("refuses a concurrent operator before preflight or child execution", async () => {
+    let calls = 0;
+    const client = { query: async () => { calls++; return { rows: [{ acquired: false }] }; } };
+    await expect(migrateEmptyDatabase(client, [], () => { throw new Error("must not run"); })).rejects.toThrow("operator");
+    expect(calls).toBe(1);
+  });
+  it("fails closed after child error/timeout without reconciling or authorizing release", async () => {
+    for (const failure of [{ status: 1 }, { status: null, error: new Error("private") }]) {
+      const queries: string[] = [];
+      const client = { query: async (sql: string) => {
+        queries.push(sql);
+        if (sql.includes("pg_try_advisory_lock")) return { rows: [{ acquired: true }] };
+        return { rows: [{ major: 18, recovering: false, objects: 0, types: 0, routines: 0, extra_schemas: 0 }] };
+      } };
+      await expect(migrateEmptyDatabase(client, expectedMigrationCatalog(), () => failure)).rejects.toThrow("failed or timed out");
+      expect(queries.some(q => q.includes("_prisma_migrations"))).toBe(false);
+      expect(queries.at(-1)).toContain("pg_advisory_unlock");
+    }
   });
 });

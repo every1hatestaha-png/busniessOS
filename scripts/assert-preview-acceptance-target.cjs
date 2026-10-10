@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const policy = require("../config/preview-acceptance-targets.json");
+const { hasSafeNeonUrlOptions } = require("./safe-neon-url-options.cjs");
 
 /**
  * This is a fail-closed Preview *deployment* guard, not a migration tool.
@@ -28,15 +29,12 @@ function assertPreviewAcceptanceTarget(env, approvedHosts = policy.approvedHostn
   catch { throw new Error("Refusing acceptance deployment without a valid database target."); }
   const prefix = url.hostname.match(/^(ep-[a-z0-9-]+?)(?:-pooler)?\.c-(?:6|7)\.us-east-2\.aws\.neon\.tech$/)?.[1];
   const denied = policy.forbiddenHostPrefixes.includes(prefix);
-  const routingKeys = new Set(["host", "hostaddr", "port", "database", "dbname", "service", "connectionstring", "options"]);
   if (!["postgres:", "postgresql:"].includes(url.protocol)
     || !prefix || denied || !Array.isArray(approvedHosts)
     || !approvedHosts.includes(url.hostname)
     || url.pathname !== "/neondb"
     || (url.port && url.port !== "5432")
-    || url.searchParams.get("sslmode") !== "require"
-    || (url.searchParams.get("schema") || "public") !== "public"
-    || [...url.searchParams.keys()].some(k => routingKeys.has(k.toLowerCase()))) {
+    || !url.username || !url.password || !hasSafeNeonUrlOptions(url)) {
     throw new Error("Refusing acceptance deployment: database host is not an independently approved synthetic staging target.");
   }
   return { candidatePreviewGuard: "approved" };

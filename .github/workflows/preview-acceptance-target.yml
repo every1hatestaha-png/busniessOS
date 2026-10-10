@@ -5,6 +5,7 @@ on:
     branches:
       - integrate/security-stack-on-marketing-20261009
       - fix/preview-acceptance-fail-closed-20261009
+      - integrate/sterile-neon-staging-target-20261009
 
 permissions:
   contents: read
@@ -28,8 +29,9 @@ jobs:
           node --check scripts/assert-preview-acceptance-target.cjs
           node --check scripts/production-build.cjs
           node --check scripts/run-sterile-staging-migrations.cjs
+          node --check scripts/sterile-schema-attestation.cjs
           npx vitest run tests/unit/preview-acceptance-target.test.ts tests/unit/preview-acceptance-build-integration.test.ts tests/unit/sterile-staging-migration-preflight.test.ts
-      - name: Assert acceptance host list is empty and no automatic Vercel deployment
+      - name: Assert exclusive sterile target and no automatic Vercel deployment
         run: |
           node - <<'NODE'
           const assert=require("node:assert/strict");
@@ -41,5 +43,71 @@ jobs:
           assert.equal(vercel.git.deploymentEnabled["fix/preview-acceptance-fail-closed-20261009"],false);
           assert.equal(vercel.git.deploymentEnabled["integrate/sterile-neon-staging-target-20261009"],false);
           assert.equal(vercel.git.deploymentEnabled["integrate/security-stack-on-marketing-20261009"],false);
+          assert.equal(vercel.git.deploymentEnabled["fix/sterile-migration-attestation-20261010"],false);
           console.log("Pre-deployment deny-by-default: PASS");
           NODE
+
+  disposable-pg18-rehearsal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_sterile_rehearsal
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_sterile_rehearsal"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_sterile_rehearsal?sslmode=disable
+      RUN_INTEGRATION_TESTS: "true"
+      NODE_ENV: test
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_synthetic_rehearsal
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_live_fixture
+      CLERK_SECRET_KEY: sk_live_fixture
+      CLERK_OAUTH_CLIENT_ID: fixture-client
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Real runner core on fresh disposable PG18, never hosted operator entrypoint
+        env:
+          RUN_STERILE_REHEARSAL: "true"
+        run: npx vitest run tests/integration/sterile-migration-rehearsal.test.ts
+      - name: Create separate synthetic invariant database
+        run: |
+          node <<'NODE'
+          const {Client}=require('pg');
+          const target=new URL(process.env.DATABASE_URL);
+          if(target.hostname!=='127.0.0.1'||target.pathname!=='/munshios_sterile_rehearsal') throw new Error('Disposable target mismatch');
+          (async()=>{const c=new Client({connectionString:target.toString()});await c.connect();try{await c.query('CREATE DATABASE munshios_sterile_invariants');}finally{await c.end();}})().catch(()=>{process.exitCode=1;});
+          NODE
+      - name: Finance, tenant and registry invariants
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_sterile_invariants?sslmode=disable
+        run: |
+          npx prisma migrate deploy
+          npx vitest run tests/integration/round3-schema-registry.test.ts tests/integration/tenant-parent-guards.test.ts tests/integration/restaurant-round3-authorization.test.ts tests/integration/restaurant-operational-actor-integrity-v1-16.test.ts tests/integration/restaurant-cash-shift-actor-integrity-v1-18.test.ts
+          npm run test:finance
+      - name: Prisma, TypeScript and focused lint
+        run: |
+          npx prisma validate
+          npx tsc --noEmit
+          npx eslint scripts/run-sterile-staging-migrations.cjs scripts/assert-preview-acceptance-target.cjs scripts/safe-neon-url-options.cjs scripts/sterile-schema-attestation.cjs scripts/restaurant-schema-registry.cjs tests/integration/sterile-migration-rehearsal.test.ts tests/unit/sterile-staging-migration-preflight.test.ts tests/unit/preview-acceptance-target.test.ts tests/unit/preview-acceptance-build-integration.test.ts
+      - name: Actual build wrapper, synthetic local data and migrations disabled
+        env:
+          NODE_ENV: production
+          VERCEL_ENV: production
+          RUN_PRISMA_MIGRATIONS_ON_BUILD: "0"
+        run: npm run build
