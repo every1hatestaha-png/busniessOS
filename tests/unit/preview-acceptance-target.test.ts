@@ -49,6 +49,13 @@ describe("release candidate Preview acceptance database guard", () => {
     base.DATABASE_URL + "&schema=private",
     base.DATABASE_URL + "&host=evil.example",
     base.DATABASE_URL + "&options=evil",
+    base.DATABASE_URL + "&sslmode=disable",
+    base.DATABASE_URL + "&SSLMODE=disable",
+    base.DATABASE_URL + "&ssl=false",
+    base.DATABASE_URL + "&sslkey=private-file",
+    base.DATABASE_URL + "&schema=public&schema=private",
+    base.DATABASE_URL + "#ignored-fragment",
+    base.DATABASE_URL.replace("user:private-fixture-password@", ""),
     base.DATABASE_URL.replace("/neondb", ":5433/neondb"),
     base.DATABASE_URL.replace("c-7.us-east-2", "c-4.ap-southeast-1"),
   ])("rejects invalid or route-overridden database URLs before any connection: %s", url => {

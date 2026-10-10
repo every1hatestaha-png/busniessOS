@@ -62,7 +62,8 @@
       "fix/preview-migration-target-guard-v2-14": false,
       "fix/preview-migration-unknown-env-v2-15": false,
       "fix/preview-acceptance-fail-closed-20261009": false,
-      "integrate/sterile-neon-staging-target-20261009": false
+      "integrate/sterile-neon-staging-target-20261009": false,
+      "fix/sterile-migration-attestation-20261010": false
     }
   }
 }
