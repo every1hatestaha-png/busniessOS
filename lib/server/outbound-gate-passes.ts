@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 
 import { outboundGatePassDraftSchema, type OutboundGatePassDraftInput } from "@/lib/delivery-acceptance/draft-validation";
+import { outboundGatePassDraftFeatureEnabled } from "@/lib/server/outbound-gate-pass-feature";
 import { db } from "@/lib/server/db";
 import { nextDocumentNumber } from "@/lib/server/document-numbers";
 import { getWarehouseStockModeInTransaction, assertManagedWarehouseSelection } from "@/lib/server/managed-warehouse-stock";
@@ -13,6 +14,12 @@ import { writeAudit } from "@/lib/server/audit";
 export class OutboundGatePassDomainError extends Error {}
 
 type Context = { workspaceId: string; userId: string };
+
+function assertWorkspaceGatePassEnabled(workspaceId: string): void {
+  if (!outboundGatePassDraftFeatureEnabled(workspaceId)) {
+    throw new OutboundGatePassDomainError("Gate pass workflow is not enabled for this workspace.");
+  }
+}
 
 function requestFingerprint(data: ReturnType<typeof outboundGatePassDraftSchema.parse>) {
   // Canonicalize item ordering so harmless form reordering is replay-safe.
@@ -28,6 +35,7 @@ function requestFingerprint(data: ReturnType<typeof outboundGatePassDraftSchema.
 }
 
 export async function createOutboundGatePassDraft(context: Context, input: OutboundGatePassDraftInput) {
+  assertWorkspaceGatePassEnabled(context.workspaceId);
   const data = outboundGatePassDraftSchema.parse(input);
   const fingerprint = requestFingerprint(data);
 
@@ -138,6 +146,7 @@ export async function createOutboundGatePassDraft(context: Context, input: Outbo
 }
 
 export async function listOutboundGatePasses(workspaceId: string) {
+  assertWorkspaceGatePassEnabled(workspaceId);
   return db.outboundGatePass.findMany({
     where: { workspaceId },
     orderBy: { createdAt: "desc" },
@@ -150,6 +159,7 @@ export async function listOutboundGatePasses(workspaceId: string) {
 }
 
 export async function getOutboundGatePass(workspaceId: string, id: string) {
+  assertWorkspaceGatePassEnabled(workspaceId);
   return db.outboundGatePass.findFirst({
     where: { workspaceId, id },
     include: {
