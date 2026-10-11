@@ -69,3 +69,32 @@ Not implemented or authorized:
 Do not treat a DRAFT as a dispatch or tax document. Gate-pass release must wait
 until stock ownership and movement, reversals, tax invoice timing and independent
 finance acceptance are all verified.
+
+## Ahmad workspace only
+
+This feature is specifically requested for Ahmad's existing MunshiOS workspace.
+Do not roll it out globally, and do not change the ordinary invoice-first
+workflow for any other workspace.
+
+Feature authorization requires BOTH server-side settings:
+
+```text
+OUTBOUND_GATE_PASS_V1_ENABLED=true
+OUTBOUND_GATE_PASS_V1_WORKSPACE_ID=<exact canonical UUID of Ahmad's existing workspace>
+```
+
+The ID must be retrieved from the authenticated workspace record and verified
+against Ahmad's membership in the correct environment. Workspace display
+names, emails, aliases, sample IDs and approximate matching are prohibited.
+Do not assume that a demo business name identifies Ahmad's production workspace.
+
+With either setting absent/invalid, the feature remains OFF for every tenant.
+With both configured, only that exact workspace gets a Sales entry, draft
+listing, creation/details routes and backend draft-read/write access.
+The existing invoice-based Gate Pass pages and original sale creation remain
+unchanged in all workspaces, including the others.
+
+The actual UUID has not been identified or configured. The feature is therefore
+not enabled or deployed to Ahmad's account yet. The current implementation
+provides draft capture only. Dispatch, acceptance and final invoicing are
+intentionally unavailable pending verified stock, tax and GL integration.
