@@ -75,6 +75,8 @@ jobs:
         run: >-
           npx vitest run
           tests/unit/staging-database-guard.test.ts
+          tests/unit/staging-database-target.test.ts
+          tests/unit/preview-acceptance-target.test.ts
           tests/unit/staging-release-target.test.ts
           tests/unit/restaurant-release-build-guard-v1-88.test.ts
           tests/unit/rc132-protected-preview-smoke.test.ts
