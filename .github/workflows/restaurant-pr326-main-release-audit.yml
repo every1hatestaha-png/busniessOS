@@ -1,0 +1,115 @@
+name: Restaurant release-to-main synthetic acceptance
+
+on:
+  pull_request:
+    branches:
+      - fix/staging-readiness-sterile-neon-20261011
+
+permissions:
+  contents: read
+
+jobs:
+  release-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_release_audit_disposable
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_release_audit_disposable"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_release_audit_disposable?sslmode=disable
+      RUN_INTEGRATION_TESTS: "true"
+      RUN_PRISMA_MIGRATIONS_ON_BUILD: "0"
+      NODE_ENV: test
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_synthetic_release
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_live_fixture
+      CLERK_SECRET_KEY: sk_live_fixture
+      CLERK_OAUTH_CLIENT_ID: fixture-client
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Reject wrong DB, deployable branch or modified migration history
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor origin/main HEAD
+          node <<'NODE'
+          const assert = require("node:assert/strict");
+          const {execFileSync} = require("node:child_process");
+          const url = new URL(process.env.DATABASE_URL);
+          assert.equal(url.hostname, "127.0.0.1");
+          assert.equal(url.pathname, "/munshios_release_audit_disposable");
+          assert.equal(process.env.RUN_PRISMA_MIGRATIONS_ON_BUILD, "0");
+          const v = require("./vercel.json");
+          assert.equal(v.git.deploymentEnabled["fix/restaurant-qa-ui-integration-20261011"], false);
+          const expected = [
+            "prisma/migrations/20261007183000_user_policy_acceptance/migration.sql",
+            "prisma/migrations/20261008112000_restaurant_staff_stations/migration.sql",
+            "prisma/migrations/20261008160000_round3_recovery_buckets_sales_cursor/migration.sql",
+          ];
+          const lines = execFileSync("git", ["diff", "--name-status", "origin/main...HEAD", "--", "prisma/migrations"], {encoding: "utf8"}).trim().split("\n");
+          const paths = lines.map(line => {
+            const [status, file] = line.split("\t");
+            assert.equal(status, "A", "Existing migrations must not be rewritten.");
+            return file;
+          }).sort();
+          assert.deepEqual(paths, expected);
+          console.log("Loopback DB, additive migration history, main ancestry and no auto-deploy: PASS");
+          NODE
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Validate and migrate disposable PostgreSQL 18
+        run: |
+          npx prisma validate
+          npx prisma migrate deploy
+          npx prisma migrate status
+      - name: POS, payment, refund, inventory, kitchen and idempotency journeys
+        run: >-
+          npx vitest run
+          tests/integration/restaurant-release-acceptance-v1-88.test.ts
+          tests/integration/restaurant-table-settlement-v1-82.test.ts
+          tests/integration/restaurant-cash-shift-v1-5.test.ts
+          tests/integration/restaurant-round3-authorization.test.ts
+          tests/integration/restaurant-pos-replay-v1-90.test.ts
+      - name: Cross-vertical role, tenant isolation and recovery
+        run: >-
+          npx vitest run
+          tests/integration/vertical-isolation.test.ts
+          tests/integration/round3-recovery-http.test.ts
+          tests/integration/round3-recovery-pagination.test.ts
+          tests/integration/round3-schema-registry.test.ts
+      - name: Full application unit regressions
+        env:
+          RUN_INTEGRATION_TESTS: "false"
+        run: npm test
+      - name: Finance grade correctness
+        run: npm run test:finance
+      - name: Production dependency security audit
+        run: npm audit --omit=dev --audit-level=moderate
+      - name: TypeScript and production-source lint (baseline full-tree debt documented)
+        run: |
+          npx tsc --noEmit
+          npx eslint app components lib proxy.ts next.config.ts scripts/production-build.cjs scripts/assert-preview-acceptance-target.cjs scripts/assert-staging-database-target.cjs scripts/safe-neon-url-options.cjs tests/integration/restaurant-release-acceptance-v1-88.test.ts tests/integration/restaurant-round3-authorization.test.ts
+      - name: Production-mode build without credentials, data writes or deployment
+        env:
+          NODE_ENV: production
+          VERCEL_ENV: production
+        run: npm run build

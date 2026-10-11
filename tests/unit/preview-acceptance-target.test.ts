@@ -20,6 +20,15 @@ describe("release candidate Preview acceptance database guard", () => {
     expect(assertPreviewAcceptanceTarget(approved)).toEqual({ candidatePreviewGuard: "approved" });
     expect(() => assertPreviewAcceptanceTarget(base)).toThrow("not an independently approved synthetic");
   });
+  it("accepts only the attested PR326 child hostname and rejects pooled and incorrect context", () => {
+    const host = "ep-dry-surf-b453abu9.c-6.us-east-2.aws.neon.tech";
+    const candidate = { ...base, VERCEL_GIT_COMMIT_REF: "fix/restaurant-qa-ui-integration-20261011", DATABASE_URL: `postgresql://synthetic:synthetic@${host}/neondb?channel_binding=require&sslmode=require` };
+    expect(assertPreviewAcceptanceTarget(candidate)).toEqual({ candidatePreviewGuard: "approved" });
+    expect(() => assertPreviewAcceptanceTarget({ ...candidate, DATABASE_URL: candidate.DATABASE_URL.replace(".c-6.", "-pooler.c-6.") })).toThrow("not an independently approved");
+    expect(() => assertPreviewAcceptanceTarget({ ...candidate, VERCEL_PROJECT_ID: "prj_invalid" })).toThrow();
+    expect(() => assertPreviewAcceptanceTarget({ ...candidate, RUN_PRISMA_MIGRATIONS_ON_BUILD: "1" })).toThrow();
+  });
+
   it("allows only an explicitly reviewed clean synthetic target in a unit-test injection", () => {
     expect(assertPreviewAcceptanceTarget(base, [fixtureHost])).toEqual({ candidatePreviewGuard: "approved" });
   });
