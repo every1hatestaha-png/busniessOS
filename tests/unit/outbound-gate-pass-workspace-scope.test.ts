@@ -3,13 +3,14 @@ import { describe, expect, it } from "vitest";
 
 import { outboundGatePassWorkspaceAllowed } from "@/lib/delivery-acceptance/workspace-scope";
 
-const ahmadWorkspaceId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const ahmadWorkspaceId = "4bc313cf-2869-4d87-8f1e-22a147f18d2d";
 const otherWorkspaceId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 describe("gate pass: Ahmad-only workspace isolation", () => {
   it("enables only the explicitly allowlisted workspace ID", () => {
     expect(outboundGatePassWorkspaceAllowed(ahmadWorkspaceId, "true", ahmadWorkspaceId)).toBe(true);
     expect(outboundGatePassWorkspaceAllowed(otherWorkspaceId, "true", ahmadWorkspaceId)).toBe(false);
+    expect(outboundGatePassWorkspaceAllowed(otherWorkspaceId, "true", otherWorkspaceId)).toBe(false);
     expect(outboundGatePassWorkspaceAllowed(ahmadWorkspaceId, "false", ahmadWorkspaceId)).toBe(false);
     expect(outboundGatePassWorkspaceAllowed(ahmadWorkspaceId, undefined, ahmadWorkspaceId)).toBe(false);
     expect(outboundGatePassWorkspaceAllowed(ahmadWorkspaceId, "true", undefined)).toBe(false);

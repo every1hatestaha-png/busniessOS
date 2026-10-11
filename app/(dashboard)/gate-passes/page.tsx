@@ -10,10 +10,12 @@ export default async function GatePassesPage() {
   const rows = await listOutboundGatePasses(workspaceId);
   return <div className="mx-auto max-w-6xl space-y-6">
     <header className="flex flex-wrap items-center justify-between gap-3">
-      <div><h1 className="text-2xl font-bold">Outbound Gate Passes</h1><p className="text-sm text-muted-foreground">Independent delivery paperwork before commercial invoice. Draft capture only.</p></div>
+      <div><h1 className="text-2xl font-bold">Outbound Gate Passes</h1><p className="text-sm text-muted-foreground">Independent delivery paperwork, receiving and accepted-quantity invoicing.</p></div>
       {canPerformAction(role, "sales.create") && <Link className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white" href="/gate-passes/new">New gate pass draft</Link>}
     </header>
-    <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Dispatch, receiving and invoicing are not enabled yet. These drafts do not reserve inventory or change customer balances.</p>
+    {canPerformAction(role, "financial.manage") && <Link href="/gate-passes/pending-invoices" className="inline-flex rounded-md border px-3 py-2 text-sm font-medium">Pending Invoices</Link>}
+    {canPerformAction(role, "financial.manage") && <Link href="/gate-passes/in-transit" className="ml-2 inline-flex rounded-md border px-3 py-2 text-sm font-medium">In-Transit Stock</Link>}
+    <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Dispatch requires verified legal approval for acceptance-based billing. When approved, stock moves once at dispatch. Record signed customer receiving before preparing accepted-only invoices.</p>
     <div className="overflow-x-auto rounded-md border">
       <table className="w-full min-w-[640px] text-left text-sm">
         <thead className="bg-muted/40"><tr><th className="p-3">Gate pass</th><th className="p-3">Customer</th><th className="p-3">Date</th><th className="p-3">Items</th><th className="p-3">Status</th></tr></thead>

@@ -10,6 +10,7 @@ import { nextDocumentNumber } from "@/lib/server/document-numbers";
 import { getWarehouseStockModeInTransaction, assertManagedWarehouseSelection } from "@/lib/server/managed-warehouse-stock";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 import { writeAudit } from "@/lib/server/audit";
+import { assertOutboundGatePassActor } from "@/lib/server/outbound-gate-pass-actor";
 
 export class OutboundGatePassDomainError extends Error {}
 
@@ -40,14 +41,17 @@ export async function createOutboundGatePassDraft(context: Context, input: Outbo
   const fingerprint = requestFingerprint(data);
 
   async function readExisting() {
-    const existing = await db.outboundGatePass.findFirst({
-      where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey },
-      select: { id: true, requestFingerprint: true },
+    return withSerializableRetry(async (tx) => {
+      await assertOutboundGatePassActor(tx, context, "sales.create");
+      const existing = await tx.outboundGatePass.findFirst({
+        where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey },
+        select: { id: true, requestFingerprint: true },
+      });
+      if (existing && existing.requestFingerprint !== fingerprint) {
+        throw new OutboundGatePassDomainError("This submission key was already used for another gate pass.");
+      }
+      return existing;
     });
-    if (existing && existing.requestFingerprint !== fingerprint) {
-      throw new OutboundGatePassDomainError("This submission key was already used for another gate pass.");
-    }
-    return existing;
   }
 
   const existing = await readExisting();
@@ -55,6 +59,7 @@ export async function createOutboundGatePassDraft(context: Context, input: Outbo
 
   try {
     return await withSerializableRetry(async (tx) => {
+      await assertOutboundGatePassActor(tx, context, "sales.create");
       const prior = await tx.outboundGatePass.findFirst({
         where: { workspaceId: context.workspaceId, idempotencyKey: data.idempotencyKey },
         select: { id: true, requestFingerprint: true },

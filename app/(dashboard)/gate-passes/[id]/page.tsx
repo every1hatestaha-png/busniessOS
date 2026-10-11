@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { requirePermission } from "@/lib/server/authorization";
+import { canPerformAction, requirePermission } from "@/lib/server/authorization";
+import { GatePassWorkflowControls } from "@/components/gate-passes/workflow-controls";
 import { getOutboundGatePass } from "@/lib/server/outbound-gate-passes";
 import { requireOutboundGatePassDraftFeature } from "@/lib/server/outbound-gate-pass-feature";
 
 export default async function OutboundGatePassPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { workspaceId } = await requirePermission("business.read");
+  const { workspaceId, role } = await requirePermission("business.read");
   requireOutboundGatePassDraftFeature(workspaceId);
   const gatePass = await getOutboundGatePass(workspaceId, id);
   if (!gatePass) notFound();
@@ -39,9 +40,25 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
       </table>
     </div>
     {gatePass.notes && <p className="text-sm"><span className="font-semibold">Notes: </span>{gatePass.notes}</p>}
-    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-      Printing, issuing, dispatch, receiving and pending invoice creation are disabled until stock and finance reconciliation is verified.
-      No sale, receivable or inventory movement has been posted.
-    </div>
+    <GatePassWorkflowControls
+      key={`${gatePass.id}:${gatePass.updatedAt.toISOString()}`}
+      id={gatePass.id}
+      status={gatePass.status}
+      customerReference={gatePass.receivingReference}
+      recipient={gatePass.receivingRecipient}
+      canIssue={canPerformAction(role, "sales.create")}
+      canDispatch={canPerformAction(role, "inventory.adjust")}
+      canReceive={canPerformAction(role, "returns.create")}
+      canInvoice={canPerformAction(role, "financial.manage")}
+      items={gatePass.items.map((item) => ({
+        id: item.id,
+        name: item.productNameSnapshot,
+        quantity: item.dispatchedQuantity.toString(),
+        accepted: item.acceptedQuantity.toString(),
+        rejected: item.rejectedQuantity.toString(),
+        returned: item.returnedQuantity.toString(),
+        price: item.unitPriceSnapshot.toString(),
+      }))}
+    />
   </div>;
 }

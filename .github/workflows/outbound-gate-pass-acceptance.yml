@@ -1,0 +1,57 @@
+name: Ahmad gate pass disposable acceptance
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/(dashboard)/gate-passes/**'
+      - 'components/gate-passes/**'
+      - 'lib/delivery-acceptance/**'
+      - 'lib/server/outbound-gate-pass*'
+      - 'prisma/**'
+      - 'tests/**/outbound-gate-pass*'
+      - '.github/workflows/outbound-gate-pass-acceptance.yml'
+permissions:
+  contents: read
+jobs:
+  gate-pass-pg18:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_gatepass_ci
+        ports: ['5432:5432']
+        options: --health-cmd "pg_isready -U postgres -d munshios_gatepass_ci" --health-interval 5s --health-timeout 5s --health-retries 15
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_gatepass_ci?sslmode=disable
+      RUN_INTEGRATION_TESTS: 'true'
+      RUN_OUTBOUND_GP_ACCEPTANCE: 'true'
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: synthetic-publishable-key
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx prisma validate
+      - name: Disposable service only
+        run: npx prisma migrate deploy
+      - name: Real lifecycle, concurrency, stock, GL and tenant boundaries
+        run: >-
+          npx vitest run tests/integration/outbound-gate-pass-acceptance.test.ts
+          tests/unit/outbound-gate-pass-actions.test.ts tests/unit/outbound-gate-pass-lifecycle.test.ts
+          tests/unit/outbound-gate-pass-workspace-scope.test.ts tests/unit/outbound-gate-pass-policy.test.ts
+          tests/unit/outbound-gate-pass-draft.test.ts
+      - run: npm run test:finance
+      - run: npx tsc --noEmit
+      - run: npx eslint 'app/(dashboard)/gate-passes' components/gate-passes lib/delivery-acceptance 'lib/server/outbound-gate-pass*.ts' tests/integration/outbound-gate-pass-acceptance.test.ts tests/unit/outbound-gate-pass-actions.test.ts
+      - name: Deployment remains disabled
+        run: node -e "require('node:assert/strict').equal(require('./vercel.json').git.deploymentEnabled['feat/gate-pass-receiving-invoice-foundation'],false)"

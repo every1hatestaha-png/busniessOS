@@ -12,6 +12,9 @@ export function outboundGatePassWorkspaceAllowed(
 ): boolean {
   if (enabled !== "true" || !allowedWorkspaceId) return false;
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+  // Fixed owner-verified tenant. Environment flags alone may never enable another workspace.
+  const ahmadWorkspaceId = "4bc313cf-2869-4d87-8f1e-22a147f18d2d";
   return uuid.test(allowedWorkspaceId) && uuid.test(workspaceId)
-    && workspaceId === allowedWorkspaceId;
+    && workspaceId === ahmadWorkspaceId
+    && allowedWorkspaceId === ahmadWorkspaceId;
 }
