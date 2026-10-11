@@ -12,6 +12,7 @@ import {
 } from "@/lib/server/recovery-session";
 import { isSameOriginWebMutation } from "@/lib/server/cors";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { checkPasswordAgainstBreaches } from "@/lib/server/password-breach-check";
 
 export async function POST(request: Request) {
   try {
@@ -50,6 +51,15 @@ export async function POST(request: Request) {
         { error: "Your recovery verification has expired. Request a new password reset link." },
         { status: 403, headers: { "Cache-Control": "no-store" } },
       );
+    }
+
+    const breachStatus = await checkPasswordAgainstBreaches(password);
+    if (breachStatus !== "safe") {
+      return NextResponse.json({
+        error: breachStatus === "compromised"
+          ? "This password has appeared in a known data breach. Choose a different password."
+          : "Password security verification is temporarily unavailable. Please retry shortly.",
+      }, { status: breachStatus === "compromised" ? 422 : 503, headers: { "Cache-Control": "no-store" } });
     }
 
     const { error: updateError } = await supabase.auth.updateUser({ password });
