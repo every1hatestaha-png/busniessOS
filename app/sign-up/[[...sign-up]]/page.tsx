@@ -94,6 +94,29 @@ export default function SignUpPage() {
       return;
     }
 
+    // Supabase Free does not enforce the provider's Pro-only leaked-password gate.
+    // App-layer protection fails closed; do not send the password to HIBP.
+    try {
+      const check = await fetch("/api/auth/password-breach", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+        cache: "no-store",
+      });
+      if (!check.ok) {
+        const result = (await check.json().catch(() => null)) as { code?: string } | null;
+        setError(result?.code === "compromised"
+          ? "This password has appeared in a known data breach. Choose a different password."
+          : "Password security verification is temporarily unavailable. Please retry shortly.");
+        setBusy(false);
+        return;
+      }
+    } catch {
+      setError("Password security verification is temporarily unavailable. Please retry shortly.");
+      setBusy(false);
+      return;
+    }
+
     const origin = window.location.origin;
     const { data, error: signUpError } = await supabase.auth.signUp({
       email: identifier,
