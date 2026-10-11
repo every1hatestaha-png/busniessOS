@@ -20,7 +20,7 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
         <h1 className="mt-2 font-mono text-2xl font-bold">{gatePass.gatePassNumber}</h1>
         <p className="text-sm text-muted-foreground">{gatePass.status} · {gatePass.gatePassDate.toLocaleDateString("en-GB", { timeZone: "Asia/Karachi" })}</p>
       </div>
-      <span className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">Draft only, not valid for dispatch</span>
+      {gatePass.status === "DRAFT" && <span className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">Draft only, not valid for dispatch</span>}
     </div>
     <div className="rounded-md border p-5">
       <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Customer</p>
