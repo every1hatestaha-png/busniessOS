@@ -6,9 +6,9 @@ import { getOutboundGatePass } from "@/lib/server/outbound-gate-passes";
 import { requireOutboundGatePassDraftFeature } from "@/lib/server/outbound-gate-pass-feature";
 
 export default async function OutboundGatePassPage({ params }: { params: Promise<{ id: string }> }) {
-  requireOutboundGatePassDraftFeature();
   const { id } = await params;
   const { workspaceId } = await requirePermission("business.read");
+  requireOutboundGatePassDraftFeature(workspaceId);
   const gatePass = await getOutboundGatePass(workspaceId, id);
   if (!gatePass) notFound();
 
