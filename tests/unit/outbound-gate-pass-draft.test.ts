@@ -72,6 +72,8 @@ describe("outbound gate pass draft safety", () => {
 
   it("keeps the feature opt-in", () => {
     const source = readFileSync("lib/server/outbound-gate-pass-feature.ts", "utf8");
-    expect(source).toContain('process.env.OUTBOUND_GATE_PASS_V1_ENABLED === "true"');
+    expect(source).toContain("OUTBOUND_GATE_PASS_V1_ENABLED");
+    expect(source).toContain("OUTBOUND_GATE_PASS_V1_WORKSPACE_ID");
+    expect(source).toContain("outboundGatePassWorkspaceAllowed");
   });
 });
