@@ -8,8 +8,8 @@ import { requireOutboundGatePassDraftFeature } from "@/lib/server/outbound-gate-
 import { getWarehouseStockMode, listActiveStockWarehouses } from "@/lib/server/managed-warehouse-stock";
 
 export default async function NewOutboundGatePassPage() {
-  requireOutboundGatePassDraftFeature();
   const { workspaceId } = await requirePermission("sales.create");
+  requireOutboundGatePassDraftFeature(workspaceId);
   const mode = await getWarehouseStockMode(workspaceId);
   const [customers, products, warehouses] = await Promise.all([
     db.customer.findMany({ where: { workspaceId, status: "ACTIVE" }, orderBy: { name: "asc" }, select: { id: true, name: true, companyName: true } }),
