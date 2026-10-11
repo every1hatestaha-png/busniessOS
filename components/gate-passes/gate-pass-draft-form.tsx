@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 
 import { createOutboundGatePassDraftAction, type CreateOutboundGatePassState } from "@/app/(dashboard)/gate-passes/actions";
 
@@ -17,18 +17,18 @@ export function OutboundGatePassDraftForm({
   products,
   warehouses,
   managedWarehouse,
+  idempotencyKey,
 }: {
   customers: Option[];
   products: ProductOption[];
   warehouses: WarehouseOption[];
   managedWarehouse: boolean;
+  idempotencyKey: string;
 }) {
   const [state, formAction, pending] = useActionState(createOutboundGatePassDraftAction, initialState);
-  const [idempotencyKey, setIdempotencyKey] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([{ key: 0, productId: "", quantity: "1" }]);
   const [nextKey, setNextKey] = useState(1);
 
-  useEffect(() => { setIdempotencyKey(crypto.randomUUID()); }, []);
   const itemsJson = JSON.stringify(lines.map((line) => ({ productId: line.productId, quantity: line.quantity })));
   const chosen = new Set(lines.map((line) => line.productId).filter(Boolean));
   const canSubmit = Boolean(idempotencyKey) && !pending && lines.length > 0
