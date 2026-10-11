@@ -1301,14 +1301,6 @@ model OutboundGatePass {
   createdById         String
   issuedAt            DateTime?
   dispatchedAt        DateTime?
-  receivingAt         DateTime?
-  receivingReference  String?
-  receivingRecipient  String?
-  receivingNotes      String?
-  invoiceId           String? @unique
-  salesOrderId        String? @unique
-  version             Int @default(0)
-  complianceReviewedAt DateTime?
   createdAt           DateTime                @default(now())
   updatedAt           DateTime                @updatedAt
 
@@ -1333,8 +1325,6 @@ model OutboundGatePassItem {
   dispatchedQuantity    Decimal  @db.Decimal(15, 4)
   acceptedQuantity      Decimal  @default(0) @db.Decimal(15, 4)
   rejectedQuantity      Decimal  @default(0) @db.Decimal(15, 4)
-  returnedQuantity      Decimal  @default(0) @db.Decimal(15, 4)
-  unitPriceSnapshot     Decimal  @db.Decimal(15, 2)
   createdAt             DateTime @default(now())
 
   gatePass OutboundGatePass @relation(fields: [gatePassId], references: [id], onDelete: Restrict)
