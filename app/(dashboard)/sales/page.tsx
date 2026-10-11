@@ -13,7 +13,7 @@ export default async function SalesPage() {
   return (
     <div className="mx-auto max-w-[1600px] space-y-6">
       <PageHeader title="Sales" description="Sales orders, collections, and customer balances." action={{ label: "New Sale", href: "/sales/new", icon: Plus }} />
-      {outboundGatePassDraftFeatureEnabled() && <Link href="/gate-passes" className="inline-flex rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">Outbound gate pass drafts</Link>}
+      {outboundGatePassDraftFeatureEnabled(workspaceId) && <Link href="/gate-passes" className="inline-flex rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">Outbound gate pass drafts</Link>}
       <SalesList sales={sales} />
     </div>
   );
