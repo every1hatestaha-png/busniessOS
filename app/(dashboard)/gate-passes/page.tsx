@@ -5,8 +5,8 @@ import { requireOutboundGatePassDraftFeature } from "@/lib/server/outbound-gate-
 import { listOutboundGatePasses } from "@/lib/server/outbound-gate-passes";
 
 export default async function GatePassesPage() {
-  requireOutboundGatePassDraftFeature();
   const { workspaceId, role } = await requirePermission("business.read");
+  requireOutboundGatePassDraftFeature(workspaceId);
   const rows = await listOutboundGatePasses(workspaceId);
   return <div className="mx-auto max-w-6xl space-y-6">
     <header className="flex flex-wrap items-center justify-between gap-3">
