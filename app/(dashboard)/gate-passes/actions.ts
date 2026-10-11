@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { outboundGatePassDraftSchema } from "@/lib/delivery-acceptance/draft-validation";
 import { requirePermission } from "@/lib/server/authorization";
+import { outboundGatePassDraftFeatureEnabled } from "@/lib/server/outbound-gate-pass-feature";
 import { createOutboundGatePassDraft, OutboundGatePassDomainError } from "@/lib/server/outbound-gate-passes";
 
 export type CreateOutboundGatePassState = { error?: string };
@@ -14,10 +15,10 @@ export async function createOutboundGatePassDraftAction(
   _previous: CreateOutboundGatePassState,
   form: FormData,
 ): Promise<CreateOutboundGatePassState> {
-  if (process.env.OUTBOUND_GATE_PASS_V1_ENABLED !== "true") {
-    return { error: "Gate pass drafts are not enabled for this environment." };
-  }
   const context = await requirePermission("sales.create");
+  if (!outboundGatePassDraftFeatureEnabled(context.workspaceId)) {
+    return { error: "Gate pass drafts are unavailable in this workspace." };
+  }
 
   const itemsJson = form.get("itemsJson");
   if (typeof itemsJson !== "string" || itemsJson.length > 25_000) {
