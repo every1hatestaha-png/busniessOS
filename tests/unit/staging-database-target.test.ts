@@ -38,6 +38,15 @@ describe("separate staging readiness policy", () => {
     )).toThrow("Staging database target rejected: deployment context");
   });
 
+  it("allows attested PR326 child direct host but rejects its pooler and foreign project", () => {
+    const qaHost = "ep-dry-surf-b453abu9.c-6.us-east-2.aws.neon.tech";
+    expect(staging.hosts).toContain(qaHost);
+    expect(() => assertApprovedStagingDatabaseTarget(url(qaHost), approvedEnvironment)).not.toThrow();
+    expect(() => assertApprovedStagingDatabaseTarget(url(qaHost.replace(".c-6.", "-pooler.c-6.")), approvedEnvironment)).toThrow("endpoint");
+    expect(() => assertApprovedStagingDatabaseTarget(url(qaHost), { ...approvedEnvironment, VERCEL_PROJECT_ID: "prj_not_staging" })).toThrow("deployment context");
+    expect(() => assertApprovedProductionDatabaseTarget(url(qaHost))).toThrow("Production database target rejected");
+  });
+
   it.each([
     {},
     { ...approvedEnvironment, MUNSHIOS_DEPLOYMENT_ENVIRONMENT: undefined },
