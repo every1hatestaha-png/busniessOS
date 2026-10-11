@@ -1,9 +1,9 @@
 name: Restaurant PR326 finance isolated PG18
 
 on:
-  push:
+  pull_request:
     branches:
-      - fix/restaurant-qa-ui-integration-20261011
+      - fix/staging-readiness-sterile-neon-20261011
 
 permissions:
   contents: read
