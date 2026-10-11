@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import Link from "next/link";
 
 import { OutboundGatePassDraftForm } from "@/components/gate-passes/gate-pass-draft-form";
@@ -24,6 +25,7 @@ export default async function NewOutboundGatePassPage() {
       products={products.map((x) => ({ id: x.id, name: x.name, sku: x.sku || "", unit: x.unit, stockQuantity: x.stockQuantity.toString() }))}
       warehouses={warehouses.map((x) => ({ id: x.id, name: x.name, code: x.code }))}
       managedWarehouse={mode === "MANAGED"}
+      idempotencyKey={randomUUID()}
     />
   </div>;
 }
