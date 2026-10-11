@@ -67,7 +67,8 @@
       "fix/sterile-runner-diagnostics-20261010": false,
       "ops/sterile-neon-cloud-manual-20261010": false,
       "fix/staging-readiness-sterile-neon-20261011": false,
-      "fix/restaurant-qa-ui-integration-20261011": false
+      "fix/restaurant-qa-ui-integration-20261011": false,
+      "security/free-password-breach-screening-20261011": false
     }
   }
 }
