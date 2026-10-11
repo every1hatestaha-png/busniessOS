@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ getUser: vi.fn(), getClaims: vi.fn(), updateUser: vi.fn(), marker: vi.fn(), clear: vi.fn(), login: vi.fn() }));
+const mocks = vi.hoisted(() => ({ getUser: vi.fn(), getClaims: vi.fn(), updateUser: vi.fn(), marker: vi.fn(), clear: vi.fn(), login: vi.fn(), breachCheck: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: async () => ({ auth: { getUser: mocks.getUser, getClaims: mocks.getClaims, updateUser: mocks.updateUser } }) }));
 vi.mock("@/lib/server/recovery-session", () => ({ hasRecoveryMarker: mocks.marker, clearRecoveryMarker: mocks.clear }));
+vi.mock("@/lib/server/password-breach-check", () => ({ checkPasswordAgainstBreaches: mocks.breachCheck }));
 import { POST } from "@/app/auth/recovery/password/route";
 const password = "SyntheticNewPassword!123";
 const request = (origin = "https://staging.example.invalid") => new Request("https://staging.example.invalid/auth/recovery/password", {
@@ -15,12 +16,26 @@ describe("password recovery update guards", () => {
     mocks.getUser.mockResolvedValue({ data: { user: { email_confirmed_at: "2026-10-07" } }, error: null });
     mocks.getClaims.mockResolvedValue({ data: { claims: { amr: [{ method: "recovery", timestamp: Math.floor(Date.now() / 1000) }] } }, error: null });
     mocks.updateUser.mockResolvedValue({ error: null });
+    mocks.breachCheck.mockResolvedValue("safe");
   });
   it("updates the password only with fresh proof and clears the marker", async () => {
     const response = await POST(request());
     expect(response.status).toBe(200);
     expect(mocks.updateUser).toHaveBeenCalledExactlyOnceWith({ password });
     expect(mocks.clear).toHaveBeenCalledOnce();
+  });
+  it("denies breached passwords without changing Supabase credentials or proof", async () => {
+    mocks.breachCheck.mockResolvedValue("compromised");
+    const response = await POST(request());
+    expect(response.status).toBe(422);
+    expect(mocks.updateUser).not.toHaveBeenCalled();
+    expect(mocks.clear).not.toHaveBeenCalled();
+  });
+  it("fails closed when HIBP is unavailable without changing credentials", async () => {
+    mocks.breachCheck.mockResolvedValue("unavailable");
+    expect((await POST(request())).status).toBe(503);
+    expect(mocks.updateUser).not.toHaveBeenCalled();
+    expect(mocks.clear).not.toHaveBeenCalled();
   });
   it("rejects cross-origin password mutation before touching auth state", async () => {
     const response = await POST(request("https://evil.example.invalid"));
