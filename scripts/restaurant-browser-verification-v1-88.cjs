@@ -98,11 +98,11 @@ async function main() {
     assert.equal(requests, 6, "POS double submit created another request");
     assert.equal(submittedOrderRequests.length, 1);
     assert.match(submittedOrderRequests[0], /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
-    assert.equal(await page.getByRole("button", { name: "Confirm & send to kitchen" }).isDisabled(), true, "Successful POS order leaves the old basket submit-ready");
-    assert.equal(await page.getByText("Select menu items to start an order.").isVisible(), true);
+    assert.equal(await page.getByRole("button", { name: "Confirm order" }).isDisabled(), true, "Successful POS order leaves the old basket submit-ready");
+    assert.equal(await page.getByText("Your order is empty.").isVisible(), true);
     await page.getByRole("button", { name: /Synthetic meal/ }).click();
-    await page.getByRole("button", { name: "Confirm & send to kitchen" }).click();
-    await page.getByText("Select menu items to start an order.").waitFor();
+    await page.getByRole("button", { name: "Confirm order" }).click();
+    await page.getByText("Your order is empty.").waitFor();
     assert.equal(requests, 7);
     assert.equal(submittedOrderRequests.length, 2);
     assert.notEqual(submittedOrderRequests[0], submittedOrderRequests[1], "New basket reused a committed request identity");

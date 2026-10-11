@@ -5,6 +5,8 @@ const fs = require("node:fs");
 const expectedAdvisories = new Set([
   "GHSA-vfj7-8cjw-p6xm",
   "GHSA-ch52-4w7c-c8xp",
+  // No upstream patch exists yet; this transitive dependency is Electron tooling only.
+  "GHSA-hp3w-g68c-fv3c",
 ]);
 
 const devOnlyPaths = [
@@ -17,6 +19,9 @@ const devOnlyPaths = [
   "node_modules/ts-morph",
   "node_modules/shadcn",
   "node_modules/http-cache-semantics",
+  "node_modules/sprintf-js",
+  "node_modules/roarr",
+  "node_modules/global-agent",
   "node_modules/cacheable-request",
   "node_modules/got",
   "node_modules/app-builder-lib/node_modules/@electron/get",
