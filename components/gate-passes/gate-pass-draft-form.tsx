@@ -54,7 +54,7 @@ export function OutboundGatePassDraftForm({
         </label>
         <label className="space-y-1 text-sm">
           <span className="font-medium">Gate pass date</span>
-          <input name="date" type="date" required defaultValue={new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" })} className="w-full rounded-md border bg-background px-3 py-2" />
+          <input name="date" type="date" required defaultValue={new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Karachi" })} className="w-full rounded-md border bg-background px-3 py-2" />
         </label>
         {managedWarehouse && <label className="space-y-1 text-sm">
           <span className="font-medium">Source warehouse</span>
