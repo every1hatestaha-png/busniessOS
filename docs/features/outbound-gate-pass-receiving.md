@@ -54,4 +54,18 @@ A supplier must be able to create a gate pass before a commercial invoice, send 
 
 ## Scope of this draft PR
 
-Pure, independently testable policy helpers plus tests. All database schema, actions, UI, printing, stock moves, invoice adapter and end-to-end tests remain to be implemented in a follow-on gated PR.
+Implemented:
+- Opt-in independent GP draft model, item snapshots, GP number sequence and additive migration.
+- Tenant-scoped, audited draft save with replay guard and exact decimal validation.
+- Draft form, list, detail and Sales link behind a default-off feature flag.
+- Pure receiving and invoice eligibility rules plus unit regression checks.
+
+Not implemented or authorized:
+- Issuance, signed print, physical dispatch and stock-in-transit movements.
+- Customer receiving and physical rejected-material return acknowledgements.
+- Pending invoice queue, invoice generation, balance/GL/COGS changes, FBR submission.
+- Production migration, environment enablement, live acceptance, deployment or merge.
+
+Do not treat a DRAFT as a dispatch or tax document. Gate-pass release must wait
+until stock ownership and movement, reversals, tax invoice timing and independent
+finance acceptance are all verified.
