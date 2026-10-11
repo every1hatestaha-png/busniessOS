@@ -1,0 +1,899 @@
+{
+  "tables": [
+    {
+      "name": "_prisma_migrations",
+      "sha256": "cf8af2353fd428bb21fa8b510a64f51d404658185eb912595ddad68ff5da81c4"
+    },
+    {
+      "name": "accounts",
+      "sha256": "0e7768e6c5d67fb5f231143f7be90162cbdd40b9937f34c558694301eaaa5907"
+    },
+    {
+      "name": "audit_logs",
+      "sha256": "0c1af47d399cf9327cfb2bcc848f4d8eadc8492bfa635f45739c47420d0651a3"
+    },
+    {
+      "name": "auth_recovery_buckets",
+      "sha256": "e256c4349ca9d8701c2c91a3543197ddf87d91a9a36e196502526e277de3bb6e"
+    },
+    {
+      "name": "bom_items",
+      "sha256": "d590253ca5e6f962cd0f3ce38c8ba31cd8d6fdd35144f585fd7817eb9be797ca"
+    },
+    {
+      "name": "boms",
+      "sha256": "ac3cdc8f92210b3d5ae7b6458c53f688e701e7c30b3d7591d96cdd479f0c8c68"
+    },
+    {
+      "name": "cash_bank_accounts",
+      "sha256": "0b5f1b758902a41ce16f7971f6df63622abd4e129bb95fc6443d3f78fa8b26b7"
+    },
+    {
+      "name": "cash_shifts",
+      "sha256": "3a2c8d8b80b92a0d215002620453ad0a43fd9857bb69ec967c5fd8ba1f5a8c22"
+    },
+    {
+      "name": "collection_promises",
+      "sha256": "cf5a2783e0e5ea8a76d86f8cea75e9a0dbff9c106c988e2f5a57c8b31a393b78"
+    },
+    {
+      "name": "credit_notes",
+      "sha256": "094f0e99e65b786b3119bf82a4f6f29ce8bc56e42573ddb3669bc98a5a442700"
+    },
+    {
+      "name": "customer_credit_allocations",
+      "sha256": "095c32cb57c6aa7b579c32ef024f8b24138f9c3846cc3e136911b00902064269"
+    },
+    {
+      "name": "customer_price_rules",
+      "sha256": "0c84a2f1ea92e8a252561b39350fe3912da5709824935b09c29f02b8eed72878"
+    },
+    {
+      "name": "customer_return_items",
+      "sha256": "930a2bf9e8dc3d6edd2c80be56f7dc6bdd9b296e2d4a668967b4e6c16d6f48e9"
+    },
+    {
+      "name": "customer_returns",
+      "sha256": "356a6e624d54a7e7864cbafdfa1146c426e46492b45bca75e24a52d0fd390bac"
+    },
+    {
+      "name": "customer_sales_bom_items",
+      "sha256": "476840ac1e6d2045a29c6143a6155be3c09de5e44e800c6eab22a4ac57231b52"
+    },
+    {
+      "name": "customer_sales_boms",
+      "sha256": "4671dc75459cc73e70981f75a2c4cb0489079bf83a00afd2a2aadbd4c0dc1f53"
+    },
+    {
+      "name": "customers",
+      "sha256": "630ea370b96b87c519dfac8a2e4f8bd78938711c07e73877d2ded08bf3f46b2a"
+    },
+    {
+      "name": "debit_notes",
+      "sha256": "66a4fba31a143d888b4f8d416772f66ef2d41e256c8570b9ac66e41ef7e0cbbe"
+    },
+    {
+      "name": "document_sequences",
+      "sha256": "4fd503cd7996776da7f0396ced116526326bb4e0de4cdc7edce08efb28b9d5d9"
+    },
+    {
+      "name": "expenses",
+      "sha256": "1d4a46d3faed8a2af46e75c9ee470691425d115f90fb2cf5b6769e81a3fabfca"
+    },
+    {
+      "name": "fbr_integration_configs",
+      "sha256": "ee3b3db1468bb4c2b2852bd50e690a71ebe295ce868800534985924896e063fe"
+    },
+    {
+      "name": "fbr_integration_credentials",
+      "sha256": "72cca0d847c74ac6c17a8162f29e1a8f0fb4031ecb304408e3cdd87b915578d7"
+    },
+    {
+      "name": "fbr_invoice_attempts",
+      "sha256": "de908d5153e8c3a81c500a0385264cfc1663073b56630360a8fc9614d58232d9"
+    },
+    {
+      "name": "fbr_invoice_submissions",
+      "sha256": "edd645d52a3967b6f0e04321b10b3fd4e4524e5055946480fbddca6034a85011"
+    },
+    {
+      "name": "general_ledger_entries",
+      "sha256": "30a41599c636e04a882d86340f26550bb3e1b7d06fa336a3c8afaac522317454"
+    },
+    {
+      "name": "goods_received_note_items",
+      "sha256": "b33c128c842fb6c842fd61cdbdf8edbb6020ea47be69d38b98ec13c714b64f06"
+    },
+    {
+      "name": "goods_received_notes",
+      "sha256": "8c9f347233585618893ebbe1ce949b1e6b60b780436997713302a009b8db69f4"
+    },
+    {
+      "name": "inventory_transactions",
+      "sha256": "387f1cb7bc1035a5e9a0ce33e912cbc0923d285f691ca9b509f6c74bb15a981e"
+    },
+    {
+      "name": "invoice_document_versions",
+      "sha256": "20cad2b19f803dcb3a0c6c73bb29a7496d08b06008e65bbedd9bcd9f7a57d4a9"
+    },
+    {
+      "name": "invoices",
+      "sha256": "8032fee81b4ef83334982e8f1605b5a6d1afcfadbe1402842b0ddf15364cd70a"
+    },
+    {
+      "name": "kitchen_tickets",
+      "sha256": "7379ae514a07f279b46cf63677b5f1c3544498427c4b28e3ebf2578c2819cad5"
+    },
+    {
+      "name": "ledger_entries",
+      "sha256": "18c7c4f0ebb48cc0de6c24d81c570b1ac3826770c6cb0eca59e4467d1ce63213"
+    },
+    {
+      "name": "payment_allocations",
+      "sha256": "f757864b56d890a70ab0805cd3625a5777cdaa4e2dc7f7a1f8a7818297827837"
+    },
+    {
+      "name": "payments",
+      "sha256": "b51c909a103969a98dda54ea4ba013e81d626226f127141126392651b33eb7de"
+    },
+    {
+      "name": "production_consumptions",
+      "sha256": "8080353d5b29bb9c07314f223b7c6009ffad37a4d472bcc1965a9e165cc29f33"
+    },
+    {
+      "name": "production_runs",
+      "sha256": "059b11924e2223f83ea0563c551219b91c0e6e9b5c054a1c7b0c73c7bf91968e"
+    },
+    {
+      "name": "products",
+      "sha256": "8f77f87522ebb79a5af82e9eff3bddad36fcda5bed8168e12a14134211c3ea8a"
+    },
+    {
+      "name": "purchase_order_items",
+      "sha256": "6f47830a23d3e9915263335d922863d5042b6aedaf449ab19d59d9fc38bd4f06"
+    },
+    {
+      "name": "purchase_orders",
+      "sha256": "10d9ca29452d4625605732cdc833e0bdb891a6d0827e0e3b13883c1fdfbfd3d7"
+    },
+    {
+      "name": "recipe_items",
+      "sha256": "e1e3140b64a543ca6505672bbc0464cf27c12ff82df9e10586d12d8848da77f5"
+    },
+    {
+      "name": "recipes",
+      "sha256": "e56aac24db176be02c0092c61c2649e65c1939a4ceafba36d10d29b3f845439e"
+    },
+    {
+      "name": "restaurant_inventory_consumptions",
+      "sha256": "a3cf651f1e163bce51d207f6fc488a1e6c58a89f18852803d4e0cb6027b0e21e"
+    },
+    {
+      "name": "restaurant_menu_categories",
+      "sha256": "cb6e998e826159c7fa700f45b17353524306f5fbea5dd4f4ffe86637a8bb54b3"
+    },
+    {
+      "name": "restaurant_menu_items",
+      "sha256": "e45e26ed4dbb5f7772392ac078841a0a1c78d722746d8042e96bf405f7185d3b"
+    },
+    {
+      "name": "restaurant_order_items",
+      "sha256": "b158071c9bf4b6adce66176eb79b8f95cd439784cdad4f3886f9200743f44df8"
+    },
+    {
+      "name": "restaurant_order_sequences",
+      "sha256": "1a1a45b67e0a8cdba2fbc90b47c0ff7763b2e64c69068515ac8883cd3a60191b"
+    },
+    {
+      "name": "restaurant_orders",
+      "sha256": "e07ccb0a71d38d149282c902333b0e0321848c99a2e17b0c3af8923d717641d0"
+    },
+    {
+      "name": "restaurant_payments",
+      "sha256": "45695aa0fe32c2ca50fb30cbafad59845f43661a93db75e5b8c4f5d32524907e"
+    },
+    {
+      "name": "restaurant_refunds",
+      "sha256": "d15a247561a85628be1d77dd164571fc82e99c2250ee675cb160bd01afb5ed4a"
+    },
+    {
+      "name": "restaurant_return_inventory_movements",
+      "sha256": "a558a7cffbc928c1889bf52049996b091b0e65584f5cbd8b0536f3e766c64a08"
+    },
+    {
+      "name": "restaurant_return_items",
+      "sha256": "a423e23490cccd1ecaca5f046987b09dd909ba29eb5e6f71f9dece4095a72bd7"
+    },
+    {
+      "name": "restaurant_return_payment_allocations",
+      "sha256": "8c38a56aad83d58bba8528986dc59960390506053a7727e14dd0acd4e4c7bfa4"
+    },
+    {
+      "name": "restaurant_returns",
+      "sha256": "457e5b89a9f311212e8c9f3f4b1a784bc1b551d0288678e5e8d51d3870eee066"
+    },
+    {
+      "name": "restaurant_tables",
+      "sha256": "7b5d2abb1716e0971371eb1c89d4b44f965104c73991f34fe04ae6357856a436"
+    },
+    {
+      "name": "restaurant_whatsapp_messages",
+      "sha256": "4ef5209b08e4f15f368aecf49ad98d8e6ee32b79051076a79a07e69d6dc2d823"
+    },
+    {
+      "name": "saas_plans",
+      "sha256": "ac7ce6fafc3db753c4e027a7024e346fff6a464e3c336d6e6072fc9688101dac"
+    },
+    {
+      "name": "sales_order_component_snapshots",
+      "sha256": "fc924e7a92adf5ae6c19b9972430bb3ae04b8b04279b3fda7ea9d17ad3b8ca2a"
+    },
+    {
+      "name": "sales_order_items",
+      "sha256": "44adcff54a3c28d50ed36e6df152f2638f34fb8ce2426ef8bc88fe67e2d997f9"
+    },
+    {
+      "name": "sales_orders",
+      "sha256": "a935f28e19290a3c4ac524960a2125cdf6f84445bb9a5fe34aa41298510876d2"
+    },
+    {
+      "name": "service_jobs",
+      "sha256": "b81495e5760bb0968a6b8a79f19d83bcf2c2808968e210312e8b9a3d6d9ef76d"
+    },
+    {
+      "name": "service_quote_items",
+      "sha256": "5f6802ab92c4bae0f88b512544a5515f4895299a76cf38011a56667a9111f59d"
+    },
+    {
+      "name": "service_quotes",
+      "sha256": "f34579ad74466f5141682d400d3d8aa45eb397cc33b32e0fde1fdd35152f18a3"
+    },
+    {
+      "name": "subscription_events",
+      "sha256": "67940983126ae859b8d2c3e30dd3f9bc1d77c0100d2608d0fa74f3a87030eb7a"
+    },
+    {
+      "name": "supplier_return_items",
+      "sha256": "10957311d247ebc764b2292de254682fde5a4c125a89d4786457c1ac8597562f"
+    },
+    {
+      "name": "supplier_returns",
+      "sha256": "64945749ffc54673f57f81f5f1ee6b2c6340ecf339c03d895c224546b597ed98"
+    },
+    {
+      "name": "suppliers",
+      "sha256": "da9ec971ca64a2b8faf4849ed2d37c3f8f185e1c1f41006ba87df41508a4df00"
+    },
+    {
+      "name": "users",
+      "sha256": "ef659d1301f6c3d31462f76695534ae06f0f5e0b38c785ca1906a0f5c3ef917a"
+    },
+    {
+      "name": "warehouse_stocks",
+      "sha256": "47b1d16177e3f11f601b16241c2cb00a39cd20d1ca8e6a0e75817f69c81069bb"
+    },
+    {
+      "name": "warehouses",
+      "sha256": "db9a9924f1a3e98e26844599168c5d556698ed909dc40ccf08d1e90c3d3de205"
+    },
+    {
+      "name": "workspace_invitations",
+      "sha256": "96825fb6d6f20f8465302ec53353338d234b622b1e8ce567c0e622eb4522cb01"
+    },
+    {
+      "name": "workspace_members",
+      "sha256": "3595bc6c699775e1bf599be945980e584cdca082f153d1b210d4e756f88b91d1"
+    },
+    {
+      "name": "workspace_modules",
+      "sha256": "432e2d0729735bdfe33e08d90d0fbccd8ebb8b96cc409aa6a77f78845a5fa750"
+    },
+    {
+      "name": "workspace_subscriptions",
+      "sha256": "23110f8b004f012f55b2b46470df17dfdae388ffb64566e70fec580ba7ce2223"
+    },
+    {
+      "name": "workspaces",
+      "sha256": "c4e34772e81a1788c01208770432a4af00488c8f97d73852e7ee461fd82ac8b9"
+    }
+  ],
+  "enums": [
+    {
+      "name": "AccountCategory",
+      "sha256": "b57a241feb7129fca756b953e8aebee5c40f315491b554409c82451099185e1f"
+    },
+    {
+      "name": "AccountNormalBalance",
+      "sha256": "859ef0fce247090688179de39e59cc06445de735d0804bb3cfdb78d6a49fe226"
+    },
+    {
+      "name": "AccountSystemCode",
+      "sha256": "2d2b1cede9d6773f3919a813a7300775b136800d14738bb0deac0338f60bb58f"
+    },
+    {
+      "name": "BusinessType",
+      "sha256": "8d263e3460e9a2edd9588017ebfa2befda4a9f15169d429c5257749cd27359c7"
+    },
+    {
+      "name": "CreditNoteStatus",
+      "sha256": "97ba1cc3358552287566a960e025e3d32fe67f924c5cbd350bae43194ca67a68"
+    },
+    {
+      "name": "CustomerStatus",
+      "sha256": "cfe799ee1bf8922eae9c8eaebf3fded4c1cfc5ee203eb4101181b773d5ce7e50"
+    },
+    {
+      "name": "DocumentKind",
+      "sha256": "df82a232dc49ad07cb9c00f318935d775d8d18ae6f2b17e8aaa03f6006263f72"
+    },
+    {
+      "name": "FbrAttemptKind",
+      "sha256": "2b9d18f11044b6ce1dac159b79b0e59db22844314ea63dfcac2995c5991b5b39"
+    },
+    {
+      "name": "FbrEnvironment",
+      "sha256": "45b2555642e5b9836c1c82a8434442151431f927e3437d1173e35131f5a5deec"
+    },
+    {
+      "name": "FbrSubmissionStatus",
+      "sha256": "c392e56cb0f51c959699d3220859cacbc75ba32b3c6efea2c13f435682547979"
+    },
+    {
+      "name": "GRNStatus",
+      "sha256": "13c4361fbf9e0ad18da03e647b711a105ce3c286b486c3cbc8a50fa740b8f722"
+    },
+    {
+      "name": "GeneralLedgerSourceType",
+      "sha256": "f835fcc8ac9c25339dc8d1dff161055c905402fc922057deb43bd4383949c9b2"
+    },
+    {
+      "name": "InventoryTransactionType",
+      "sha256": "fdccebdcccd21b20abd64c898f7a00533a83b13567ed10fe6612cd59b05e49ac"
+    },
+    {
+      "name": "InvitationStatus",
+      "sha256": "65c93d9d1c2672d5c9a093ccd22d05b659413c965af7f919e2a6ce35dadfe2f9"
+    },
+    {
+      "name": "InvoiceStatus",
+      "sha256": "a9ffcb107a2aac0b3d58bcaf89614681ca0ee5a9e712ef0df86fee405f8ff3db"
+    },
+    {
+      "name": "LedgerEntryType",
+      "sha256": "8546296cde5c660849fad6edb7e5750906ebad75180e8615e1af0e7291729d4a"
+    },
+    {
+      "name": "PaymentMethod",
+      "sha256": "c22ca9aa68c04ca8e27d74903325ee6b0043094fa0996796d182e2321cb95de1"
+    },
+    {
+      "name": "PricingMode",
+      "sha256": "63471fd70631529793ce10dfc8e510a5b1a49b237e26e1936a46e97dd1101468"
+    },
+    {
+      "name": "ProductStatus",
+      "sha256": "9cc98b0c2f461bc5245c12382fdb060f18ae3f134785df9d906730be42b7b39b"
+    },
+    {
+      "name": "ProductUnit",
+      "sha256": "9b7ea16121a74d8af5aec91b55a8de6aa5312e548b177c22cf727b372ad40087"
+    },
+    {
+      "name": "PurchaseOrderStatus",
+      "sha256": "98aee4d2d36b3240018fc66154021f36921002261ae5b122cad16e53f74e02e6"
+    },
+    {
+      "name": "Role",
+      "sha256": "6580338800075ea1f33b00189766be6221f0499526d0f0d4cec66a72216f2357"
+    },
+    {
+      "name": "SalesOrderStatus",
+      "sha256": "fe2e4be2917e1d16bca9f5fdff55cbd24ea7064b4f1ea7626cadcd7db80ed64b"
+    },
+    {
+      "name": "SupplierReturnStatus",
+      "sha256": "84a259392023ec388c7e963dc7f6da65a24e87ead96cb3d39cdab12c8292b884"
+    },
+    {
+      "name": "WorkspaceVertical",
+      "sha256": "b84c9406ec334056e89dbf5ff6d026677c83740428785f06dd8c033513d778ef"
+    }
+  ],
+  "routines": [
+    {
+      "name": "enforce_kitchen_ticket_order_tenant_parent",
+      "arguments": "",
+      "sha256": "81c80fe190441a5db000fcc4b90fbba57f34ee73f17352dfb0d3f5721eb4f11e"
+    },
+    {
+      "name": "enforce_kitchen_ticket_table_tenant_parent",
+      "arguments": "",
+      "sha256": "174a6b6e0adf88105c3846be9ec344b918a4936a97526c6c2ac977ef5eb4038a"
+    },
+    {
+      "name": "enforce_pos_financial_override_manager_approval",
+      "arguments": "",
+      "sha256": "240b369fd5f2ed5d36bbc326b28ebf83689fffb7d2e26c49d5e72668607d65b0"
+    },
+    {
+      "name": "enforce_restaurant_cash_compensation_shift",
+      "arguments": "",
+      "sha256": "31fb8834bcf908478199952c35535ab6791027fed6393edb0ec477d5fd2003d5"
+    },
+    {
+      "name": "enforce_restaurant_cash_shift_actor_integrity",
+      "arguments": "",
+      "sha256": "69d329dc8804dbab2f2a6784c36d8e171269371858be793f3f17440105637dc1"
+    },
+    {
+      "name": "enforce_restaurant_cash_shift_snapshot",
+      "arguments": "",
+      "sha256": "128c1a22a424224b175e6751aec8bdae150bfedd33e641ff99dfb7dc41f3ba61"
+    },
+    {
+      "name": "enforce_restaurant_completed_posting_snapshot_immutable",
+      "arguments": "",
+      "sha256": "a7a1cadb758ad3ab4c2476c43888bb662aa829514f8ca2e0ec91b098ec561cf2"
+    },
+    {
+      "name": "enforce_restaurant_general_ledger_delete_integrity",
+      "arguments": "",
+      "sha256": "992eb43ad9baa982a05bba5df2ab6ce1a043fe49087d830785ddf8d7b20dc123"
+    },
+    {
+      "name": "enforce_restaurant_general_ledger_evidence_snapshot",
+      "arguments": "",
+      "sha256": "96213e909f0ea1e5cd6975b22e2a5c99e672f7a70f08d5c52a54f4819bbd311f"
+    },
+    {
+      "name": "enforce_restaurant_inventory_consumption_delete_integrity",
+      "arguments": "",
+      "sha256": "4de765f92460a4326fcc0a81ad71733b9a75bd182d56384b45e5ea41fb96df37"
+    },
+    {
+      "name": "enforce_restaurant_inventory_consumption_insert_origin",
+      "arguments": "",
+      "sha256": "0dfa48f79249f05acba82389deb90f7e00514ffb516cbf9286e6df2e16de316f"
+    },
+    {
+      "name": "enforce_restaurant_inventory_consumption_snapshot_immutable",
+      "arguments": "",
+      "sha256": "34708eef990093d496ec6a657c66d78d8ded905785cf78e81508aa0e9d5f8699"
+    },
+    {
+      "name": "enforce_restaurant_inventory_consumption_tenant_integrity",
+      "arguments": "",
+      "sha256": "db0452354d84364823553bc79372e23506f35494478a64985d3ae62ecd17bcbc"
+    },
+    {
+      "name": "enforce_restaurant_inventory_delete_integrity",
+      "arguments": "",
+      "sha256": "439ebe50c1e66b52a80968a8b918330b81fbc67fcb83935ea40705aae61589d1"
+    },
+    {
+      "name": "enforce_restaurant_inventory_evidence_snapshot",
+      "arguments": "",
+      "sha256": "e972ad47551b2451e0406ee714e99fab8b61edc14e13358f2a31e756625e5a3e"
+    },
+    {
+      "name": "enforce_restaurant_kitchen_ticket_delete_integrity",
+      "arguments": "",
+      "sha256": "8f70603f0ef327deb8bce06136cfae472f0d155cee8e8aaec7826a43ce83265e"
+    },
+    {
+      "name": "enforce_restaurant_kitchen_ticket_evidence_snapshot",
+      "arguments": "",
+      "sha256": "341a2d6416de7e239d411c204af3417eea0c5894b6e9f0761c37fde44419d29e"
+    },
+    {
+      "name": "enforce_restaurant_kitchen_ticket_identity_integrity",
+      "arguments": "",
+      "sha256": "7b2e757aee590c3bf4fa87b27f0ddd406161f0539ab18d7a081c7031fdd298d4"
+    },
+    {
+      "name": "enforce_restaurant_kitchen_ticket_lifecycle",
+      "arguments": "",
+      "sha256": "d84c47e1418161aad4f48de9e7a84be3cd3da5755d5d1f5644e47b21ed922a61"
+    },
+    {
+      "name": "enforce_restaurant_kitchen_ticket_timestamp_integrity",
+      "arguments": "",
+      "sha256": "bbd724cb04f995732502de42839986fa16ee21080963e5de40782c5d8ba5c5b9"
+    },
+    {
+      "name": "enforce_restaurant_menu_category_parent_identity",
+      "arguments": "",
+      "sha256": "e6ff1d06985c6c0a3ab46afb13a9be83c057adb786ab1d1cb09c0bef2ad79d90"
+    },
+    {
+      "name": "enforce_restaurant_menu_category_tenant_parent",
+      "arguments": "",
+      "sha256": "ac8d92655762565f1c847dc9f334df5689811347e95810666acc9b0c48127f1a"
+    },
+    {
+      "name": "enforce_restaurant_menu_item_parent_identity",
+      "arguments": "",
+      "sha256": "83c8e07ca49609d21eba9fd6ded41ce5e456003ec41b9bea7007213526811ee0"
+    },
+    {
+      "name": "enforce_restaurant_menu_product_tenant_parent",
+      "arguments": "",
+      "sha256": "55795a9b80392276c184425dd014e4f2e75be454ce4d8198791ff4a4abd4352b"
+    },
+    {
+      "name": "enforce_restaurant_net_payment_limit",
+      "arguments": "",
+      "sha256": "2073ebc78d0292e666d358563c59c991f5adbc402adaa6e94d57434f87db0d50"
+    },
+    {
+      "name": "enforce_restaurant_order_actor_snapshot_immutable",
+      "arguments": "",
+      "sha256": "88873f9b91115eecbe689fe60ab979674b81a564a390675bef51cd3c02fececd"
+    },
+    {
+      "name": "enforce_restaurant_order_cancellation_evidence",
+      "arguments": "",
+      "sha256": "b105443667b683194e59ffde4cc49815efade86b9cf667d56b7e228851b38d7f"
+    },
+    {
+      "name": "enforce_restaurant_order_confirmer_membership",
+      "arguments": "",
+      "sha256": "facd103b2c3cbc873dfb9528d75b9eeceadc8e0f84bc1ec57e9a83e1e4795952"
+    },
+    {
+      "name": "enforce_restaurant_order_creator_membership",
+      "arguments": "",
+      "sha256": "3b18c0ff381a0732e882d21e7fa00524cef4e82b541fc5fcac374b8edee7a638"
+    },
+    {
+      "name": "enforce_restaurant_order_delete_integrity",
+      "arguments": "",
+      "sha256": "56167cba3a89ed8b2d5eca80a0343577885ecacb80214106d6107ac622dfd813"
+    },
+    {
+      "name": "enforce_restaurant_order_financial_snapshot_immutable",
+      "arguments": "",
+      "sha256": "d70ee7fd8372338dc1faab47cf06b3474ee7189289a90afa81c507f09632a314"
+    },
+    {
+      "name": "enforce_restaurant_order_identity_snapshot_immutable",
+      "arguments": "",
+      "sha256": "362b2be9c19061f1aa189df4b9141b174165d4ccaadcb4b411fb19e49718539b"
+    },
+    {
+      "name": "enforce_restaurant_order_item_delete_integrity",
+      "arguments": "",
+      "sha256": "a5e78c5278ad1952fa2089fe237b4447aafcd77b2cb09637e0bc40078a7eef29"
+    },
+    {
+      "name": "enforce_restaurant_order_item_menu_tenant_parent",
+      "arguments": "",
+      "sha256": "740164a8e781b7121b5cc1c4afe93fa4f8bf3f73a6a5b4b7e180a6ef8d508277"
+    },
+    {
+      "name": "enforce_restaurant_order_item_snapshot_immutable",
+      "arguments": "",
+      "sha256": "f9debc42da88bb8e32959efcbdc4ac7e2e0b22e686caa9450e145552a16e33b6"
+    },
+    {
+      "name": "enforce_restaurant_order_lifecycle",
+      "arguments": "",
+      "sha256": "bdc550ea9991cab9d6ae021fc07094db3ba204c40a19ca0a371c4ec0de754a13"
+    },
+    {
+      "name": "enforce_restaurant_order_routing_snapshot",
+      "arguments": "",
+      "sha256": "9a1e0a2cfb17a3485c17a8dda1b51e81f1947af06890f8fbb0925d3f8c3e2265"
+    },
+    {
+      "name": "enforce_restaurant_order_table_release_snapshot",
+      "arguments": "",
+      "sha256": "2c9542e36ab721a9f0e7585bd37bcbabce1f5a8bd2d5d0d79edeecd0026bed0b"
+    },
+    {
+      "name": "enforce_restaurant_order_table_tenant_parent",
+      "arguments": "",
+      "sha256": "c5c81462d76bb58538d688f04f7451e226a811ecc8e94219db83488df014f47b"
+    },
+    {
+      "name": "enforce_restaurant_order_workspace_immutable",
+      "arguments": "",
+      "sha256": "60a1c6f441443ff72d7ab29b79fe0e983d1064c05697c1ede57b6a9f1fb43a0c"
+    },
+    {
+      "name": "enforce_restaurant_payment_account_integrity",
+      "arguments": "",
+      "sha256": "e2ed4f4105d0851d1f44c7acf78f46d6bb61913f511e35fc9edf4f9e9ba8bf78"
+    },
+    {
+      "name": "enforce_restaurant_payment_cash_shift",
+      "arguments": "",
+      "sha256": "d0309d9a831564e60db7c0b566b122bbe750ffb624a8761c81d784d11fa7f82f"
+    },
+    {
+      "name": "enforce_restaurant_payment_creator_membership",
+      "arguments": "",
+      "sha256": "f9f63809b29f2fea75dcfff99a013eb2abfce25b9fdfab36e20cda4282bdafad"
+    },
+    {
+      "name": "enforce_restaurant_payment_delete_integrity",
+      "arguments": "",
+      "sha256": "c787facce6610c4e8353d875d66bb0a7fb2dd49f152ac4e2820db5f5613353d2"
+    },
+    {
+      "name": "enforce_restaurant_payment_evidence_snapshot",
+      "arguments": "",
+      "sha256": "38087a5911057c4e9477b62debda3197aa022338fec8cff356e5f3a52c31e82a"
+    },
+    {
+      "name": "enforce_restaurant_payment_financial_snapshot_immutable",
+      "arguments": "",
+      "sha256": "ac958b3aa07c8d6ffbedbdc0348a966afc6171e5870789add400d3042e14fb3f"
+    },
+    {
+      "name": "enforce_restaurant_payment_status_derived",
+      "arguments": "",
+      "sha256": "21d121ec02e760e51bfea11343f01912d7571fa27e6574b4fb0177f040302fb6"
+    },
+    {
+      "name": "enforce_restaurant_payment_tenant_parent",
+      "arguments": "",
+      "sha256": "ae8e7e4ae57b399608774b2e7a3ae298907f1d65038b0875b0d54e7324ddfa5f"
+    },
+    {
+      "name": "enforce_restaurant_payment_void_manager_actor",
+      "arguments": "",
+      "sha256": "fe48a652035a7afae1ff5a3dee9d70a6e5dc8522cf5a3ff21fe1dc647fe1a19b"
+    },
+    {
+      "name": "enforce_restaurant_product_parent_identity",
+      "arguments": "",
+      "sha256": "8ae97fdbf1c5357bc5e1bbd323a6c645ae57e542fdfb34d3fe089b7bb5cd3280"
+    },
+    {
+      "name": "enforce_restaurant_recipe_ingredient_tenant_parent",
+      "arguments": "",
+      "sha256": "a212be2eaac2cce6980d2e9b44660c232497e6a2bcce5d3f0a2ddbb8c44d56d8"
+    },
+    {
+      "name": "enforce_restaurant_recipe_product_tenant_parent",
+      "arguments": "",
+      "sha256": "e82dc2176da4de6c24c56b0b8007a245e94c487a576dfa70e7bd98b5e3517bb7"
+    },
+    {
+      "name": "enforce_restaurant_refund_delete_integrity",
+      "arguments": "",
+      "sha256": "09ed8abc4a4d11f91953d9695bfa72539b47681eb9dc6de4a0c37cd1e1806e0d"
+    },
+    {
+      "name": "enforce_restaurant_refund_manager_actor",
+      "arguments": "",
+      "sha256": "9f2c58239508a9dac87ab5b53250fa08dffb03d31cf87e9fa353ae142e92f7f1"
+    },
+    {
+      "name": "enforce_restaurant_refund_snapshot_immutable",
+      "arguments": "",
+      "sha256": "49698447a989b8888ac7e6afe864b57b57adf9e00ebb9d25f2afd4bc682b8e1d"
+    },
+    {
+      "name": "enforce_restaurant_refund_tenant_parent",
+      "arguments": "",
+      "sha256": "40099765d8ad8186f275f5dbe8f0efbabc8a8ed41ede6edfe9c08b2e773f9dea"
+    },
+    {
+      "name": "enforce_restaurant_return_allocation_snapshot_immutable",
+      "arguments": "",
+      "sha256": "ef577fff6c1701e68c7d5584a532b1e6818d66457d9d5c72fe1337874974dc92"
+    },
+    {
+      "name": "enforce_restaurant_return_delete_integrity",
+      "arguments": "",
+      "sha256": "49d2185ea5e367c619a0b2c0eb19db9b02f8a9d683ee88f380474f2cbef975f7"
+    },
+    {
+      "name": "enforce_restaurant_return_inventory_movement_immutable",
+      "arguments": "",
+      "sha256": "dfd5f13eb48eef299220df0ccacbf77883f23074d6e097d8334f736667a82190"
+    },
+    {
+      "name": "enforce_restaurant_return_inventory_movement_parent",
+      "arguments": "",
+      "sha256": "019f54e9d431313b538f60da425a8477b250e87da163cf6f082e8d209d9b0585"
+    },
+    {
+      "name": "enforce_restaurant_return_item_snapshot_immutable",
+      "arguments": "",
+      "sha256": "816380d30da8e6a960c30c5b98e97a53b701885995ccd9dc6c1db79bc66fd615"
+    },
+    {
+      "name": "enforce_restaurant_return_manager_actor",
+      "arguments": "",
+      "sha256": "c114128fbdb72c1c4b2e6cc81090f3d51b58f16a985d3349ce5aeee272254761"
+    },
+    {
+      "name": "enforce_restaurant_return_snapshot_immutable",
+      "arguments": "",
+      "sha256": "96cd4b2ac14ecdab79e0d07f21331d21c6580ac4e566bb81b7710b27bcfba138"
+    },
+    {
+      "name": "enforce_restaurant_return_tenant_parents",
+      "arguments": "",
+      "sha256": "75c85e312a9069ed8aa249083fc270dd6b1563533448bda7dd78c45df8c3f0dd"
+    },
+    {
+      "name": "enforce_restaurant_whatsapp_message_snapshot",
+      "arguments": "",
+      "sha256": "f87f718fd03990b2c9e552ceab8a3d06824352d50e51ad871ef85f65ba4e5e3f"
+    },
+    {
+      "name": "enforce_restaurant_whatsapp_order_tenant_parent",
+      "arguments": "",
+      "sha256": "0f41872991f8f5eaf047c69de477f716a386b0bc1f8e6e39b188a6c356a40c1e"
+    },
+    {
+      "name": "enforce_same_workspace_parent",
+      "arguments": "",
+      "sha256": "4cedc50a3a116f3a24e44b0ba829b7afb80bc842ee49fda25f4bdf96a42b6fbe"
+    },
+    {
+      "name": "enforce_warehouse_stock_tenant_tuple",
+      "arguments": "",
+      "sha256": "6e325b9f9010c97930f953acaf392d5efa27e42479e3ae81d0cc9af55c88bb4e"
+    },
+    {
+      "name": "enforce_whatsapp_financial_override_manager_approval",
+      "arguments": "",
+      "sha256": "bf09ebcd5d2c78d238863ddc897dff104d5371053d387e1f98943fa407db6960"
+    },
+    {
+      "name": "is_restaurant_general_ledger_evidence",
+      "arguments": "entry_source_type text, entry_source_id text, entry_workspace_id text, entry_reversal_of_id text",
+      "sha256": "c7d24e727fa8177995f81e84cfd6e1c212bf921181a50d6ffcfcceaa9c39d430"
+    },
+    {
+      "name": "is_restaurant_inventory_evidence",
+      "arguments": "entry_reference text, entry_workspace_id text",
+      "sha256": "deccfea840255ec250b1ca864df6b484b98e1242c623c76038299642e3cf35e1"
+    },
+    {
+      "name": "lock_restaurant_consumption_warehouse_parent",
+      "arguments": "",
+      "sha256": "bdbf97e20384d9352737dbd68cf779ecc36ae228f75e5a7b7f6526fae3e204a5"
+    },
+    {
+      "name": "lock_restaurant_product_parent",
+      "arguments": "product_id text, expected_workspace text, error_message text",
+      "sha256": "35f7f57a73f2418f00cea4c9180608b3150eccf1839fc8d7deebb05342bbbe4b"
+    },
+    {
+      "name": "lock_restaurant_return_movement_warehouse_parent",
+      "arguments": "",
+      "sha256": "9cb2a5067ee94c577fa33b68991fb29f06447ae1e9e6b4443fcc8d9da5400d3f"
+    },
+    {
+      "name": "lock_restaurant_settlement_parents",
+      "arguments": "cash_bank_account_id text, expected_workspace uuid",
+      "sha256": "6869a573bc03efcda875428278fe00544b00ad79255709f01f79201e782e9a95"
+    },
+    {
+      "name": "lock_restaurant_table_parent",
+      "arguments": "table_id uuid, expected_workspace uuid, error_message text",
+      "sha256": "d32b3d9cfbd5ec9e2c708a2eaf8b0dc4233323a24e67adc79449f4ac34c263a9"
+    },
+    {
+      "name": "lock_restaurant_warehouse_parent",
+      "arguments": "warehouse_id uuid, expected_workspace uuid, error_message text",
+      "sha256": "df2a8c4ba995b319d4c392152ab43297eb00df787c0217d077b0ca6b248295b0"
+    },
+    {
+      "name": "preserve_restaurant_table_occupancy",
+      "arguments": "",
+      "sha256": "90ded1ae5959c2ef6b62553ca804a82f2870c8e221bdf99cfef775f4d10af4ad"
+    },
+    {
+      "name": "prevent_cash_shift_close_with_unposted_receipts",
+      "arguments": "",
+      "sha256": "c098eddfed7ded3b8117a1e5f7b86b7948f9d359799e852bbc1ddbd279ddd135"
+    },
+    {
+      "name": "reject_full_refund_after_item_return",
+      "arguments": "",
+      "sha256": "7c37b70aefece537632022f77b8a2fdfd57febe777704b19667479fe69eaaeb3"
+    },
+    {
+      "name": "reject_legacy_kitchen_inventory_posting",
+      "arguments": "",
+      "sha256": "16a4729a3da270f182eb81d78cf1b5912dd738a2a342e9c229c9cb23b1a27c85"
+    },
+    {
+      "name": "reject_restaurant_referenced_product_delete",
+      "arguments": "",
+      "sha256": "54c00625f06a30189c059596983c98f7fb8e31cc766e4598196a3deb10a08eef"
+    },
+    {
+      "name": "reject_restaurant_settlement_account_parent_mutation",
+      "arguments": "",
+      "sha256": "d7bbca1ac5bf3d4d82bc6a68b856eab0caf939f177b12717847804882971090f"
+    },
+    {
+      "name": "reject_restaurant_settlement_ledger_parent_mutation",
+      "arguments": "",
+      "sha256": "11672d3d6ba5bb603d92f27044829c537fc11565d97bf7265b84e11246529b67"
+    },
+    {
+      "name": "reject_restaurant_table_parent_mutation",
+      "arguments": "",
+      "sha256": "453a8042727a578ad1fd5465f398e30415e106425b8ed6014d9edba5f2ebbfb4"
+    },
+    {
+      "name": "reject_restaurant_void_after_partial_return",
+      "arguments": "",
+      "sha256": "3736b152b98e184d47d006c8f234dacdf73a6c9929e1b7449b77924a78cfb966"
+    },
+    {
+      "name": "reject_restaurant_warehouse_parent_mutation",
+      "arguments": "",
+      "sha256": "0853d4f72f71d823d96e66d1a5122d4c77b781e4389a92293d387d238401630d"
+    },
+    {
+      "name": "release_restaurant_table_after_terminal_kot",
+      "arguments": "",
+      "sha256": "0b359329cdaa836e1758dda9dadd4c1920bb1308acc3d4aff065fe5e4b9009c1"
+    },
+    {
+      "name": "restaurant_actor_is_manager",
+      "arguments": "target_workspace uuid, actor_id text",
+      "sha256": "180b0808c9bf95c85e84e2141ad6af665aaf66b31b83bd1aeab275a15a9b6190"
+    },
+    {
+      "name": "restaurant_actor_is_workspace_member",
+      "arguments": "target_workspace uuid, actor_id text",
+      "sha256": "b7b61582047d5c7636bf00f280a9482f26ec2f9fb20197958c27ba7ff2d66fe8"
+    },
+    {
+      "name": "restaurant_order_is_uncommitted_for_delete",
+      "arguments": "target_order restaurant_orders",
+      "sha256": "74de86a1ec5c5ad4414ea67b1a04a931d02d10829ce8e0b9ec0bb46a41f7f969"
+    },
+    {
+      "name": "restaurant_order_net_outstanding",
+      "arguments": "order_id uuid, expected_workspace uuid",
+      "sha256": "cb48501cf326b41e0f8806a9bd0ffbb042cd0fca66b9a6c4e6a290309520cd8f"
+    },
+    {
+      "name": "restaurant_settlement_account_is_referenced",
+      "arguments": "account_id text",
+      "sha256": "b3666358f3928d99356cdf073e3f9856daba26ecd0554b5b65083978733c6f4c"
+    },
+    {
+      "name": "restaurant_settlement_ledger_is_referenced",
+      "arguments": "ledger_account_id text",
+      "sha256": "a4caa6ade84df9b8da1ffa92597331a3fed617e845733f5d5aa640159e9d1c90"
+    },
+    {
+      "name": "restaurant_table_has_occupancy_blocker",
+      "arguments": "table_id uuid, expected_workspace uuid",
+      "sha256": "c56142a3749250c9e04c73fd751527b36914976d8b161db4399c62bc3042ba68"
+    },
+    {
+      "name": "restaurant_table_is_referenced",
+      "arguments": "table_id uuid",
+      "sha256": "8986bd9d1a2dbef7fc0ef40a2c8c50f9e5880174544b59bda62195f52963f582"
+    },
+    {
+      "name": "restaurant_warehouse_is_referenced",
+      "arguments": "warehouse_id uuid",
+      "sha256": "a7ce407f22551b09b9407fd21041968c94eb5028d55cf7e6c08aec62d52b1a40"
+    },
+    {
+      "name": "snapshot_restaurant_inventory_consumptions",
+      "arguments": "",
+      "sha256": "9d4fc1e97d7b0f630b19f7a5ae75d8e9d9d527a371b27974b5511326ae5c6eca"
+    },
+    {
+      "name": "sync_restaurant_net_payment_status",
+      "arguments": "",
+      "sha256": "b5a7c75aff419276b67c54a1dba862a55b1a937b6717ace7822fac70264f74b4"
+    }
+  ]
+}

@@ -4,6 +4,10 @@ on:
   pull_request:
     branches:
       - main
+      - fix/dependency-lock-remediation-20261009
+      - integrate/dependency-marketing-onboarding-20261009
+      - integrate/security-stack-on-marketing-20261009
+      - fix/preview-acceptance-fail-closed-20261009
 
 permissions:
   contents: read
@@ -40,6 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
@@ -60,6 +65,10 @@ jobs:
             "architecture/restaurant-final-staging-certification-v1-96",
             "architecture/restaurant-main-convergence-v1-97",
             "architecture/restaurant-main-converged-v1-97",
+            "integrate/dependency-marketing-onboarding-20261009",
+            "integrate/security-stack-on-marketing-20261009",
+            "fix/preview-acceptance-fail-closed-20261009",
+            "integrate/sterile-neon-staging-target-20261009",
           ]) {
             if (enabled[branch] !== false) {
               throw new Error(`Missing deployment-disable guard for ${branch}`);
@@ -175,6 +184,8 @@ jobs:
       NODE_ENV: test
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22.x'
@@ -197,6 +208,8 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/restaurant-query-plan-certification-v1-88.cjs 2>&1 | tee restaurant-query-plan-certification-v1-97.log
+      - name: Opt-in bounded read performance on disposable fixture
+        run: node scripts/restaurant-read-performance-disposable.cjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -204,6 +217,7 @@ jobs:
           path: |
             restaurant-query-plan-audit-v1-97.log
             restaurant-query-plan-certification-v1-97.log
+            restaurant-read-performance-disposable.json
           if-no-files-found: error
 
   isolated-print-certification:
@@ -211,6 +225,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22.x'

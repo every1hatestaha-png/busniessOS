@@ -14,7 +14,14 @@ let collect: typeof import("@/lib/server/restaurant-payments-immediate")["record
 const context = () => ({ workspaceId, userId, role: "OWNER" as const });
 const migrations = readdirSync(resolve("prisma/migrations")).filter((name) => /^\d/.test(name)).sort();
 const cutoff = "20261001123000_restaurant_other_payment_account_guard";
-const compatibilityMigrations = new Set(["20261004144500_user_supabase_identity"]);
+const compatibilityMigrations = new Set([
+  "20261004144500_user_supabase_identity",
+  "20261007183000_user_policy_acceptance",
+  // The current Prisma client projects the additive per-member station column
+  // even while older Restaurant data is being seeded. Apply only this schema
+  // compatibility column early, then skip it during the subsequent upgrade.
+  "20261008112000_restaurant_staff_stations",
+]);
 let pendingOrderId = "";
 
 async function createOrder(quantity = 1, dineIn = false) {
@@ -51,8 +58,9 @@ beforeAll(async () => {
   parsed.pathname = `/${name}`;
   client = new Client({ connectionString: parsed.toString() }); await client.connect();
   for (const migration of migrations.filter((name) => name < cutoff)) await client.query(readFileSync(resolve("prisma/migrations", migration, "migration.sql"), "utf8"));
-  // The current Prisma client projects User.supabaseId. Apply only that additive,
-  // auth-only compatibility migration before seeding the historical Restaurant state.
+  // The current Prisma client projects additive User auth/legal fields. Apply
+  // only the additive User and membership compatibility migrations before seeding the
+  // historical Restaurant state.
   // Restaurant migrations at/after the cutoff remain unapplied until the rehearsal step.
   for (const migration of migrations.filter((name) => compatibilityMigrations.has(name))) {
     await client.query(readFileSync(resolve("prisma/migrations", migration, "migration.sql"), "utf8"));
@@ -64,6 +72,8 @@ beforeAll(async () => {
   const run = randomUUID();
   const user = await db.user.create({ data: { clerkId: `history-${run}`, email: `history-${run}@example.invalid` } }); userId = user.id;
   const workspace = await db.workspace.create({ data: { name: `Historical synthetic ${run}`, members: { create: { userId, role: "OWNER" } } } }); workspaceId = workspace.id;
+  const membership = await db.workspaceMember.findFirstOrThrow({ where: { workspaceId, userId } });
+  expect(membership.restaurantStation).toBe("ALL");
   await db.$executeRaw`INSERT INTO "workspace_modules" ("workspaceId", "moduleKey", "enabled", "config", "updatedAt") VALUES (${workspaceId}::uuid, 'restaurant', true, '{}'::jsonb, now())`;
   const { createCashBankAccount, getCashBankAccounts } = await import("@/lib/server/accounting");
   const bank = await createCashBankAccount(context(), { name: "Historical synthetic bank", isBank: true, openingBalance: 0, bankName: "Synthetic", accountTitle: "Synthetic", accountNumber: "000", notes: "" });

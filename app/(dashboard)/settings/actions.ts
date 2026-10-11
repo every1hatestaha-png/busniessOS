@@ -8,6 +8,7 @@ import { requirePermission } from "@/lib/server/authorization";
 import { encryptFbrBearerToken, FbrCredentialError } from "@/lib/server/fbr-credentials";
 import { db } from "@/lib/server/db";
 import { canSaveBusinessType } from "@/lib/verticals/registry";
+import { assertFbrTransmissionAllowed } from "@/lib/fbr/transmission-policy";
 
 const workspaceProfileSchema = z.object({
   name: z.string().trim().min(2, "Business name is required.").max(120),
@@ -110,16 +111,19 @@ export async function saveFbrWorkspaceCredentialAction(
 
   try {
     if (token) {
+      if (!enabled) return { status: "error", message: "Explicitly enable this environment before verifying its FBR credential." };
       if (token.length < 12) {
         return { status: "error", message: "Enter a valid FBR bearer token or leave the field blank to keep the verified credential already stored." };
       }
+      assertFbrTransmissionAllowed(parsed.data.environment);
+      tokenEncrypted = encryptFbrBearerToken(token, context.workspaceId, parsed.data.environment);
       const provinces = await fetchFbrProvinces(token);
       if (!provinces.length) {
         return { status: "error", message: "FBR accepted the request but returned no province reference data. The credential was not saved." };
       }
-      tokenEncrypted = encryptFbrBearerToken(token, context.workspaceId, parsed.data.environment);
       verifiedAt = new Date();
     } else if (enabled) {
+      assertFbrTransmissionAllowed(parsed.data.environment);
       const stored = await db.fbrIntegrationCredential.findUnique({
         where: {
           workspaceId_environment: {

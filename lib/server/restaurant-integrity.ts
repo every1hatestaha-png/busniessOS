@@ -28,6 +28,7 @@ import {
 import { assertRestaurantPaymentAccountKind, resolveRestaurantPaymentCashShift, resolveRestaurantCashMovementShift } from "@/lib/server/restaurant-payment-cash-shift";
 import { releaseRestaurantTableIfSettled } from "@/lib/server/restaurant-table-settlement";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
+import { assertRestaurantActorAccess } from "@/lib/server/restaurant-actor-access";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PAYMENT_METHODS = new Set<PaymentMethod>([
@@ -331,6 +332,7 @@ export async function transitionRestaurantOrderWithIntegrity(
   orderId: string,
   nextStatus: RestaurantOrderStatus,
 ) {
+  if (nextStatus === "COMPLETED") assertManager(context);
   await requireWorkspaceModule(context.workspaceId, "restaurant");
   assertUuid(orderId, "Restaurant order");
   if (nextStatus !== "COMPLETED" && nextStatus !== "CANCELLED") {
@@ -338,6 +340,7 @@ export async function transitionRestaurantOrderWithIntegrity(
   }
 
   return withSerializableRetry(async (tx) => {
+    await assertRestaurantActorAccess(tx, context, nextStatus === "COMPLETED" ? "FINANCIAL" : "POS", "Restaurant order finalization");
     const rows = await tx.$queryRaw<Array<{
       id: string;
       orderNumber: string;
@@ -566,6 +569,7 @@ export async function voidRestaurantPayment(context: IndustryContext, paymentId:
   }
 
   return withSerializableRetry(async (tx) => {
+    await assertRestaurantActorAccess(tx, context, "FINANCIAL", "Restaurant payment void");
     const rows = await tx.$queryRaw<Array<{
       id: string;
       restaurantOrderId: string;

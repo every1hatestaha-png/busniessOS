@@ -1,3 +1,5 @@
+import { safeInternalDestination } from "@/lib/auth-routing";
+
 export const PROVISIONING_MODULE_KEYS = [
   "inventory",
   "restaurant",
@@ -76,4 +78,29 @@ export function buildProvisioningQuery(input: {
   params.set("modules", resolveProvisioningModules(sanitizeProvisioningModules(input.modules), input.businessType).join(","));
   params.set("billing", sanitizeBilling(input.billing));
   return params.toString();
+}
+
+/**
+ * Carry only recognized, non-sensitive builder preferences through the
+ * email-verification journey. This never grants access to a module or plan:
+ * the authenticated onboarding action performs the final provisioning.
+ */
+export function onboardingRouteFromBuilderParams(params: Pick<URLSearchParams, "get">): string | null {
+  const business = params.get("business");
+  if (!isBuilderBusinessType(business)) return null;
+  return `/onboarding?${buildProvisioningQuery({
+    businessType: business,
+    modules: sanitizeProvisioningModules(params.get("modules")),
+    billing: sanitizeBilling(params.get("billing")),
+  })}`;
+}
+
+/** Keep only local, allowlisted builder preferences across the policy gate. */
+export function onboardingRouteFromReturnPath(value: string | null): string | null {
+  if (!value?.startsWith("/") || value.startsWith("//")) return null;
+  const base = "https://builder-return.invalid";
+  const path = safeInternalDestination(value, base, "");
+  if (!path) return null;
+  const destination = new URL(path, base);
+  return destination.pathname === "/onboarding" ? onboardingRouteFromBuilderParams(destination.searchParams) : null;
 }

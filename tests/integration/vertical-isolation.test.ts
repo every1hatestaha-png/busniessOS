@@ -7,7 +7,10 @@ vi.mock("next/headers", () => ({ cookies: async () => ({
   set: (_key: string, value: string) => { session.activeId = value; },
 }) }));
 vi.mock("@/lib/server/auth", () => ({
-  getOptionalCurrentUser: async () => ({ id: session.userId, email: "synthetic@example.invalid", firstName: null, lastName: null }),
+  getOptionalCurrentUser: async () => {
+    const { db } = await import("@/lib/server/db");
+    return db.user.findUniqueOrThrow({ where: { id: session.userId } });
+  },
   requireWorkspace: async () => {
     const { db } = await import("@/lib/server/db");
     const member = await db.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId: session.activeId, userId: session.userId } }, include: { workspace: true } });
@@ -27,6 +30,7 @@ import { GET as getCustomer } from "@/app/api/v1/customers/[id]/route";
 import { GET as search } from "@/app/api/search/route";
 import { requireWorkspaceModule } from "@/lib/server/industry-modules";
 import { createRestaurantTableAction } from "@/app/(dashboard)/restaurant/actions";
+import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } from "@/lib/legal/policies";
 
 const runId = randomUUID();
 const workspaces: Record<string,string> = {};
@@ -38,16 +42,22 @@ function listWithQuery(request: Request): Promise<Response> {
   return Reflect.apply(listCustomers, undefined, [request]) as Promise<Response>;
 }
 
-async function switchTo(workspaceId: string) {
+const sameOriginProof = { origin: "http://localhost", "sec-fetch-site": "same-origin" };
+function mutationHeaders(proof: Record<string, string> = sameOriginProof) {
+  return { "Content-Type": "application/json", cookie: "__session=synthetic-vertical-fixture", ...proof };
+}
+
+async function switchTo(workspaceId: string, proof: Record<string, string> = sameOriginProof) {
   return switchWorkspace(new Request("http://localhost/api/v1/workspace/switch", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId }),
+    method: "POST", headers: mutationHeaders(proof), body: JSON.stringify({ workspaceId }),
   }));
 }
 
 describe("vertical boundaries with isolated PostgreSQL", () => {
   beforeAll(async () => {
-    memberUser = (await db.user.create({ data: { clerkId: `vertical-member-${runId}`, email: `vertical-member-${runId}@example.invalid` } })).id;
-    outsiderUser = (await db.user.create({ data: { clerkId: `vertical-outsider-${runId}`, email: `vertical-outsider-${runId}@example.invalid` } })).id;
+    const acceptedPolicies = { termsAcceptedAt: new Date(), termsVersion: CURRENT_TERMS_VERSION, privacyAcknowledgedAt: new Date(), privacyVersion: CURRENT_PRIVACY_VERSION };
+    memberUser = (await db.user.create({ data: { clerkId: `vertical-member-${runId}`, email: `vertical-member-${runId}@example.invalid`, ...acceptedPolicies } })).id;
+    outsiderUser = (await db.user.create({ data: { clerkId: `vertical-outsider-${runId}`, email: `vertical-outsider-${runId}@example.invalid`, ...acceptedPolicies } })).id;
     for (const [name,vertical] of Object.entries({ trading: "TRADING", manufacturing: "MANUFACTURING", legacy: "LEGACY", restaurant: "RESTAURANT", property: "PROPERTY", services: "SERVICES" } as const)) {
       const ws = await db.workspace.create({ data: { name: `vertical-${name}-${runId}`, businessType: name === "legacy" ? "OTHER" : "WHOLESALER", vertical, currency: name === "manufacturing" ? "USD" : "PKR", timezone: name === "manufacturing" ? "Etc/UTC" : "Asia/Karachi" } });
       workspaces[name] = ws.id;
@@ -85,15 +95,31 @@ describe("vertical boundaries with isolated PostgreSQL", () => {
     }
   });
 
+  it("requires persisted current policy acceptance before tenant access", async () => {
+    const accepted = await db.user.findUniqueOrThrow({ where: { id: memberUser } });
+    await db.user.update({ where: { id: memberUser }, data: { termsAcceptedAt: null } });
+    try {
+      const denied = await switchTo(workspaces.legacy);
+      expect(denied.status).toBe(403);
+      expect(await denied.json()).toMatchObject({ error: { code: "POLICY_ACCEPTANCE_REQUIRED" } });
+      expect(session.activeId).toBe(workspaces.trading);
+      await expect(requireApiContext("business.read")).rejects.toMatchObject({ status: 403, code: "POLICY_ACCEPTANCE_REQUIRED" });
+    } finally {
+      await db.user.update({ where: { id: memberUser }, data: { termsAcceptedAt: accepted.termsAcceptedAt } });
+    }
+  });
+
   it("blocks outsider switching and foreign route params while ignoring body workspaceId", async () => {
     session.userId = outsiderUser;
-    expect((await switchTo(workspaces.trading)).status).toBe(403);
+    const denied = await switchTo(workspaces.trading);
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toMatchObject({ error: { code: "NOT_A_MEMBER" } });
     expect(session.activeId).toBe(workspaces.trading);
     session.userId = memberUser;
     const foreign = await getCustomer(new Request(`http://localhost/api/v1/customers/${customers.legacy}`), { params: Promise.resolve({ id: customers.legacy }) });
     expect(foreign.status).toBe(404);
     const created = await createCustomer(new Request("http://localhost/api/v1/customers", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+      method: "POST", headers: mutationHeaders(), body: JSON.stringify({
         workspaceId: workspaces.legacy, name: "Injected Customer", companyName: "Injected Company", phone: "03001234567",
         email: "injected@example.invalid", city: "Lahore", address: "Synthetic Street 1", creditLimit: "0", openingBalance: "0", status: "ACTIVE", notes: "",
       }),
@@ -101,6 +127,24 @@ describe("vertical boundaries with isolated PostgreSQL", () => {
     expect(created.status).toBe(201);
     const { data } = await created.json();
     expect((await db.customer.findUniqueOrThrow({ where: { id: data.id } })).workspaceId).toBe(workspaces.trading);
+  });
+
+  it.each<Record<string, string>>([
+    {},
+    { origin: "https://foreign.example.invalid", "sec-fetch-site": "cross-site" },
+    { origin: "http://localhost", "sec-fetch-site": "cross-site" },
+  ])("rejects cookie mutations without same-origin proof before tenant or customer writes: %j", async proof => {
+    const before = await db.customer.count({ where: { workspaceId: { in: Object.values(workspaces) } } });
+    const switched = await switchTo(workspaces.legacy, proof);
+    expect(switched.status).toBe(403);
+    expect(await switched.json()).toMatchObject({ error: { code: "UNTRUSTED_ORIGIN" } });
+    expect(session.activeId).toBe(workspaces.trading);
+    const created = await createCustomer(new Request("http://localhost/api/v1/customers", {
+      method: "POST", headers: mutationHeaders(proof), body: JSON.stringify({ name: "Rejected Customer", workspaceId: workspaces.legacy }),
+    }));
+    expect(created.status).toBe(403);
+    expect(await created.json()).toMatchObject({ error: { code: "UNTRUSTED_ORIGIN" } });
+    expect(await db.customer.count({ where: { workspaceId: { in: Object.values(workspaces) } } })).toBe(before);
   });
 
   it("scopes global search and preserves LEGACY industry entitlements", async () => {

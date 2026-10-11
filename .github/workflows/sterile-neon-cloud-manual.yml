@@ -1,0 +1,68 @@
+name: Sterile Neon cloud operator (owner-label only)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    branches:
+      - fix/sterile-runner-diagnostics-20261010
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sterile-neon-rc132-single-operator
+  cancel-in-progress: false
+
+jobs:
+  offline-cloud-guard-tests:
+    # No secrets or database connections. Safe on PR creation/updates.
+    if: ${{ github.event.action != 'labeled' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: |
+          node --check scripts/run-sterile-cloud-migrations.cjs
+          npx vitest run tests/unit/sterile-cloud-operator-guard.test.ts tests/unit/sterile-runner-diagnostics.test.ts
+      - run: npx eslint scripts/run-sterile-cloud-migrations.cjs tests/unit/sterile-cloud-operator-guard.test.ts
+      - name: Ensure no automatic Vercel deployment
+        run: |
+          node - <<'NODE'
+          const cfg=require("./vercel.json");
+          if(cfg.git.deploymentEnabled["ops/sterile-neon-cloud-manual-20261010"]!==false) throw Error("Automatic deploy prohibited");
+          NODE
+
+  approved-single-hosted-attempt:
+    # Does not execute on PR open/synchronize/reopen or on arbitrary labels.
+    if: ${{ github.event.action == 'labeled' && startsWith(github.event.label.name, 'db-') && github.event.sender.login == 'every1hatestaha-png' && github.event.pull_request.head.repo.full_name == 'every1hatestaha-png/busniessOS' && github.event.pull_request.head.ref == 'ops/sterile-neon-cloud-manual-20261010' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: sterile-neon-rc132
+    env:
+      GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      STERILE_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
+      STERILE_NEON_ENVIRONMENT: sterile-neon-rc132
+      NEON_PROJECT_ID: still-hill-08070011
+      NEON_BRANCH_ID: br-calm-unit-b4hiv86y
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run exactly one locked sterile migration and attestation
+        env:
+          DATABASE_URL: ${{ secrets.STERILE_NEON_DATABASE_URL }}
+        run: node scripts/run-sterile-cloud-migrations.cjs

@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { ArrowRight, CheckCircle2, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 
 import { MAX_EMAIL_OTP_LENGTH, isValidEmailOtp, normalizeEmailOtp } from "@/lib/auth-email-otp";
+import { getSignInFeedback } from "@/lib/auth-sign-in-feedback";
 import { postAuthDestination } from "@/lib/auth-routing";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -21,7 +22,6 @@ export default function SignInPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(searchParams.get("error") || "");
-  const [showMigrationHelp, setShowMigrationHelp] = useState(false);
   const [showVerificationHelp, setShowVerificationHelp] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
   const [verificationBusy, setVerificationBusy] = useState(false);
@@ -45,7 +45,6 @@ export default function SignInPage() {
     if (busy) return;
     setBusy(true);
     setError("");
-    setShowMigrationHelp(false);
     setShowVerificationHelp(false);
     setResendStatus("");
 
@@ -62,17 +61,9 @@ export default function SignInPage() {
     });
 
     if (signInError) {
-      if (signInError.code === "email_not_confirmed" || signInError.message.toLowerCase().includes("email not confirmed")) {
-        setError("Your email has not been verified yet.");
-        setShowVerificationHelp(true);
-      } else if (signInError.message === "Invalid login credentials") {
-        setError("Email or password is incorrect.");
-        setShowMigrationHelp(true);
-      } else if (signInError.status === 429 || signInError.message.toLowerCase().includes("rate")) {
-        setError("Too many sign-in attempts. Please wait a moment and try again.");
-      } else {
-        setError("We could not sign you in right now. Please try again.");
-      }
+      const feedback = getSignInFeedback(signInError);
+      setError(feedback.message);
+      setShowVerificationHelp(feedback.requiresEmailVerification);
       setBusy(false);
       return;
     }
@@ -162,7 +153,7 @@ export default function SignInPage() {
     <main className="min-h-dvh bg-[#071821] text-white">
       <div className="grid min-h-dvh lg:grid-cols-[56%_44%]">
         <section className="relative hidden min-h-dvh overflow-hidden lg:block" aria-hidden="true">
-          <Image src={LOGIN_VISUAL} alt="" fill sizes="56vw" priority className="object-cover object-center" />
+          <Image src={LOGIN_VISUAL} alt="" fill sizes="(min-width: 1024px) 56vw, 1px" quality={70} loading="lazy" className="object-cover object-center" />
           <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(4,19,25,0.12)_0%,rgba(4,19,25,0.05)_55%,rgba(7,24,33,0.82)_100%)]" />
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#041319]/90 via-[#041319]/45 to-transparent px-10 pb-10 pt-28 xl:px-14 xl:pb-12">
             <div className="max-w-lg">
@@ -266,12 +257,6 @@ export default function SignInPage() {
                     {resendBusy ? "Sending..." : resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : "Resend verification code"}
                   </button>
                   {resendStatus ? <p role="status" className="mt-2 text-xs text-slate-400">{resendStatus}</p> : null}
-                </div>
-              ) : null}
-
-              {showMigrationHelp ? (
-                <div className="rounded-xl border border-emerald-400/15 bg-emerald-400/[0.05] px-4 py-3 text-sm leading-6 text-slate-300">
-                  If you used MunshiOS before the login upgrade, you may need to establish a password once. <Link href="/forgot-password" className="font-medium text-emerald-300 hover:text-emerald-200">Request a reset link.</Link> After setting it, use the same email and password for later logins.
                 </div>
               ) : null}
 

@@ -1,0 +1,2894 @@
+[
+  {
+    "table_name": "cash_shifts",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "workspaceId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "openedById",
+        "type": "uuid",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "closedById",
+        "type": "uuid",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "openedAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "closedAt",
+        "type": "timestamp with time zone",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "openingCash",
+        "type": "numeric(15,2)",
+        "default": "0",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "expectedCash",
+        "type": "numeric(15,2)",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "closingCash",
+        "type": "numeric(15,2)",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "variance",
+        "type": "numeric(15,2)",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "status",
+        "type": "text",
+        "default": "'OPEN'::text",
+        "notNull": true,
+        "notNullValidated": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "cash_shifts_lifecycle_snapshot_consistent",
+        "validated": true,
+        "definition": "CHECK ((((status = 'OPEN'::text) AND (\"closedAt\" IS NULL) AND (\"closedById\" IS NULL) AND (\"expectedCash\" IS NULL) AND (\"closingCash\" IS NULL) AND (variance IS NULL)) OR ((status = 'CLOSED'::text) AND (\"closedAt\" IS NOT NULL) AND (\"closedById\" IS NOT NULL) AND (\"expectedCash\" IS NOT NULL) AND (\"closingCash\" IS NOT NULL) AND (\"closingCash\" >= (0)::numeric) AND (variance IS NOT NULL) AND (\"closedAt\" >= \"openedAt\") AND (variance = (\"closingCash\" - \"expectedCash\")))))"
+      },
+      {
+        "name": "cash_shifts_opening_cash_nonnegative",
+        "validated": true,
+        "definition": "CHECK ((\"openingCash\" >= (0)::numeric))"
+      },
+      {
+        "name": "cash_shifts_pkey",
+        "validated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "cash_shifts_status_check",
+        "validated": true,
+        "definition": "CHECK ((status = ANY (ARRAY['OPEN'::text, 'CLOSED'::text])))"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "cash_shifts_one_open_per_workspace",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX cash_shifts_one_open_per_workspace ON public.cash_shifts USING btree (\"workspaceId\") WHERE (status = 'OPEN'::text)"
+      },
+      {
+        "name": "cash_shifts_pkey",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX cash_shifts_pkey ON public.cash_shifts USING btree (id)"
+      },
+      {
+        "name": "cash_shifts_workspace_status_idx",
+        "valid": true,
+        "definition": "CREATE INDEX cash_shifts_workspace_status_idx ON public.cash_shifts USING btree (\"workspaceId\", status, \"openedAt\")"
+      }
+    ],
+    "triggers": [
+      {
+        "name": "cash_shifts_00_snapshot_guard",
+        "enabled": "O",
+        "function": "ce4b245142a8b80a5192223925fa336d9b83aafc88732e085cbe4e3e62a63404",
+        "definition": "CREATE TRIGGER cash_shifts_00_snapshot_guard BEFORE INSERT OR DELETE OR UPDATE ON public.cash_shifts FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_cash_shift_snapshot()"
+      },
+      {
+        "name": "cash_shifts_10_unposted_payment_guard",
+        "enabled": "O",
+        "function": "6cb03dab4b829506e881ff086611018a593350f30fd392a43fe6d0bcbe1868a2",
+        "definition": "CREATE TRIGGER cash_shifts_10_unposted_payment_guard BEFORE UPDATE OF status ON public.cash_shifts FOR EACH ROW EXECUTE FUNCTION prevent_cash_shift_close_with_unposted_receipts()"
+      },
+      {
+        "name": "cash_shifts_actor_integrity_guard",
+        "enabled": "O",
+        "function": "30bf7dee7f6e05dfffcd34b28d84eb7d12bc7c00cbfa73ac79901eb574313d7e",
+        "definition": "CREATE TRIGGER cash_shifts_actor_integrity_guard BEFORE INSERT OR UPDATE OF \"workspaceId\", \"openedById\", \"closedById\", status ON public.cash_shifts FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_cash_shift_actor_integrity()"
+      }
+    ]
+  },
+  {
+    "table_name": "kitchen_tickets",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "workspaceId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "salesOrderId",
+        "type": "uuid",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "restaurantTableId",
+        "type": "uuid",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "ticketNumber",
+        "type": "text",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "status",
+        "type": "text",
+        "default": "'QUEUED'::text",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "startedAt",
+        "type": "timestamp with time zone",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "readyAt",
+        "type": "timestamp with time zone",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "servedAt",
+        "type": "timestamp with time zone",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "createdAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "updatedAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "restaurantOrderId",
+        "type": "uuid",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "kitchen_tickets_pkey",
+        "validated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "kitchen_tickets_restaurantOrderId_fkey",
+        "validated": true,
+        "definition": "FOREIGN KEY (\"restaurantOrderId\") REFERENCES restaurant_orders(id) ON DELETE SET NULL"
+      },
+      {
+        "name": "kitchen_tickets_restaurantTableId_fkey",
+        "validated": true,
+        "definition": "FOREIGN KEY (\"restaurantTableId\") REFERENCES restaurant_tables(id) ON DELETE SET NULL"
+      },
+      {
+        "name": "kitchen_tickets_status_check",
+        "validated": true,
+        "definition": "CHECK ((status = ANY (ARRAY['QUEUED'::text, 'PREPARING'::text, 'READY'::text, 'SERVED'::text, 'CANCELLED'::text])))"
+      },
+      {
+        "name": "kitchen_tickets_workspace_number_unique",
+        "validated": true,
+        "definition": "UNIQUE (\"workspaceId\", \"ticketNumber\")"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "kitchen_tickets_pkey",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX kitchen_tickets_pkey ON public.kitchen_tickets USING btree (id)"
+      },
+      {
+        "name": "kitchen_tickets_restaurant_order_idx",
+        "valid": true,
+        "definition": "CREATE INDEX kitchen_tickets_restaurant_order_idx ON public.kitchen_tickets USING btree (\"workspaceId\", \"restaurantOrderId\") WHERE (\"restaurantOrderId\" IS NOT NULL)"
+      },
+      {
+        "name": "kitchen_tickets_workspace_number_unique",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX kitchen_tickets_workspace_number_unique ON public.kitchen_tickets USING btree (\"workspaceId\", \"ticketNumber\")"
+      },
+      {
+        "name": "kitchen_tickets_workspace_status_idx",
+        "valid": true,
+        "definition": "CREATE INDEX kitchen_tickets_workspace_status_idx ON public.kitchen_tickets USING btree (\"workspaceId\", status, \"createdAt\")"
+      }
+    ],
+    "triggers": [
+      {
+        "name": "kitchen_tickets_00_identity_integrity_guard",
+        "enabled": "O",
+        "function": "462847f4e33525544c55061b8e032355c8ce5cb23905a8e4e0ae4f04206e6db9",
+        "definition": "CREATE TRIGGER kitchen_tickets_00_identity_integrity_guard BEFORE INSERT OR UPDATE OF \"workspaceId\", \"salesOrderId\", \"restaurantOrderId\", \"restaurantTableId\", \"ticketNumber\", \"createdAt\" ON public.kitchen_tickets FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_kitchen_ticket_identity_integrity()"
+      },
+      {
+        "name": "kitchen_tickets_delete_integrity",
+        "enabled": "O",
+        "function": "162f03fff22cc0c332e8fc3b5cd34deb24147e9c505f095ce7c814efcd94fb5b",
+        "definition": "CREATE TRIGGER kitchen_tickets_delete_integrity BEFORE DELETE ON public.kitchen_tickets FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_kitchen_ticket_delete_integrity()"
+      },
+      {
+        "name": "kitchen_tickets_lifecycle_guard",
+        "enabled": "O",
+        "function": "960a769c61699709b77966d732f2597264da482da23d813920c31fc8843fc3ca",
+        "definition": "CREATE TRIGGER kitchen_tickets_lifecycle_guard BEFORE UPDATE OF status ON public.kitchen_tickets FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_kitchen_ticket_lifecycle()"
+      },
+      {
+        "name": "kitchen_tickets_order_tenant_parent_guard",
+        "enabled": "O",
+        "function": "a406cf54d3f78babc239cce5850fbb5c9edcb5b2947f590bd3829ed9172ca68f",
+        "definition": "CREATE TRIGGER kitchen_tickets_order_tenant_parent_guard BEFORE INSERT OR UPDATE OF \"workspaceId\", \"restaurantOrderId\" ON public.kitchen_tickets FOR EACH ROW EXECUTE FUNCTION enforce_kitchen_ticket_order_tenant_parent()"
+      },
+      {
+        "name": "kitchen_tickets_table_tenant_parent_guard",
+        "enabled": "O",
+        "function": "0f3c55e0c66276e9675c8f9b136f2d486af6d8753d725063cbb1f31803d3a0eb",
+        "definition": "CREATE TRIGGER kitchen_tickets_table_tenant_parent_guard BEFORE INSERT OR UPDATE OF \"workspaceId\", \"restaurantTableId\" ON public.kitchen_tickets FOR EACH ROW EXECUTE FUNCTION enforce_kitchen_ticket_table_tenant_parent()"
+      },
+      {
+        "name": "kitchen_tickets_terminal_table_release",
+        "enabled": "O",
+        "function": "50097253fb1273ee5de99a6d3c50f50adb453fcaa24991e5c2ca2f9a080881e9",
+        "definition": "CREATE TRIGGER kitchen_tickets_terminal_table_release AFTER UPDATE OF status ON public.kitchen_tickets FOR EACH ROW EXECUTE FUNCTION release_restaurant_table_after_terminal_kot()"
+      },
+      {
+        "name": "kitchen_tickets_timestamp_integrity_guard",
+        "enabled": "O",
+        "function": "4a2a78e08def0ae24f039bf2f30b0fa8fc31318bbc18812bba5d4b50e2ffbda5",
+        "definition": "CREATE TRIGGER kitchen_tickets_timestamp_integrity_guard BEFORE UPDATE OF status, \"startedAt\", \"readyAt\", \"servedAt\" ON public.kitchen_tickets FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_kitchen_ticket_timestamp_integrity()"
+      },
+      {
+        "name": "kitchen_tickets_zz_evidence_snapshot_guard",
+        "enabled": "O",
+        "function": "462d52590d0ded7ff06d3adb9098605dc50e4830b63ffe4e2f33b0f3ab0e0ad5",
+        "definition": "CREATE TRIGGER kitchen_tickets_zz_evidence_snapshot_guard BEFORE INSERT OR UPDATE ON public.kitchen_tickets FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_kitchen_ticket_evidence_snapshot()"
+      }
+    ]
+  },
+  {
+    "table_name": "recipe_items",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "recipeId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "ingredientProductId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "quantity",
+        "type": "numeric(15,4)",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "wastagePercent",
+        "type": "numeric(7,4)",
+        "default": "0",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "createdAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "recipe_items_pkey",
+        "validated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "recipe_items_quantity_check",
+        "validated": true,
+        "definition": "CHECK ((quantity > (0)::numeric))"
+      },
+      {
+        "name": "recipe_items_recipeId_fkey",
+        "validated": true,
+        "definition": "FOREIGN KEY (\"recipeId\") REFERENCES recipes(id) ON DELETE CASCADE"
+      },
+      {
+        "name": "recipe_items_recipe_ingredient_unique",
+        "validated": true,
+        "definition": "UNIQUE (\"recipeId\", \"ingredientProductId\")"
+      },
+      {
+        "name": "recipe_items_wastagePercent_check",
+        "validated": true,
+        "definition": "CHECK (((\"wastagePercent\" >= (0)::numeric) AND (\"wastagePercent\" <= (100)::numeric)))"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "recipe_items_pkey",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX recipe_items_pkey ON public.recipe_items USING btree (id)"
+      },
+      {
+        "name": "recipe_items_recipe_ingredient_unique",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX recipe_items_recipe_ingredient_unique ON public.recipe_items USING btree (\"recipeId\", \"ingredientProductId\")"
+      }
+    ],
+    "triggers": [
+      {
+        "name": "restaurant_recipe_items_product_tenant_parent_guard",
+        "enabled": "O",
+        "function": "be9924c380f525074ab6bee7f44c2845afc368fa15f415fcd02c34d50c5b8458",
+        "definition": "CREATE TRIGGER restaurant_recipe_items_product_tenant_parent_guard BEFORE INSERT OR UPDATE OF \"recipeId\", \"ingredientProductId\" ON public.recipe_items FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_recipe_ingredient_tenant_parent()"
+      }
+    ]
+  },
+  {
+    "table_name": "recipes",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "workspaceId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "finishedProductId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "yieldQuantity",
+        "type": "numeric(15,4)",
+        "default": "1",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "isActive",
+        "type": "boolean",
+        "default": "true",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "createdAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "updatedAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "recipes_pkey",
+        "validated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "recipes_workspace_finished_unique",
+        "validated": true,
+        "definition": "UNIQUE (\"workspaceId\", \"finishedProductId\")"
+      },
+      {
+        "name": "recipes_yieldQuantity_check",
+        "validated": true,
+        "definition": "CHECK ((\"yieldQuantity\" > (0)::numeric))"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "recipes_pkey",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX recipes_pkey ON public.recipes USING btree (id)"
+      },
+      {
+        "name": "recipes_workspace_finished_unique",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX recipes_workspace_finished_unique ON public.recipes USING btree (\"workspaceId\", \"finishedProductId\")"
+      }
+    ],
+    "triggers": [
+      {
+        "name": "restaurant_recipes_product_tenant_parent_guard",
+        "enabled": "O",
+        "function": "bbee86799fd7980c2cbc7b7b70a35e22d0b3f49174e41ac10247c900286d5b30",
+        "definition": "CREATE TRIGGER restaurant_recipes_product_tenant_parent_guard BEFORE INSERT OR UPDATE OF \"workspaceId\", \"finishedProductId\" ON public.recipes FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_recipe_product_tenant_parent()"
+      }
+    ]
+  },
+  {
+    "table_name": "restaurant_inventory_consumptions",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "workspaceId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "restaurantOrderId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "restaurantOrderItemId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "productId",
+        "type": "text",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "warehouseId",
+        "type": "uuid",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "quantity",
+        "type": "numeric(15,4)",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "unitCost",
+        "type": "numeric(15,2)",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "createdAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "restaurant_inventory_consumptions_item_product_unique",
+        "validated": true,
+        "definition": "UNIQUE (\"restaurantOrderItemId\", \"productId\")"
+      },
+      {
+        "name": "restaurant_inventory_consumptions_pkey",
+        "validated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "restaurant_inventory_consumptions_quantity_check",
+        "validated": true,
+        "definition": "CHECK ((quantity > (0)::numeric))"
+      },
+      {
+        "name": "restaurant_inventory_consumptions_restaurantOrderId_fkey",
+        "validated": true,
+        "definition": "FOREIGN KEY (\"restaurantOrderId\") REFERENCES restaurant_orders(id) ON DELETE RESTRICT"
+      },
+      {
+        "name": "restaurant_inventory_consumptions_restaurantOrderItemId_fkey",
+        "validated": true,
+        "definition": "FOREIGN KEY (\"restaurantOrderItemId\") REFERENCES restaurant_order_items(id) ON DELETE CASCADE"
+      },
+      {
+        "name": "restaurant_inventory_consumptions_unitCost_check",
+        "validated": true,
+        "definition": "CHECK ((\"unitCost\" >= (0)::numeric))"
+      },
+      {
+        "name": "restaurant_inventory_consumptions_warehouseId_fkey",
+        "validated": true,
+        "definition": "FOREIGN KEY (\"warehouseId\") REFERENCES warehouses(id) ON DELETE RESTRICT"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "restaurant_inventory_consumptions_item_product_unique",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_inventory_consumptions_item_product_unique ON public.restaurant_inventory_consumptions USING btree (\"restaurantOrderItemId\", \"productId\")"
+      },
+      {
+        "name": "restaurant_inventory_consumptions_pkey",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_inventory_consumptions_pkey ON public.restaurant_inventory_consumptions USING btree (id)"
+      },
+      {
+        "name": "restaurant_inventory_consumptions_workspace_order_idx",
+        "valid": true,
+        "definition": "CREATE INDEX restaurant_inventory_consumptions_workspace_order_idx ON public.restaurant_inventory_consumptions USING btree (\"workspaceId\", \"restaurantOrderId\")"
+      }
+    ],
+    "triggers": [
+      {
+        "name": "restaurant_inventory_consumptions_delete_integrity",
+        "enabled": "O",
+        "function": "02448064cf00b0a316ef907e7a740d2a349badd697a4b7a162be330c38c24a56",
+        "definition": "CREATE TRIGGER restaurant_inventory_consumptions_delete_integrity BEFORE DELETE ON public.restaurant_inventory_consumptions FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_inventory_consumption_delete_integrity()"
+      },
+      {
+        "name": "restaurant_inventory_consumptions_snapshot_immutable",
+        "enabled": "O",
+        "function": "c0f83adcddc591740f186eea7bd6caa8cb2a84e5eab652bf2dcf3d49767dad5f",
+        "definition": "CREATE TRIGGER restaurant_inventory_consumptions_snapshot_immutable BEFORE UPDATE ON public.restaurant_inventory_consumptions FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_inventory_consumption_snapshot_immutable()"
+      },
+      {
+        "name": "restaurant_inventory_consumptions_tenant_integrity",
+        "enabled": "O",
+        "function": "22ad4b4e8a4854301812a7d408d739b998c582e805e103730e5a30dfb840c07f",
+        "definition": "CREATE TRIGGER restaurant_inventory_consumptions_tenant_integrity BEFORE INSERT ON public.restaurant_inventory_consumptions FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_inventory_consumption_tenant_integrity()"
+      },
+      {
+        "name": "restaurant_inventory_consumptions_y_warehouse_parent_lock",
+        "enabled": "O",
+        "function": "f4714ad23a568fe6764e32b957bd84387ebe045f1073d14e8df199f1c8adff3f",
+        "definition": "CREATE TRIGGER restaurant_inventory_consumptions_y_warehouse_parent_lock BEFORE INSERT ON public.restaurant_inventory_consumptions FOR EACH ROW EXECUTE FUNCTION lock_restaurant_consumption_warehouse_parent()"
+      },
+      {
+        "name": "restaurant_inventory_consumptions_z_insert_origin",
+        "enabled": "O",
+        "function": "e94884b4b2ccd867d23aaf957c47b7e245233b5f09c44d25d4b90a16064213be",
+        "definition": "CREATE TRIGGER restaurant_inventory_consumptions_z_insert_origin BEFORE INSERT ON public.restaurant_inventory_consumptions FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_inventory_consumption_insert_origin()"
+      }
+    ]
+  },
+  {
+    "table_name": "restaurant_menu_categories",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "workspaceId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "sortOrder",
+        "type": "integer",
+        "default": "0",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "isActive",
+        "type": "boolean",
+        "default": "true",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "createdAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "updatedAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "restaurant_menu_categories_pkey",
+        "validated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "restaurant_menu_categories_workspace_name_unique",
+        "validated": true,
+        "definition": "UNIQUE (\"workspaceId\", name)"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "restaurant_menu_categories_pkey",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_menu_categories_pkey ON public.restaurant_menu_categories USING btree (id)"
+      },
+      {
+        "name": "restaurant_menu_categories_workspace_active_idx",
+        "valid": true,
+        "definition": "CREATE INDEX restaurant_menu_categories_workspace_active_idx ON public.restaurant_menu_categories USING btree (\"workspaceId\", \"isActive\", \"sortOrder\")"
+      },
+      {
+        "name": "restaurant_menu_categories_workspace_name_unique",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_menu_categories_workspace_name_unique ON public.restaurant_menu_categories USING btree (\"workspaceId\", name)"
+      }
+    ],
+    "triggers": [
+      {
+        "name": "restaurant_menu_categories_parent_identity_guard",
+        "enabled": "O",
+        "function": "6e56389e8b2fa27b906816a41ad89cbae6e94fb3b4ec13fad2f6fbf31c677a24",
+        "definition": "CREATE TRIGGER restaurant_menu_categories_parent_identity_guard BEFORE DELETE OR UPDATE OF id, \"workspaceId\" ON public.restaurant_menu_categories FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_menu_category_parent_identity()"
+      }
+    ]
+  },
+  {
+    "table_name": "restaurant_menu_items",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "workspaceId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "categoryId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "productId",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "price",
+        "type": "numeric(15,2)",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "sortOrder",
+        "type": "integer",
+        "default": "0",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "isActive",
+        "type": "boolean",
+        "default": "true",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "isAvailable",
+        "type": "boolean",
+        "default": "true",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "createdAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "updatedAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "restaurant_menu_items_categoryId_fkey",
+        "validated": true,
+        "definition": "FOREIGN KEY (\"categoryId\") REFERENCES restaurant_menu_categories(id) ON DELETE RESTRICT"
+      },
+      {
+        "name": "restaurant_menu_items_category_name_unique",
+        "validated": true,
+        "definition": "UNIQUE (\"categoryId\", name)"
+      },
+      {
+        "name": "restaurant_menu_items_pkey",
+        "validated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "restaurant_menu_items_price_check",
+        "validated": true,
+        "definition": "CHECK ((price >= (0)::numeric))"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "restaurant_menu_items_category_name_unique",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_menu_items_category_name_unique ON public.restaurant_menu_items USING btree (\"categoryId\", name)"
+      },
+      {
+        "name": "restaurant_menu_items_pkey",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_menu_items_pkey ON public.restaurant_menu_items USING btree (id)"
+      },
+      {
+        "name": "restaurant_menu_items_workspace_category_idx",
+        "valid": true,
+        "definition": "CREATE INDEX restaurant_menu_items_workspace_category_idx ON public.restaurant_menu_items USING btree (\"workspaceId\", \"categoryId\", \"isActive\", \"isAvailable\", \"sortOrder\")"
+      },
+      {
+        "name": "restaurant_menu_items_workspace_product_idx",
+        "valid": true,
+        "definition": "CREATE INDEX restaurant_menu_items_workspace_product_idx ON public.restaurant_menu_items USING btree (\"workspaceId\", \"productId\") WHERE (\"productId\" IS NOT NULL)"
+      }
+    ],
+    "triggers": [
+      {
+        "name": "restaurant_menu_items_b_product_tenant_parent_guard",
+        "enabled": "O",
+        "function": "370aef313176b194370c58b14ce106c39fb6c2b54735caf768ff33caaf64efd9",
+        "definition": "CREATE TRIGGER restaurant_menu_items_b_product_tenant_parent_guard BEFORE INSERT OR UPDATE OF \"workspaceId\", \"productId\" ON public.restaurant_menu_items FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_menu_product_tenant_parent()"
+      },
+      {
+        "name": "restaurant_menu_items_category_tenant_parent_guard",
+        "enabled": "O",
+        "function": "047e48231f64df62ecea5246458ab8348f07d31a2bc7a43c7830a5ac2b75e10a",
+        "definition": "CREATE TRIGGER restaurant_menu_items_category_tenant_parent_guard BEFORE INSERT OR UPDATE OF \"workspaceId\", \"categoryId\" ON public.restaurant_menu_items FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_menu_category_tenant_parent()"
+      },
+      {
+        "name": "restaurant_menu_items_parent_identity_guard",
+        "enabled": "O",
+        "function": "96a5f3b4c30934acec76b0c87e83bda794f6367b36276119e0b872a018addc1e",
+        "definition": "CREATE TRIGGER restaurant_menu_items_parent_identity_guard BEFORE DELETE OR UPDATE OF id, \"workspaceId\", \"categoryId\", \"productId\" ON public.restaurant_menu_items FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_menu_item_parent_identity()"
+      }
+    ]
+  },
+  {
+    "table_name": "restaurant_order_items",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "restaurantOrderId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "menuItemId",
+        "type": "uuid",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "itemName",
+        "type": "text",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "quantity",
+        "type": "numeric(15,4)",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "unitPrice",
+        "type": "numeric(15,2)",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "lineTotal",
+        "type": "numeric(15,2)",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "modifiers",
+        "type": "jsonb",
+        "default": "'[]'::jsonb",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "createdAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "restaurant_order_items_lineTotal_check",
+        "validated": true,
+        "definition": "CHECK ((\"lineTotal\" >= (0)::numeric))"
+      },
+      {
+        "name": "restaurant_order_items_menuItemId_fkey",
+        "validated": true,
+        "definition": "FOREIGN KEY (\"menuItemId\") REFERENCES restaurant_menu_items(id) ON DELETE SET NULL"
+      },
+      {
+        "name": "restaurant_order_items_pkey",
+        "validated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "restaurant_order_items_quantity_check",
+        "validated": true,
+        "definition": "CHECK ((quantity > (0)::numeric))"
+      },
+      {
+        "name": "restaurant_order_items_restaurantOrderId_fkey",
+        "validated": true,
+        "definition": "FOREIGN KEY (\"restaurantOrderId\") REFERENCES restaurant_orders(id) ON DELETE CASCADE"
+      },
+      {
+        "name": "restaurant_order_items_unitPrice_check",
+        "validated": true,
+        "definition": "CHECK ((\"unitPrice\" >= (0)::numeric))"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "restaurant_order_items_order_idx",
+        "valid": true,
+        "definition": "CREATE INDEX restaurant_order_items_order_idx ON public.restaurant_order_items USING btree (\"restaurantOrderId\")"
+      },
+      {
+        "name": "restaurant_order_items_pkey",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_order_items_pkey ON public.restaurant_order_items USING btree (id)"
+      }
+    ],
+    "triggers": [
+      {
+        "name": "restaurant_order_items_a_menu_tenant_parent_guard",
+        "enabled": "O",
+        "function": "92711f4348e21aa876fe29869205e52025ca4e48ab3f8dfb33faec247e4c2095",
+        "definition": "CREATE TRIGGER restaurant_order_items_a_menu_tenant_parent_guard BEFORE INSERT OR UPDATE OF \"restaurantOrderId\", \"menuItemId\" ON public.restaurant_order_items FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_order_item_menu_tenant_parent()"
+      },
+      {
+        "name": "restaurant_order_items_delete_integrity",
+        "enabled": "O",
+        "function": "37f3fc8609fe67747138e906a2dcd3d14cd331bcbc3e6f70137e9c8fdbff5682",
+        "definition": "CREATE TRIGGER restaurant_order_items_delete_integrity BEFORE DELETE ON public.restaurant_order_items FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_order_item_delete_integrity()"
+      },
+      {
+        "name": "restaurant_order_items_snapshot_immutable",
+        "enabled": "O",
+        "function": "d3774d4dce8841b0bda566b0c05a4a90ba53456b9e18e1d2eb434b43f5e6ca2c",
+        "definition": "CREATE TRIGGER restaurant_order_items_snapshot_immutable BEFORE UPDATE OF \"restaurantOrderId\", \"menuItemId\", \"itemName\", quantity, \"unitPrice\", \"lineTotal\", modifiers ON public.restaurant_order_items FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_order_item_snapshot_immutable()"
+      }
+    ]
+  },
+  {
+    "table_name": "restaurant_order_sequences",
+    "columns": [
+      {
+        "name": "workspaceId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "nextNumber",
+        "type": "bigint",
+        "default": "1",
+        "notNull": true,
+        "notNullValidated": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "restaurant_order_sequences_nextNumber_check",
+        "validated": true,
+        "definition": "CHECK ((\"nextNumber\" > 0))"
+      },
+      {
+        "name": "restaurant_order_sequences_pkey",
+        "validated": true,
+        "definition": "PRIMARY KEY (\"workspaceId\")"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "restaurant_order_sequences_pkey",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_order_sequences_pkey ON public.restaurant_order_sequences USING btree (\"workspaceId\")"
+      }
+    ],
+    "triggers": []
+  },
+  {
+    "table_name": "restaurant_orders",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "workspaceId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "orderNumber",
+        "type": "text",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "source",
+        "type": "text",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "fulfillmentType",
+        "type": "text",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "status",
+        "type": "text",
+        "default": "'PENDING_REVIEW'::text",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "paymentStatus",
+        "type": "text",
+        "default": "'UNPAID'::text",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "restaurantTableId",
+        "type": "uuid",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "customerName",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "customerPhone",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "deliveryAddress",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "subtotal",
+        "type": "numeric(15,2)",
+        "default": "0",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "discountAmount",
+        "type": "numeric(15,2)",
+        "default": "0",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "taxAmount",
+        "type": "numeric(15,2)",
+        "default": "0",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "total",
+        "type": "numeric(15,2)",
+        "default": "0",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "externalReference",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "createdById",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "confirmedById",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "confirmedAt",
+        "type": "timestamp with time zone",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "completedAt",
+        "type": "timestamp with time zone",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "cancelledAt",
+        "type": "timestamp with time zone",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "createdAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "updatedAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "inventoryPostedAt",
+        "type": "timestamp with time zone",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "accountingPostedAt",
+        "type": "timestamp with time zone",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "inventoryCost",
+        "type": "numeric(15,2)",
+        "default": "0",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "tableReleasedAt",
+        "type": "timestamp with time zone",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "restaurant_orders_discountAmount_check",
+        "validated": true,
+        "definition": "CHECK ((\"discountAmount\" >= (0)::numeric))"
+      },
+      {
+        "name": "restaurant_orders_fulfillmentType_check",
+        "validated": true,
+        "definition": "CHECK ((\"fulfillmentType\" = ANY (ARRAY['DINE_IN'::text, 'TAKEAWAY'::text, 'DELIVERY'::text])))"
+      },
+      {
+        "name": "restaurant_orders_inventoryCost_check",
+        "validated": true,
+        "definition": "CHECK ((\"inventoryCost\" >= (0)::numeric))"
+      },
+      {
+        "name": "restaurant_orders_paymentStatus_check",
+        "validated": true,
+        "definition": "CHECK ((\"paymentStatus\" = ANY (ARRAY['UNPAID'::text, 'PARTIALLY_PAID'::text, 'PAID'::text])))"
+      },
+      {
+        "name": "restaurant_orders_pkey",
+        "validated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "restaurant_orders_restaurantTableId_fkey",
+        "validated": true,
+        "definition": "FOREIGN KEY (\"restaurantTableId\") REFERENCES restaurant_tables(id) ON DELETE SET NULL"
+      },
+      {
+        "name": "restaurant_orders_source_check",
+        "validated": true,
+        "definition": "CHECK ((source = ANY (ARRAY['POS'::text, 'WHATSAPP'::text, 'MANUAL'::text])))"
+      },
+      {
+        "name": "restaurant_orders_status_check",
+        "validated": true,
+        "definition": "CHECK ((status = ANY (ARRAY['PENDING_REVIEW'::text, 'CONFIRMED'::text, 'PREPARING'::text, 'READY'::text, 'COMPLETED'::text, 'CANCELLED'::text])))"
+      },
+      {
+        "name": "restaurant_orders_subtotal_check",
+        "validated": true,
+        "definition": "CHECK ((subtotal >= (0)::numeric))"
+      },
+      {
+        "name": "restaurant_orders_taxAmount_check",
+        "validated": true,
+        "definition": "CHECK ((\"taxAmount\" >= (0)::numeric))"
+      },
+      {
+        "name": "restaurant_orders_total_check",
+        "validated": true,
+        "definition": "CHECK ((total >= (0)::numeric))"
+      },
+      {
+        "name": "restaurant_orders_workspace_number_unique",
+        "validated": true,
+        "definition": "UNIQUE (\"workspaceId\", \"orderNumber\")"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "restaurant_orders_external_reference_unique",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_orders_external_reference_unique ON public.restaurant_orders USING btree (\"workspaceId\", source, \"externalReference\") WHERE (\"externalReference\" IS NOT NULL)"
+      },
+      {
+        "name": "restaurant_orders_pkey",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_orders_pkey ON public.restaurant_orders USING btree (id)"
+      },
+      {
+        "name": "restaurant_orders_table_settlement_idx",
+        "valid": true,
+        "definition": "CREATE INDEX restaurant_orders_table_settlement_idx ON public.restaurant_orders USING btree (\"workspaceId\", \"restaurantTableId\", status, \"tableReleasedAt\") WHERE (\"restaurantTableId\" IS NOT NULL)"
+      },
+      {
+        "name": "restaurant_orders_workspace_created_idx",
+        "valid": true,
+        "definition": "CREATE INDEX restaurant_orders_workspace_created_idx ON public.restaurant_orders USING btree (\"workspaceId\", \"createdAt\" DESC, id)"
+      },
+      {
+        "name": "restaurant_orders_workspace_number_unique",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_orders_workspace_number_unique ON public.restaurant_orders USING btree (\"workspaceId\", \"orderNumber\")"
+      },
+      {
+        "name": "restaurant_orders_workspace_source_idx",
+        "valid": true,
+        "definition": "CREATE INDEX restaurant_orders_workspace_source_idx ON public.restaurant_orders USING btree (\"workspaceId\", source, \"createdAt\" DESC)"
+      },
+      {
+        "name": "restaurant_orders_workspace_status_idx",
+        "valid": true,
+        "definition": "CREATE INDEX restaurant_orders_workspace_status_idx ON public.restaurant_orders USING btree (\"workspaceId\", status, \"createdAt\" DESC)"
+      }
+    ],
+    "triggers": [
+      {
+        "name": "restaurant_orders_00_identity_snapshot_guard",
+        "enabled": "O",
+        "function": "e2df47c4edb79b5d60e69699fce03f40cdad42eabb0dae3969523aafbe341ba0",
+        "definition": "CREATE TRIGGER restaurant_orders_00_identity_snapshot_guard BEFORE UPDATE OF \"orderNumber\", source, \"externalReference\", \"createdAt\" ON public.restaurant_orders FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_order_identity_snapshot_immutable()"
+      },
+      {
+        "name": "restaurant_orders_01_cancellation_evidence_guard",
+        "enabled": "O",
+        "function": "6f1efd56c1ee5ce4e623abfd76a9b6bad34a1734108b804048646f7d70fca4af",
+        "definition": "CREATE TRIGGER restaurant_orders_01_cancellation_evidence_guard BEFORE INSERT OR UPDATE OF status, \"cancelledAt\" ON public.restaurant_orders FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_order_cancellation_evidence()"
+      },
+      {
+        "name": "restaurant_orders_actor_snapshot_guard",
+        "enabled": "O",
+        "function": "a89aa48e79b7cb7bba5dc559814c3354f9aef282f53c16bc5457fd9b7985e60f",
+        "definition": "CREATE TRIGGER restaurant_orders_actor_snapshot_guard BEFORE UPDATE OF \"createdById\", \"confirmedById\", \"confirmedAt\", status ON public.restaurant_orders FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_order_actor_snapshot_immutable()"
+      },
+      {
+        "name": "restaurant_orders_completed_posting_snapshot_guard",
+        "enabled": "O",
+        "function": "356977dba94992e74f4c34c70ba9765ef2d8820d48e259c8b450b47b6c0a3572",
+        "definition": "CREATE TRIGGER restaurant_orders_completed_posting_snapshot_guard BEFORE UPDATE OF \"inventoryPostedAt\", \"accountingPostedAt\", \"inventoryCost\", \"completedAt\" ON public.restaurant_orders FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_completed_posting_snapshot_immutable()"
+      },
+      {
+        "name": "restaurant_orders_confirmer_membership_guard",
+        "enabled": "O",
+        "function": "51f449a494efe4da88ae8b0f7a588f829ca8ffc3fec932063ab9bd17708c7cb2",
+        "definition": "CREATE TRIGGER restaurant_orders_confirmer_membership_guard BEFORE UPDATE OF status, \"confirmedById\", \"workspaceId\" ON public.restaurant_orders FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_order_confirmer_membership()"
+      },
+      {
+        "name": "restaurant_orders_creator_membership_guard",
+        "enabled": "O",
+        "function": "b55f99a952ae800e791628479ea9f98e6ceb01ee9938274d69641f19016607b5",
+        "definition": "CREATE TRIGGER restaurant_orders_creator_membership_guard BEFORE INSERT OR UPDATE OF \"workspaceId\", source, \"createdById\" ON public.restaurant_orders FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_order_creator_membership()"
+      },
+      {
+        "name": "restaurant_orders_delete_integrity",
+        "enabled": "O",
+        "function": "f94f6459791f17cda6454f3423c4537acaa5cb6b8678dfbb1f72ae9757ec2dda",
+        "definition": "CREATE TRIGGER restaurant_orders_delete_integrity BEFORE DELETE ON public.restaurant_orders FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_order_delete_integrity()"
+      },
+      {
+        "name": "restaurant_orders_financial_snapshot_immutable",
+        "enabled": "O",
+        "function": "10187fd67af8b02dbcb8478cb3da11262521326a8f8f2673943afef366fad9bb",
+        "definition": "CREATE TRIGGER restaurant_orders_financial_snapshot_immutable BEFORE UPDATE OF subtotal, \"discountAmount\", \"taxAmount\", total ON public.restaurant_orders FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_order_financial_snapshot_immutable()"
+      },
+      {
+        "name": "restaurant_orders_inventory_snapshot",
+        "enabled": "O",
+        "function": "63d4e37fd928054b0bad4a8606f06bd170fe9a2145092be18961fdae10a5be50",
+        "definition": "CREATE TRIGGER restaurant_orders_inventory_snapshot AFTER UPDATE OF \"inventoryPostedAt\" ON public.restaurant_orders FOR EACH ROW EXECUTE FUNCTION snapshot_restaurant_inventory_consumptions()"
+      },
+      {
+        "name": "restaurant_orders_lifecycle_guard",
+        "enabled": "O",
+        "function": "93cb8270037aabc3a567b698099084a16f7ff233c9c194faf93b688be0f39d49",
+        "definition": "CREATE TRIGGER restaurant_orders_lifecycle_guard BEFORE UPDATE OF status ON public.restaurant_orders FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_order_lifecycle()"
+      },
+      {
+        "name": "restaurant_orders_payment_status_guard",
+        "enabled": "O",
+        "function": "5e3f137853764b0a3f5da2de3e70be86ddf87cd4b2dd8d91456436a1746288f6",
+        "definition": "CREATE TRIGGER restaurant_orders_payment_status_guard BEFORE INSERT OR UPDATE OF \"paymentStatus\", total ON public.restaurant_orders FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_payment_status_derived()"
+      },
+      {
+        "name": "restaurant_orders_pos_financial_approval",
+        "enabled": "O",
+        "function": "ce71d5857eb91a7b0730352a60d0381f3796e0731a641b0e916a5f0835d1214a",
+        "definition": "CREATE TRIGGER restaurant_orders_pos_financial_approval BEFORE INSERT ON public.restaurant_orders FOR EACH ROW EXECUTE FUNCTION enforce_pos_financial_override_manager_approval()"
+      },
+      {
+        "name": "restaurant_orders_routing_snapshot_guard",
+        "enabled": "O",
+        "function": "70b248ed1a3e8d7e809e25a831e04222d183c4f4575b7d043385b7f480bcf391",
+        "definition": "CREATE TRIGGER restaurant_orders_routing_snapshot_guard BEFORE UPDATE OF \"fulfillmentType\", \"restaurantTableId\" ON public.restaurant_orders FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_order_routing_snapshot()"
+      },
+      {
+        "name": "restaurant_orders_table_release_snapshot_guard",
+        "enabled": "O",
+        "function": "ca53e6788e280105d1d1cfadf42023f9e60a1dca8697bc6d916c899d1e54a83c",
+        "definition": "CREATE TRIGGER restaurant_orders_table_release_snapshot_guard BEFORE UPDATE OF \"tableReleasedAt\" ON public.restaurant_orders FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_order_table_release_snapshot()"
+      },
+      {
+        "name": "restaurant_orders_table_tenant_parent_guard",
+        "enabled": "O",
+        "function": "6e56ba4d1dd264bea15baf1a97b4b205f3dc9e086f2c9dcab0dcd8028330e393",
+        "definition": "CREATE TRIGGER restaurant_orders_table_tenant_parent_guard BEFORE INSERT OR UPDATE OF \"workspaceId\", \"restaurantTableId\" ON public.restaurant_orders FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_order_table_tenant_parent()"
+      },
+      {
+        "name": "restaurant_orders_whatsapp_financial_approval",
+        "enabled": "O",
+        "function": "8ca9293fd7e2200fb80354280613d76d19f00eb5c29db54e9605a170f47185b2",
+        "definition": "CREATE TRIGGER restaurant_orders_whatsapp_financial_approval BEFORE UPDATE OF status, \"confirmedById\" ON public.restaurant_orders FOR EACH ROW EXECUTE FUNCTION enforce_whatsapp_financial_override_manager_approval()"
+      },
+      {
+        "name": "restaurant_orders_workspace_immutable",
+        "enabled": "O",
+        "function": "a183830364518d621cedf23b5a5c79899790d895e80d4a8b6ff25da9e2d48c40",
+        "definition": "CREATE TRIGGER restaurant_orders_workspace_immutable BEFORE UPDATE OF \"workspaceId\" ON public.restaurant_orders FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_order_workspace_immutable()"
+      }
+    ]
+  },
+  {
+    "table_name": "restaurant_payments",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "workspaceId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "restaurantOrderId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "cashBankAccountId",
+        "type": "text",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "method",
+        "type": "text",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "amount",
+        "type": "numeric(15,2)",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "reference",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "idempotencyKey",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "createdById",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "postedAt",
+        "type": "timestamp with time zone",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "voidedAt",
+        "type": "timestamp with time zone",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "voidedById",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "voidReason",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "createdAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "cashShiftId",
+        "type": "uuid",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "restaurant_payments_amount_check",
+        "validated": true,
+        "definition": "CHECK ((amount > (0)::numeric))"
+      },
+      {
+        "name": "restaurant_payments_cashShiftId_fkey",
+        "validated": true,
+        "definition": "FOREIGN KEY (\"cashShiftId\") REFERENCES cash_shifts(id) ON DELETE RESTRICT"
+      },
+      {
+        "name": "restaurant_payments_method_check",
+        "validated": true,
+        "definition": "CHECK ((method = ANY (ARRAY['CASH'::text, 'BANK_TRANSFER'::text, 'CHEQUE'::text, 'CREDIT_CARD'::text, 'MOBILE_WALLET'::text, 'JAZZCASH'::text, 'EASYPAISA'::text, 'OTHER'::text])))"
+      },
+      {
+        "name": "restaurant_payments_net_limit_guard",
+        "validated": true,
+        "definition": "TRIGGER DEFERRABLE INITIALLY DEFERRED"
+      },
+      {
+        "name": "restaurant_payments_pkey",
+        "validated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "restaurant_payments_restaurantOrderId_fkey",
+        "validated": true,
+        "definition": "FOREIGN KEY (\"restaurantOrderId\") REFERENCES restaurant_orders(id) ON DELETE RESTRICT"
+      },
+      {
+        "name": "restaurant_payments_sync_net_payment_status",
+        "validated": true,
+        "definition": "TRIGGER DEFERRABLE INITIALLY DEFERRED"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "restaurant_payments_pkey",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_payments_pkey ON public.restaurant_payments USING btree (id)"
+      },
+      {
+        "name": "restaurant_payments_workspace_cash_shift_idx",
+        "valid": true,
+        "definition": "CREATE INDEX restaurant_payments_workspace_cash_shift_idx ON public.restaurant_payments USING btree (\"workspaceId\", \"cashShiftId\", \"createdAt\") WHERE (\"cashShiftId\" IS NOT NULL)"
+      },
+      {
+        "name": "restaurant_payments_workspace_created_idx",
+        "valid": true,
+        "definition": "CREATE INDEX restaurant_payments_workspace_created_idx ON public.restaurant_payments USING btree (\"workspaceId\", \"createdAt\" DESC, id)"
+      },
+      {
+        "name": "restaurant_payments_workspace_idempotency_unique",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_payments_workspace_idempotency_unique ON public.restaurant_payments USING btree (\"workspaceId\", \"idempotencyKey\") WHERE (\"idempotencyKey\" IS NOT NULL)"
+      },
+      {
+        "name": "restaurant_payments_workspace_order_idx",
+        "valid": true,
+        "definition": "CREATE INDEX restaurant_payments_workspace_order_idx ON public.restaurant_payments USING btree (\"workspaceId\", \"restaurantOrderId\", \"createdAt\")"
+      }
+    ],
+    "triggers": [
+      {
+        "name": "restaurant_payments_00_evidence_snapshot_guard",
+        "enabled": "O",
+        "function": "9ef6e427b881096a26fb837c084933168580315b39489b7791044a066caab6dc",
+        "definition": "CREATE TRIGGER restaurant_payments_00_evidence_snapshot_guard BEFORE INSERT OR UPDATE ON public.restaurant_payments FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_payment_evidence_snapshot()"
+      },
+      {
+        "name": "restaurant_payments_account_integrity",
+        "enabled": "O",
+        "function": "6abd3c4fb04bd1bdcf728313e9227c46483812189addf6c021a1c9f57b60b3ec",
+        "definition": "CREATE TRIGGER restaurant_payments_account_integrity BEFORE INSERT OR UPDATE OF method, \"cashBankAccountId\", \"workspaceId\" ON public.restaurant_payments FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_payment_account_integrity()"
+      },
+      {
+        "name": "restaurant_payments_cash_shift_guard",
+        "enabled": "O",
+        "function": "6e88141025976435179177e36cf26370b893c8c5002028892eca972c3f184cbb",
+        "definition": "CREATE TRIGGER restaurant_payments_cash_shift_guard BEFORE INSERT OR UPDATE OF method, \"cashShiftId\", \"workspaceId\" ON public.restaurant_payments FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_payment_cash_shift()"
+      },
+      {
+        "name": "restaurant_payments_creator_membership_guard",
+        "enabled": "O",
+        "function": "3205f33a174a4c2cef98e26616977c9135185eb9dc037dbe1b8825ee49297e68",
+        "definition": "CREATE TRIGGER restaurant_payments_creator_membership_guard BEFORE INSERT OR UPDATE OF \"workspaceId\", \"createdById\" ON public.restaurant_payments FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_payment_creator_membership()"
+      },
+      {
+        "name": "restaurant_payments_delete_integrity",
+        "enabled": "O",
+        "function": "cc1e3df696f8dae2a4005ebea756e47c79a1fd7b2506546072602297a80cd380",
+        "definition": "CREATE TRIGGER restaurant_payments_delete_integrity BEFORE DELETE ON public.restaurant_payments FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_payment_delete_integrity()"
+      },
+      {
+        "name": "restaurant_payments_financial_snapshot_immutable",
+        "enabled": "O",
+        "function": "fa61d2941d23464b3a5702cd76f48184f2144b0ab2130063195502ef7e273968",
+        "definition": "CREATE TRIGGER restaurant_payments_financial_snapshot_immutable BEFORE UPDATE OF id, \"workspaceId\", \"restaurantOrderId\", \"cashBankAccountId\", method, amount, \"idempotencyKey\" ON public.restaurant_payments FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_payment_financial_snapshot_immutable()"
+      },
+      {
+        "name": "restaurant_payments_net_limit_guard",
+        "enabled": "O",
+        "function": "e99a96c4136ac348c2dfc8ddd7fc926ab6fe2d588483d96f0f1f9edae57e7cde",
+        "definition": "CREATE CONSTRAINT TRIGGER restaurant_payments_net_limit_guard AFTER INSERT OR UPDATE OF amount, \"voidedAt\", \"restaurantOrderId\", \"workspaceId\" ON public.restaurant_payments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_net_payment_limit()"
+      },
+      {
+        "name": "restaurant_payments_partial_return_void_guard",
+        "enabled": "O",
+        "function": "17dcf7ffbc3cb5662c32a9ed2a318d4eee0ce1df1317597fa6b6589a19ca1e5d",
+        "definition": "CREATE TRIGGER restaurant_payments_partial_return_void_guard BEFORE UPDATE OF \"voidedAt\" ON public.restaurant_payments FOR EACH ROW EXECUTE FUNCTION reject_restaurant_void_after_partial_return()"
+      },
+      {
+        "name": "restaurant_payments_sync_net_payment_status",
+        "enabled": "O",
+        "function": "b581a33f0589f1078933699476895dc97f749651890bf3a43d966521fc7a53c4",
+        "definition": "CREATE CONSTRAINT TRIGGER restaurant_payments_sync_net_payment_status AFTER INSERT OR UPDATE OF amount, \"postedAt\", \"voidedAt\" ON public.restaurant_payments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION sync_restaurant_net_payment_status()"
+      },
+      {
+        "name": "restaurant_payments_tenant_parent_guard",
+        "enabled": "O",
+        "function": "1f194d3c7ae612b266fcd0e19efe3918b8dd1806b424e156591899889162998f",
+        "definition": "CREATE TRIGGER restaurant_payments_tenant_parent_guard BEFORE INSERT OR UPDATE OF \"workspaceId\", \"restaurantOrderId\", \"cashBankAccountId\" ON public.restaurant_payments FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_payment_tenant_parent()"
+      },
+      {
+        "name": "restaurant_payments_void_manager_actor_guard",
+        "enabled": "O",
+        "function": "8bacaa2e269b863898f9b265f48327b25fce147627f5a0e89d02751a2ba552dd",
+        "definition": "CREATE TRIGGER restaurant_payments_void_manager_actor_guard BEFORE UPDATE OF \"voidedAt\", \"voidedById\", \"workspaceId\" ON public.restaurant_payments FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_payment_void_manager_actor()"
+      },
+      {
+        "name": "restaurant_payments_z_cash_compensation_shift",
+        "enabled": "O",
+        "function": "a4cb51e46e2c8c3f2e432c887e9f65646ab54690be7b205395e69fc4c2f83377",
+        "definition": "CREATE TRIGGER restaurant_payments_z_cash_compensation_shift BEFORE UPDATE OF \"voidedAt\" ON public.restaurant_payments FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_cash_compensation_shift()"
+      }
+    ]
+  },
+  {
+    "table_name": "restaurant_refunds",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "workspaceId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "restaurantOrderId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "restaurantPaymentId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "cashBankAccountId",
+        "type": "text",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "amount",
+        "type": "numeric(15,2)",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "reason",
+        "type": "text",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "idempotencyKey",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "createdById",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "createdAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "restaurant_refunds_amount_check",
+        "validated": true,
+        "definition": "CHECK ((amount > (0)::numeric))"
+      },
+      {
+        "name": "restaurant_refunds_pkey",
+        "validated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "restaurant_refunds_reason_check",
+        "validated": true,
+        "definition": "CHECK (((char_length(reason) >= 3) AND (char_length(reason) <= 500)))"
+      },
+      {
+        "name": "restaurant_refunds_restaurantOrderId_fkey",
+        "validated": true,
+        "definition": "FOREIGN KEY (\"restaurantOrderId\") REFERENCES restaurant_orders(id) ON DELETE RESTRICT"
+      },
+      {
+        "name": "restaurant_refunds_restaurantPaymentId_fkey",
+        "validated": true,
+        "definition": "FOREIGN KEY (\"restaurantPaymentId\") REFERENCES restaurant_payments(id) ON DELETE RESTRICT"
+      },
+      {
+        "name": "restaurant_refunds_sync_net_payment_status",
+        "validated": true,
+        "definition": "TRIGGER DEFERRABLE INITIALLY DEFERRED"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "restaurant_refunds_pkey",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_refunds_pkey ON public.restaurant_refunds USING btree (id)"
+      },
+      {
+        "name": "restaurant_refunds_workspace_idempotency_unique",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_refunds_workspace_idempotency_unique ON public.restaurant_refunds USING btree (\"workspaceId\", \"idempotencyKey\") WHERE (\"idempotencyKey\" IS NOT NULL)"
+      },
+      {
+        "name": "restaurant_refunds_workspace_order_idx",
+        "valid": true,
+        "definition": "CREATE INDEX restaurant_refunds_workspace_order_idx ON public.restaurant_refunds USING btree (\"workspaceId\", \"restaurantOrderId\", \"createdAt\")"
+      },
+      {
+        "name": "restaurant_refunds_workspace_payment_unique",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_refunds_workspace_payment_unique ON public.restaurant_refunds USING btree (\"workspaceId\", \"restaurantPaymentId\")"
+      }
+    ],
+    "triggers": [
+      {
+        "name": "restaurant_refunds_delete_integrity",
+        "enabled": "O",
+        "function": "c4997a79ab33fbb5889819b68dd9a7a4cbcd7c9da17788c1608af94e7f3eb170",
+        "definition": "CREATE TRIGGER restaurant_refunds_delete_integrity BEFORE DELETE ON public.restaurant_refunds FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_refund_delete_integrity()"
+      },
+      {
+        "name": "restaurant_refunds_financial_snapshot_immutable",
+        "enabled": "O",
+        "function": "9b06f2277a1a8b8f2f3cc707266a03926ed0b653d5c496de8b2c24eda10020d9",
+        "definition": "CREATE TRIGGER restaurant_refunds_financial_snapshot_immutable BEFORE UPDATE ON public.restaurant_refunds FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_refund_snapshot_immutable()"
+      },
+      {
+        "name": "restaurant_refunds_manager_actor_guard",
+        "enabled": "O",
+        "function": "6c008f19e8aa9ba33f9848591cba2b3ef32146a2065de8c945b27a027d9b665c",
+        "definition": "CREATE TRIGGER restaurant_refunds_manager_actor_guard BEFORE INSERT OR UPDATE OF \"workspaceId\", \"restaurantPaymentId\", \"restaurantOrderId\", \"cashBankAccountId\", \"createdById\" ON public.restaurant_refunds FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_refund_manager_actor()"
+      },
+      {
+        "name": "restaurant_refunds_no_item_return_double_refund",
+        "enabled": "O",
+        "function": "84faff728151db5ca19587a7d4560167dc4212ab666479b6f3b4c25e9d195f5d",
+        "definition": "CREATE TRIGGER restaurant_refunds_no_item_return_double_refund BEFORE INSERT ON public.restaurant_refunds FOR EACH ROW EXECUTE FUNCTION reject_full_refund_after_item_return()"
+      },
+      {
+        "name": "restaurant_refunds_sync_net_payment_status",
+        "enabled": "O",
+        "function": "b581a33f0589f1078933699476895dc97f749651890bf3a43d966521fc7a53c4",
+        "definition": "CREATE CONSTRAINT TRIGGER restaurant_refunds_sync_net_payment_status AFTER INSERT OR UPDATE ON public.restaurant_refunds DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION sync_restaurant_net_payment_status()"
+      },
+      {
+        "name": "restaurant_refunds_tenant_parent_guard",
+        "enabled": "O",
+        "function": "149f1e5194ba7a99a9727254d31ae184e3b0e2bd2e70392050627a2b9cb2e914",
+        "definition": "CREATE TRIGGER restaurant_refunds_tenant_parent_guard BEFORE INSERT OR UPDATE OF \"workspaceId\", \"restaurantOrderId\", \"restaurantPaymentId\", \"cashBankAccountId\" ON public.restaurant_refunds FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_refund_tenant_parent()"
+      },
+      {
+        "name": "restaurant_refunds_z_cash_compensation_shift",
+        "enabled": "O",
+        "function": "a4cb51e46e2c8c3f2e432c887e9f65646ab54690be7b205395e69fc4c2f83377",
+        "definition": "CREATE TRIGGER restaurant_refunds_z_cash_compensation_shift BEFORE INSERT ON public.restaurant_refunds FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_cash_compensation_shift()"
+      }
+    ]
+  },
+  {
+    "table_name": "restaurant_return_inventory_movements",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "workspaceId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "restaurantReturnId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "restaurantOrderItemId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "productId",
+        "type": "text",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "warehouseId",
+        "type": "uuid",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "quantity",
+        "type": "numeric(15,4)",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "unitCost",
+        "type": "numeric(15,4)",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "createdAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "restaurant_return_inventory_movement_restaurantOrderItemId_fkey",
+        "validated": true,
+        "definition": "FOREIGN KEY (\"restaurantOrderItemId\") REFERENCES restaurant_order_items(id) ON DELETE RESTRICT"
+      },
+      {
+        "name": "restaurant_return_inventory_movements_item_product_unique",
+        "validated": true,
+        "definition": "UNIQUE (\"restaurantReturnId\", \"restaurantOrderItemId\", \"productId\")"
+      },
+      {
+        "name": "restaurant_return_inventory_movements_pkey",
+        "validated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "restaurant_return_inventory_movements_quantity_nonzero",
+        "validated": true,
+        "definition": "CHECK ((quantity <> (0)::numeric))"
+      },
+      {
+        "name": "restaurant_return_inventory_movements_restaurantReturnId_fkey",
+        "validated": true,
+        "definition": "FOREIGN KEY (\"restaurantReturnId\") REFERENCES restaurant_returns(id) ON DELETE RESTRICT"
+      },
+      {
+        "name": "restaurant_return_inventory_movements_unit_cost_nonnegative",
+        "validated": true,
+        "definition": "CHECK ((\"unitCost\" >= (0)::numeric))"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "restaurant_return_inventory_movements_item_product_unique",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_return_inventory_movements_item_product_unique ON public.restaurant_return_inventory_movements USING btree (\"restaurantReturnId\", \"restaurantOrderItemId\", \"productId\")"
+      },
+      {
+        "name": "restaurant_return_inventory_movements_order_item_product_idx",
+        "valid": true,
+        "definition": "CREATE INDEX restaurant_return_inventory_movements_order_item_product_idx ON public.restaurant_return_inventory_movements USING btree (\"workspaceId\", \"restaurantOrderItemId\", \"productId\")"
+      },
+      {
+        "name": "restaurant_return_inventory_movements_pkey",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_return_inventory_movements_pkey ON public.restaurant_return_inventory_movements USING btree (id)"
+      },
+      {
+        "name": "restaurant_return_inventory_movements_return_idx",
+        "valid": true,
+        "definition": "CREATE INDEX restaurant_return_inventory_movements_return_idx ON public.restaurant_return_inventory_movements USING btree (\"workspaceId\", \"restaurantReturnId\")"
+      }
+    ],
+    "triggers": [
+      {
+        "name": "restaurant_return_inventory_movements_immutable_delete",
+        "enabled": "O",
+        "function": "3667c7d9202d020e588c87a66f7b3460f9556b853cf4e8f2740e4485bcc35141",
+        "definition": "CREATE TRIGGER restaurant_return_inventory_movements_immutable_delete BEFORE DELETE ON public.restaurant_return_inventory_movements FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_return_inventory_movement_immutable()"
+      },
+      {
+        "name": "restaurant_return_inventory_movements_immutable_update",
+        "enabled": "O",
+        "function": "3667c7d9202d020e588c87a66f7b3460f9556b853cf4e8f2740e4485bcc35141",
+        "definition": "CREATE TRIGGER restaurant_return_inventory_movements_immutable_update BEFORE UPDATE ON public.restaurant_return_inventory_movements FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_return_inventory_movement_immutable()"
+      },
+      {
+        "name": "restaurant_return_inventory_movements_parent_guard",
+        "enabled": "O",
+        "function": "f801448f0d3b5dc6064d797f10db5db9aa18dbec2fbc679ee39c36a78d225293",
+        "definition": "CREATE TRIGGER restaurant_return_inventory_movements_parent_guard BEFORE INSERT OR UPDATE ON public.restaurant_return_inventory_movements FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_return_inventory_movement_parent()"
+      },
+      {
+        "name": "restaurant_return_inventory_movements_warehouse_parent_lock",
+        "enabled": "O",
+        "function": "9add800b67c3708a1c516bacfdaee4e1333e4bd19328131a848b947c2b2147df",
+        "definition": "CREATE TRIGGER restaurant_return_inventory_movements_warehouse_parent_lock BEFORE INSERT ON public.restaurant_return_inventory_movements FOR EACH ROW EXECUTE FUNCTION lock_restaurant_return_movement_warehouse_parent()"
+      }
+    ]
+  },
+  {
+    "table_name": "restaurant_return_items",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "workspaceId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "restaurantReturnId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "restaurantOrderItemId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "quantity",
+        "type": "numeric(15,4)",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "subtotal",
+        "type": "numeric(15,2)",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "discountAmount",
+        "type": "numeric(15,2)",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "taxAmount",
+        "type": "numeric(15,2)",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "total",
+        "type": "numeric(15,2)",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "inventoryCost",
+        "type": "numeric(15,2)",
+        "default": "0",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "restocked",
+        "type": "boolean",
+        "default": "false",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "createdAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "isReversal",
+        "type": "boolean",
+        "default": "false",
+        "notNull": true,
+        "notNullValidated": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "restaurant_return_items_discount_polarity_check",
+        "validated": true,
+        "definition": "CHECK ((((NOT \"isReversal\") AND (\"discountAmount\" >= (0)::numeric)) OR (\"isReversal\" AND (\"discountAmount\" <= (0)::numeric))))"
+      },
+      {
+        "name": "restaurant_return_items_inventory_cost_polarity_check",
+        "validated": true,
+        "definition": "CHECK ((((NOT \"isReversal\") AND (\"inventoryCost\" >= (0)::numeric)) OR (\"isReversal\" AND (\"inventoryCost\" <= (0)::numeric))))"
+      },
+      {
+        "name": "restaurant_return_items_pkey",
+        "validated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "restaurant_return_items_quantity_polarity_check",
+        "validated": true,
+        "definition": "CHECK ((((NOT \"isReversal\") AND (quantity > (0)::numeric)) OR (\"isReversal\" AND (quantity < (0)::numeric))))"
+      },
+      {
+        "name": "restaurant_return_items_restaurantOrderItemId_fkey",
+        "validated": true,
+        "definition": "FOREIGN KEY (\"restaurantOrderItemId\") REFERENCES restaurant_order_items(id) ON DELETE RESTRICT"
+      },
+      {
+        "name": "restaurant_return_items_restaurantReturnId_fkey",
+        "validated": true,
+        "definition": "FOREIGN KEY (\"restaurantReturnId\") REFERENCES restaurant_returns(id) ON DELETE RESTRICT"
+      },
+      {
+        "name": "restaurant_return_items_return_order_item_unique",
+        "validated": true,
+        "definition": "UNIQUE (\"restaurantReturnId\", \"restaurantOrderItemId\")"
+      },
+      {
+        "name": "restaurant_return_items_subtotal_polarity_check",
+        "validated": true,
+        "definition": "CHECK ((((NOT \"isReversal\") AND (subtotal >= (0)::numeric)) OR (\"isReversal\" AND (subtotal <= (0)::numeric))))"
+      },
+      {
+        "name": "restaurant_return_items_tax_polarity_check",
+        "validated": true,
+        "definition": "CHECK ((((NOT \"isReversal\") AND (\"taxAmount\" >= (0)::numeric)) OR (\"isReversal\" AND (\"taxAmount\" <= (0)::numeric))))"
+      },
+      {
+        "name": "restaurant_return_items_total_polarity_check",
+        "validated": true,
+        "definition": "CHECK ((((NOT \"isReversal\") AND (total >= (0)::numeric)) OR (\"isReversal\" AND (total <= (0)::numeric))))"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "restaurant_return_items_pkey",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_return_items_pkey ON public.restaurant_return_items USING btree (id)"
+      },
+      {
+        "name": "restaurant_return_items_return_order_item_unique",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_return_items_return_order_item_unique ON public.restaurant_return_items USING btree (\"restaurantReturnId\", \"restaurantOrderItemId\")"
+      },
+      {
+        "name": "restaurant_return_items_workspace_order_item_idx",
+        "valid": true,
+        "definition": "CREATE INDEX restaurant_return_items_workspace_order_item_idx ON public.restaurant_return_items USING btree (\"workspaceId\", \"restaurantOrderItemId\")"
+      }
+    ],
+    "triggers": [
+      {
+        "name": "restaurant_return_items_delete_integrity",
+        "enabled": "O",
+        "function": "6b004946cd9ffaa8fafe84a85466dee448b4b2cd7f4ad37e6a3a0dae3a106777",
+        "definition": "CREATE TRIGGER restaurant_return_items_delete_integrity BEFORE DELETE ON public.restaurant_return_items FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_return_delete_integrity()"
+      },
+      {
+        "name": "restaurant_return_items_snapshot_immutable",
+        "enabled": "O",
+        "function": "4479afd1027999e372a31d5e6c5884c55363f4f7ae136b47fe863ad66448c2a1",
+        "definition": "CREATE TRIGGER restaurant_return_items_snapshot_immutable BEFORE UPDATE ON public.restaurant_return_items FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_return_item_snapshot_immutable()"
+      },
+      {
+        "name": "restaurant_return_items_tenant_parent_guard",
+        "enabled": "O",
+        "function": "f4f091750d70a54fdd419b258c2fa34cf49802d1a462cfcdc76d924b8c3fec31",
+        "definition": "CREATE TRIGGER restaurant_return_items_tenant_parent_guard BEFORE INSERT OR UPDATE OF \"workspaceId\", \"restaurantReturnId\", \"restaurantOrderItemId\" ON public.restaurant_return_items FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_return_tenant_parents()"
+      }
+    ]
+  },
+  {
+    "table_name": "restaurant_return_payment_allocations",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "workspaceId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "restaurantReturnId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "restaurantPaymentId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "amount",
+        "type": "numeric(15,2)",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "createdAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "isReversal",
+        "type": "boolean",
+        "default": "false",
+        "notNull": true,
+        "notNullValidated": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "restaurant_return_allocations_sync_payment_status",
+        "validated": true,
+        "definition": "TRIGGER DEFERRABLE INITIALLY DEFERRED"
+      },
+      {
+        "name": "restaurant_return_payment_allocation_unique",
+        "validated": true,
+        "definition": "UNIQUE (\"restaurantReturnId\", \"restaurantPaymentId\")"
+      },
+      {
+        "name": "restaurant_return_payment_allocations_amount_polarity_check",
+        "validated": true,
+        "definition": "CHECK ((((NOT \"isReversal\") AND (amount > (0)::numeric)) OR (\"isReversal\" AND (amount < (0)::numeric))))"
+      },
+      {
+        "name": "restaurant_return_payment_allocations_pkey",
+        "validated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "restaurant_return_payment_allocations_restaurantPaymentId_fkey",
+        "validated": true,
+        "definition": "FOREIGN KEY (\"restaurantPaymentId\") REFERENCES restaurant_payments(id) ON DELETE RESTRICT"
+      },
+      {
+        "name": "restaurant_return_payment_allocations_restaurantReturnId_fkey",
+        "validated": true,
+        "definition": "FOREIGN KEY (\"restaurantReturnId\") REFERENCES restaurant_returns(id) ON DELETE RESTRICT"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "restaurant_return_payment_allocation_unique",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_return_payment_allocation_unique ON public.restaurant_return_payment_allocations USING btree (\"restaurantReturnId\", \"restaurantPaymentId\")"
+      },
+      {
+        "name": "restaurant_return_payment_allocations_pkey",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_return_payment_allocations_pkey ON public.restaurant_return_payment_allocations USING btree (id)"
+      },
+      {
+        "name": "restaurant_return_payment_allocations_workspace_payment_idx",
+        "valid": true,
+        "definition": "CREATE INDEX restaurant_return_payment_allocations_workspace_payment_idx ON public.restaurant_return_payment_allocations USING btree (\"workspaceId\", \"restaurantPaymentId\")"
+      }
+    ],
+    "triggers": [
+      {
+        "name": "restaurant_allocations_z_cash_compensation_shift",
+        "enabled": "O",
+        "function": "a4cb51e46e2c8c3f2e432c887e9f65646ab54690be7b205395e69fc4c2f83377",
+        "definition": "CREATE TRIGGER restaurant_allocations_z_cash_compensation_shift BEFORE INSERT ON public.restaurant_return_payment_allocations FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_cash_compensation_shift()"
+      },
+      {
+        "name": "restaurant_return_allocations_delete_integrity",
+        "enabled": "O",
+        "function": "6b004946cd9ffaa8fafe84a85466dee448b4b2cd7f4ad37e6a3a0dae3a106777",
+        "definition": "CREATE TRIGGER restaurant_return_allocations_delete_integrity BEFORE DELETE ON public.restaurant_return_payment_allocations FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_return_delete_integrity()"
+      },
+      {
+        "name": "restaurant_return_allocations_snapshot_immutable",
+        "enabled": "O",
+        "function": "929ace083bb41d2d26387675314664dbca911933b7cfab2a732048f8fb655870",
+        "definition": "CREATE TRIGGER restaurant_return_allocations_snapshot_immutable BEFORE UPDATE ON public.restaurant_return_payment_allocations FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_return_allocation_snapshot_immutable()"
+      },
+      {
+        "name": "restaurant_return_allocations_sync_payment_status",
+        "enabled": "O",
+        "function": "b581a33f0589f1078933699476895dc97f749651890bf3a43d966521fc7a53c4",
+        "definition": "CREATE CONSTRAINT TRIGGER restaurant_return_allocations_sync_payment_status AFTER INSERT OR UPDATE ON public.restaurant_return_payment_allocations DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION sync_restaurant_net_payment_status()"
+      },
+      {
+        "name": "restaurant_return_payment_allocations_tenant_parent_guard",
+        "enabled": "O",
+        "function": "f4f091750d70a54fdd419b258c2fa34cf49802d1a462cfcdc76d924b8c3fec31",
+        "definition": "CREATE TRIGGER restaurant_return_payment_allocations_tenant_parent_guard BEFORE INSERT OR UPDATE OF \"workspaceId\", \"restaurantReturnId\", \"restaurantPaymentId\" ON public.restaurant_return_payment_allocations FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_return_tenant_parents()"
+      }
+    ]
+  },
+  {
+    "table_name": "restaurant_returns",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "workspaceId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "restaurantOrderId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "returnNumber",
+        "type": "text",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "reason",
+        "type": "text",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "subtotal",
+        "type": "numeric(15,2)",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "discountAmount",
+        "type": "numeric(15,2)",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "taxAmount",
+        "type": "numeric(15,2)",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "total",
+        "type": "numeric(15,2)",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "inventoryCost",
+        "type": "numeric(15,2)",
+        "default": "0",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "idempotencyKey",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "requestFingerprint",
+        "type": "text",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "createdById",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "createdAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "isReversal",
+        "type": "boolean",
+        "default": "false",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "reversalOfId",
+        "type": "uuid",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "reversalReason",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "restaurant_returns_discount_polarity_check",
+        "validated": true,
+        "definition": "CHECK ((((NOT \"isReversal\") AND (\"discountAmount\" >= (0)::numeric)) OR (\"isReversal\" AND (\"discountAmount\" <= (0)::numeric))))"
+      },
+      {
+        "name": "restaurant_returns_inventory_cost_polarity_check",
+        "validated": true,
+        "definition": "CHECK ((((NOT \"isReversal\") AND (\"inventoryCost\" >= (0)::numeric)) OR (\"isReversal\" AND (\"inventoryCost\" <= (0)::numeric))))"
+      },
+      {
+        "name": "restaurant_returns_pkey",
+        "validated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "restaurant_returns_reason_check",
+        "validated": true,
+        "definition": "CHECK (((char_length(reason) >= 3) AND (char_length(reason) <= 500)))"
+      },
+      {
+        "name": "restaurant_returns_restaurantOrderId_fkey",
+        "validated": true,
+        "definition": "FOREIGN KEY (\"restaurantOrderId\") REFERENCES restaurant_orders(id) ON DELETE RESTRICT"
+      },
+      {
+        "name": "restaurant_returns_reversalOfId_fkey",
+        "validated": true,
+        "definition": "FOREIGN KEY (\"reversalOfId\") REFERENCES restaurant_returns(id) ON DELETE RESTRICT"
+      },
+      {
+        "name": "restaurant_returns_reversal_shape_check",
+        "validated": true,
+        "definition": "CHECK ((((NOT \"isReversal\") AND (\"reversalOfId\" IS NULL)) OR (\"isReversal\" AND (\"reversalOfId\" IS NOT NULL) AND ((char_length(\"reversalReason\") >= 3) AND (char_length(\"reversalReason\") <= 500)))))"
+      },
+      {
+        "name": "restaurant_returns_subtotal_polarity_check",
+        "validated": true,
+        "definition": "CHECK ((((NOT \"isReversal\") AND (subtotal >= (0)::numeric)) OR (\"isReversal\" AND (subtotal <= (0)::numeric))))"
+      },
+      {
+        "name": "restaurant_returns_sync_payment_status",
+        "validated": true,
+        "definition": "TRIGGER DEFERRABLE INITIALLY DEFERRED"
+      },
+      {
+        "name": "restaurant_returns_tax_polarity_check",
+        "validated": true,
+        "definition": "CHECK ((((NOT \"isReversal\") AND (\"taxAmount\" >= (0)::numeric)) OR (\"isReversal\" AND (\"taxAmount\" <= (0)::numeric))))"
+      },
+      {
+        "name": "restaurant_returns_total_polarity_check",
+        "validated": true,
+        "definition": "CHECK ((((NOT \"isReversal\") AND (total > (0)::numeric)) OR (\"isReversal\" AND (total < (0)::numeric))))"
+      },
+      {
+        "name": "restaurant_returns_workspace_number_unique",
+        "validated": true,
+        "definition": "UNIQUE (\"workspaceId\", \"returnNumber\")"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "restaurant_returns_one_reversal_per_return",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_returns_one_reversal_per_return ON public.restaurant_returns USING btree (\"workspaceId\", \"reversalOfId\") WHERE (\"reversalOfId\" IS NOT NULL)"
+      },
+      {
+        "name": "restaurant_returns_pkey",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_returns_pkey ON public.restaurant_returns USING btree (id)"
+      },
+      {
+        "name": "restaurant_returns_workspace_idempotency_unique",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_returns_workspace_idempotency_unique ON public.restaurant_returns USING btree (\"workspaceId\", \"idempotencyKey\") WHERE (\"idempotencyKey\" IS NOT NULL)"
+      },
+      {
+        "name": "restaurant_returns_workspace_number_unique",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_returns_workspace_number_unique ON public.restaurant_returns USING btree (\"workspaceId\", \"returnNumber\")"
+      },
+      {
+        "name": "restaurant_returns_workspace_order_idx",
+        "valid": true,
+        "definition": "CREATE INDEX restaurant_returns_workspace_order_idx ON public.restaurant_returns USING btree (\"workspaceId\", \"restaurantOrderId\", \"createdAt\")"
+      }
+    ],
+    "triggers": [
+      {
+        "name": "restaurant_returns_delete_integrity",
+        "enabled": "O",
+        "function": "6b004946cd9ffaa8fafe84a85466dee448b4b2cd7f4ad37e6a3a0dae3a106777",
+        "definition": "CREATE TRIGGER restaurant_returns_delete_integrity BEFORE DELETE ON public.restaurant_returns FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_return_delete_integrity()"
+      },
+      {
+        "name": "restaurant_returns_manager_actor_guard",
+        "enabled": "O",
+        "function": "6c2b785a3471827877385b15b9f7169c9546ef459d7387e2a1ff00e08766717b",
+        "definition": "CREATE TRIGGER restaurant_returns_manager_actor_guard BEFORE INSERT OR UPDATE OF \"workspaceId\", \"restaurantOrderId\", \"createdById\" ON public.restaurant_returns FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_return_manager_actor()"
+      },
+      {
+        "name": "restaurant_returns_snapshot_immutable",
+        "enabled": "O",
+        "function": "dfae87562056f3372f8d90a12c959a6386e5d815ad5633570e29c5a2bc2ada05",
+        "definition": "CREATE TRIGGER restaurant_returns_snapshot_immutable BEFORE UPDATE ON public.restaurant_returns FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_return_snapshot_immutable()"
+      },
+      {
+        "name": "restaurant_returns_sync_payment_status",
+        "enabled": "O",
+        "function": "b581a33f0589f1078933699476895dc97f749651890bf3a43d966521fc7a53c4",
+        "definition": "CREATE CONSTRAINT TRIGGER restaurant_returns_sync_payment_status AFTER INSERT OR UPDATE ON public.restaurant_returns DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION sync_restaurant_net_payment_status()"
+      },
+      {
+        "name": "restaurant_returns_tenant_parent_guard",
+        "enabled": "O",
+        "function": "f4f091750d70a54fdd419b258c2fa34cf49802d1a462cfcdc76d924b8c3fec31",
+        "definition": "CREATE TRIGGER restaurant_returns_tenant_parent_guard BEFORE INSERT OR UPDATE OF \"workspaceId\", \"restaurantOrderId\" ON public.restaurant_returns FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_return_tenant_parents()"
+      }
+    ]
+  },
+  {
+    "table_name": "restaurant_tables",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "workspaceId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "capacity",
+        "type": "integer",
+        "default": "2",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "area",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "status",
+        "type": "text",
+        "default": "'AVAILABLE'::text",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "createdAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "updatedAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "restaurant_tables_capacity_check",
+        "validated": true,
+        "definition": "CHECK ((capacity > 0))"
+      },
+      {
+        "name": "restaurant_tables_pkey",
+        "validated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "restaurant_tables_status_check",
+        "validated": true,
+        "definition": "CHECK ((status = ANY (ARRAY['AVAILABLE'::text, 'OCCUPIED'::text, 'RESERVED'::text, 'INACTIVE'::text])))"
+      },
+      {
+        "name": "restaurant_tables_workspace_name_unique",
+        "validated": true,
+        "definition": "UNIQUE (\"workspaceId\", name)"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "restaurant_tables_pkey",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_tables_pkey ON public.restaurant_tables USING btree (id)"
+      },
+      {
+        "name": "restaurant_tables_workspace_name_unique",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_tables_workspace_name_unique ON public.restaurant_tables USING btree (\"workspaceId\", name)"
+      },
+      {
+        "name": "restaurant_tables_workspace_status_idx",
+        "valid": true,
+        "definition": "CREATE INDEX restaurant_tables_workspace_status_idx ON public.restaurant_tables USING btree (\"workspaceId\", status)"
+      }
+    ],
+    "triggers": [
+      {
+        "name": "restaurant_table_parent_delete_guard",
+        "enabled": "O",
+        "function": "6e3ae31ff9bfdc2e59759dab07caa3e75a9521357e04e51ffdbb1d2d3ba2ed04",
+        "definition": "CREATE TRIGGER restaurant_table_parent_delete_guard BEFORE DELETE ON public.restaurant_tables FOR EACH ROW EXECUTE FUNCTION reject_restaurant_table_parent_mutation()"
+      },
+      {
+        "name": "restaurant_table_parent_update_guard",
+        "enabled": "O",
+        "function": "6e3ae31ff9bfdc2e59759dab07caa3e75a9521357e04e51ffdbb1d2d3ba2ed04",
+        "definition": "CREATE TRIGGER restaurant_table_parent_update_guard BEFORE UPDATE OF id, \"workspaceId\" ON public.restaurant_tables FOR EACH ROW EXECUTE FUNCTION reject_restaurant_table_parent_mutation()"
+      },
+      {
+        "name": "restaurant_tables_preserve_occupancy",
+        "enabled": "O",
+        "function": "a414dd307af198f8be63e3819fea7cb6326b0ab85e22f8dd3b4abe4e4ba9350d",
+        "definition": "CREATE TRIGGER restaurant_tables_preserve_occupancy BEFORE UPDATE OF status ON public.restaurant_tables FOR EACH ROW EXECUTE FUNCTION preserve_restaurant_table_occupancy()"
+      }
+    ]
+  },
+  {
+    "table_name": "restaurant_whatsapp_messages",
+    "columns": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "default": "gen_random_uuid()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "workspaceId",
+        "type": "uuid",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "externalMessageId",
+        "type": "text",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "customerPhone",
+        "type": "text",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "customerName",
+        "type": "text",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "body",
+        "type": "text",
+        "default": null,
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "restaurantOrderId",
+        "type": "uuid",
+        "default": null,
+        "notNull": false,
+        "notNullValidated": true
+      },
+      {
+        "name": "receivedAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      },
+      {
+        "name": "createdAt",
+        "type": "timestamp with time zone",
+        "default": "now()",
+        "notNull": true,
+        "notNullValidated": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "restaurant_whatsapp_messages_pkey",
+        "validated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "restaurant_whatsapp_messages_restaurantOrderId_fkey",
+        "validated": true,
+        "definition": "FOREIGN KEY (\"restaurantOrderId\") REFERENCES restaurant_orders(id) ON DELETE SET NULL"
+      },
+      {
+        "name": "restaurant_whatsapp_messages_workspace_external_unique",
+        "validated": true,
+        "definition": "UNIQUE (\"workspaceId\", \"externalMessageId\")"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "restaurant_whatsapp_messages_pkey",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_whatsapp_messages_pkey ON public.restaurant_whatsapp_messages USING btree (id)"
+      },
+      {
+        "name": "restaurant_whatsapp_messages_workspace_external_unique",
+        "valid": true,
+        "definition": "CREATE UNIQUE INDEX restaurant_whatsapp_messages_workspace_external_unique ON public.restaurant_whatsapp_messages USING btree (\"workspaceId\", \"externalMessageId\")"
+      },
+      {
+        "name": "restaurant_whatsapp_messages_workspace_received_idx",
+        "valid": true,
+        "definition": "CREATE INDEX restaurant_whatsapp_messages_workspace_received_idx ON public.restaurant_whatsapp_messages USING btree (\"workspaceId\", \"receivedAt\" DESC)"
+      }
+    ],
+    "triggers": [
+      {
+        "name": "restaurant_whatsapp_messages_order_tenant_parent_guard",
+        "enabled": "O",
+        "function": "f330e046cbceda9a73246dbd9c4639857634b756c13acd1da8c47946f68ab64c",
+        "definition": "CREATE TRIGGER restaurant_whatsapp_messages_order_tenant_parent_guard BEFORE INSERT OR UPDATE OF \"workspaceId\", \"restaurantOrderId\" ON public.restaurant_whatsapp_messages FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_whatsapp_order_tenant_parent()"
+      },
+      {
+        "name": "restaurant_whatsapp_messages_snapshot_guard",
+        "enabled": "O",
+        "function": "13d8bab20ee9d5d3bdd3c4c80c5f7aac3707c46775aaae27f0cc12dd91c77878",
+        "definition": "CREATE TRIGGER restaurant_whatsapp_messages_snapshot_guard BEFORE DELETE OR UPDATE ON public.restaurant_whatsapp_messages FOR EACH ROW EXECUTE FUNCTION enforce_restaurant_whatsapp_message_snapshot()"
+      }
+    ]
+  }
+]

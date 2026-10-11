@@ -21,18 +21,18 @@ describe("API CORS", () => {
     expect(getAllowedCorsOrigin("http://localhost:3000")).toBeNull();
   });
 
-  it("applies credentialed CORS headers only for allowed origins", () => {
+  it("allows explicit bearer CORS without exposing cookie credentials", () => {
     const allowed = applyCorsHeaders(new Response(null), "http://localhost:8081");
     expect(allowed.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:8081");
-    expect(allowed.headers.get("Access-Control-Allow-Credentials")).toBe("true");
+    expect(allowed.headers.get("Access-Control-Allow-Credentials")).toBeNull();
     expect(allowed.headers.get("Vary")).toContain("Origin");
 
     const disallowed = applyCorsHeaders(new Response(null), "https://evil.example.com");
     expect(disallowed.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 
-  it("accepts same-origin and requests without an Origin header", () => {
-    expect(isTrustedMutationOrigin(null, "https://app.munshios.example")).toBe(true);
+  it("requires an explicit trusted Origin when only origin information is available", () => {
+    expect(isTrustedMutationOrigin(null, "https://app.munshios.example")).toBe(false);
     expect(isTrustedMutationOrigin("https://app.munshios.example", "https://app.munshios.example")).toBe(true);
   });
 

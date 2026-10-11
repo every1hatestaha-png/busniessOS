@@ -1,7 +1,9 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { POST_AUTH_PATH, safeInternalDestination } from "@/lib/auth-routing";
-import { getCurrentWorkspace } from "@/lib/server/auth";
+import { onboardingRouteFromBuilderParams, onboardingRouteFromReturnPath } from "@/lib/saas/provisioning-selection";
+import { hasCurrentPolicyAcceptance } from "@/lib/legal/policies";
+import { getAuthenticatedUser, getCurrentWorkspace } from "@/lib/server/auth";
 import { getSupabaseAuthUser } from "@/lib/supabase/server";
 import { resolveVerticalDashboard } from "@/lib/verticals/registry";
 
@@ -11,11 +13,34 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL("/sign-in", request.url));
   }
 
+  // Make policy acceptance a durable server-side prerequisite rather than a
+  // client-only checkbox. Existing accounts are routed through this once.
+  const localUser = await getAuthenticatedUser();
+  if (!hasCurrentPolicyAcceptance(localUser)) {
+    const nextOnboarding = onboardingRouteFromReturnPath(new URL(request.url).searchParams.get("next"));
+    const destination = nextOnboarding ? `/legal/acceptance?next=${encodeURIComponent(nextOnboarding)}` : "/legal/acceptance";
+    const response = NextResponse.redirect(new URL(destination, request.url));
+    response.headers.set("Cache-Control", "no-store");
+    return response;
+  }
+
   // Shared resolution scopes memberships to the verified local user, validates
   // the active cookie, and rejects unavailable verticals. Never query by a
   // caller-supplied workspace ID without that membership boundary.
   const context = await getCurrentWorkspace();
-  if (!context) return NextResponse.redirect(new URL("/onboarding", request.url));
+  if (!context) {
+    // Signup may have arrived from Get Your Munshi through OTP or an email
+    // verification link. Preserve only recognized onboarding preferences,
+    // never an arbitrary post-auth destination for a new workspace.
+    const next = safeInternalDestination(new URL(request.url).searchParams.get("next"), request.url, "/onboarding");
+    const candidate = new URL(next, request.url);
+    const onboardingRoute = candidate.pathname === "/onboarding"
+      ? onboardingRouteFromBuilderParams(candidate.searchParams)
+      : null;
+    const response = NextResponse.redirect(new URL(onboardingRoute ?? "/onboarding", request.url));
+    response.headers.set("Cache-Control", "no-store");
+    return response;
+  }
 
   const home = resolveVerticalDashboard(context.vertical) ?? "/workspace-unavailable";
   const requested = new URL(request.url).searchParams.get("next");

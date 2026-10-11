@@ -25,6 +25,18 @@ export function checkAppRateLimit(request: Request, pathname: string) {
 
   if (pathname.startsWith("/api/v1/")) {
     limit = request.method === "GET" ? 180 : 60;
+  } else if (pathname === "/auth/recovery/start" && request.method === "POST") {
+    limit = 8;
+  } else if (pathname === "/auth/confirm" && request.method === "POST") {
+    limit = 20;
+  } else if (pathname === "/auth/recovery/password" && request.method === "POST") {
+    limit = 10;
+  } else if (pathname === "/api/legal/acceptance" && request.method === "POST") {
+    limit = 10;
+  } else if (pathname === "/api/readiness" && request.method === "GET") {
+    // Readiness reaches the database. Keep public monitors usable while
+    // preventing a single client from turning it into an unbounded DB probe.
+    limit = 60;
   } else if (pathname === "/api/search") {
     limit = 90;
   } else if (pathname === "/platform" && request.method === "POST") {

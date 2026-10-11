@@ -3,6 +3,7 @@ import { parse } from "pg-connection-string";
 
 import production from "@/config/database-targets.json";
 import staging from "@/config/staging-database-targets.json";
+import sterileAcceptance from "@/config/preview-acceptance-targets.json";
 import { assertApprovedProductionDatabaseTarget, classifyDatabaseTarget } from "@/lib/database-target";
 import { assertApprovedStagingDatabaseTarget } from "@/lib/staging-database-target";
 
@@ -18,6 +19,32 @@ describe("separate staging readiness policy", () => {
     expect(() => assertApprovedStagingDatabaseTarget(url(host), approvedEnvironment)).not.toThrow();
     expect(() => assertApprovedProductionDatabaseTarget(url(host))).toThrow("Production database target rejected");
     expect(classifyDatabaseTarget(url(host))).toEqual({ classification: "unknown", approved: false });
+  });
+
+  it("accepts the attested sterile Neon direct host at runtime without admitting pooled or production endpoints", () => {
+    const sterileDirectHost = sterileAcceptance.approvedHostnames[0];
+    expect(staging.hosts).toContain(sterileDirectHost);
+    expect(() => assertApprovedStagingDatabaseTarget(url(sterileDirectHost), approvedEnvironment)).not.toThrow();
+    expect(() => assertApprovedProductionDatabaseTarget(url(sterileDirectHost))).toThrow(
+      "Production database target rejected",
+    );
+    expect(() => assertApprovedStagingDatabaseTarget(
+      url(sterileDirectHost.replace(".c-6.", "-pooler.c-6.")),
+      approvedEnvironment,
+    )).toThrow("Staging database target rejected: endpoint");
+    expect(() => assertApprovedStagingDatabaseTarget(
+      url(sterileDirectHost),
+      { ...approvedEnvironment, VERCEL_PROJECT_ID: "prj_wrong_staging_project" },
+    )).toThrow("Staging database target rejected: deployment context");
+  });
+
+  it("allows attested PR326 child direct host but rejects its pooler and foreign project", () => {
+    const qaHost = "ep-dry-surf-b453abu9.c-6.us-east-2.aws.neon.tech";
+    expect(staging.hosts).toContain(qaHost);
+    expect(() => assertApprovedStagingDatabaseTarget(url(qaHost), approvedEnvironment)).not.toThrow();
+    expect(() => assertApprovedStagingDatabaseTarget(url(qaHost.replace(".c-6.", "-pooler.c-6.")), approvedEnvironment)).toThrow("endpoint");
+    expect(() => assertApprovedStagingDatabaseTarget(url(qaHost), { ...approvedEnvironment, VERCEL_PROJECT_ID: "prj_not_staging" })).toThrow("deployment context");
+    expect(() => assertApprovedProductionDatabaseTarget(url(qaHost))).toThrow("Production database target rejected");
   });
 
   it.each([

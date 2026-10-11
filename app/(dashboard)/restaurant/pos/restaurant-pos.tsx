@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { Minus, Plus, Search, ShoppingCart, Trash2, UtensilsCrossed } from "lucide-react";
 
 import { useRestaurantActionState } from "@/app/(dashboard)/restaurant/use-restaurant-action-state";
@@ -9,6 +10,8 @@ import { createPosOrderAction } from "@/app/(dashboard)/restaurant/v1-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { isPosSearchShortcut, parsePosFastEntry, resolvePosFastEntryItem } from "@/lib/restaurant/pos-fast-entry";
+import { posPayablePreview } from "@/lib/restaurant/pos-payable-preview";
 
 type Category = { id: string; name: string; sortOrder: number; isActive: boolean };
 type MenuItem = { id: string; categoryId: string; categoryName: string; name: string; description: string | null; price: number; isAvailable: boolean };
@@ -30,12 +33,17 @@ export function RestaurantPos({
 }) {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [query, setQuery] = useState("");
+  const [discountAmount, setDiscountAmount] = useState("0");
+  const [taxAmount, setTaxAmount] = useState("0");
+  const searchInput = useRef<HTMLInputElement>(null);
   const requestId = useRef<string | null>(null);
   const requestField = useRef<HTMLInputElement>(null);
   const [state, action, pending, onSubmit] = useRestaurantActionState(async (previous, form) => {
     const result = await createPosOrderAction(previous, form);
     if (result.status === "success") {
       setCart([]);
+      setDiscountAmount("0");
+      setTaxAmount("0");
       requestId.current = null;
       if (requestField.current) requestField.current.value = "";
     }
@@ -45,29 +53,51 @@ export function RestaurantPos({
   const [activeCategory, setActiveCategory] = useState(categories[0]?.id ?? "all");
   const [fulfillmentType, setFulfillmentType] = useState("TAKEAWAY");
 
+  const fastEntry = parsePosFastEntry(query);
   const visibleItems = items.filter((item) => {
-    const categoryMatch = activeCategory === "all" || item.categoryId === activeCategory;
-    const queryMatch = !query.trim() || item.name.toLowerCase().includes(query.trim().toLowerCase());
+    const categoryMatch = Boolean(fastEntry.term) || activeCategory === "all" || item.categoryId === activeCategory;
+    const queryMatch = !fastEntry.term || item.name.toLowerCase().includes(fastEntry.term.toLowerCase());
     return categoryMatch && queryMatch;
   });
 
-  const subtotal = useMemo(() => cart.reduce((sum, line) => sum + line.price * line.quantity, 0), [cart]);
+  const quickCandidate = resolvePosFastEntryItem(visibleItems, fastEntry.term);
+  const ambiguousSearch = Boolean(fastEntry.term) && !quickCandidate && visibleItems.filter((item) => item.isAvailable).length > 1;
+
+  const { subtotal, discount, tax, payable } = posPayablePreview(cart, discountAmount, taxAmount, canFinancialOverride);
   const itemCount = useMemo(() => cart.reduce((sum, line) => sum + line.quantity, 0), [cart]);
 
-  function add(item: MenuItem) {
+  function add(item: MenuItem, quantity = 1) {
     if (!item.isAvailable) return;
     setCart((current) => {
       const found = current.find((line) => line.menuItemId === item.id);
       return found
-        ? current.map((line) => line.menuItemId === item.id ? { ...line, quantity: line.quantity + 1 } : line)
-        : [...current, { menuItemId: item.id, name: item.name, price: item.price, quantity: 1 }];
+        ? current.map((line) => line.menuItemId === item.id ? { ...line, quantity: Math.min(99, line.quantity + quantity) } : line)
+        : [...current, { menuItemId: item.id, name: item.name, price: item.price, quantity }];
     });
   }
 
   function change(menuItemId: string, delta: number) {
     setCart((current) => current
-      .map((line) => line.menuItemId === menuItemId ? { ...line, quantity: Math.max(0, line.quantity + delta) } : line)
+      .map((line) => line.menuItemId === menuItemId ? { ...line, quantity: Math.min(99, Math.max(0, line.quantity + delta)) } : line)
       .filter((line) => line.quantity > 0));
+  }
+
+  useEffect(() => {
+    function onShortcut(event: KeyboardEvent) {
+      if (event.key !== "/" || event.altKey || event.ctrlKey || event.metaKey || event.repeat) return;
+      if (!isPosSearchShortcut(event.target)) return;
+      event.preventDefault();
+      searchInput.current?.focus();
+    }
+    window.addEventListener("keydown", onShortcut);
+    return () => window.removeEventListener("keydown", onShortcut);
+  }, []);
+
+  function addFirstMatchingItem() {
+    if (!fastEntry.term || pending) return;
+    if (!quickCandidate) return;
+    add(quickCandidate, fastEntry.quantity);
+    setQuery("");
   }
 
   return (
@@ -80,11 +110,25 @@ export function RestaurantPos({
           </div>
           <div className="relative w-full lg:max-w-sm">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <Input value={query} onChange={(event) => setQuery(event.target.value)} className="h-10 rounded-xl bg-slate-50 pl-9" placeholder="Search menu items…" />
+            <Input ref={searchInput} value={query} onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") { event.preventDefault(); addFirstMatchingItem(); }
+                if (event.key === "Escape") setQuery("");
+              }}
+              aria-label="Quick-add menu search"
+              className="h-10 rounded-xl bg-slate-50 pl-9"
+              placeholder="Type dish or 2x biryani, then Enter"
+            />
           </div>
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <p className="text-xs text-slate-500">Press / to search, type a dish name or 2x dish, then Enter to add it. Escape clears search.</p>
+        {ambiguousSearch ? (
+          <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+            Multiple dishes match. Type a complete menu item name or tap the specific dish below. Enter will not guess.
+          </p>
+        ) : null}
+        <div className="flex flex-wrap gap-2 pb-1" aria-label="Menu categories">
           <button
             type="button"
             onClick={() => setActiveCategory("all")}
@@ -178,14 +222,14 @@ export function RestaurantPos({
                   <p className="truncate text-sm font-semibold">{line.name}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">Rs {(line.price * line.quantity).toLocaleString()}</p>
                 </div>
-                <Button type="button" variant="ghost" size="icon" className="size-7 text-destructive" disabled={pending} onClick={() => setCart((current) => current.filter((item) => item.menuItemId !== line.menuItemId))}>
+                <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${line.name} from order`} className="size-7 text-destructive" disabled={pending} onClick={() => setCart((current) => current.filter((item) => item.menuItemId !== line.menuItemId))}>
                   <Trash2 className="size-3.5" />
                 </Button>
               </div>
               <div className="mt-2 flex items-center gap-2">
-                <Button type="button" variant="outline" size="icon" className="size-7 rounded-lg" disabled={pending} onClick={() => change(line.menuItemId, -1)}><Minus className="size-3" /></Button>
+                <Button type="button" variant="outline" size="icon" aria-label={`Decrease quantity of ${line.name}`} className="size-7 rounded-lg" disabled={pending} onClick={() => change(line.menuItemId, -1)}><Minus className="size-3" /></Button>
                 <span className="w-6 text-center text-sm font-semibold">{line.quantity}</span>
-                <Button type="button" variant="outline" size="icon" className="size-7 rounded-lg" disabled={pending} onClick={() => change(line.menuItemId, 1)}><Plus className="size-3" /></Button>
+                <Button type="button" variant="outline" size="icon" aria-label={`Increase quantity of ${line.name}`} className="size-7 rounded-lg" disabled={pending} onClick={() => change(line.menuItemId, 1)}><Plus className="size-3" /></Button>
               </div>
             </div>
           )) : (
@@ -231,19 +275,33 @@ export function RestaurantPos({
 
             {canFinancialOverride ? (
               <div className="grid grid-cols-2 gap-2">
-                <label className="space-y-1 text-xs font-medium">Discount<Input name="discountAmount" type="number" min={0} step="0.01" defaultValue={0} className="rounded-xl" /></label>
-                <label className="space-y-1 text-xs font-medium">Tax<Input name="taxAmount" type="number" min={0} step="0.01" defaultValue={0} className="rounded-xl" /></label>
+                <label className="space-y-1 text-xs font-medium">Discount<Input name="discountAmount" type="number" min={0} max={subtotal} step="0.01" value={discountAmount} onChange={(event) => setDiscountAmount(event.target.value)} className="rounded-xl" /></label>
+                <label className="space-y-1 text-xs font-medium">Tax<Input name="taxAmount" type="number" min={0} step="0.01" value={taxAmount} onChange={(event) => setTaxAmount(event.target.value)} className="rounded-xl" /></label>
               </div>
             ) : null}
 
             <div className="rounded-xl bg-slate-50 p-3">
               <div className="flex items-center justify-between text-sm"><span className="text-muted-foreground">Subtotal</span><span className="font-semibold">Rs {subtotal.toLocaleString()}</span></div>
+              {canFinancialOverride && payable !== null ? <>
+                <div className="flex items-center justify-between text-sm"><span>Discount</span><span>Rs {discount.toLocaleString()}</span></div>
+                <div className="flex items-center justify-between text-sm"><span>Tax</span><span>Rs {tax.toLocaleString()}</span></div>
+              </> : null}
+              <div role="status" aria-live="polite" aria-label="Final payable preview" className="mt-2 flex items-center justify-between border-t pt-2 text-sm font-semibold">
+                <span>Final payable</span><span>{payable === null ? "Check discount and tax" : `Rs ${payable.toLocaleString()}`}</span>
+              </div>
+              {payable === null ? <p role="alert" className="mt-1 text-xs text-destructive">Enter nonnegative amounts and a discount no greater than the subtotal.</p> : null}
               <p className="mt-1 text-[10px] text-muted-foreground">Server validates final prices and totals before creating the order.</p>
             </div>
 
             {state.message ? <p role={state.status === "error" ? "alert" : "status"} className={state.status === "error" ? "text-xs text-destructive" : "text-xs font-medium text-emerald-700"}>{state.message}</p> : null}
+            {state.status === "success" && state.orderId ? (
+              <Link href={`/restaurant/orders/${state.orderId}/print`} target="_blank" rel="noopener noreferrer"
+                className="flex h-11 items-center justify-center rounded-xl border border-emerald-600 bg-emerald-50 text-sm font-semibold text-emerald-800 hover:bg-emerald-100">
+                Open & print last order receipt (80mm)
+              </Link>
+            ) : null}
 
-            <Button type="submit" className="h-11 w-full rounded-xl bg-emerald-600 text-sm font-semibold hover:bg-emerald-500" disabled={pending || cart.length === 0}>
+            <Button type="submit" className="h-11 w-full rounded-xl bg-emerald-600 text-sm font-semibold hover:bg-emerald-500" disabled={pending || cart.length === 0 || payable === null}>
               {pending ? "Creating order..." : fulfillmentType === "DINE_IN" ? "Send to kitchen" : "Confirm order"}
             </Button>
           </fieldset>

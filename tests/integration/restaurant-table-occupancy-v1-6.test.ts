@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 let db: typeof import("@/lib/server/db")["db"];
 let createRestaurantTable: typeof import("@/lib/server/industry-modules")["createRestaurantTable"];
 let createKitchenTicket: typeof import("@/lib/server/industry-modules")["createKitchenTicket"];
+let updateKitchenTicketStatus: typeof import("@/lib/server/industry-modules")["updateKitchenTicketStatus"];
 let updateLegacyKitchenTicketStatusSafely: typeof import("@/lib/server/restaurant-legacy-kot")["updateLegacyKitchenTicketStatusSafely"];
 
 const runId = randomUUID();
@@ -16,7 +17,7 @@ describe("restaurant V1.6 cross-flow table occupancy", () => {
     const { config } = await import("dotenv");
     config({ path: ".env.local", quiet: true });
     ({ db } = await import("@/lib/server/db"));
-    ({ createRestaurantTable, createKitchenTicket } = await import("@/lib/server/industry-modules"));
+    ({ createRestaurantTable, createKitchenTicket, updateKitchenTicketStatus } = await import("@/lib/server/industry-modules"));
     ({ updateLegacyKitchenTicketStatusSafely } = await import("@/lib/server/restaurant-legacy-kot"));
     const user = await db.user.create({ data: { clerkId: `table-guard-${runId}`, email: `table-guard-${runId}@example.invalid` } });
     userId = user.id;
@@ -38,6 +39,26 @@ describe("restaurant V1.6 cross-flow table occupancy", () => {
     await db.user.delete({ where: { id: userId } });
     await db.$disconnect();
   }, 60_000);
+
+  it("the historical updater does not free tables with another live kitchen ticket", async () => {
+    const table = await createRestaurantTable(owner(), { name: `MULTI-${runId.slice(0, 6)}`, capacity: 3 });
+    const first = await createKitchenTicket(owner(), {
+      ticketNumber: `KT-MULTI-A-${runId.slice(0, 5)}`, restaurantTableId: table.id,
+    });
+    const second = await createKitchenTicket(owner(), {
+      ticketNumber: `KT-MULTI-B-${runId.slice(0, 5)}`, restaurantTableId: table.id,
+    });
+    await updateKitchenTicketStatus(owner(), first.id, "CANCELLED");
+    let rows = await db.$queryRaw<Array<{ status: string }>>`
+      SELECT status FROM "restaurant_tables" WHERE "id"=${table.id}::uuid
+    `;
+    expect(rows[0]?.status).toBe("OCCUPIED");
+    await updateKitchenTicketStatus(owner(), second.id, "CANCELLED");
+    rows = await db.$queryRaw<Array<{ status: string }>>`
+      SELECT status FROM "restaurant_tables" WHERE "id"=${table.id}::uuid
+    `;
+    expect(rows[0]?.status).toBe("AVAILABLE");
+  });
 
   it("keeps a table occupied until its final legacy compatibility ticket is terminal", async () => {
     const table = await createRestaurantTable(owner(), { name: `T-${runId.slice(0, 6)}`, capacity: 4 });

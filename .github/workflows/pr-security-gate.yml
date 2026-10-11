@@ -4,6 +4,10 @@ on:
   pull_request:
     branches:
       - main
+      - fix/dependency-lock-remediation-20261009
+      - integrate/dependency-marketing-onboarding-20261009
+      - integrate/security-stack-on-marketing-20261009
+      - fix/preview-acceptance-fail-closed-20261009
 
 permissions:
   contents: read
@@ -38,6 +42,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22.x'

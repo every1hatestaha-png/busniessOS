@@ -149,6 +149,90 @@ describe("restaurant workspace v1 integrity", () => {
     })).rejects.toThrow("not available in this workspace");
   });
 
+  it("denies stale MANAGER role after persisted STAFF demotion across category, item and availability writes", async () => {
+    // User B also owns an independent Restaurant workspace; temporarily grant
+    // and then downgrade a separate membership only in workspace A.
+    await db.workspaceMember.create({
+      data: { workspaceId: workspaceA, userId: userB, role: "MANAGER" },
+    });
+    const staleManager = { workspaceId: workspaceA, userId: userB, role: "MANAGER" as const };
+    const before = await db.$queryRaw<Array<{
+      categories: number; items: number; isAvailable: boolean;
+    }>>`
+      SELECT
+        (SELECT COUNT(*)::int FROM "restaurant_menu_categories" WHERE "workspaceId"=${workspaceA}::uuid) AS categories,
+        (SELECT COUNT(*)::int FROM "restaurant_menu_items" WHERE "workspaceId"=${workspaceA}::uuid) AS items,
+        (SELECT "isAvailable" FROM "restaurant_menu_items" WHERE "id"=${itemA}::uuid) AS "isAvailable"
+    `;
+    try {
+      await db.workspaceMember.updateMany({
+        where: { workspaceId: workspaceA, userId: userB },
+        data: { role: "STAFF" },
+      });
+      await expect(createRestaurantMenuCategory(staleManager, { name: "Unauthorized stale menu" }))
+        .rejects.toThrow(/requires a manager actor from the same workspace/i);
+      await expect(createRestaurantMenuItem(staleManager, {
+        categoryId: (await db.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM "restaurant_menu_categories" WHERE "workspaceId"=${workspaceA}::uuid LIMIT 1
+        `)[0]!.id,
+        name: "Unauthorized stale dish", price: 20,
+      })).rejects.toThrow(/requires a manager actor from the same workspace/i);
+      await expect(setRestaurantMenuItemAvailability(staleManager, itemA, !before[0]!.isAvailable))
+        .rejects.toThrow(/requires a manager actor from the same workspace/i);
+      const after = await db.$queryRaw<Array<{
+        categories: number; items: number; isAvailable: boolean;
+      }>>`
+        SELECT
+          (SELECT COUNT(*)::int FROM "restaurant_menu_categories" WHERE "workspaceId"=${workspaceA}::uuid) AS categories,
+          (SELECT COUNT(*)::int FROM "restaurant_menu_items" WHERE "workspaceId"=${workspaceA}::uuid) AS items,
+          (SELECT "isAvailable" FROM "restaurant_menu_items" WHERE "id"=${itemA}::uuid) AS "isAvailable"
+      `;
+      expect(after).toEqual(before);
+    } finally {
+      await db.workspaceMember.deleteMany({ where: { workspaceId: workspaceA, userId: userB } });
+    }
+  });
+
+  it("blocks forged manager context without persisted membership from editing the menu", async () => {
+    const forgery = { workspaceId: workspaceA, userId: userB, role: "MANAGER" as const };
+    await expect(createRestaurantMenuCategory(forgery, { name: "Forged category" }))
+      .rejects.toThrow(/requires a manager actor from the same workspace/i);
+    await expect(setRestaurantMenuItemAvailability(forgery, itemA, false))
+      .rejects.toThrow(/requires a manager actor from the same workspace/i);
+  });
+
+  it("denies a direct STAFF menu availability change at the service boundary without persisting it", async () => {
+    const current = await db.$queryRaw<Array<{ isAvailable: boolean }>>`
+      SELECT "isAvailable" FROM "restaurant_menu_items"
+      WHERE "id"=${itemA}::uuid AND "workspaceId"=${workspaceA}::uuid
+    `;
+    expect(current).toHaveLength(1);
+    await expect(setRestaurantMenuItemAvailability(
+      { workspaceId: workspaceA, userId: userA, role: "STAFF" },
+      itemA,
+      !current[0]!.isAvailable,
+    )).rejects.toThrow(/Manager access is required/);
+    const after = await db.$queryRaw<Array<{ isAvailable: boolean }>>`
+      SELECT "isAvailable" FROM "restaurant_menu_items"
+      WHERE "id"=${itemA}::uuid AND "workspaceId"=${workspaceA}::uuid
+    `;
+    expect(after).toEqual(current);
+  });
+
+  it("denies cross-tenant availability mutation and preserves source workspace data", async () => {
+    const current = await db.$queryRaw<Array<{ isAvailable: boolean }>>`
+      SELECT "isAvailable" FROM "restaurant_menu_items"
+      WHERE "id"=${itemA}::uuid AND "workspaceId"=${workspaceA}::uuid
+    `;
+    await expect(setRestaurantMenuItemAvailability(contextB(), itemA, false))
+      .rejects.toThrow(/not found in this workspace/i);
+    const after = await db.$queryRaw<Array<{ isAvailable: boolean }>>`
+      SELECT "isAvailable" FROM "restaurant_menu_items"
+      WHERE "id"=${itemA}::uuid AND "workspaceId"=${workspaceA}::uuid
+    `;
+    expect(after).toEqual(current);
+  });
+
   it("rejects unavailable menu items before an order is created", async () => {
     await setRestaurantMenuItemAvailability(contextA(), itemA, false);
     await expect(createPosRestaurantOrder(contextA(), {

@@ -1,4 +1,7 @@
+import "server-only";
+
 import { fbrEndpoint, type FbrEnvironment, type FbrInvoicePayload } from "@/lib/fbr/digital-invoicing";
+import { assertFbrTransmissionAllowed } from "@/lib/fbr/transmission-policy";
 
 export type FbrRemoteResult = {
   ok: boolean;
@@ -59,6 +62,7 @@ async function callFbr(input: {
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
 }): Promise<FbrRemoteResult> {
+  assertFbrTransmissionAllowed(input.environment);
   const token = input.token.trim();
   if (!token) throw new Error("FBR bearer token is not configured.");
   const fetchImpl = input.fetchImpl ?? fetch;

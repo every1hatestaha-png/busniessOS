@@ -15,11 +15,20 @@ vi.mock("next/navigation", () => ({ redirect: (path: string) => { throw new Erro
 vi.mock("@/lib/supabase/server", () => ({ getSupabaseAuthUser: mocks.provider }));
 vi.mock("@/lib/server/db", () => ({ db: { user: { findUnique: mocks.find, findFirst: mocks.byEmail }, workspaceMember: { findMany: mocks.memberships } } }));
 import { GET } from "@/app/auth/post-login/route";
-import { listCurrentUserWorkspaces } from "@/lib/server/auth";
+import { getCurrentWorkspace, listCurrentUserWorkspaces } from "@/lib/server/auth";
 
 const origin = "https://staging.example.invalid";
-const local = { id: "local-owner", email: "synthetic@example.invalid", firstName: null, lastName: null };
-const membership = (id: string, vertical = "RESTAURANT") => ({ workspaceId: id, role: "OWNER", workspace: { id, name: "Synthetic", vertical } });
+const local = {
+  id: "local-owner",
+  email: "synthetic@example.invalid",
+  firstName: null,
+  lastName: null,
+  termsAcceptedAt: new Date("2026-10-07T12:00:00.000Z"),
+  termsVersion: "2026-10-07",
+  privacyAcknowledgedAt: new Date("2026-10-07T12:00:00.000Z"),
+  privacyVersion: "2026-10-07",
+};
+const membership = (id: string, vertical = "RESTAURANT") => ({ workspaceId: id, role: "OWNER", restaurantStation: "ALL", workspace: { id, name: "Synthetic", vertical } });
 const open = (next = "") => GET(new Request(`${origin}/auth/post-login${next ? `?next=${encodeURIComponent(next)}` : ""}`));
 
 describe("canonical Supabase post-login workspace routing", () => {
@@ -36,9 +45,73 @@ describe("canonical Supabase post-login workspace routing", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.cookies.get("businessos_workspace")?.value).toBe("owned-a");
   });
+  it("requires current policy acceptance before workspace resolution", async () => {
+    const unaccepted = {
+      ...local,
+      termsAcceptedAt: null,
+      termsVersion: null,
+      privacyAcknowledgedAt: null,
+      privacyVersion: null,
+    };
+    mocks.find.mockResolvedValue(unaccepted);
+    mocks.byEmail.mockResolvedValue(unaccepted);
+    const response = await open();
+    expect(response.headers.get("location")).toBe(origin + "/legal/acceptance");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(mocks.memberships).not.toHaveBeenCalled();
+  });
+  it("blocks direct workspace resolution before current policy acceptance", async () => {
+    const unaccepted = {
+      ...local,
+      termsAcceptedAt: null,
+      termsVersion: null,
+      privacyAcknowledgedAt: null,
+      privacyVersion: null,
+    };
+    mocks.find.mockResolvedValue(unaccepted);
+    mocks.byEmail.mockResolvedValue(unaccepted);
+
+    await expect(getCurrentWorkspace()).rejects.toThrow("redirect:/legal/acceptance");
+    expect(mocks.memberships).not.toHaveBeenCalled();
+  });
+  it("keeps sanitized email-callback preferences behind the required policy gate", async () => {
+    const unaccepted = { ...local, termsAcceptedAt: null };
+    mocks.find.mockResolvedValue(unaccepted); mocks.byEmail.mockResolvedValue(unaccepted);
+    const response = await open("/onboarding?business=restaurant&modules=restaurant,unknown&billing=annual&role=OWNER&workspaceId=foreign");
+    expect(response.headers.get("location")).toBe(origin + "/legal/acceptance?next=%2Fonboarding%3Fbusiness%3Drestaurant%26modules%3Dinventory%252Crestaurant%26billing%3Dannual");
+    expect(mocks.memberships).not.toHaveBeenCalled();
+    expect(response.cookies.get("businessos_workspace")).toBeUndefined();
+  });
+
   it("routes a verified user without memberships to onboarding", async () => {
     mocks.memberships.mockResolvedValue([]);
     expect((await open("/restaurant")).headers.get("location")).toBe(origin + "/onboarding");
+  });
+  it("retains only allowlisted preferences for a new verified user", async () => {
+    mocks.memberships.mockResolvedValue([]);
+    const response = await open("/onboarding?business=restaurant&modules=restaurant,secret&billing=annual&workspaceId=foreign&role=OWNER&creationMode=additional&next=https://evil.example");
+    expect(response.headers.get("location")).toBe(origin + "/onboarding?business=restaurant&modules=inventory%2Crestaurant&billing=annual");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.cookies.get("businessos_workspace")).toBeUndefined();
+    expect(mocks.memberships).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: local.id } }));
+  });
+  it.each(["https://evil.example/onboarding?business=restaurant", "//evil.example/onboarding?business=restaurant", "/restaurant?workspaceId=foreign", "/onboarding/../restaurant?business=restaurant", "/%6fnboarding?business=restaurant", "/onboarding?business=unknown", "/onboarding?business=restaurant\\evil"])("refuses onboarding bypass %s", async next => {
+    mocks.memberships.mockResolvedValue([]);
+    const response = await open(next);
+    expect(response.headers.get("location")).toBe(origin + "/onboarding");
+    expect(response.cookies.get("businessos_workspace")).toBeUndefined();
+  });
+  it("cannot use builder preferences without a confirmed session", async () => {
+    mocks.provider.mockResolvedValue({ email_confirmed_at: null });
+    expect((await open("/onboarding?business=restaurant")).headers.get("location")).toBe(origin + "/sign-in");
+    expect(mocks.memberships).not.toHaveBeenCalled();
+  });
+  it("retains the existing membership and active workspace despite forged builder tenant parameters", async () => {
+    mocks.cookie = "owned-a";
+    const response = await open("/onboarding?business=restaurant&workspaceId=foreign&role=OWNER");
+    expect(mocks.memberships).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: local.id } }));
+    expect(response.cookies.get("businessos_workspace")).toBeUndefined();
+    expect(mocks.find).toHaveBeenCalledWith({ where: { supabaseId: "provider-owner" } });
   });
   it.each([null, { id: "pending", email_confirmed_at: null }])("requires a confirmed Supabase session", async provider => {
     mocks.provider.mockResolvedValue(provider);
@@ -49,7 +122,7 @@ describe("canonical Supabase post-login workspace routing", () => {
     mocks.cookie = "owned-b";
     mocks.memberships.mockResolvedValue([membership("owned-a", "TRADING"), membership("owned-b")]);
     expect((await open()).headers.get("location")).toBe(origin + "/restaurant");
-    expect(mocks.memberships).toHaveBeenCalledWith({ where: { userId: local.id }, orderBy: [{ createdAt: "asc" }, { workspaceId: "asc" }], select: { workspaceId: true, role: true, workspace: true } });
+    expect(mocks.memberships).toHaveBeenCalledWith({ where: { userId: local.id }, orderBy: [{ createdAt: "asc" }, { workspaceId: "asc" }], select: { workspaceId: true, role: true, restaurantStation: true, workspace: true } });
   });
   it.each(["foreign-workspace", "stale-workspace"])("repairs an invalid active cookie %s without selecting that tenant", async cookie => {
     mocks.cookie = cookie;

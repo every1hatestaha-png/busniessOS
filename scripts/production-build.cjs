@@ -42,6 +42,10 @@ function assertProductionAuthConfiguration() {
 
 assertProductionAuthConfiguration();
 
+// A protected, nonproduction release-candidate Preview must not fall back to
+// a generic Preview DATABASE_URL when migrations are disabled.
+require("./assert-preview-acceptance-target.cjs").assertPreviewAcceptanceTarget(process.env);
+
 // Database migrations should be an explicit release operation, not a side effect
 // of every Vercel build. Running `prisma migrate deploy` during concurrent builds
 // can contend on Postgres' advisory lock and fail an otherwise healthy frontend
@@ -52,6 +56,17 @@ const shouldRunMigrations = process.env.RUN_PRISMA_MIGRATIONS_ON_BUILD === "1";
 if (shouldRunMigrations) {
   if (process.env.VERCEL_ENV === "production") {
     run(process.execPath, [require("node:path").join(__dirname, "assert-production-database-target.cjs")]);
+  } else if (process.env.VERCEL_ENV === "preview" || process.env.MUNSHIOS_DEPLOYMENT_ENVIRONMENT === "staging") {
+    // A Preview migration must always prove its exact approved staging target.
+    // Missing staging markers must fail closed, never fall through to Prisma.
+    // This release-only preview must never migrate the original staging root
+    // or an arbitrary branch, even if DATABASE_URL has been misconfigured.
+    run(process.execPath, [require("node:path").join(__dirname, "assert-staging-database-target.cjs")]);
+  } else {
+    // Build-time migrations must never run without a recognized, independently
+    // verified production or staging target. Use an explicit release migration
+    // command for local/manual operations instead of bypassing this guard.
+    throw new Error("Refusing build-time database migrations without an approved deployment target.");
   }
   console.log("[build] Applying pending Prisma migrations...");
   run("npx", ["prisma", "migrate", "deploy"]);

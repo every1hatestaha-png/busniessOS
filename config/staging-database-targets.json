@@ -3,6 +3,10 @@
   "database": "neondb",
   "hosts": [
     "ep-fragrant-heart-b578tydw.c-7.us-east-2.aws.neon.tech",
-    "ep-fragrant-heart-b578tydw-pooler.c-7.us-east-2.aws.neon.tech"
+    "ep-fragrant-heart-b578tydw-pooler.c-7.us-east-2.aws.neon.tech",
+    "ep-muddy-sea-b51k2gi3.c-7.us-east-2.aws.neon.tech",
+    "ep-muddy-sea-b51k2gi3-pooler.c-7.us-east-2.aws.neon.tech",
+    "ep-cool-recipe-b4i2kgez.c-6.us-east-2.aws.neon.tech",
+    "ep-dry-surf-b453abu9.c-6.us-east-2.aws.neon.tech"
   ]
 }

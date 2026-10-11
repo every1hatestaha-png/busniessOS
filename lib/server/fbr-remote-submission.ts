@@ -10,6 +10,8 @@ import { requirePermission } from "@/lib/server/authorization";
 import { db } from "@/lib/server/db";
 import { FbrCredentialError, resolveFbrBearerTokenForRequest } from "@/lib/server/fbr-credentials";
 import { checkFbrSubmissionFreshness } from "@/lib/server/fbr-digital-invoicing";
+import { assertFbrEnabled } from "@/lib/server/fbr-enabled";
+import { assertFbrTransmissionAllowed } from "@/lib/fbr/transmission-policy";
 
 type PostBody = {
   invoiceNumber?: string | null;
@@ -65,11 +67,15 @@ export function interpretFbrPostResult(remote: FbrRemoteResult): FbrPostDisposit
 
 export async function runFbrInvoiceSubmission(submissionId: string, expectedEnvironment?: FbrEnvironment) {
   const context = await requirePermission("financial.manage");
+  const config = await assertFbrEnabled(context.workspaceId);
+  assertFbrExpectedEnvironment(config.environment, expectedEnvironment);
+  assertFbrTransmissionAllowed(config.environment);
   const submission = await db.fbrInvoiceSubmission.findFirst({
     where: { id: submissionId, workspaceId: context.workspaceId },
   });
   if (!submission) throw new Error("FBR submission not found.");
   assertFbrExpectedEnvironment(submission.environment, expectedEnvironment);
+  assertFbrExpectedEnvironment(submission.environment, config.environment);
   if (submission.status === "SUBMITTED") return { status: "SUBMITTED" as const, submission };
   if (submission.status !== "VALIDATED") {
     throw new Error("The invoice must pass FBR remote validation before submission.");

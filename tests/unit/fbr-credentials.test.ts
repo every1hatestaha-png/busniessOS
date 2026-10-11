@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { decryptFbrBearerToken, encryptFbrBearerToken, FbrCredentialError, getFbrCredentialDeploymentReadiness, resolveFbrBearerToken } from "@/lib/server/fbr-credentials";
 
@@ -14,11 +14,17 @@ const touched = [
 const original = new Map(touched.map((key) => [key, process.env[key]]));
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const key of touched) {
     const value = original.get(key);
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   }
+});
+beforeEach(() => {
+  vi.stubEnv("VERCEL_ENV", "production");
+  vi.stubEnv("VERCEL_PROJECT_ID", "prj_iSQ7PaTAwiQMYasVAEBGJZTSjTk2");
+  vi.stubEnv("MUNSHIOS_DEPLOYMENT_ENVIRONMENT", "production");
 });
 
 describe("FBR credential resolver", () => {

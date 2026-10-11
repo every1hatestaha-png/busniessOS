@@ -1,0 +1,74 @@
+name: MunshiOS round 3 hardening
+
+on:
+  pull_request:
+    branches: [release/munshios-restaurant-platform-rc-v2-04]
+
+permissions:
+  contents: read
+
+jobs:
+  disposable-postgres-certification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_round3
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_round3"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_round3?sslmode=disable
+      RUN_INTEGRATION_TESTS: 'true'
+      NODE_ENV: test
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_synthetic_round3
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_live_fixture
+      CLERK_SECRET_KEY: sk_live_fixture
+      CLERK_OAUTH_CLIENT_ID: fixture-client
+      RUN_PRISMA_MIGRATIONS_ON_BUILD: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Validate and apply full migration history to disposable PostgreSQL 18
+        run: |
+          npx prisma validate
+          npx prisma migrate deploy
+          npx prisma migrate status
+      - name: Read-only SQL registry drift gate
+        run: node scripts/restaurant-schema-registry.cjs
+      - name: Full unit, integration, Restaurant and tenant regressions
+        run: npm test -- --maxWorkers=2
+      - name: Finance invariants
+        run: npm run test:finance
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Application and focused test lint
+        run: >-
+          npx eslint app components lib proxy.ts next.config.ts
+          scripts/restaurant-schema-registry.cjs
+          tests/unit/auth-recovery-start-route.test.ts
+          tests/unit/fbr-disabled-tenant.test.ts
+          tests/unit/sales-pagination.test.ts
+          tests/unit/sales-pagination-route-ui.test.ts
+          tests/unit/restaurant-finalization-authorization.test.ts
+          tests/integration/round3-recovery-pagination.test.ts
+          tests/integration/round3-recovery-http.test.ts
+          tests/integration/restaurant-round3-authorization.test.ts
+          tests/integration/round3-schema-registry.test.ts
+      - name: Production build with synthetic configuration and migrations disabled
+        env:
+          NODE_ENV: production
+          VERCEL_ENV: production
+        run: npm run build

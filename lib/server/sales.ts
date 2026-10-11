@@ -19,6 +19,7 @@ import {
   restoreSaleBomComponents,
 } from "@/lib/server/customer-sales-bom";
 import type { InvoiceIssuedSnapshot } from "@/lib/server/invoice-snapshot";
+import { decodeSalesCursor, encodeSalesCursor, type SalesPageOptions } from "@/lib/sales-pagination";
 
 export type ServiceContext = { workspaceId: string; role: Role; userId?: string };
 export class SaleDomainError extends Error {
@@ -574,6 +575,33 @@ export async function cancelSale(context: ServiceContext, id: string, reverseIni
   });
 }
 
+export async function listSalesPage(workspaceId: string, options: SalesPageOptions) {
+  const cursor = options.cursor ? decodeSalesCursor(options.cursor, workspaceId, options) : undefined;
+  const rows = await db.salesOrder.findMany({
+    where: { workspaceId, ...(options.status ? { status: options.status } : {}), AND: [
+      ...(options.query ? [{ OR: [
+        { orderNumber: { contains: options.query, mode: "insensitive" as const } },
+        { customer: { name: { contains: options.query, mode: "insensitive" as const } } },
+        { customer: { companyName: { contains: options.query, mode: "insensitive" as const } } },
+      ] }] : []),
+      ...(cursor ? [{ OR: [
+        { orderDate: { lt: new Date(cursor.d) } },
+        { orderDate: new Date(cursor.d), id: { lt: cursor.i } },
+      ] }] : []),
+    ] },
+    orderBy: [{ orderDate: "desc" }, { id: "desc" }], take: options.limit + 1,
+    include: { customer: { select: { companyName: true, name: true } }, _count: { select: { items: true } } },
+  });
+  const selected = rows.slice(0, options.limit);
+  const last = selected.at(-1);
+  return {
+    data: selected.map((row) => ({ id: row.id, orderNumber: row.orderNumber, customerName: row.customer.companyName ?? row.customer.name, date: row.orderDate.toISOString(), items: row._count.items, total: Number(row.total), paidAmount: Number(row.paidAmount), balanceAmount: Number(row.balanceAmount), status: row.status })),
+    pagination: { limit: options.limit, hasMore: rows.length > options.limit,
+      nextCursor: rows.length > options.limit && last ? encodeSalesCursor(workspaceId, last, options) : null },
+  };
+}
+
+/** Legacy internal callers retain the complete list; HTTP/UI use listSalesPage. */
 export async function listSales(workspaceId: string) {
   const rows = await db.salesOrder.findMany({ where: { workspaceId }, orderBy: { orderDate: "desc" }, include: { customer: { select: { companyName: true, name: true } }, _count: { select: { items: true } } } });
   return rows.map((row) => ({ id: row.id, orderNumber: row.orderNumber, customerName: row.customer.companyName ?? row.customer.name, date: row.orderDate.toISOString(), items: row._count.items, total: Number(row.total), paidAmount: Number(row.paidAmount), balanceAmount: Number(row.balanceAmount), status: row.status }));

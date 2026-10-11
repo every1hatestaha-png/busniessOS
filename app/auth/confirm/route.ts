@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { POST_AUTH_PATH, postAuthDestination, safeInternalDestination } from "@/lib/auth-routing";
 import { issueRecoveryMarker } from "@/lib/server/recovery-session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isSameOriginWebMutation } from "@/lib/server/cors";
 
 const ALLOWED_CONFIRMATION_TYPES = new Set<EmailOtpType>([
   "signup",
@@ -117,7 +118,18 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const formData = await request.formData();
+  if (!isSameOriginWebMutation(request)) {
+    return NextResponse.json(
+      { error: "This request origin is not allowed." },
+      { status: 403, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+  let formData: FormData;
+  try {
+    formData = await request.formData();
+  } catch {
+    return recoveryFailure(request.url, "missing");
+  }
   const tokenHash = typeof formData.get("token_hash") === "string"
     ? String(formData.get("token_hash"))
     : "";

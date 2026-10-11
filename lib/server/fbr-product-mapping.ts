@@ -15,6 +15,7 @@ import { canPerformAction } from "@/lib/server/authorization";
 import { writeAudit } from "@/lib/server/audit";
 import { db } from "@/lib/server/db";
 import { resolveFbrBearerTokenForRequest } from "@/lib/server/fbr-credentials";
+import { assertFbrEnabled } from "@/lib/server/fbr-enabled";
 
 type MappingContext = { workspaceId: string; role: Role; userId?: string };
 
@@ -44,6 +45,7 @@ export async function verifyProductFbrReferenceMapping(
   if (!canPerformAction(context.role, "products.write")) {
     throw new FbrProductMappingError("You do not have permission to verify product FBR mappings.");
   }
+  await assertFbrEnabled(context.workspaceId);
 
   const [product, workspace, config] = await Promise.all([
     db.product.findFirst({

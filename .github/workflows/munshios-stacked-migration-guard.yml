@@ -1,0 +1,30 @@
+name: MunshiOS stacked migration build guard
+
+on:
+  pull_request:
+    branches:
+      - fix/preview-migration-target-guard-v2-14
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stacked-migration-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  migration-build-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          cache: npm
+      - name: Install dependencies without side-effect scripts
+        run: npm ci --ignore-scripts
+      - name: Check build script syntax
+        run: node --check scripts/production-build.cjs
+      - name: Run fail-closed production and preview build guard regressions
+        run: npx vitest run tests/unit/restaurant-release-build-guard-v1-88.test.ts
