@@ -1,0 +1,203 @@
+{
+  "ledger": {
+    "count": 0,
+    "debit": 0,
+    "credit": 0,
+    "foreignWorkspaceCount": 0
+  },
+  "orders": [
+    {
+      "id": "acd6ecb2-c4d9-4783-ae67-7812e9848b43",
+      "tax": 0,
+      "items": [
+        {
+          "name": "QA 20261011 Test Burger",
+          "quantity": 2,
+          "lineTotal": 400,
+          "unitPrice": 200
+        }
+      ],
+      "total": 400,
+      "number": "R-000001",
+      "status": "READY",
+      "kitchen": [
+        {
+          "status": "READY",
+          "workspaceMatches": true
+        }
+      ],
+      "discount": 0,
+      "subtotal": 400,
+      "updatedAt": "2026-10-11T11:29:46.481812+00:00",
+      "refundCount": 0,
+      "paymentCount": 0,
+      "inventoryCost": 0,
+      "paymentStatus": "UNPAID",
+      "consumptionCount": 0,
+      "inventoryPostedAt": null,
+      "accountingPostedAt": null
+    },
+    {
+      "id": "7eb06a05-a223-4814-aa69-a00127f038d2",
+      "tax": 0,
+      "items": [
+        {
+          "name": "QA 20261011 Test Wrap",
+          "quantity": 1,
+          "lineTotal": 350,
+          "unitPrice": 350
+        }
+      ],
+      "total": 350,
+      "number": "R-000002",
+      "status": "CONFIRMED",
+      "kitchen": [
+        {
+          "status": "QUEUED",
+          "workspaceMatches": true
+        }
+      ],
+      "discount": 0,
+      "subtotal": 350,
+      "updatedAt": "2026-10-11T11:24:15.716124+00:00",
+      "refundCount": 0,
+      "paymentCount": 0,
+      "inventoryCost": 0,
+      "paymentStatus": "UNPAID",
+      "consumptionCount": 0,
+      "inventoryPostedAt": null,
+      "accountingPostedAt": null
+    },
+    {
+      "id": "59007b0d-80fc-4e2f-8f4c-5c551c420dde",
+      "tax": 0,
+      "items": [
+        {
+          "name": "QA 20261011 Test Burger",
+          "quantity": 1,
+          "lineTotal": 200,
+          "unitPrice": 200
+        },
+        {
+          "name": "QA 20261011 Test Wrap",
+          "quantity": 1,
+          "lineTotal": 350,
+          "unitPrice": 350
+        }
+      ],
+      "total": 550,
+      "number": "R-000003",
+      "status": "PREPARING",
+      "kitchen": [
+        {
+          "status": "PREPARING",
+          "workspaceMatches": true
+        }
+      ],
+      "discount": 0,
+      "subtotal": 550,
+      "updatedAt": "2026-10-11T11:29:38.887516+00:00",
+      "refundCount": 0,
+      "paymentCount": 0,
+      "inventoryCost": 0,
+      "paymentStatus": "UNPAID",
+      "consumptionCount": 0,
+      "inventoryPostedAt": null,
+      "accountingPostedAt": null
+    },
+    {
+      "id": "267434ab-1188-403a-b289-a439afed0382",
+      "tax": 0,
+      "items": [
+        {
+          "name": "QA 20261011 Test Wrap",
+          "quantity": 2,
+          "lineTotal": 700,
+          "unitPrice": 350
+        }
+      ],
+      "total": 700,
+      "number": "R-000004",
+      "status": "CONFIRMED",
+      "kitchen": [
+        {
+          "status": "QUEUED",
+          "workspaceMatches": true
+        }
+      ],
+      "discount": 0,
+      "subtotal": 700,
+      "updatedAt": "2026-10-11T11:25:31.188493+00:00",
+      "refundCount": 0,
+      "paymentCount": 0,
+      "inventoryCost": 0,
+      "paymentStatus": "UNPAID",
+      "consumptionCount": 0,
+      "inventoryPostedAt": null,
+      "accountingPostedAt": null
+    },
+    {
+      "id": "2cac6497-5e25-4fea-90e2-9cf3eb50aa24",
+      "tax": 15,
+      "items": [
+        {
+          "name": "QA 20261011 Test Burger",
+          "quantity": 1,
+          "lineTotal": 200,
+          "unitPrice": 200
+        }
+      ],
+      "total": 205,
+      "number": "R-000005",
+      "status": "CONFIRMED",
+      "kitchen": [
+        {
+          "status": "QUEUED",
+          "workspaceMatches": true
+        }
+      ],
+      "discount": 10,
+      "subtotal": 200,
+      "updatedAt": "2026-10-11T11:25:31.206682+00:00",
+      "refundCount": 0,
+      "paymentCount": 0,
+      "inventoryCost": 0,
+      "paymentStatus": "UNPAID",
+      "consumptionCount": 0,
+      "inventoryPostedAt": null,
+      "accountingPostedAt": null
+    }
+  ],
+  "tables": [
+    {
+      "name": "QA 20261011 TABLE B",
+      "status": "OCCUPIED",
+      "workspaceMatches": true
+    },
+    {
+      "name": "QA 20261011 TABLE A",
+      "status": "OCCUPIED",
+      "workspaceMatches": true
+    }
+  ],
+  "product": {
+    "stock": 100,
+    "movements": [
+      {
+        "type": "OPENING_STOCK",
+        "quantity": 100,
+        "unitCost": 20
+      }
+    ]
+  },
+  "database": "neondb",
+  "workspace": {
+    "id": "4492dbc1-bb03-4a8b-ad3d-2259b9848438",
+    "name": "crust",
+    "vertical": "RESTAURANT"
+  },
+  "capturedAt": "2026-10-11T11:54:05.894807+00:00",
+  "foreignRefundCount": 0,
+  "foreignPaymentCount": 0,
+  "orderStockMovements": 0
+}

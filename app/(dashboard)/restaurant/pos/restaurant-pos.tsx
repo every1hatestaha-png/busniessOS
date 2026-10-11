@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { isPosSearchShortcut, parsePosFastEntry, resolvePosFastEntryItem } from "@/lib/restaurant/pos-fast-entry";
+import { posPayablePreview } from "@/lib/restaurant/pos-payable-preview";
 
 type Category = { id: string; name: string; sortOrder: number; isActive: boolean };
 type MenuItem = { id: string; categoryId: string; categoryName: string; name: string; description: string | null; price: number; isAvailable: boolean };
@@ -32,6 +33,8 @@ export function RestaurantPos({
 }) {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [query, setQuery] = useState("");
+  const [discountAmount, setDiscountAmount] = useState("0");
+  const [taxAmount, setTaxAmount] = useState("0");
   const searchInput = useRef<HTMLInputElement>(null);
   const requestId = useRef<string | null>(null);
   const requestField = useRef<HTMLInputElement>(null);
@@ -39,6 +42,8 @@ export function RestaurantPos({
     const result = await createPosOrderAction(previous, form);
     if (result.status === "success") {
       setCart([]);
+      setDiscountAmount("0");
+      setTaxAmount("0");
       requestId.current = null;
       if (requestField.current) requestField.current.value = "";
     }
@@ -58,7 +63,7 @@ export function RestaurantPos({
   const quickCandidate = resolvePosFastEntryItem(visibleItems, fastEntry.term);
   const ambiguousSearch = Boolean(fastEntry.term) && !quickCandidate && visibleItems.filter((item) => item.isAvailable).length > 1;
 
-  const subtotal = useMemo(() => cart.reduce((sum, line) => sum + line.price * line.quantity, 0), [cart]);
+  const { subtotal, discount, tax, payable } = posPayablePreview(cart, discountAmount, taxAmount, canFinancialOverride);
   const itemCount = useMemo(() => cart.reduce((sum, line) => sum + line.quantity, 0), [cart]);
 
   function add(item: MenuItem, quantity = 1) {
@@ -270,13 +275,21 @@ export function RestaurantPos({
 
             {canFinancialOverride ? (
               <div className="grid grid-cols-2 gap-2">
-                <label className="space-y-1 text-xs font-medium">Discount<Input name="discountAmount" type="number" min={0} step="0.01" defaultValue={0} className="rounded-xl" /></label>
-                <label className="space-y-1 text-xs font-medium">Tax<Input name="taxAmount" type="number" min={0} step="0.01" defaultValue={0} className="rounded-xl" /></label>
+                <label className="space-y-1 text-xs font-medium">Discount<Input name="discountAmount" type="number" min={0} max={subtotal} step="0.01" value={discountAmount} onChange={(event) => setDiscountAmount(event.target.value)} className="rounded-xl" /></label>
+                <label className="space-y-1 text-xs font-medium">Tax<Input name="taxAmount" type="number" min={0} step="0.01" value={taxAmount} onChange={(event) => setTaxAmount(event.target.value)} className="rounded-xl" /></label>
               </div>
             ) : null}
 
             <div className="rounded-xl bg-slate-50 p-3">
               <div className="flex items-center justify-between text-sm"><span className="text-muted-foreground">Subtotal</span><span className="font-semibold">Rs {subtotal.toLocaleString()}</span></div>
+              {canFinancialOverride && payable !== null ? <>
+                <div className="flex items-center justify-between text-sm"><span>Discount</span><span>Rs {discount.toLocaleString()}</span></div>
+                <div className="flex items-center justify-between text-sm"><span>Tax</span><span>Rs {tax.toLocaleString()}</span></div>
+              </> : null}
+              <div role="status" aria-live="polite" aria-label="Final payable preview" className="mt-2 flex items-center justify-between border-t pt-2 text-sm font-semibold">
+                <span>Final payable</span><span>{payable === null ? "Check discount and tax" : `Rs ${payable.toLocaleString()}`}</span>
+              </div>
+              {payable === null ? <p role="alert" className="mt-1 text-xs text-destructive">Enter nonnegative amounts and a discount no greater than the subtotal.</p> : null}
               <p className="mt-1 text-[10px] text-muted-foreground">Server validates final prices and totals before creating the order.</p>
             </div>
 
@@ -288,7 +301,7 @@ export function RestaurantPos({
               </Link>
             ) : null}
 
-            <Button type="submit" className="h-11 w-full rounded-xl bg-emerald-600 text-sm font-semibold hover:bg-emerald-500" disabled={pending || cart.length === 0}>
+            <Button type="submit" className="h-11 w-full rounded-xl bg-emerald-600 text-sm font-semibold hover:bg-emerald-500" disabled={pending || cart.length === 0 || payable === null}>
               {pending ? "Creating order..." : fulfillmentType === "DINE_IN" ? "Send to kitchen" : "Confirm order"}
             </Button>
           </fieldset>

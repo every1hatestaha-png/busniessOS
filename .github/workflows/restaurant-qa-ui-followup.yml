@@ -1,0 +1,52 @@
+name: Restaurant QA UI follow-up
+
+on:
+  push:
+    branches: [fix/restaurant-qa-ui-followup-20261011]
+  pull_request:
+    branches: [fix/sterile-runner-diagnostics-20261010]
+
+permissions:
+  contents: read
+
+jobs:
+  focused-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://fixture:fixture@127.0.0.1:5432/unused_generation_only
+      RUN_INTEGRATION_TESTS: "false"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Generate client without database access
+        run: npx prisma generate
+      - name: Confirm automatic deployments remain disabled
+        run: node -e "require('node:assert/strict').equal(require('./vercel.json').git.deploymentEnabled['fix/restaurant-qa-ui-followup-20261011'], false)"
+      - name: UI, kitchen, persisted station and payment guards (offline mocks)
+        run: >-
+          npx vitest run
+          tests/unit/restaurant-pos-qa-ui.test.ts
+          tests/unit/restaurant-kitchen-qa-ui.test.ts
+          tests/unit/restaurant-adversarial-ui-v1-80.test.ts
+          tests/unit/restaurant-kitchen-line-items.test.ts
+          tests/unit/restaurant-kitchen-queue-lanes.test.ts
+          tests/unit/restaurant-station-request-boundaries.test.ts
+          tests/unit/restaurant-staff-stations.test.ts
+          tests/unit/restaurant-payment-timing-contract.test.ts
+          tests/unit/restaurant-net-payment-limit-contract.test.ts
+      - run: npx tsc --noEmit
+      - name: Scoped lint
+        run: >-
+          npx eslint
+          'app/(dashboard)/restaurant/pos/restaurant-pos.tsx'
+          lib/restaurant/pos-payable-preview.ts
+          tests/unit/restaurant-pos-qa-ui.test.ts
+          tests/unit/restaurant-kitchen-qa-ui.test.ts
