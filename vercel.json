@@ -65,7 +65,8 @@
       "integrate/sterile-neon-staging-target-20261009": false,
       "fix/sterile-migration-attestation-20261010": false,
       "fix/sterile-runner-diagnostics-20261010": false,
-      "ops/sterile-neon-cloud-manual-20261010": false
+      "ops/sterile-neon-cloud-manual-20261010": false,
+      "fix/staging-readiness-sterile-neon-20261011": false
     }
   }
 }
