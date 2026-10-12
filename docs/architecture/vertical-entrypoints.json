@@ -330,6 +330,16 @@
     "scope": "dashboard layout plus entry point"
   },
   {
+    "file": "app/(dashboard)/gate-passes/[id]/receiving/print/page.tsx",
+    "symbol": null,
+    "url": "/gate-passes/[id]/receiving/print",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requirePermission plus workspace feature gate",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
     "file": "app/(dashboard)/gate-passes/actions.ts",
     "symbol": "createOutboundGatePassDraftAction",
     "url": "/gate-passes",

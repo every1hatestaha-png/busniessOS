@@ -46,5 +46,7 @@ jobs:
           path: |
             .tmp-gatepass-browser-print/gate-pass-*.pdf
             .tmp-gatepass-browser-print/gate-pass-*.png
+            .tmp-gatepass-browser-print/receiving-*.pdf
+            .tmp-gatepass-browser-print/receiving-*.png
           include-hidden-files: true
           if-no-files-found: error

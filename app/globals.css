@@ -289,6 +289,26 @@
   html[data-print-format="thermal"] [data-gate-pass-print] [data-gp-sku] {
     display: none !important;
   }
+  html[data-print-format="thermal"] [data-receiving-acknowledgement-print] [data-gp-thermal-hide] { display: none !important; }
+  /* The thermal acknowledgement must use full-width item descriptions.
+     A narrow, four-column table split every word and wasted entire rolls. */
+  html[data-print-format="thermal"] [data-receiving-acknowledgement-print] [data-receiving-a4] { display: none !important; }
+  html[data-print-format="thermal"] [data-receiving-acknowledgement-print] [data-receiving-thermal] { display: block !important; }
+  html[data-print-format="thermal"] [data-receiving-acknowledgement-print] [data-receiving-thermal-line] {
+    break-inside: avoid;
+    overflow-wrap: anywhere;
+    font-size: 8pt;
+  }
+
+  html[data-print-format="thermal"] [data-receiving-acknowledgement-print] [data-gatepass-items] th:nth-child(1) { width: 49%; }
+  html[data-print-format="thermal"] [data-receiving-acknowledgement-print] [data-gatepass-items] th:nth-child(3) { width: 20%; }
+  html[data-print-format="thermal"] [data-receiving-acknowledgement-print] [data-gatepass-items] th:nth-child(4) { width: 20%; }
+  html[data-print-format="thermal"] [data-receiving-acknowledgement-print] [data-gatepass-items] th:nth-child(6) { width: 11%; }
+  html[data-print-format="thermal"] [data-receiving-acknowledgement-print] [data-document-signatures] {
+    grid-template-columns: 1fr;
+    gap: 11mm;
+  }
+
   html[data-print-format="thermal"] [data-gate-pass-print] [data-gp-a4-totals] { display: none !important; }
   html[data-print-format="thermal"] [data-gate-pass-print] [data-gp-thermal-totals] { display: table-row !important; }
   html[data-print-format="thermal"] [data-gate-pass-print] [data-gatepass-items] th:nth-child(1) { width: 8%; }
