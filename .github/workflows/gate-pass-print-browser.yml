@@ -1,0 +1,49 @@
+name: Gate Pass Chromium print acceptance
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/(dashboard)/gate-passes/**'
+      - 'components/gate-passes/**'
+      - 'app/globals.css'
+      - 'lib/print-routing.ts'
+      - 'desktop/main.cjs'
+      - 'scripts/gate-pass-browser-print.cjs'
+      - 'tests/browser/gate-pass-print/**'
+      - '.github/workflows/gate-pass-print-browser.yml'
+permissions:
+  contents: read
+jobs:
+  gate-pass-print-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Install isolated Chromium harness
+        run: |
+          mkdir -p "$RUNNER_TEMP/gatepass-browser-tools"
+          npm install --prefix "$RUNNER_TEMP/gatepass-browser-tools" --ignore-scripts playwright@1.62.1
+          echo "NODE_PATH=$RUNNER_TEMP/gatepass-browser-tools/node_modules" >> "$GITHUB_ENV"
+          echo "GATEPASS_PLAYWRIGHT_CLI=$RUNNER_TEMP/gatepass-browser-tools/node_modules/playwright/cli.js" >> "$GITHUB_ENV"
+      - name: Install Chromium
+        run: node "$GATEPASS_PLAYWRIGHT_CLI" install --with-deps chromium
+      - name: Build real Gate Pass document fixture with production Tailwind CSS
+        run: npx vite build --config tests/browser/gate-pass-print/vite.config.mjs
+      - name: Certify A4 and 80mm long-document printing
+        run: node scripts/gate-pass-browser-print.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gate-pass-a4-80mm-print-evidence
+          path: |
+            .tmp-gatepass-browser-print/gate-pass-*.pdf
+            .tmp-gatepass-browser-print/gate-pass-*.png
+          if-no-files-found: warn
