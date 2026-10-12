@@ -61,6 +61,8 @@ describe("print UX regression contracts", () => {
     expect(page).toContain('<PrintButton label="Print A4 Gate Pass"');
     expect(page).toContain('format="thermal"');
     expect(page).toContain("data-gatepass-items");
+    expect(page).toContain("Multiple product units");
+    expect(source("desktop/main.cjs")).toContain("gate-pass-print");
     expect(page).toContain("data-document-signatures");
     expect(page).toContain("Receiver Signature / Stamp");
     expect(page).not.toContain("invoice.invoiceNumber");

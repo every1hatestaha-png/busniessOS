@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Prisma } from "@prisma/client";
 import { notFound } from "next/navigation";
 import { WorkspaceIdentity } from "@/components/documents/workspace-identity";
 import { PrintButton } from "@/components/invoices/print-button";
@@ -18,7 +19,11 @@ export default async function OutboundGatePassPrintPage({ params }: { params: Pr
   if (!gp || gp.status === "DRAFT" || gp.status === "CANCELLED") notFound();
 
   const date = gp.gatePassDate.toLocaleDateString("en-GB", { timeZone: "Asia/Karachi" });
-  const totalQuantity = gp.items.reduce((sum, item) => sum.plus(item.dispatchedQuantity), gp.items[0]!.dispatchedQuantity.mul(0));
+  const isSingleUnit = gp.items.every((item) => item.productUnitSnapshot === gp.items[0]?.productUnitSnapshot);
+  const totalQuantity = isSingleUnit
+    ? gp.items.reduce((sum, item) => sum.plus(item.dispatchedQuantity), new Prisma.Decimal(0)).toString()
+    : "—";
+  const totalUnit = isSingleUnit ? (gp.items[0]?.productUnitSnapshot ?? "") : "Mixed units";
   const recipient = gp.customer.companyName || gp.customer.name;
 
   return <main className="mx-auto max-w-4xl space-y-4 px-3 py-5 text-black sm:px-6 print:m-0 print:max-w-none print:space-y-0 print:p-0">
@@ -76,11 +81,11 @@ export default async function OutboundGatePassPrintPage({ params }: { params: Pr
           </tr>)}</tbody>
           <tfoot><tr className="border-t-2 border-black font-semibold">
             <td colSpan={3} className="py-2 text-right" data-gp-total-label>Total quantity ({gp.items.length} lines)</td>
-            <td className="py-2 text-right tabular-nums">{totalQuantity.toString()}</td>
-            <td />
+            <td className="py-2 text-right tabular-nums">{totalQuantity}</td>
+            <td className="pl-2 text-xs">{totalUnit}</td>
           </tr></tfoot>
         </table>
-        <p className="mt-1 text-[10px] text-neutral-600">Quantities are physical units as specified on each line; mixed units must not be interpreted as one unit type.</p>
+        {!isSingleUnit && <p className="mt-1 text-[10px] text-neutral-600">Multiple product units are present; no misleading combined quantity is printed.</p>}
       </section>
 
       {gp.notes && <section data-document-section className="text-xs"><p className="font-semibold">Remarks</p><p className="whitespace-pre-wrap break-words">{gp.notes}</p></section>}
