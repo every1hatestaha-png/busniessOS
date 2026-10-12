@@ -73,6 +73,18 @@ describe("print UX regression contracts", () => {
     expect(css).toContain('html[data-print-format="thermal"] [data-gate-pass-print] [data-gp-sku]');
   });
 
+  it("auto-opens Gate Pass print dialog on web shortcut and waits for desktop printable assets", () => {
+    const page = source("app/(dashboard)/gate-passes/[id]/print/page.tsx");
+    const router = source("components/documents/print-shortcut-router.tsx");
+    const desktop = source("desktop/main.cjs");
+    expect(page).toContain('autoPrint && <PrintOnLoad');
+    expect(page).toContain('autoprint === "1"');
+    expect(router).toContain("autoprint=1");
+    expect(desktop).toContain('[data-print-asset-pending="true"]');
+    expect(desktop).toContain("image.decode()");
+    expect(desktop).toContain("document.fonts.ready");
+  });
+
   it("routes cash-bank printing to the dedicated ledger report", () => {
     expect(source("app/(dashboard)/accounting/cash-bank/[id]/page.tsx")).toContain("/reports/cash-bank?accountId=");
   });

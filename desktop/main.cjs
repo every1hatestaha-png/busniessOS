@@ -1263,10 +1263,25 @@ function createMainWindow() {
     const printUrl = new URL(`${pathname}/print`, serverOrigin);
     void mainWindow.loadURL(printUrl.toString()).then(async () => {
       if (!mainWindow || mainWindow.isDestroyed()) return;
-      // Wait for dedicated page fonts/paint before invoking native printer.
-      await mainWindow.webContents.executeJavaScript(
-        "Promise.race([document.fonts.ready.catch(() => undefined), new Promise(resolve => setTimeout(resolve, 2500))]).then(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))"
-      ).catch(() => undefined);
+      // Electron Ctrl+P bypasses the React PrintButton. Wait for the same
+      // print-safe images and fonts before opening the native printer dialog.
+      await mainWindow.webContents.executeJavaScript(`(async () => {
+        const deadline = Date.now() + 3000;
+        while (document.querySelector('[data-print-asset-pending="true"]') && Date.now() < deadline) {
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        const images = [...document.querySelectorAll('[data-print-surface] img, [data-document] img')];
+        await Promise.all(images.map(async image => {
+          if (!image.complete) await Promise.race([
+            new Promise(resolve => { image.addEventListener('load', resolve, { once: true }); image.addEventListener('error', resolve, { once: true }); }),
+            new Promise(resolve => setTimeout(resolve, 3000))
+          ]);
+          if (image.decode && image.complete && image.naturalWidth > 0) await image.decode().catch(() => undefined);
+        }));
+        await Promise.race([document.fonts.ready.catch(() => undefined), new Promise(resolve => setTimeout(resolve, 3000))]);
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        return true;
+      })()`).catch(() => undefined);
       printActivePage();
     }).catch((error) => appendLog("ERROR", `[D8.1][gate-pass-print] navigation failed: ${error.message}`));
   });
