@@ -153,6 +153,9 @@ export async function dispatchGatePass(ctx: Context, id: string) {
         id: item.id, productId: item.productId, dispatchedQuantity: item.dispatchedQuantity,
       })),
     });
+    if (bomPlan.byItem.size > 0 && process.env.OUTBOUND_GATE_PASS_BOM_DISPATCH_ENABLED !== "true") {
+      throw new GatePassWorkflowError("Assembly dispatch requires the separately certified BOM stock adapter.");
+    }
     const products = await tx.product.findMany({
       where: { workspaceId: ctx.workspaceId, id: { in: productIds }, status: "ACTIVE" },
       select: { id: true, stockQuantity: true, costPrice: true },

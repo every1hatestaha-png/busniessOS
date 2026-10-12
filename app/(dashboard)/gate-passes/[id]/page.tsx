@@ -16,6 +16,7 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
   // Read-only, tenant-scoped preview: configured customer assemblies require
   // their own component dispatch/return adapter. Never present a button that
   // will fail after the operator has physically shipped the goods.
+  const bomDispatchEnabled = process.env.OUTBOUND_GATE_PASS_BOM_DISPATCH_ENABLED === "true";
   const configuredBOMs = await db.$queryRaw<Array<{ name: string }>>`
     SELECT DISTINCT i."productNameSnapshot" AS name
     FROM "outbound_gate_pass_items" i
@@ -61,7 +62,7 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
     {gatePass.notes && <p className="text-sm"><span className="font-semibold">Notes: </span>{gatePass.notes}</p>}
     {gatePass.receivingReference && <p className="text-sm"><span className="font-semibold">Customer receiving reference: </span>{gatePass.receivingReference}{gatePass.receivingRecipient ? ` · ${gatePass.receivingRecipient}` : ""}</p>}
     {gatePass.invoiceId && <Link href={`/invoices/${gatePass.invoiceId}`} className="inline-flex rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white">View and print final invoice</Link>}
-    {gatePass.status === "ISSUED" && configuredBOMs.length > 0 && <div role="status" className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+    {gatePass.status === "ISSUED" && configuredBOMs.length > 0 && !bomDispatchEnabled && <div role="status" className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
       <p className="font-semibold">Assembly products require component-stock reconciliation before dispatch.</p>
       <p className="mt-1">Gate Pass printing is available, but dispatching this assembled customer BOM through the deferred-invoice workflow is not yet supported. Use the standard Sales flow until the component-return adapter is certified.</p>
       <ul className="mt-2 list-disc pl-5">{configuredBOMs.map((row) => <li key={row.name}>{row.name}</li>)}</ul>
@@ -74,7 +75,7 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
       recipient={gatePass.receivingRecipient}
       deferredBillingReady={deferredBillingReady}
       canIssue={canPerformAction(role, "sales.create")}
-      canDispatch={canPerformAction(role, "inventory.adjust") && configuredBOMs.length === 0}
+      canDispatch={canPerformAction(role, "inventory.adjust") && (configuredBOMs.length === 0 || bomDispatchEnabled)}
       canReceive={canPerformAction(role, "returns.create")}
       canInvoice={canPerformAction(role, "financial.manage")}
       items={gatePass.items.map((item) => ({

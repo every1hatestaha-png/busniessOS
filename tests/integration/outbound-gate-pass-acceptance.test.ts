@@ -26,6 +26,7 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     // Simulated legal approval for synthetic local acceptance only, never a real signoff.
     vi.stubEnv("OUTBOUND_GP_ACCEPTANCE_BILLING_LEGALLY_APPROVED", "true");
     vi.stubEnv("OUTBOUND_GP_ACCEPTANCE_BILLING_APPROVAL_REFERENCE", "SYNTHETIC-LOCAL-ONLY");
+    vi.stubEnv("OUTBOUND_GATE_PASS_BOM_DISPATCH_ENABLED", "true");
     const user = await db.user.create({ data: { clerkId: randomUUID(), email: `${randomUUID()}@example.invalid` } }); userId = user.id;
     await db.workspace.upsert({ where: { id: tenant }, update: {}, create: { id: tenant, name: "Synthetic Ahmad acceptance" } });
     await db.workspaceMember.create({ data: { workspaceId: tenant, userId, role: "OWNER" } });
@@ -282,14 +283,107 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
       await db.$executeRaw`UPDATE "warehouses" SET "isDefault"=false,"isActive"=false WHERE "id"=${warehouseId}::uuid AND "workspaceId"=${tenant}::uuid`;
     }
   });
-  it("blocks customer BOMs before dispatch and avoids unimplemented duplicate component consumption", async () => {
-    const f=await fixture();
-    await db.$executeRaw`INSERT INTO "customer_sales_boms" ("workspaceId","customerId","productId","productCode") VALUES (${tenant}::uuid,${f.customer.id}::uuid,${f.productId}::uuid,'SYNTHETIC')`;
+  it("ships and invoices customer BOM assemblies exactly once using immutable component snapshots", async () => {
+    const f = await fixture("10", 100);
+    const componentId = await createProduct(ctx(), {
+      name: "Synthetic assembly bolt", sku: randomUUID(), category: "QA",
+      costPrice: 10, sellingPrice: 25, stockQuantity: 100, reorderLevel: 0,
+      unit: "PIECE", status: "ACTIVE", description: "",
+    });
+    const [bom] = await db.$queryRaw<Array<{ id: string }>>`
+      INSERT INTO "customer_sales_boms" ("workspaceId","customerId","productId","productCode")
+      VALUES (${tenant}::uuid,${f.customer.id}::uuid,${f.productId}::uuid,'SYNTHETIC-BOM')
+      RETURNING "id"::text AS "id"
+    `;
+    await db.$executeRaw`
+      INSERT INTO "customer_sales_bom_items" ("customerSalesBomId","componentProductId","quantityPerUnit")
+      VALUES (${bom!.id}::uuid,${componentId}::uuid,2)
+    `;
     await issueGatePass(ctx(), f.gp.id);
-    expect((await getOutboundGatePass(tenant, f.gp.id))!.status).toBe("ISSUED");
-    await expect(dispatchGatePass(ctx(), f.gp.id)).rejects.toThrow("BOM products");
-    expect((await db.product.findUniqueOrThrow({where:{id:f.productId}})).stockQuantity.toNumber()).toBe(100);
-    expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_DISPATCH" } })).toBe(0);
+    vi.stubEnv("OUTBOUND_GATE_PASS_BOM_DISPATCH_ENABLED", "false");
+    await expect(dispatchGatePass(ctx(), f.gp.id)).rejects.toThrow("certified BOM stock adapter");
+    expect((await db.product.findUniqueOrThrow({ where: { id: componentId } })).stockQuantity.toNumber()).toBe(100);
+    vi.stubEnv("OUTBOUND_GATE_PASS_BOM_DISPATCH_ENABLED", "true");
+    const attempts = await Promise.allSettled([dispatchGatePass(ctx(), f.gp.id), dispatchGatePass(ctx(), f.gp.id)]);
+    expect(attempts.filter((entry) => entry.status === "fulfilled")).toHaveLength(1);
+    expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(90);
+    expect((await db.product.findUniqueOrThrow({ where: { id: componentId } })).stockQuantity.toNumber()).toBe(80);
+    const gp = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id }, include: { items: true } });
+    expect(gp.items[0]!.unitCostSnapshot.toNumber()).toBe(70);
+    expect(gp.items[0]!.bomComponentsSnapshot).toMatchObject({
+      version: 1, components: [{ productId: componentId, quantityPerUnit: "2", unitCost: "10" }],
+    });
+    // Mutation of the customer's active BOM after dispatch MUST NOT change
+    // the components or cost carried by the original physical shipment.
+    await db.$executeRaw`
+      UPDATE "customer_sales_bom_items" SET "quantityPerUnit"=5
+      WHERE "customerSalesBomId"=${bom!.id}::uuid
+    `;
+    await db.product.update({ where: { id: componentId }, data: { costPrice: 11 } });
+    await recordGatePassReceiving(ctx(), {
+      gatePassId: f.gp.id, reference: "BOM-RECEIVER-001", recipient: "Customer receiving",
+      lines: [{ itemId: f.gp.items[0]!.id, accepted: "8", rejected: "2" }],
+    });
+    const issued = await invoiceAcceptedGatePass(ctx(), invoiceInput(f));
+    const replay = await invoiceAcceptedGatePass(ctx(), invoiceInput(f));
+    expect(issued.id).toBe(replay.id);
+    const sale = await db.invoice.findUniqueOrThrow({ where: { id: issued.id } });
+    const rows = await db.$queryRaw<Array<{ quantityPerUnit: Prisma.Decimal; soldQuantity: Prisma.Decimal; unitCost: Prisma.Decimal; totalQuantityConsumed: Prisma.Decimal }>>`
+      SELECT "quantityPerUnit","soldQuantity","unitCost","totalQuantityConsumed"
+      FROM "sales_order_component_snapshots" WHERE "salesOrderId"=${sale.salesOrderId}::uuid
+    `;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.quantityPerUnit.toNumber()).toBe(2);
+    expect(rows[0]!.soldQuantity.toNumber()).toBe(8);
+    expect(rows[0]!.totalQuantityConsumed.toNumber()).toBe(16);
+    expect(rows[0]!.unitCost.toNumber()).toBe(10);
+    const gl = await db.generalLedgerEntry.findMany({ where: { sourceId: sale.salesOrderId! } });
+    expect(gl.filter((row) => row.debit.eq(560))).toHaveLength(1);
+    const countComponents = await db.inventoryTransaction.count({
+      where: { workspaceId: tenant, productId: componentId, type: "GATE_PASS_DISPATCH", reference: `BOM:${gp.gatePassNumber}` },
+    });
+    expect(countComponents).toBe(1);
+    await Promise.all([
+      confirmRejectedStockReturn(ctx(), { gatePassId: f.gp.id, lines: [{ itemId: f.gp.items[0]!.id, returned: "2" }] }),
+      confirmRejectedStockReturn(ctx(), { gatePassId: f.gp.id, lines: [{ itemId: f.gp.items[0]!.id, returned: "2" }] }),
+    ]);
+    const parent = await db.product.findUniqueOrThrow({ where: { id: f.productId } });
+    expect(parent.stockQuantity.toNumber()).toBe(92);
+    expect(parent.costPrice.toNumber()).toBe(50.43);
+    expect((await db.product.findUniqueOrThrow({ where: { id: componentId } })).stockQuantity.toNumber()).toBe(80);
+    expect(await db.inventoryTransaction.count({ where: { productId: componentId, type: "GATE_PASS_RETURN" } })).toBe(0);
+    expect(await db.inventoryTransaction.count({
+      where: { productId: f.productId, type: "GATE_PASS_RETURN", reference: gp.gatePassNumber },
+    })).toBe(1);
+    const adjustments = await db.generalLedgerEntry.findMany({
+      where: { sourceId: gp.id, documentNo: { startsWith: `${gp.gatePassNumber}-BOM-WAC-` } },
+    });
+    expect(adjustments).toHaveLength(2);
+    expect(adjustments.reduce((sum, row) => sum.plus(row.debit).minus(row.credit), new Prisma.Decimal(0)).isZero()).toBe(true);
+  });
+
+  it("rolls back assemblies when a component cannot cover required dispatch stock", async () => {
+    const f = await fixture("10", 100);
+    const componentId = await createProduct(ctx(), {
+      name: "Insufficient synthetic component", sku: randomUUID(), category: "QA",
+      costPrice: 10, sellingPrice: 25, stockQuantity: 2, reorderLevel: 0,
+      unit: "PIECE", status: "ACTIVE", description: "",
+    });
+    const [bom] = await db.$queryRaw<Array<{ id: string }>>`
+      INSERT INTO "customer_sales_boms" ("workspaceId","customerId","productId","productCode")
+      VALUES (${tenant}::uuid,${f.customer.id}::uuid,${f.productId}::uuid,'SYNTHETIC-INSUFFICIENT')
+      RETURNING "id"::text AS "id"
+    `;
+    await db.$executeRaw`
+      INSERT INTO "customer_sales_bom_items" ("customerSalesBomId","componentProductId","quantityPerUnit")
+      VALUES (${bom!.id}::uuid,${componentId}::uuid,2)
+    `;
+    await issueGatePass(ctx(), f.gp.id);
+    await expect(dispatchGatePass(ctx(), f.gp.id)).rejects.toThrow("Insufficient component stock");
+    expect((await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } })).status).toBe("ISSUED");
+    expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(100);
+    expect((await db.product.findUniqueOrThrow({ where: { id: componentId } })).stockQuantity.toNumber()).toBe(2);
+    expect(await db.inventoryTransaction.count({ where: { productId: componentId, type: "GATE_PASS_DISPATCH" } })).toBe(0);
   });
   it("reconciles owned inventory including transit to the inventory GL asset", async () => {
     const products=await db.product.findMany({where:{workspaceId:tenant}});
