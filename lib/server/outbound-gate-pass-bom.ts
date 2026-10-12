@@ -1,7 +1,7 @@
 import "server-only";
 
 import { Prisma } from "@prisma/client";
-import { applyManagedWarehouseStockDelta } from "@/lib/server/managed-warehouse-stock";
+import { applyManagedWarehouseStockDelta, ManagedWarehouseStockError } from "@/lib/server/managed-warehouse-stock";
 
 /**
  * Customer assemblies use the same physical component inventory as ordinary
@@ -167,10 +167,20 @@ export async function deductGatePassBomComponents(
     if (result.count !== 1) {
       throw new GatePassBomError(`Component ${product.name} has insufficient stock for this dispatch.`);
     }
-    await applyManagedWarehouseStockDelta(tx, {
-      workspaceId: input.workspaceId, warehouseId: input.warehouseId,
-      productId, delta: quantity.negated(),
-    });
+    try {
+      await applyManagedWarehouseStockDelta(tx, {
+        workspaceId: input.workspaceId, warehouseId: input.warehouseId,
+        productId, delta: quantity.negated(),
+      });
+    } catch (error) {
+      if (error instanceof ManagedWarehouseStockError) {
+        if (error.code === "NEGATIVE_WAREHOUSE_STOCK") {
+          throw new GatePassBomError(`Insufficient ${product.name} stock in the selected dispatch warehouse.`);
+        }
+        throw new GatePassBomError("Assembly dispatch warehouse is invalid or unavailable.");
+      }
+      throw error;
+    }
     await tx.inventoryTransaction.create({
       data: { workspaceId: input.workspaceId, productId, type: "GATE_PASS_DISPATCH",
         quantityChanged: quantity.negated(), unitCost: product.costPrice,
