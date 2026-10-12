@@ -94,7 +94,7 @@ export default async function OutboundGatePassPrintPage({ params }: { params: Pr
         <div className="grid grid-cols-3 gap-5 text-center">
           <div className="border-t border-black pt-2">Prepared By</div>
           <div className="border-t border-black pt-2">Authorized By</div>
-          <div className="border-t border-black pt-2">Receiver Signature / Stamp</div>
+          <div className="border-t border-black pt-2">Receiver signature / stamp</div>
         </div>
         <p className="mt-5">Receiving date: ____________________ &nbsp; Receiving reference: ____________________</p>
       </section>
