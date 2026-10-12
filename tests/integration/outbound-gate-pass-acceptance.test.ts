@@ -123,6 +123,7 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
       items: [{ itemId: order.items[0]!.id, quantity: 1 }],
       restock: true,
       reason: "Synthetic ordinary return attempt",
+      notes: "Test-only stock guard",
       idempotencyKey: randomUUID(),
     })).rejects.toThrow("originates from a dispatched Gate Pass");
     await expect(updateSaleAndInvoice(ctx(), {
