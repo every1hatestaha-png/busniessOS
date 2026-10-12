@@ -1,0 +1,72 @@
+name: Gate Pass PG18 acceptance
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gate-pass-pg18-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate-pass-pg18:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: munshios_gatepass_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d munshios_gatepass_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_gatepass_ci?sslmode=disable
+      NODE_ENV: test
+      RUN_OUTBOUND_GP_ACCEPTANCE: "true"
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_synthetic_gatepass_pg18_key
+
+    steps:
+      - name: Checkout reviewed commit
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - name: Confirm disposable local database target
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const url = new URL(process.env.DATABASE_URL);
+          if (!['127.0.0.1', 'localhost'].includes(url.hostname)
+            || !url.pathname.startsWith('/munshios_gatepass_')
+            || process.env.RUN_OUTBOUND_GP_ACCEPTANCE !== 'true') {
+            throw new Error('Refusing to run acceptance tests outside disposable loopback PostgreSQL.');
+          }
+          NODE
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate schema and apply migrations to disposable PG18
+        run: |
+          npx prisma validate
+          npx prisma migrate deploy
+
+      - name: Execute real Gate Pass end-to-end acceptance
+        run: npx vitest run tests/integration/outbound-gate-pass-acceptance.test.ts --reporter=verbose
