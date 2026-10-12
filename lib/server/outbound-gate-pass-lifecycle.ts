@@ -96,7 +96,8 @@ export async function issueGatePass(ctx: Context, id: string) {
     const gp = await getGatePassForUpdate(tx, ctx, id);
     if (gp.status !== "DRAFT" || !gp.items.length) throw new GatePassWorkflowError("Only populated drafts can be issued.");
     const ids = gp.items.map((x) => x.productId);
-    await assertNotCustomerBOM(tx, ctx, gp.customerId, ids);
+    // Issuance is document-only. Customer BOMs require a certified dispatch
+    // adapter, but must not prevent drafting and printing the gate pass.
     const products = await tx.product.findMany({
       where: { workspaceId: ctx.workspaceId, id: { in: ids }, status: "ACTIVE" },
       select: { id: true, sellingPrice: true, costPrice: true },

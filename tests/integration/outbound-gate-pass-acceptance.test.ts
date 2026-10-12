@@ -248,8 +248,11 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
   it("blocks customer BOMs before dispatch and avoids unimplemented duplicate component consumption", async () => {
     const f=await fixture();
     await db.$executeRaw`INSERT INTO "customer_sales_boms" ("workspaceId","customerId","productId","productCode") VALUES (${tenant}::uuid,${f.customer.id}::uuid,${f.productId}::uuid,'SYNTHETIC')`;
-    await expect(issueGatePass(ctx(),f.gp.id)).rejects.toThrow("BOM products");
+    await issueGatePass(ctx(), f.gp.id);
+    expect((await getOutboundGatePass(tenant, f.gp.id))!.status).toBe("ISSUED");
+    await expect(dispatchGatePass(ctx(), f.gp.id)).rejects.toThrow("BOM products");
     expect((await db.product.findUniqueOrThrow({where:{id:f.productId}})).stockQuantity.toNumber()).toBe(100);
+    expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_DISPATCH" } })).toBe(0);
   });
   it("reconciles owned inventory including transit to the inventory GL asset", async () => {
     const products=await db.product.findMany({where:{workspaceId:tenant}});
