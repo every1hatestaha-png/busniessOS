@@ -405,6 +405,13 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(100);
     expect((await db.product.findUniqueOrThrow({ where: { id: componentId } })).stockQuantity.toNumber()).toBe(2);
     expect(await db.inventoryTransaction.count({ where: { productId: componentId, type: "GATE_PASS_DISPATCH" } })).toBe(0);
+    const { default: Detail } = await import("@/app/(dashboard)/gate-passes/[id]/page");
+    const shown = renderToStaticMarkup(await Detail({ params: Promise.resolve({ id: f.gp.id }) }));
+    expect(shown).toContain("Insufficient dispatch stock");
+    expect(shown).toContain("Insufficient synthetic component");
+    expect(shown).toContain("required 20");
+    expect(shown).toContain("available 2");
+    expect(shown).not.toContain("Confirm Dispatch");
   });
   it("handles fractional BOM components in a managed warehouse with balanced returns", async () => {
     const warehouseId = randomUUID();
