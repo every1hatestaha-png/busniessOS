@@ -19,6 +19,7 @@ import {
   restoreSaleBomComponents,
 } from "@/lib/server/customer-sales-bom";
 import type { InvoiceIssuedSnapshot } from "@/lib/server/invoice-snapshot";
+import { assertStandaloneSaleMutationAllowed, GatePassSaleMutationError } from "@/lib/server/gate-pass-sale-integrity";
 
 export type ServiceContext = { workspaceId: string; role: Role; userId?: string };
 export class SaleDomainError extends Error {
@@ -420,6 +421,12 @@ export async function createCustomerReturn(context: ServiceContext, input: Custo
     }
     const order = await tx.salesOrder.findFirst({ where: { id: data.salesOrderId, workspaceId: context.workspaceId, status: { not: "CANCELLED" } }, include: { items: true } });
     if (!order) throw new SaleDomainError("SALE_NOT_FOUND", "Sale not found.");
+    try {
+      await assertStandaloneSaleMutationAllowed(tx, context.workspaceId, order.id);
+    } catch (error) {
+      if (error instanceof GatePassSaleMutationError) throw new SaleDomainError("INVALID_RETURN", error.message);
+      throw error;
+    }
     const itemIds = data.items.map((item) => item.itemId);
     if (new Set(itemIds).size !== itemIds.length) throw new SaleDomainError("INVALID_RETURN", "Duplicate return items are not allowed.");
     const previous = await tx.customerReturnItem.groupBy({ by: ["salesOrderItemId"], where: { salesOrderItemId: { in: itemIds }, customerReturn: { workspaceId: context.workspaceId, creditNote: { is: { status: { not: "CANCELLED" } } } } }, _sum: { quantity: true } });
@@ -510,6 +517,12 @@ export async function cancelSale(context: ServiceContext, id: string, reverseIni
   return withSerializableRetry(async (tx) => {
     const order = await tx.salesOrder.findFirst({ where: { id, workspaceId: context.workspaceId }, include: { items: true, returns: { where: { creditNote: { is: { status: { not: "CANCELLED" } } } }, select: { id: true }, take: 1 }, invoices: { include: { payments: { where: { isReversed: false }, orderBy: { createdAt: "asc" } }, allocations: { where: { payment: { isReversed: false } }, select: { paymentId: true } }, creditAllocations: { select: { id: true }, take: 1 } } } } });
     if (!order) throw new SaleDomainError("CUSTOMER_NOT_FOUND", "Sale not found.");
+    try {
+      await assertStandaloneSaleMutationAllowed(tx, context.workspaceId, order.id);
+    } catch (error) {
+      if (error instanceof GatePassSaleMutationError) throw new SaleDomainError("INVALID_RETURN", error.message);
+      throw error;
+    }
     if (order.status === "CANCELLED") return { id: order.id };
     const invoice = order.invoices[0];
     const activePayments = invoice?.payments ?? [];
