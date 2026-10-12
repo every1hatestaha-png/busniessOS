@@ -101,6 +101,8 @@ describe("print UX regression contracts", () => {
     expect(receivingPage).toContain('requirePermission("business.read")');
     expect(detail).toContain("/receiving/print");
     expect(css).toContain("[data-receiving-acknowledgement-print] [data-gp-thermal-hide]");
+    expect(source("scripts/gate-pass-browser-print.cjs")).toContain('["gate-pass", "receiving"]');
+    expect(source("tests/browser/gate-pass-print/fixture.tsx")).toContain("GatePassReceivingPrintBody");
     expect(receivingPage).not.toContain("stockQuantity: {");
   });
 
