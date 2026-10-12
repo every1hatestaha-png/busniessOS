@@ -281,6 +281,8 @@
   html[data-print-format="thermal"] [data-gate-pass-print] [data-gp-sku] {
     display: none !important;
   }
+  html[data-print-format="thermal"] [data-gate-pass-print] [data-gp-a4-totals] { display: none !important; }
+  html[data-print-format="thermal"] [data-gate-pass-print] [data-gp-thermal-totals] { display: table-row !important; }
   html[data-print-format="thermal"] [data-gate-pass-print] [data-gatepass-items] th:nth-child(1) { width: 8%; }
   html[data-print-format="thermal"] [data-gate-pass-print] [data-gatepass-items] th:nth-child(2) { width: 48%; }
   html[data-print-format="thermal"] [data-gate-pass-print] [data-gatepass-items] th:nth-child(4) { width: 25%; }

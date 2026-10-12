@@ -79,11 +79,18 @@ export default async function OutboundGatePassPrintPage({ params }: { params: Pr
             <td className="py-2 text-right tabular-nums">{item.dispatchedQuantity.toString()}</td>
             <td className="break-words py-2 pl-2">{item.productUnitSnapshot}</td>
           </tr>)}</tbody>
-          <tfoot><tr className="border-t-2 border-black font-semibold">
-            <td colSpan={3} className="py-2 text-right" data-gp-total-label>Total quantity ({gp.items.length} lines)</td>
-            <td className="py-2 text-right tabular-nums">{totalQuantity}</td>
-            <td className="pl-2 text-xs">{totalUnit}</td>
-          </tr></tfoot>
+          <tfoot>
+            <tr data-gp-a4-totals className="border-t-2 border-black font-semibold">
+              <td colSpan={3} className="py-2 text-right" data-gp-total-label>Total quantity ({gp.items.length} lines)</td>
+              <td className="py-2 text-right tabular-nums">{totalQuantity}</td>
+              <td className="pl-2 text-xs">{totalUnit}</td>
+            </tr>
+            <tr data-gp-thermal-totals className="hidden border-t-2 border-black font-semibold">
+              <td colSpan={2} className="py-2 text-right" data-gp-total-label>Total ({gp.items.length} lines)</td>
+              <td className="py-2 text-right tabular-nums">{totalQuantity}</td>
+              <td className="pl-1 text-xs">{totalUnit}</td>
+            </tr>
+          </tfoot>
         </table>
         {!isSingleUnit && <p className="mt-1 text-[10px] text-neutral-600">Multiple product units are present; no misleading combined quantity is printed.</p>}
       </section>
