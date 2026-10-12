@@ -22,6 +22,6 @@ export default async function PendingAcceptedInvoicesPage() {
         <td className="p-3 text-center">{row.items.filter((x) => x.rejectedQuantity.greaterThan(0)).length}</td>
         <td className="p-3">{confirmed ? "Receiving confirmed" : "Awaiting receiving"}</td>
         <td className="p-3"><Link href={`/gate-passes/${row.id}`} className="underline">{confirmed ? "Review and invoice" : "Review gate pass"}</Link></td></tr>; })}</tbody>
-    </table>{!rows.length && <p className="p-4 text-sm text-muted-foreground">No accepted gate passes await invoicing.</p>}</div>
+    </table>{!rows.length && <p className="p-4 text-sm text-muted-foreground">No issued gate passes or accepted receiving documents are awaiting invoicing.</p>}</div>
   </div>;
 }
