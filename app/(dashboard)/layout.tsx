@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Sidebar } from "@/components/layout/sidebar";
+import { outboundGatePassDraftFeatureEnabled } from "@/lib/server/outbound-gate-pass-feature";
 import { TopNav } from "@/components/layout/top-nav";
 import { PrintShortcutRouter } from "@/components/documents/print-shortcut-router";
 import { listCurrentUserWorkspaces, requireWorkspace } from "@/lib/server/auth";
@@ -26,7 +27,7 @@ export default async function DashboardLayout({
     <div className="flex min-h-dvh w-full min-w-0 bg-background text-foreground print:block print:min-h-0 print:bg-white">
       <PrintShortcutRouter />
       <div className="sticky top-0 hidden h-dvh shrink-0 print:hidden lg:block">
-        <Sidebar workspaceName={workspace.name} role={role} enabledModules={enabledModules} vertical={vertical} />
+        <Sidebar workspaceName={workspace.name} gatePassEnabled={outboundGatePassDraftFeatureEnabled(workspace.id)} role={role} enabledModules={enabledModules} vertical={vertical} />
       </div>
       <div className="min-w-0 flex-1 print:block">
         <TopNav workspaceName={workspace.name} workspaceId={workspace.id} workspaces={workspaces} role={role} enabledModules={enabledModules} vertical={vertical} />
