@@ -3,7 +3,7 @@ import type { WorkspaceVertical } from "@prisma/client";
 export type NavigationSection = { label: string; routes: readonly string[] };
 
 const overview = ["/dashboard"];
-const tradingOperations = ["/sales", "/purchases", "/goods-receipts", "/inventory", "/customers", "/suppliers", "/supplier-returns"];
+const tradingOperations = ["/sales", "/gate-passes", "/purchases", "/goods-receipts", "/inventory", "/customers", "/suppliers", "/supplier-returns"];
 const finance = ["/khata", "/invoices", "/collections", "/receivables", "/accounting/cash-bank", "/accounting/expenses", "/accounting/notes", "/payables", "/reports"];
 const workspace = ["/ai", "/settings"];
 
@@ -18,7 +18,7 @@ const navigation: Record<WorkspaceVertical, readonly NavigationSection[]> = {
   MANUFACTURING: [
     { label: "Overview", routes: overview },
     { label: "Production", routes: ["/manufacturing", "/inventory"] },
-    { label: "Trade flows", routes: ["/purchases", "/goods-receipts", "/suppliers", "/sales", "/customers", "/supplier-returns"] },
+    { label: "Trade flows", routes: ["/purchases", "/goods-receipts", "/suppliers", "/sales", "/gate-passes", "/customers", "/supplier-returns"] },
     { label: "Optional modules", routes: ["/restaurant", "/services"] },
     { label: "Finance", routes: finance },
     { label: "Workspace", routes: workspace },

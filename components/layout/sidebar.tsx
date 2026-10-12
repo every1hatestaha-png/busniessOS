@@ -14,6 +14,7 @@ import {
   ClipboardList,
   Factory,
   FileText,
+  ClipboardCheck,
   HandCoins,
   Landmark,
   LayoutDashboard,
@@ -45,6 +46,7 @@ type SidebarRoute = {
 const routes: SidebarRoute[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/sales", label: "Sales", icon: ShoppingCart },
+  { href: "/gate-passes", label: "Gate Passes", icon: ClipboardCheck },
   { href: "/purchases", label: "Purchases", icon: FileText },
   { href: "/goods-receipts", label: "Goods Receipts", icon: PackageCheck },
   { href: "/inventory", label: "Inventory", icon: Package },
@@ -76,11 +78,13 @@ const routeByHref = new Map(routes.map((route) => [route.href, route]));
 
 export function Sidebar({
   workspaceName,
+  gatePassEnabled,
   role,
   enabledModules,
   vertical,
 }: {
   workspaceName: string;
+  gatePassEnabled: boolean;
   role: Role;
   enabledModules: string[];
   vertical: WorkspaceVertical;
@@ -122,6 +126,7 @@ export function Sidebar({
               .map((href) => routeByHref.get(href))
               .filter((route): route is SidebarRoute => Boolean(route))
               .filter((route) => {
+                if (route.href === "/gate-passes" && !gatePassEnabled) return false;
                 if (role === "STAFF" && route.financial) return false;
                 if (route.module && !enabled.has(route.module)) return false;
                 return true;
