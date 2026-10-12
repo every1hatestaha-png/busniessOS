@@ -14,6 +14,12 @@ describe("getDedicatedPrintRoute", () => {
     expect(getDedicatedPrintRoute("/services/quotes/quote-123")).toBe("/services/quotes/quote-123/print");
   });
 
+  it("routes gate pass details to the signed standalone print surface", () => {
+    expect(getDedicatedPrintRoute("/gate-passes/gp-123")).toBe("/gate-passes/gp-123/print");
+    expect(getDedicatedPrintRoute("/gate-passes")).toBeNull();
+    expect(getDedicatedPrintRoute("/gate-passes/gp-123/print")).toBeNull();
+  });
+
   it("does not recurse from an existing print page", () => {
     expect(getDedicatedPrintRoute("/goods-receipts/grn-123/print")).toBeNull();
   });

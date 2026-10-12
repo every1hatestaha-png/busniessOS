@@ -1244,9 +1244,31 @@ function createMainWindow() {
   mainWindow.webContents.on("before-input-event", (event, input) => {
     if (input.type !== "keyDown" || input.key.toLowerCase() !== "p" || !(input.control || input.meta)) return;
     event.preventDefault();
-    mainWindow?.webContents.print({}, (success, failureReason) => {
-      appendLog(success ? "INFO" : "ERROR", success ? "[D8.1][print] print dialog opened" : `[D8.1][print] failed reason=${failureReason}`);
-    });
+    const printActivePage = () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      mainWindow.webContents.print({}, (success, failureReason) => {
+        appendLog(success ? "INFO" : "ERROR", success ? "[D8.1][print] print dialog opened" : `[D8.1][print] failed reason=${failureReason}`);
+      });
+    };
+    // The independent GP detail is NOT itself a print document. On desktop
+    // Ctrl/Cmd+P must navigate to its authenticated print-only route instead
+    // of printing the stock/receiving controls.
+    let current;
+    try { current = new URL(mainWindow?.webContents.getURL() || ""); } catch { printActivePage(); return; }
+    if (current.origin !== serverOrigin || !/^\/gate-passes\/[^/]+\/?$/.test(current.pathname)) {
+      printActivePage();
+      return;
+    }
+    const pathname = current.pathname.replace(/\/+$/, "");
+    const printUrl = new URL(`${pathname}/print`, serverOrigin);
+    void mainWindow.loadURL(printUrl.toString()).then(async () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      // Wait for dedicated page fonts/paint before invoking native printer.
+      await mainWindow.webContents.executeJavaScript(
+        "Promise.race([document.fonts.ready.catch(() => undefined), new Promise(resolve => setTimeout(resolve, 2500))]).then(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))"
+      ).catch(() => undefined);
+      printActivePage();
+    }).catch((error) => appendLog("ERROR", `[D8.1][gate-pass-print] navigation failed: ${error.message}`));
   });
 
   mainWindow.webContents.on("render-process-gone", (_event, details) => {

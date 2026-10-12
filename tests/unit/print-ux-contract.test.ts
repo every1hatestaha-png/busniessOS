@@ -53,6 +53,26 @@ describe("print UX regression contracts", () => {
     expect(source("app/(dashboard)/reports/supplier-statement/page.tsx")).toContain("printable={Boolean(statement)}");
   });
 
+  it("isolates the independent gate pass document and has a thermal-aware print variant", () => {
+    const page = source("app/(dashboard)/gate-passes/[id]/print/page.tsx");
+    const body = source("components/gate-passes/gate-pass-print-body.tsx");
+    const css = source("app/globals.css");
+    expect(body).toContain("data-document data-gate-pass-print");
+    expect(body).toContain('data-print-orientation="portrait"');
+    expect(page).toContain('<PrintButton label="Print A4 Gate Pass"');
+    expect(page).toContain('format="thermal"');
+    expect(body).toContain("data-gatepass-items");
+    expect(body).toContain("Multiple product units");
+    expect(source("desktop/main.cjs")).toContain("gate-pass-print");
+    expect(body).toContain("data-document-signatures");
+    expect(body).toContain("Receiver signature / stamp");
+    expect(page).not.toContain("invoice.invoiceNumber");
+    expect(css).toContain('html[data-print-format="thermal"] [data-gate-pass-print]');
+    expect(css).toContain("size: 80mm 297mm");
+    expect(css).toContain("page: gatepass-thermal !important");
+    expect(css).toContain('html[data-print-format="thermal"] [data-gate-pass-print] [data-gp-sku]');
+  });
+
   it("routes cash-bank printing to the dedicated ledger report", () => {
     expect(source("app/(dashboard)/accounting/cash-bank/[id]/page.tsx")).toContain("/reports/cash-bank?accountId=");
   });
