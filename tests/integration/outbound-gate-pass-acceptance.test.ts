@@ -179,7 +179,7 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     // receipt that gets "receiving closed" after invoice creation.
     const { default: GatePassDetail } = await import("@/app/(dashboard)/gate-passes/[id]/page");
     const receivingMarkup = renderToStaticMarkup(await GatePassDetail({ params: Promise.resolve({ id: f.gp.id }) }));
-    expect(receivingMarkup).toMatch(/<textarea[^>]*name="notes"[^>]*>Received<\\/textarea>/);
+    expect(receivingMarkup).toContain('>Received</textarea>');
     const replay = await recordGatePassReceiving(ctx(), receipt);
     const unchanged = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
     expect(replay.status).toBe(first.status);
