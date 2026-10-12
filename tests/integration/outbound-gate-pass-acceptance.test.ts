@@ -151,6 +151,24 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
 
   it("supports partial receiving, blocks premature invoicing, and prevents decreasing/reopening receipt", async () => {
     const f = await fixture(); await accepted(f,"3","2");
+    // A partially received Gate Pass remains editable. Persisted notes must
+    // survive reloading the form, otherwise an exact replay sends blank notes
+    // and needlessly increments the receipt version.
+    const partial = {
+      gatePassId: f.gp.id, reference: "QA", recipient: "QA",
+      notes: "Keep pallet count pending",
+      lines: [{ itemId: f.gp.items[0]!.id, accepted: "3", rejected: "2" }],
+    };
+    await recordGatePassReceiving(ctx(), partial);
+    const beforeReload = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
+    const { default: GatePassDetail } = await import("@/app/(dashboard)/gate-passes/[id]/page");
+    const partialPage = renderToStaticMarkup(await GatePassDetail({ params: Promise.resolve({ id: f.gp.id }) }));
+    expect(partialPage).toContain('name="notes"');
+    expect(partialPage).toContain("Keep pallet count pending");
+    await recordGatePassReceiving(ctx(), partial);
+    const afterReplay = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
+    expect(afterReplay.version).toBe(beforeReload.version);
+    expect(afterReplay.receivingAt?.toISOString()).toBe(beforeReload.receivingAt?.toISOString());
     await expect(invoiceAcceptedGatePass(ctx(), invoiceInput(f))).rejects.toThrow();
     await expect(recordGatePassReceiving(ctx(), { gatePassId:f.gp.id, reference:"QA", recipient:"QA", lines:[{itemId:f.gp.items[0]!.id,accepted:"2",rejected:"2"}] })).rejects.toThrow("cannot decrease");
     await recordGatePassReceiving(ctx(), { gatePassId:f.gp.id, reference:"QA", recipient:"QA", lines:[{itemId:f.gp.items[0]!.id,accepted:"8",rejected:"2"}] });
@@ -174,12 +192,6 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     expect(await db.invoice.count({ where: { customerId: f.customer.id } })).toBe(0);
     expect(await db.inventoryTransaction.count({ where: { workspaceId: tenant } })).toBe(beforePrinting);
     const recorded = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
-    // A browser refresh must restore the previous receiver notes so that a
-    // repeat submission is a genuine idempotent replay, not an altered
-    // receipt that gets "receiving closed" after invoice creation.
-    const { default: GatePassDetail } = await import("@/app/(dashboard)/gate-passes/[id]/page");
-    const receivingMarkup = renderToStaticMarkup(await GatePassDetail({ params: Promise.resolve({ id: f.gp.id }) }));
-    expect(receivingMarkup).toContain('>Received</textarea>');
     const replay = await recordGatePassReceiving(ctx(), receipt);
     const unchanged = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
     expect(replay.status).toBe(first.status);
