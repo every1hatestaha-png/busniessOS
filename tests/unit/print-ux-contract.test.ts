@@ -87,15 +87,16 @@ describe("print UX regression contracts", () => {
 
   it("prints an invoice-independent signed-receiving acknowledgement with thermal-safe columns", () => {
     const receivingPage = source("app/(dashboard)/gate-passes/[id]/receiving/print/page.tsx");
+    const body = source("components/gate-passes/gate-pass-receiving-print-body.tsx");
     const detail = source("app/(dashboard)/gate-passes/[id]/page.tsx");
     const css = source("app/globals.css");
-    expect(receivingPage).toContain("data-receiving-acknowledgement-print");
+    expect(body).toContain("data-receiving-acknowledgement-print");
     expect(receivingPage).toContain("Print Receiving 80mm");
     expect(receivingPage).toContain('format="thermal"');
-    expect(receivingPage).toContain("Customer receiving signature / stamp");
-    expect(receivingPage).toContain("INTERIM RECEIVING");
-    expect(receivingPage).toContain("Mixed units:");
-    expect(receivingPage).toContain("not an invoice");
+    expect(body).toContain("Customer receiving signature / stamp");
+    expect(body).toContain("INTERIM RECEIVING");
+    expect(body).toContain("Mixed units:");
+    expect(body).toContain("not an invoice");
     expect(receivingPage).toContain('getOutboundGatePass(workspaceId, id)');
     expect(receivingPage).toContain('requirePermission("business.read")');
     expect(detail).toContain("/receiving/print");
