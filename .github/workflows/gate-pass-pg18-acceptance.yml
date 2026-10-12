@@ -34,6 +34,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_gatepass_ci?sslmode=disable
       NODE_ENV: test
+      RUN_INTEGRATION_TESTS: "true"
       RUN_OUTBOUND_GP_ACCEPTANCE: "true"
       NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_synthetic_gatepass_pg18_key
