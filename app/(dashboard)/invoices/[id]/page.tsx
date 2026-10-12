@@ -46,6 +46,10 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     canRecordPayments ? getCashBankAccounts(workspaceId) : Promise.resolve([]),
   ]);
   if (!invoice) notFound();
+  const gatePassOrigin = await db.outboundGatePass.findFirst({
+    where: { workspaceId, invoiceId: invoice.id },
+    select: { id: true, gatePassNumber: true },
+  });
   const seller = invoice.seller ?? workspace;
   const dcNumber = deliveryChallanNumber(invoice.invoiceNumber);
   const whatsappUrl = buildWhatsAppShareUrl(
@@ -139,12 +143,13 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between print:hidden">
         <div><Link href="/invoices" className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-neutral-500 hover:text-neutral-950"><ArrowLeft className="h-4 w-4" />Invoices</Link><div className="flex flex-wrap items-center gap-3"><h1 className="text-2xl font-bold tracking-tight md:text-3xl">{invoice.invoiceNumber}</h1><StatusBadge status={invoice.status} /></div><p className="mt-1 text-sm text-neutral-500">Issued to {invoice.customer.companyName} · DC {dcNumber}</p></div>
         <div className="flex flex-wrap items-center gap-2">
-          {invoice.order && invoice.status !== "CANCELLED" && canManageFinancials && <Link href={`/sales/${invoice.order.id}/edit`} className={actionLink}><Pencil className="h-4 w-4" />Edit invoice</Link>}
-          {invoice.order && <Link href={`/invoices/${invoice.id}/gate-pass`} className={actionLink}><Truck className="h-4 w-4" />Gate Pass {dcNumber}</Link>}
+          {invoice.order && !gatePassOrigin && invoice.status !== "CANCELLED" && canManageFinancials && <Link href={`/sales/${invoice.order.id}/edit`} className={actionLink}><Pencil className="h-4 w-4" />Edit invoice</Link>}
+          {gatePassOrigin && <Link href={`/gate-passes/${gatePassOrigin.id}`} className={actionLink}><Truck className="h-4 w-4" />Source Gate Pass {gatePassOrigin.gatePassNumber}</Link>}
+          {!gatePassOrigin && invoice.order && <Link href={`/invoices/${invoice.id}/gate-pass`} className={actionLink}><Truck className="h-4 w-4" />Gate Pass {dcNumber}</Link>}
           {whatsappUrl && <a href={whatsappUrl} target="_blank" rel="noreferrer" className={actionLink}><MessageCircleMore className="h-4 w-4" />WhatsApp</a>}
           <PrintButton label={fbrPrintBlocked ? "FBR print blocked" : "Print invoice"} disabled={fbrPrintBlocked} />
           <PrintButton label={fbrPrintBlocked ? "FBR thermal blocked" : "80mm receipt"} disabled={fbrPrintBlocked} format="thermal" />
-          {invoice.order && invoice.status !== "CANCELLED" && canManageFinancials && <CancelSaleButton saleId={invoice.order.id} orderNumber={invoice.order.number} />}
+          {invoice.order && !gatePassOrigin && invoice.status !== "CANCELLED" && canManageFinancials && <CancelSaleButton saleId={invoice.order.id} orderNumber={invoice.order.number} />}
         </div>
       </div>
 

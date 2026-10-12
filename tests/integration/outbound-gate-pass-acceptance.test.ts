@@ -4,6 +4,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/server/db";
 import { createProduct } from "@/lib/server/products";
+import { createCustomerReturn, cancelSale } from "@/lib/server/sales";
+import { updateSaleAndInvoice } from "@/lib/server/sale-edit";
 import { createOutboundGatePassDraft, getOutboundGatePass, listOutboundGatePasses } from "@/lib/server/outbound-gate-passes";
 import { issueGatePass, dispatchGatePass, recordGatePassReceiving, confirmRejectedStockReturn, invoiceAcceptedGatePass, cancelUndispatchedGatePass } from "@/lib/server/outbound-gate-pass-lifecycle";
 import { ownedTransitInventory } from "@/lib/delivery-acceptance/transit-reconciliation";
@@ -98,6 +100,55 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     expect(ownedTransitInventory({ dispatched: item.dispatchedQuantity, accepted: item.acceptedQuantity, rejected: item.rejectedQuantity, returned: item.returnedQuantity, status: final!.status, unitCost: item.unitCostSnapshot }).quantity.toNumber()).toBe(0);
     await expect(invoiceAcceptedGatePass(ctx(), { ...invoiceInput(f), lines: [{ itemId: item.id, unitPrice: "201", taxRate: 18 }] })).rejects.toThrow("different pricing");
   });
+  it("prevents standard Sale mutation routes from changing a Gate Pass-origin invoice and physical stock", async () => {
+    const f = await fixture("10", 100);
+    await accepted(f, "8", "2");
+    const created = await invoiceAcceptedGatePass(ctx(), invoiceInput(f));
+    const invoice = await db.invoice.findUniqueOrThrow({
+      where: { id: created.id },
+      include: { salesOrder: { include: { items: true } } },
+    });
+    const order = invoice.salesOrder!;
+    const originalStock = (await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity;
+    const originalInvoiceCount = await db.invoice.count({ where: { customerId: f.customer.id } });
+    const originalReturnCount = await db.customerReturn.count({ where: { salesOrderId: order.id } });
+    const originalInventoryTxCount = await db.inventoryTransaction.count({ where: { workspaceId: tenant } });
+    const originalLedgerCount = await db.generalLedgerEntry.count({ where: { workspaceId: tenant } });
+    const originalCustomerBalance = (await db.customer.findUniqueOrThrow({ where: { id: f.customer.id } })).currentBalance;
+    const originalStatus = order.status;
+    await expect(cancelSale(ctx(), order.id, false))
+      .rejects.toThrow("originates from a dispatched Gate Pass");
+    await expect(createCustomerReturn(ctx(), {
+      salesOrderId: order.id,
+      items: [{ itemId: order.items[0]!.id, quantity: 1 }],
+      restock: true,
+      reason: "Synthetic ordinary return attempt",
+      notes: "Test-only stock guard",
+      idempotencyKey: randomUUID(),
+    })).rejects.toThrow("originates from a dispatched Gate Pass");
+    await expect(updateSaleAndInvoice(ctx(), {
+      saleId: order.id, customerId: f.customer.id,
+      issuedAt: new Date("2026-10-12T00:00:00Z"),
+      dueDate: new Date("2026-11-12T00:00:00Z"),
+      items: [{ productId: f.productId, quantity: 8, pricingMode: "UNIT",
+        unitPrice: 200, discountPerUnit: 0, taxRate: 18 }],
+      orderDiscount: 0, gstRate: 18, notes: "Synthetic ordinary edit attempt",
+    })).rejects.toThrow("originates from a dispatched Gate Pass");
+    expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.eq(originalStock)).toBe(true);
+    expect(await db.customerReturn.count({ where: { salesOrderId: order.id } })).toBe(originalReturnCount);
+    expect(await db.invoice.count({ where: { customerId: f.customer.id } })).toBe(originalInvoiceCount);
+    expect(await db.inventoryTransaction.count({ where: { workspaceId: tenant } })).toBe(originalInventoryTxCount);
+    expect(await db.generalLedgerEntry.count({ where: { workspaceId: tenant } })).toBe(originalLedgerCount);
+    expect((await db.customer.findUniqueOrThrow({ where: { id: f.customer.id } })).currentBalance.eq(originalCustomerBalance)).toBe(true);
+    expect((await db.salesOrder.findUniqueOrThrow({ where: { id: order.id } })).status).toBe(originalStatus);
+    // A rejected physical unit can still return by the explicit Gate Pass
+    // path; blocking ordinary Sale returns must not strand these goods.
+    await confirmRejectedStockReturn(ctx(), {
+      gatePassId: f.gp.id, lines: [{ itemId: f.gp.items[0]!.id, returned: "2" }],
+    });
+    expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(92);
+  });
+
   it("supports partial receiving, blocks premature invoicing, and prevents decreasing/reopening receipt", async () => {
     const f = await fixture(); await accepted(f,"3","2");
     await expect(invoiceAcceptedGatePass(ctx(), invoiceInput(f))).rejects.toThrow();

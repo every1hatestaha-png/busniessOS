@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { EditSaleForm } from "@/components/sales/edit-sale-form";
 import { requirePermission } from "@/lib/server/authorization";
@@ -17,6 +17,13 @@ export default async function EditSalePage({ params }: { params: Promise<{ id: s
     include: { items: true, invoices: { take: 1 } },
   });
   if (!sale || !sale.invoices[0]) notFound();
+  // The standard editor replays SALE stock movements; Gate Pass dispatch
+  // already handled stock. Never open a misleading edit form for this order.
+  const source = await db.outboundGatePass.findFirst({
+    where: { workspaceId, salesOrderId: sale.id },
+    select: { id: true },
+  });
+  if (source) redirect(`/gate-passes/${source.id}`);
   const invoice = sale.invoices[0];
   const selectedProductIds = sale.items.map((item) => item.productId);
 
