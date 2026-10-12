@@ -1343,6 +1343,7 @@ model OutboundGatePassItem {
   returnedQuantity      Decimal  @default(0) @db.Decimal(15, 4)
   unitPriceSnapshot     Decimal  @default(0) @db.Decimal(15, 2)
   unitCostSnapshot      Decimal  @default(0) @db.Decimal(15, 2)
+  bomComponentsSnapshot Json?
   createdAt             DateTime @default(now())
 
   gatePass OutboundGatePass @relation(fields: [gatePassId], references: [id], onDelete: Restrict)
