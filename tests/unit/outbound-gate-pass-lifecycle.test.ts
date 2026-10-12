@@ -47,6 +47,13 @@ describe("Ahmad-only outbound workflow acceptance", () => {
     expect(invoice).not.toContain("createSale(");
   });
 
+  it("surfaces customer BOM preflight before physical dispatch instead of presenting a broken button", () => {
+    const page = readFileSync("app/(dashboard)/gate-passes/[id]/page.tsx", "utf8");
+    expect(page).toContain("configuredBOMs.length === 0");
+    expect(page).toContain("customer_sales_boms");
+    expect(page).toContain("component-stock reconciliation before dispatch");
+    expect(page).toContain("Gate Pass printing is available");
+  });
   it("fails closed unless tax timing has separately been approved", () => {
     const source = readFileSync("lib/server/outbound-gate-pass-lifecycle.ts", "utf8");
     expect(source).toContain('OUTBOUND_GP_ACCEPTANCE_BILLING_LEGALLY_APPROVED !== "true"');
