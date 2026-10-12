@@ -16,6 +16,7 @@ import { postSaleToGeneralLedger, postInventoryAdjustmentToGeneralLedger } from 
 import {
   planGatePassBomDispatch, deductGatePassBomComponents,
   readGatePassBomSnapshot, snapshotAcceptedGatePassBomComponents,
+  assertGatePassBomAcceptedPrecision,
 } from "@/lib/server/outbound-gate-pass-bom";
 import { decideOutboundReceiving } from "@/lib/delivery-acceptance/policy";
 import {
@@ -244,6 +245,7 @@ export async function recordGatePassReceiving(ctx: Context, input: unknown) {
       const rejected = new Prisma.Decimal(next.rejected);
       if (accepted.lessThan(item.acceptedQuantity) || rejected.lessThan(item.rejectedQuantity))
         throw new GatePassWorkflowError("Cumulative receiving quantities cannot decrease.");
+      assertGatePassBomAcceptedPrecision(item.bomComponentsSnapshot, accepted);
       return { lineId: item.id, dispatchedQuantity: item.dispatchedQuantity.toString(),
         acceptedQuantity: next.accepted, rejectedQuantity: next.rejected };
     }));

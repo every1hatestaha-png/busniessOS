@@ -189,6 +189,31 @@ export async function deductGatePassBomComponents(
   }
 }
 
+/**
+ * Accepted quantities must remain representable in the four-decimal component
+ * snapshot ledger. PostgreSQL numeric(15,4) otherwise rounds silently, e.g.
+ * 0.25 components * 0.0001 accepted assemblies = 0.000025.
+ *
+ * Validate at receiving time (when the customer can still correct quantities)
+ * and again at invoice snapshot insertion to fail closed for legacy callers.
+ */
+export function assertGatePassBomAcceptedPrecision(
+  value: Prisma.JsonValue | null | undefined,
+  acceptedQuantity: Prisma.Decimal,
+): void {
+  if (!acceptedQuantity.isFinite() || acceptedQuantity.isNegative() || acceptedQuantity.decimalPlaces() > 4) {
+    throw new GatePassBomError("Accepted assembly quantity has invalid precision.");
+  }
+  for (const component of readGatePassBomSnapshot(value)) {
+    const consumed = new Prisma.Decimal(component.quantityPerUnit).mul(acceptedQuantity);
+    if (!consumed.isFinite() || consumed.decimalPlaces() > 4 || consumed.greaterThan("99999999999.9999")) {
+      throw new GatePassBomError(
+        `Accepted quantity cannot be represented exactly for component ${component.name}. Use an assembly quantity compatible with its four-decimal component units.`,
+      );
+    }
+  }
+}
+
 export async function snapshotAcceptedGatePassBomComponents(
   tx: Prisma.TransactionClient,
   input: {
@@ -197,6 +222,7 @@ export async function snapshotAcceptedGatePassBomComponents(
   },
 ) {
   for (const line of input.acceptedLines) {
+    assertGatePassBomAcceptedPrecision(line.snapshot, line.acceptedQuantity);
     for (const component of readGatePassBomSnapshot(line.snapshot)) {
       const perUnit = new Prisma.Decimal(component.quantityPerUnit);
       const required = perUnit.mul(line.acceptedQuantity);
