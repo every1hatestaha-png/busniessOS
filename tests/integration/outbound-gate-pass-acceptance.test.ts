@@ -220,6 +220,40 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     const foreign=await db.customer.create({data:{workspaceId:tenant,name:"Different synthetic buyer"}});
     await expect(db.invoice.update({where:{id:invoice.invoiceId!},data:{customerId:foreign.id}})).rejects.toThrow();
   });
+  it("renders 24 long dispatch lines and mixed units without a misleading total or an invoice", async () => {
+    const customer = await db.customer.create({ data: { workspaceId: tenant, name: "Synthetic print-receiving customer" } });
+    const lines: Array<{ productId: string; quantity: string }> = [];
+    const expectedNames: string[] = [];
+    for (let index = 0; index < 24; index++) {
+      const name = `Synthetic long industrial component description ${index + 1} for Gate Pass printer page-break certification`;
+      const productId = await createProduct(ctx(), {
+        name, sku: randomUUID(), category: "QA", costPrice: 50, sellingPrice: 200,
+        stockQuantity: 100, reorderLevel: 0, unit: index % 2 === 0 ? "PIECE" : "KG",
+        status: "ACTIVE", description: "",
+      });
+      expectedNames.push(name);
+      lines.push({ productId, quantity: "1.2500" });
+    }
+    const draft = await createOutboundGatePassDraft(ctx(), {
+      customerId: customer.id, warehouseId: "", date: "2026-10-11",
+      deliveryAddress: "Synthetic long dispatch print address", notes: "Synthetic QA only",
+      idempotencyKey: randomUUID(), items: lines,
+    });
+    await issueGatePass(ctx(), draft.id);
+    const { default: Print } = await import("@/app/(dashboard)/gate-passes/[id]/print/page");
+    const rendered = renderToStaticMarkup(await Print({ params: Promise.resolve({ id: draft.id }) }));
+    expect(rendered).toContain("data-gate-pass-print");
+    expect(rendered).toContain("data-gatepass-items");
+    expect(rendered).toContain("Print A4 Gate Pass");
+    expect(rendered).toContain("Print 80mm Copy");
+    expect(rendered).toContain("Mixed units");
+    expect(rendered).toContain("Receiver signature");
+    for (const name of expectedNames) expect(rendered).toContain(name);
+    expect(rendered).not.toContain("Invoice:");
+    expect(rendered).not.toContain("Rs 200");
+    expect(await db.invoice.count({ where: { customerId: customer.id } })).toBe(0);
+    expect(await db.salesOrder.count({ where: { customerId: customer.id } })).toBe(0);
+  });
   it("serializes different dispatches competing for last stock", async () => {
     const f=await fixture("4",5);
     const second=await createOutboundGatePassDraft(ctx(),{...f.draft,idempotencyKey:randomUUID()});
