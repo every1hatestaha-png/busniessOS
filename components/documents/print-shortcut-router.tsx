@@ -16,7 +16,8 @@ export function PrintShortcutRouter() {
       if (!printRoute) return;
 
       event.preventDefault();
-      window.location.assign(printRoute);
+      // Ctrl/Cmd+P must open the Gate Pass print dialog after document loading.
+      window.location.assign(printRoute.startsWith("/gate-passes/") ? `${printRoute}?autoprint=1` : printRoute);
     }
 
     window.addEventListener("keydown", onKeyDown, { capture: true });

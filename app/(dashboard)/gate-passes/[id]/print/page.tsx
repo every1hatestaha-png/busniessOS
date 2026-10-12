@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { notFound } from "next/navigation";
 import { GatePassPrintBody } from "@/components/gate-passes/gate-pass-print-body";
 import { PrintButton } from "@/components/invoices/print-button";
+import { PrintOnLoad } from "@/components/documents/print-on-load";
 import { requirePermission } from "@/lib/server/authorization";
 import { requireOutboundGatePassDraftFeature } from "@/lib/server/outbound-gate-pass-feature";
 import { getOutboundGatePass } from "@/lib/server/outbound-gate-passes";
@@ -11,8 +12,9 @@ import { getOutboundGatePass } from "@/lib/server/outbound-gate-passes";
  * Print-only physical movement document. Never derive it from an invoice,
  * expose pricing or produce accounting entries as a side effect of printing.
  */
-export default async function OutboundGatePassPrintPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function OutboundGatePassPrintPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams?: Promise<{ autoprint?: string }> }) {
   const { id } = await params;
+  const autoPrint = (await searchParams)?.autoprint === "1";
   const { workspaceId, workspace } = await requirePermission("business.read");
   requireOutboundGatePassDraftFeature(workspaceId);
   const gp = await getOutboundGatePass(workspaceId, id);
@@ -27,6 +29,7 @@ export default async function OutboundGatePassPrintPage({ params }: { params: Pr
   const recipient = gp.customer.companyName || gp.customer.name;
 
   return <main className="mx-auto max-w-4xl space-y-4 px-3 py-5 text-black sm:px-6 print:m-0 print:max-w-none print:space-y-0 print:p-0">
+    {autoPrint && <PrintOnLoad />}
     <nav aria-label="Gate pass print actions" className="flex flex-wrap items-center justify-between gap-3 print:hidden">
       <Link href={`/gate-passes/${id}`} className="text-sm font-semibold underline underline-offset-4">Back to Gate Pass</Link>
       <div className="flex flex-wrap gap-2">
