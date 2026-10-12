@@ -61,6 +61,9 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     expect((await createOutboundGatePassDraft(ctx(), f.draft)).id).toBe(f.gp.id);
     await expect(createOutboundGatePassDraft(ctx(), { ...f.draft, notes: "Changed request" })).rejects.toThrow();
     await issueGatePass(ctx(), f.gp.id);
+    const issued = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
+    await issueGatePass(ctx(), f.gp.id);
+    expect((await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } })).version).toBe(issued.version);
     expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(100);
     expect(await db.invoice.count({ where: { customerId: f.customer.id } })).toBe(0);
     expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_DISPATCH" } })).toBe(0);

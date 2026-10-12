@@ -94,6 +94,7 @@ export async function issueGatePass(ctx: Context, id: string) {
   return withSerializableRetry(async (tx) => {
     await assertOutboundGatePassActor(tx, ctx, "sales.create");
     const gp = await getGatePassForUpdate(tx, ctx, id);
+    if (gp.status === "ISSUED") return { id }; // Identical issue retry: no second audit or version bump.
     if (gp.status !== "DRAFT" || !gp.items.length) throw new GatePassWorkflowError("Only populated drafts can be issued.");
     const ids = gp.items.map((x) => x.productId);
     // Issuance is document-only. Customer BOMs require a certified dispatch
