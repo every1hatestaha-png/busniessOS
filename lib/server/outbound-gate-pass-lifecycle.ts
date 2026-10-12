@@ -169,6 +169,11 @@ export async function dispatchGatePass(ctx: Context, id: string) {
       if (!dispatchedUnitCost.isFinite() || dispatchedUnitCost.isNegative()) {
         throw new GatePassWorkflowError("Assembly dispatch valuation is invalid.");
       }
+      // Inventory/GL unit costs use currency cents. Refuse fractional-paisa
+      // assemblies rather than silently truncate historical asset value.
+      if (!dispatchedUnitCost.eq(dispatchedUnitCost.toDecimalPlaces(2))) {
+        throw new GatePassWorkflowError("Assembly unit valuation has fractional cents; review component quantities and costs.");
+      }
       await tx.outboundGatePassItem.update({
         where: { id: item.id, gatePassId: gp.id },
         data: {

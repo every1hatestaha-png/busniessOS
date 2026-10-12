@@ -390,6 +390,67 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     expect((await db.product.findUniqueOrThrow({ where: { id: componentId } })).stockQuantity.toNumber()).toBe(2);
     expect(await db.inventoryTransaction.count({ where: { productId: componentId, type: "GATE_PASS_DISPATCH" } })).toBe(0);
   });
+  it("handles fractional BOM components in a managed warehouse with balanced returns", async () => {
+    const warehouseId = randomUUID();
+    await db.$executeRaw`UPDATE "warehouses" SET "isDefault"=false WHERE "workspaceId"=${tenant}::uuid AND "isDefault"=true`;
+    await db.$executeRaw`
+      INSERT INTO "warehouses" ("id","workspaceId","name","code","isDefault")
+      VALUES (${warehouseId}::uuid,${tenant}::uuid,'Synthetic BOM fractional warehouse',${randomUUID()},true)
+    `;
+    await db.$executeRaw`
+      INSERT INTO "workspace_modules" ("workspaceId","moduleKey","enabled","config")
+      VALUES (${tenant}::uuid,'inventory',true,'{"warehouseStockMode":"MANAGED"}'::jsonb)
+      ON CONFLICT ("workspaceId","moduleKey") DO UPDATE SET "enabled"=true,"config"='{"warehouseStockMode":"MANAGED"}'::jsonb
+    `;
+    try {
+      const f = await fixture("4", 100, warehouseId);
+      const componentId = await createProduct(ctx(), {
+        name: "Synthetic fractional accessory", sku: randomUUID(), category: "QA",
+        costPrice: 12, sellingPrice: 25, stockQuantity: 100, reorderLevel: 0,
+        unit: "KG", status: "ACTIVE", description: "",
+      });
+      const [bom] = await db.$queryRaw<Array<{ id: string }>>`
+        INSERT INTO "customer_sales_boms" ("workspaceId","customerId","productId","productCode")
+        VALUES (${tenant}::uuid,${f.customer.id}::uuid,${f.productId}::uuid,'SYNTHETIC-FRACTIONAL')
+        RETURNING "id"::text AS "id"
+      `;
+      await db.$executeRaw`
+        INSERT INTO "customer_sales_bom_items" ("customerSalesBomId","componentProductId","quantityPerUnit")
+        VALUES (${bom!.id}::uuid,${componentId}::uuid,0.25)
+      `;
+      await issueGatePass(ctx(), f.gp.id);
+      await dispatchGatePass(ctx(), f.gp.id);
+      const warehouseQty = async (id: string) => db.$queryRaw<Array<{ quantity: Prisma.Decimal }>>`
+        SELECT "quantity" FROM "warehouse_stocks"
+        WHERE "workspaceId"=${tenant}::uuid AND "warehouseId"=${warehouseId}::uuid AND "productId"=${id}::uuid
+      `;
+      expect((await warehouseQty(f.productId))[0]!.quantity.toNumber()).toBe(96);
+      expect((await warehouseQty(componentId))[0]!.quantity.toNumber()).toBe(99);
+      const gp = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id }, include: { items: true } });
+      expect(gp.items[0]!.unitCostSnapshot.toNumber()).toBe(53);
+      await recordGatePassReceiving(ctx(), {
+        gatePassId: f.gp.id, reference: "SYNTHETIC-FRACTIONAL-RECEIVING",
+        recipient: "Warehouse receiver", lines: [{ itemId: f.gp.items[0]!.id, accepted: "3", rejected: "1" }],
+      });
+      await invoiceAcceptedGatePass(ctx(), invoiceInput(f));
+      await confirmRejectedStockReturn(ctx(), {
+        gatePassId: f.gp.id, lines: [{ itemId: f.gp.items[0]!.id, returned: "1" }],
+      });
+      expect((await warehouseQty(f.productId))[0]!.quantity.toNumber()).toBe(97);
+      expect((await warehouseQty(componentId))[0]!.quantity.toNumber()).toBe(99);
+      expect((await db.product.findUniqueOrThrow({ where: { id: componentId } })).stockQuantity.toNumber()).toBe(99);
+      const linked = await db.$queryRaw<Array<{ totalQuantityConsumed: Prisma.Decimal }>>`
+        SELECT s."totalQuantityConsumed" FROM "sales_order_component_snapshots" s
+        JOIN "outbound_gate_passes" gp ON gp."salesOrderId"=s."salesOrderId"::text
+        WHERE gp."id"=${f.gp.id}
+      `;
+      expect(linked).toHaveLength(1);
+      expect(linked[0]!.totalQuantityConsumed.toNumber()).toBe(0.75);
+    } finally {
+      await db.$executeRaw`UPDATE "workspace_modules" SET "enabled"=false WHERE "workspaceId"=${tenant}::uuid AND "moduleKey"='inventory'`;
+      await db.$executeRaw`UPDATE "warehouses" SET "isDefault"=false,"isActive"=false WHERE "id"=${warehouseId}::uuid AND "workspaceId"=${tenant}::uuid`;
+    }
+  });
   it("reconciles owned inventory including transit to the inventory GL asset", async () => {
     const products=await db.product.findMany({where:{workspaceId:tenant}});
     const stock=products.reduce((n,p)=>n.plus(p.stockQuantity.mul(p.costPrice)),new Prisma.Decimal(0));
