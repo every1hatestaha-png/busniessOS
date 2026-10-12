@@ -310,6 +310,136 @@
     "scope": "dashboard layout plus entry point"
   },
   {
+    "file": "app/(dashboard)/gate-passes/[id]/page.tsx",
+    "symbol": null,
+    "url": "/gate-passes/[id]",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requirePermission plus workspace feature gate",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/gate-passes/[id]/print/page.tsx",
+    "symbol": null,
+    "url": "/gate-passes/[id]/print",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requirePermission plus workspace feature gate",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/gate-passes/actions.ts",
+    "symbol": "createOutboundGatePassDraftAction",
+    "url": "/gate-passes",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "server-side permission, tenant, and policy guards",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/gate-passes/in-transit/page.tsx",
+    "symbol": null,
+    "url": "/gate-passes/in-transit",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requirePermission plus workspace feature gate",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/gate-passes/lifecycle-actions.ts",
+    "symbol": "issueGatePassAction",
+    "url": "/gate-passes",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "server-side permission, tenant, and policy guards",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/gate-passes/lifecycle-actions.ts",
+    "symbol": "cancelGatePassAction",
+    "url": "/gate-passes",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "server-side permission, tenant, and policy guards",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/gate-passes/lifecycle-actions.ts",
+    "symbol": "dispatchGatePassAction",
+    "url": "/gate-passes",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "server-side permission, tenant, and policy guards",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/gate-passes/lifecycle-actions.ts",
+    "symbol": "receivingGatePassAction",
+    "url": "/gate-passes",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "server-side permission, tenant, and policy guards",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/gate-passes/lifecycle-actions.ts",
+    "symbol": "returnedGatePassAction",
+    "url": "/gate-passes",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "server-side permission, tenant, and policy guards",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/gate-passes/lifecycle-actions.ts",
+    "symbol": "invoiceGatePassAction",
+    "url": "/gate-passes",
+    "kind": "SERVER_ACTION",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "server-side permission, tenant, and policy guards",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/gate-passes/new/page.tsx",
+    "symbol": null,
+    "url": "/gate-passes/new",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requirePermission plus workspace feature gate",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/gate-passes/page.tsx",
+    "symbol": null,
+    "url": "/gate-passes",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requirePermission plus workspace feature gate",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
+    "file": "app/(dashboard)/gate-passes/pending-invoices/page.tsx",
+    "symbol": null,
+    "url": "/gate-passes/pending-invoices",
+    "kind": "PAGE",
+    "category": "TRADING",
+    "methods": [],
+    "boundary": "requirePermission plus workspace feature gate",
+    "scope": "dashboard layout plus entry point"
+  },
+  {
     "file": "app/(dashboard)/goods-receipts/[id]/page.tsx",
     "symbol": null,
     "url": "/goods-receipts/[id]",
