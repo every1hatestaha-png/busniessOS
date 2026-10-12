@@ -313,6 +313,15 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     expect(gp.items[0]!.bomComponentsSnapshot).toMatchObject({
       version: 1, components: [{ productId: componentId, quantityPerUnit: "2", unitCost: "10" }],
     });
+    // Historical component structure/cost is enforced by the database too,
+    // not just a client-side convention.
+    await expect(db.outboundGatePassItem.update({
+      where: { id: gp.items[0]!.id },
+      data: { bomComponentsSnapshot: { version: 1, components: [] } },
+    })).rejects.toThrow();
+    expect((await db.outboundGatePassItem.findUniqueOrThrow({
+      where: { id: gp.items[0]!.id },
+    })).bomComponentsSnapshot).toEqual(gp.items[0]!.bomComponentsSnapshot);
     // Mutation of the customer's active BOM after dispatch MUST NOT change
     // the components or cost carried by the original physical shipment.
     await db.$executeRaw`
