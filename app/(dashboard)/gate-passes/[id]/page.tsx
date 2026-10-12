@@ -16,6 +16,7 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
   // Read-only, tenant-scoped preview: configured customer assemblies require
   // their own component dispatch/return adapter. Never present a button that
   // will fail after the operator has physically shipped the goods.
+  const bomDispatchEnabled = process.env.OUTBOUND_GATE_PASS_BOM_DISPATCH_ENABLED === "true";
   const configuredBOMs = await db.$queryRaw<Array<{ name: string }>>`
     SELECT DISTINCT i."productNameSnapshot" AS name
     FROM "outbound_gate_pass_items" i
@@ -26,6 +27,52 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
       AND b."isActive"=true
     ORDER BY name
   `;
+  // Aggregate both assembled parent and accessory quantities before
+  // comparing against either core stock or the original managed warehouse.
+  // This avoids suggesting dispatch is possible when two different assembly
+  // lines compete for the same component stock.
+  const stockShortages = gatePass.status === "ISSUED" ? await db.$queryRaw<Array<{
+    name: string; required: string; available: string;
+  }>>`
+    WITH required_components AS (
+      SELECT i."componentProductId"::text AS "productId",
+        SUM(i."quantityPerUnit" * gpi."dispatchedQuantity") AS required
+      FROM "outbound_gate_pass_items" gpi
+      JOIN "customer_sales_boms" b ON b."productId"::text=gpi."productId"
+        AND b."workspaceId"=${workspaceId}::uuid
+        AND b."customerId"=${gatePass.customerId}::uuid
+        AND b."isActive"=true
+      JOIN "customer_sales_bom_items" i ON i."customerSalesBomId"=b."id"
+      WHERE gpi."gatePassId"=${gatePass.id}
+      GROUP BY i."componentProductId"
+    ), required_parents AS (
+      SELECT gpi."productId", SUM(gpi."dispatchedQuantity") AS required
+      FROM "outbound_gate_pass_items" gpi
+      WHERE gpi."gatePassId"=${gatePass.id}
+      GROUP BY gpi."productId"
+    ), required_total AS (
+      SELECT "productId",SUM(required) AS required
+      FROM (
+        SELECT "productId", required FROM required_components
+        UNION ALL
+        SELECT "productId", required FROM required_parents
+      ) all_requirements GROUP BY "productId"
+    ), availability AS (
+      SELECT rt.required, COALESCE(p."name", 'Unavailable inventory product') AS name,
+        CASE WHEN ${gatePass.warehouseId}::uuid IS NOT NULL
+          THEN LEAST(COALESCE(p."stockQuantity",0), COALESCE(ws."quantity",0))
+          ELSE COALESCE(p."stockQuantity",0) END AS available,
+        p."status"::text AS status
+      FROM required_total rt
+      LEFT JOIN "products" p ON p."id"=rt."productId" AND p."workspaceId"=${workspaceId}
+      LEFT JOIN "warehouse_stocks" ws ON ws."productId"=rt."productId"::uuid
+        AND ws."workspaceId"=${workspaceId}::uuid
+        AND ws."warehouseId"=${gatePass.warehouseId}::uuid
+    )
+    SELECT name,required::text,available::text
+    FROM availability WHERE status IS DISTINCT FROM 'ACTIVE' OR available < required
+    ORDER BY name
+  ` : [];
   const fbrConfig = await db.fbrIntegrationConfig.findUnique({ where: { workspaceId }, select: { enabled: true } });
   const deferredBillingReady = process.env.OUTBOUND_GP_ACCEPTANCE_BILLING_LEGALLY_APPROVED === "true"
     && Boolean(process.env.OUTBOUND_GP_ACCEPTANCE_BILLING_APPROVAL_REFERENCE?.trim())
@@ -62,10 +109,15 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
     {gatePass.receivingReference && <p className="text-sm"><span className="font-semibold">Customer receiving reference: </span>{gatePass.receivingReference}{gatePass.receivingRecipient ? ` · ${gatePass.receivingRecipient}` : ""}</p>}
     {gatePass.receivingAt && <Link href={`/gate-passes/${gatePass.id}/receiving/print`} className="inline-flex rounded-md border px-4 py-2 text-sm font-medium">Print Customer Receiving Acknowledgement</Link>}
     {gatePass.invoiceId && <Link href={`/invoices/${gatePass.invoiceId}`} className="inline-flex rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white">View and print final invoice</Link>}
-    {gatePass.status === "ISSUED" && configuredBOMs.length > 0 && <div role="status" className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+    {gatePass.status === "ISSUED" && configuredBOMs.length > 0 && !bomDispatchEnabled && <div role="status" className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
       <p className="font-semibold">Assembly products require component-stock reconciliation before dispatch.</p>
       <p className="mt-1">Gate Pass printing is available, but dispatching this assembled customer BOM through the deferred-invoice workflow is not yet supported. Use the standard Sales flow until the component-return adapter is certified.</p>
       <ul className="mt-2 list-disc pl-5">{configuredBOMs.map((row) => <li key={row.name}>{row.name}</li>)}</ul>
+    </div>}
+    {gatePass.status === "ISSUED" && stockShortages.length > 0 && <div role="alert" className="rounded-md border border-amber-400 bg-amber-50 p-4 text-sm text-amber-950">
+      <p className="font-semibold">Insufficient dispatch stock — shipment cannot be recorded yet.</p>
+      <p className="mt-1">Replenish or correct the listed items first. Gate Pass printing remains available; no inventory was changed.</p>
+      <ul className="mt-2 list-disc pl-5">{stockShortages.map((item) => <li key={item.name}>{item.name}: required {item.required}, available {item.available}</li>)}</ul>
     </div>}
     <GatePassWorkflowControls
       key={`${gatePass.id}:${gatePass.updatedAt.toISOString()}`}
@@ -75,7 +127,7 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
       recipient={gatePass.receivingRecipient}
       deferredBillingReady={deferredBillingReady}
       canIssue={canPerformAction(role, "sales.create")}
-      canDispatch={canPerformAction(role, "inventory.adjust") && configuredBOMs.length === 0}
+      canDispatch={canPerformAction(role, "inventory.adjust") && (configuredBOMs.length === 0 || bomDispatchEnabled) && stockShortages.length === 0}
       canReceive={canPerformAction(role, "returns.create")}
       canInvoice={canPerformAction(role, "financial.manage")}
       items={gatePass.items.map((item) => ({

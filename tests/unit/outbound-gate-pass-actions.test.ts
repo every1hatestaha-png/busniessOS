@@ -5,6 +5,7 @@ vi.mock("@/lib/server/outbound-gate-pass-lifecycle",()=>({
   GatePassWorkflowError:class extends Error {}, issueGatePass:m.service, dispatchGatePass:m.service,
   cancelUndispatchedGatePass:m.service, recordGatePassReceiving:m.service, confirmRejectedStockReturn:m.service, invoiceAcceptedGatePass:m.service,
 }));
+vi.mock("@/lib/server/outbound-gate-pass-bom",()=>({GatePassBomError:class extends Error {}}));
 vi.mock("next/cache",()=>({revalidatePath:vi.fn()}));
 vi.mock("next/navigation",()=>({redirect:vi.fn()}));
 import { issueGatePassAction, dispatchGatePassAction, cancelGatePassAction, receivingGatePassAction, returnedGatePassAction, invoiceGatePassAction } from "@/app/(dashboard)/gate-passes/lifecycle-actions";

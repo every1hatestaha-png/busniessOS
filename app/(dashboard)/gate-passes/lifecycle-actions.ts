@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/server/authorization";
 import { outboundGatePassDraftFeatureEnabled } from "@/lib/server/outbound-gate-pass-feature";
+import { GatePassBomError } from "@/lib/server/outbound-gate-pass-bom";
 import {
   issueGatePass, dispatchGatePass, cancelUndispatchedGatePass, recordGatePassReceiving,
   confirmRejectedStockReturn, invoiceAcceptedGatePass, GatePassWorkflowError,
@@ -21,7 +22,7 @@ async function context(permission: "sales.create" | "inventory.adjust" | "return
 }
 
 function failure(error: unknown): GatePassActionState {
-  if (error instanceof GatePassWorkflowError || error instanceof z.ZodError)
+  if (error instanceof GatePassWorkflowError || error instanceof GatePassBomError || error instanceof z.ZodError)
     return { error: error.message };
   return { error: "The operation could not be completed. Refresh and try again." };
 }
