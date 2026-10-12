@@ -12,7 +12,11 @@ import {
   applyManagedWarehouseStockDelta,
   getWarehouseStockModeInTransaction,
 } from "@/lib/server/managed-warehouse-stock";
-import { postSaleToGeneralLedger } from "@/lib/server/accounting";
+import { postSaleToGeneralLedger, postInventoryAdjustmentToGeneralLedger } from "@/lib/server/accounting";
+import {
+  planGatePassBomDispatch, deductGatePassBomComponents,
+  readGatePassBomSnapshot, snapshotAcceptedGatePassBomComponents,
+} from "@/lib/server/outbound-gate-pass-bom";
 import { decideOutboundReceiving } from "@/lib/delivery-acceptance/policy";
 import {
   receivingInputSchema, returnedGoodsSchema, issueInvoiceFromGatePassSchema,
@@ -74,18 +78,6 @@ async function audit(tx: Transaction, ctx: Context, id: string, action: string, 
     workspaceId: ctx.workspaceId, actorId: ctx.userId, entityType: "OutboundGatePass",
     entityId: id, action, ...(metadata ? { metadata } : {}),
   });
-}
-
-async function assertNotCustomerBOM(tx: Transaction, ctx: Context, customerId: string, ids: string[]) {
-  // Current invoice-first sales also consumes BOM components. Until the
-  // dispatch-first BOM adapter is certified, reject configured BOM items.
-  const rows = await tx.$queryRaw<Array<{ productId: string }>>`
-    SELECT "productId"::text AS "productId" FROM "customer_sales_boms"
-    WHERE "workspaceId"=${ctx.workspaceId}::uuid AND "customerId"=${customerId}::uuid
-      AND "productId"::text = ANY(${ids}::text[]) AND "isActive"=true
-    LIMIT 1
-  `;
-  if (rows.length) throw new GatePassWorkflowError("Customer BOM products need their own dispatch reconciliation before shipment.");
 }
 
 export async function issueGatePass(ctx: Context, id: string) {
@@ -152,7 +144,15 @@ export async function dispatchGatePass(ctx: Context, id: string) {
       await assertManagedWarehouseSelection(tx, { workspaceId: ctx.workspaceId, warehouseId: gp.warehouseId });
     }
     const productIds = gp.items.map((x) => x.productId);
-    await assertNotCustomerBOM(tx, ctx, gp.customerId, productIds);
+    // Freeze customer-specific BOM components at physical dispatch. A later
+    // change to their configuration cannot cause a duplicate consumption or
+    // alter historical sale costs when the receiver accepts the shipment.
+    const bomPlan = await planGatePassBomDispatch(tx, {
+      workspaceId: ctx.workspaceId, customerId: gp.customerId,
+      lines: gp.items.map((item) => ({
+        id: item.id, productId: item.productId, dispatchedQuantity: item.dispatchedQuantity,
+      })),
+    });
     const products = await tx.product.findMany({
       where: { workspaceId: ctx.workspaceId, id: { in: productIds }, status: "ACTIVE" },
       select: { id: true, stockQuantity: true, costPrice: true },
@@ -161,7 +161,18 @@ export async function dispatchGatePass(ctx: Context, id: string) {
     for (const item of gp.items) {
       const cost = products.find((product) => product.id === item.productId)!.costPrice;
       if (cost.isNegative()) throw new GatePassWorkflowError("Invalid dispatch cost.");
-      await tx.outboundGatePassItem.update({ where: { id: item.id, gatePassId: gp.id }, data: { unitCostSnapshot: cost } });
+      const embedded = bomPlan.byItem.get(item.id);
+      const dispatchedUnitCost = cost.plus(embedded?.embeddedUnitCost ?? new Prisma.Decimal(0));
+      if (!dispatchedUnitCost.isFinite() || dispatchedUnitCost.isNegative()) {
+        throw new GatePassWorkflowError("Assembly dispatch valuation is invalid.");
+      }
+      await tx.outboundGatePassItem.update({
+        where: { id: item.id, gatePassId: gp.id },
+        data: {
+          unitCostSnapshot: dispatchedUnitCost.toDecimalPlaces(2),
+          ...(embedded ? { bomComponentsSnapshot: embedded.snapshot as unknown as Prisma.InputJsonValue } : {}),
+        },
+      });
       // Actual stock is moved OUT of the warehouse at dispatch. The inventory
       // asset stays in the GL until accepted goods are recognized as COGS.
       const changed = await tx.product.updateMany({
@@ -180,6 +191,11 @@ export async function dispatchGatePass(ctx: Context, id: string) {
           unitCost: cost, reference: gp.gatePassNumber },
       });
     }
+    await deductGatePassBomComponents(tx, {
+      workspaceId: ctx.workspaceId, warehouseId: gp.warehouseId,
+      gatePassNumber: gp.gatePassNumber,
+      deductions: bomPlan.deductions, products: bomPlan.products,
+    });
     await tx.outboundGatePass.update({ where: { id, workspaceId: ctx.workspaceId }, data: { status: "IN_TRANSIT", dispatchedAt: new Date(), version: { increment: 1 } } });
     await audit(tx, ctx, id, "gate_pass.dispatched", { number: gp.gatePassNumber, lineCount: gp.items.length });
     return { id };
@@ -258,6 +274,7 @@ export async function confirmRejectedStockReturn(ctx: Context, input: unknown) {
       throw new GatePassWorkflowError("Warehouse stock mode changed after dispatch. Reconcile stock mode before receiving the return.");
     }
     let changed = false;
+    let valuationRoundingDelta = new Prisma.Decimal(0);
     for (const item of gp.items) {
       const line = byItem.get(item.id);
       if (!line) throw new GatePassWorkflowError("Unknown return line.");
@@ -267,11 +284,33 @@ export async function confirmRejectedStockReturn(ctx: Context, input: unknown) {
       const delta = desired.minus(item.returnedQuantity);
       if (delta.isZero()) continue;
       changed = true;
-      const productUpdate = await tx.product.updateMany({
-        where: { id: item.productId, workspaceId: ctx.workspaceId },
-        data: { stockQuantity: { increment: delta } },
-      });
-      if (productUpdate.count !== 1) throw new GatePassWorkflowError("Original product is unavailable for stock return.");
+      const components = readGatePassBomSnapshot(item.bomComponentsSnapshot);
+      if (components.length) {
+        // Customer returned the assembled item, NOT detached accessories.
+        // Fold its historical component value into the returned parent's WAC
+        // and reconcile the unavoidable two-decimal cost-rounding residual.
+        const product = await tx.product.findFirst({
+          where: { id: item.productId, workspaceId: ctx.workspaceId },
+          select: { stockQuantity: true, costPrice: true },
+        });
+        if (!product) throw new GatePassWorkflowError("Original assembly is unavailable for stock return.");
+        const newQuantity = product.stockQuantity.plus(delta);
+        const historicalCost = item.unitCostSnapshot.mul(delta);
+        const previousValue = product.costPrice.mul(product.stockQuantity);
+        const newPrice = previousValue.plus(historicalCost).div(newQuantity).toDecimalPlaces(2);
+        const productUpdate = await tx.product.updateMany({
+          where: { id: item.productId, workspaceId: ctx.workspaceId, stockQuantity: product.stockQuantity },
+          data: { stockQuantity: { increment: delta }, costPrice: newPrice },
+        });
+        if (productUpdate.count !== 1) throw new GatePassWorkflowError("Assembly inventory changed during reconciliation.");
+        valuationRoundingDelta = valuationRoundingDelta.plus(newQuantity.mul(newPrice).minus(previousValue).minus(historicalCost));
+      } else {
+        const productUpdate = await tx.product.updateMany({
+          where: { id: item.productId, workspaceId: ctx.workspaceId },
+          data: { stockQuantity: { increment: delta } },
+        });
+        if (productUpdate.count !== 1) throw new GatePassWorkflowError("Original product is unavailable for stock return.");
+      }
       await applyManagedWarehouseStockDelta(tx, {
         workspaceId: ctx.workspaceId, warehouseId: gp.warehouseId, productId: item.productId, delta,
       });
@@ -283,6 +322,13 @@ export async function confirmRejectedStockReturn(ctx: Context, input: unknown) {
       await tx.outboundGatePassItem.update({ where: { id: item.id, gatePassId: gp.id }, data: { returnedQuantity: desired } });
     }
     if (!changed) return { id: gp.id };
+    // Product WAC stores cents. A sub-cent residual on a composite return
+    // must not silently break the inventory-asset GL reconciliation.
+    await postInventoryAdjustmentToGeneralLedger(tx, {
+      workspaceId: ctx.workspaceId, sourceId: gp.id,
+      documentNo: `${gp.gatePassNumber}-BOM-WAC-${gp.version + 1}`,
+      date: new Date(), value: valuationRoundingDelta.toDecimalPlaces(2),
+    });
     await tx.outboundGatePass.update({ where: { id: gp.id, workspaceId: ctx.workspaceId }, data: { version: { increment: 1 } } });
     await audit(tx, ctx, gp.id, "gate_pass.rejected_goods_returned", { number: gp.gatePassNumber, lines: parsed.lines });
     return { id: gp.id };
@@ -390,6 +436,15 @@ export async function invoiceAcceptedGatePass(ctx: Context, input: unknown) {
         };
       }) },
     }, select: { id: true } });
+    // Exactly one immutable snapshot of accepted BOM components per sales
+    // line; stock was already deducted at dispatch and MUST NOT move again.
+    await snapshotAcceptedGatePassBomComponents(tx, {
+      workspaceId: ctx.workspaceId, salesOrderId: order.id,
+      acceptedLines: accepted.map((item) => ({
+        productId: item.productId, acceptedQuantity: item.acceptedQuantity,
+        snapshot: item.bomComponentsSnapshot,
+      })),
+    });
     const snapshot = {
       version: 1, seller,
       buyer: { id: customer.id, name: customer.name, companyName: customer.companyName,
