@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { canPerformAction, requirePermission } from "@/lib/server/authorization";
 import { GatePassWorkflowControls } from "@/components/gate-passes/workflow-controls";
 import { getOutboundGatePass } from "@/lib/server/outbound-gate-passes";
+import { db } from "@/lib/server/db";
 import { requireOutboundGatePassDraftFeature } from "@/lib/server/outbound-gate-pass-feature";
 
 export default async function OutboundGatePassPage({ params }: { params: Promise<{ id: string }> }) {
@@ -12,6 +13,10 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
   requireOutboundGatePassDraftFeature(workspaceId);
   const gatePass = await getOutboundGatePass(workspaceId, id);
   if (!gatePass) notFound();
+  const fbrConfig = await db.fbrIntegrationConfig.findUnique({ where: { workspaceId }, select: { enabled: true } });
+  const deferredBillingReady = process.env.OUTBOUND_GP_ACCEPTANCE_BILLING_LEGALLY_APPROVED === "true"
+    && Boolean(process.env.OUTBOUND_GP_ACCEPTANCE_BILLING_APPROVAL_REFERENCE?.trim())
+    && !fbrConfig?.enabled;
 
   return <div className="mx-auto max-w-5xl space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -29,23 +34,27 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
       {gatePass.customer.phone && <p className="text-sm">{gatePass.customer.phone}</p>}
     </div>
     <div className="overflow-x-auto rounded-md border">
-      <table className="w-full min-w-[550px] text-left text-sm">
-        <thead className="bg-muted/40"><tr><th className="p-3">Product</th><th className="p-3">SKU</th><th className="p-3 text-right">Quantity</th><th className="p-3">Unit</th></tr></thead>
+      <table className="w-full min-w-[760px] text-left text-sm">
+        <thead className="bg-muted/40"><tr><th className="p-3">Product</th><th className="p-3">SKU</th><th className="p-3 text-right">Sent</th><th className="p-3">Unit</th>{gatePass.dispatchedAt && <><th className="p-3 text-right">Accepted</th><th className="p-3 text-right">Rejected</th><th className="p-3 text-right">Awaiting</th></>}</tr></thead>
         <tbody>{gatePass.items.map((item) => <tr key={item.id} className="border-t">
           <td className="p-3">{item.productNameSnapshot}</td>
           <td className="p-3 font-mono">{item.productSkuSnapshot || "-"}</td>
           <td className="p-3 text-right tabular-nums">{item.dispatchedQuantity.toString()}</td>
           <td className="p-3">{item.productUnitSnapshot}</td>
+          {gatePass.dispatchedAt && <><td className="p-3 text-right tabular-nums">{item.acceptedQuantity.toString()}</td><td className="p-3 text-right tabular-nums">{item.rejectedQuantity.toString()}</td><td className="p-3 text-right tabular-nums">{item.dispatchedQuantity.minus(item.acceptedQuantity).minus(item.rejectedQuantity).toString()}</td></>}
         </tr>)}</tbody>
       </table>
     </div>
     {gatePass.notes && <p className="text-sm"><span className="font-semibold">Notes: </span>{gatePass.notes}</p>}
+    {gatePass.receivingReference && <p className="text-sm"><span className="font-semibold">Customer receiving reference: </span>{gatePass.receivingReference}{gatePass.receivingRecipient ? ` · ${gatePass.receivingRecipient}` : ""}</p>}
+    {gatePass.invoiceId && <Link href={`/invoices/${gatePass.invoiceId}`} className="inline-flex rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white">View and print final invoice</Link>}
     <GatePassWorkflowControls
       key={`${gatePass.id}:${gatePass.updatedAt.toISOString()}`}
       id={gatePass.id}
       status={gatePass.status}
       customerReference={gatePass.receivingReference}
       recipient={gatePass.receivingRecipient}
+      deferredBillingReady={deferredBillingReady}
       canIssue={canPerformAction(role, "sales.create")}
       canDispatch={canPerformAction(role, "inventory.adjust")}
       canReceive={canPerformAction(role, "returns.create")}

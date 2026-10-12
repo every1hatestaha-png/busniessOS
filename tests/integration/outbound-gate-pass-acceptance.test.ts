@@ -61,6 +61,9 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     expect((await createOutboundGatePassDraft(ctx(), f.draft)).id).toBe(f.gp.id);
     await expect(createOutboundGatePassDraft(ctx(), { ...f.draft, notes: "Changed request" })).rejects.toThrow();
     await issueGatePass(ctx(), f.gp.id);
+    const issued = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
+    await issueGatePass(ctx(), f.gp.id);
+    expect((await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } })).version).toBe(issued.version);
     expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(100);
     expect(await db.invoice.count({ where: { customerId: f.customer.id } })).toBe(0);
     expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_DISPATCH" } })).toBe(0);
@@ -100,6 +103,26 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     await expect(recordGatePassReceiving(ctx(), { gatePassId:f.gp.id, reference:"QA", recipient:"QA", lines:[{itemId:f.gp.items[0]!.id,accepted:"2",rejected:"2"}] })).rejects.toThrow("cannot decrease");
     await recordGatePassReceiving(ctx(), { gatePassId:f.gp.id, reference:"QA", recipient:"QA", lines:[{itemId:f.gp.items[0]!.id,accepted:"8",rejected:"2"}] });
     await expect(recordGatePassReceiving(ctx(), { gatePassId:f.gp.id, reference:"QA", recipient:"QA", lines:[{itemId:f.gp.items[0]!.id,accepted:"9",rejected:"1"}] })).rejects.toThrow();
+  });
+  it("deduplicates repeated signed receiving after reconciliation and after invoice without mutations", async () => {
+    const f = await fixture();
+    await issueGatePass(ctx(), f.gp.id);
+    await dispatchGatePass(ctx(), f.gp.id);
+    const receipt = { gatePassId: f.gp.id, reference: "SIGNED-RECEIVING-001", recipient: "Customer receiver", notes: "Received", lines: [{ itemId: f.gp.items[0]!.id, accepted: "8", rejected: "2" }] };
+    const first = await recordGatePassReceiving(ctx(), receipt);
+    const recorded = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
+    const replay = await recordGatePassReceiving(ctx(), receipt);
+    const unchanged = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
+    expect(replay.status).toBe(first.status);
+    expect(unchanged.version).toBe(recorded.version);
+    expect(unchanged.receivingAt?.toISOString()).toBe(recorded.receivingAt?.toISOString());
+    await expect(recordGatePassReceiving(ctx(), { ...receipt, reference: "CHANGED-RECEIPT" })).rejects.toThrow();
+    await invoiceAcceptedGatePass(ctx(), invoiceInput(f));
+    const invoiced = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
+    expect((await recordGatePassReceiving(ctx(), receipt)).status).toBe("INVOICED");
+    const postReplay = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
+    expect(postReplay.version).toBe(invoiced.version);
+    expect(await db.invoice.count({ where: { customerId: f.customer.id } })).toBe(1);
   });
   it("fully rejected goods never create invoices and cumulative returns cannot exceed rejection", async () => {
     const f=await fixture(); await accepted(f,"0","10");
@@ -228,8 +251,11 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
   it("blocks customer BOMs before dispatch and avoids unimplemented duplicate component consumption", async () => {
     const f=await fixture();
     await db.$executeRaw`INSERT INTO "customer_sales_boms" ("workspaceId","customerId","productId","productCode") VALUES (${tenant}::uuid,${f.customer.id}::uuid,${f.productId}::uuid,'SYNTHETIC')`;
-    await expect(issueGatePass(ctx(),f.gp.id)).rejects.toThrow("BOM products");
+    await issueGatePass(ctx(), f.gp.id);
+    expect((await getOutboundGatePass(tenant, f.gp.id))!.status).toBe("ISSUED");
+    await expect(dispatchGatePass(ctx(), f.gp.id)).rejects.toThrow("BOM products");
     expect((await db.product.findUniqueOrThrow({where:{id:f.productId}})).stockQuantity.toNumber()).toBe(100);
+    expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_DISPATCH" } })).toBe(0);
   });
   it("reconciles owned inventory including transit to the inventory GL asset", async () => {
     const products=await db.product.findMany({where:{workspaceId:tenant}});

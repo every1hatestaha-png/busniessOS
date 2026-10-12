@@ -25,13 +25,14 @@ function ActionFeedback({ state }: { state: GatePassActionState }) {
 }
 
 export function GatePassWorkflowControls({
-  id, status, items, customerReference, recipient, canIssue, canDispatch, canReceive, canInvoice,
+  id, status, items, customerReference, recipient, deferredBillingReady, canIssue, canDispatch, canReceive, canInvoice,
 }: {
   id: string;
   status: Status;
   items: Item[];
   customerReference: string | null;
   recipient: string | null;
+  deferredBillingReady: boolean;
   canIssue: boolean;
   canDispatch: boolean;
   canReceive: boolean;
@@ -52,6 +53,10 @@ export function GatePassWorkflowControls({
   const returnable = ["REJECTED", "PARTIALLY_ACCEPTED", "INVOICED"].includes(status) && items.some((x) => Number(x.returned) < Number(x.rejected));
 
   return <section className="space-y-5">
+    {!deferredBillingReady && !["DRAFT", "CANCELLED", "INVOICED"].includes(status) && <div role="status" className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+      <p className="font-semibold">Dispatch and deferred invoicing are not yet authorized.</p>
+      <p className="mt-1">You can print this gate pass, but do not dispatch under the acceptance-billing workflow until documented transaction-specific tax approval is configured. For supplies requiring an invoice at delivery, use the <Link href="/sales/new" className="underline font-medium">standard Sales workflow</Link> and its normal return/credit-note process.</p>
+    </div>}
     {canIssue && status === "DRAFT" && <form action={issue} className="rounded-md border p-4 space-y-3">
       <h2 className="font-semibold">Issue gate pass</h2>
       <p className="text-sm text-muted-foreground">Freeze document details before printing and dispatch.</p>
@@ -65,7 +70,7 @@ export function GatePassWorkflowControls({
       <button disabled={cancelling} className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-800">Cancel Undispatched Gate Pass</button>
     </form>}
 
-    {canDispatch && status === "ISSUED" && <form action={dispatch} className="rounded-md border p-4 space-y-3">
+    {deferredBillingReady && canDispatch && status === "ISSUED" && <form action={dispatch} className="rounded-md border p-4 space-y-3">
       <h2 className="font-semibold">Confirm physical dispatch</h2>
       <p className="text-sm text-muted-foreground">This moves quantities out of warehouse stock once. Only confirm when goods physically leave.</p>
       <input type="hidden" name="gatePassId" value={id}/>
@@ -102,7 +107,7 @@ export function GatePassWorkflowControls({
       <ActionFeedback state={returnState}/><button disabled={returning} className={buttonClass}>Confirm Physical Return</button>
     </form>}
 
-    {canInvoice && ["ACCEPTED", "PARTIALLY_ACCEPTED"].includes(status) && <form action={invoice} className="space-y-4 rounded-md border p-4">
+    {deferredBillingReady && canInvoice && ["ACCEPTED", "PARTIALLY_ACCEPTED"].includes(status) && <form action={invoice} className="space-y-4 rounded-md border p-4">
       <h2 className="font-semibold">Generate invoice for accepted goods</h2>
       <p className="text-sm text-muted-foreground">Verify prices and tax per line. Stock was moved at dispatch and will not be deducted again.</p>
       <input type="hidden" name="gatePassId" value={id}/><input type="hidden" name="linesJson" value={JSON.stringify(invoiceLines)} readOnly/>
