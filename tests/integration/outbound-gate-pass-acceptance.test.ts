@@ -101,6 +101,26 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     await recordGatePassReceiving(ctx(), { gatePassId:f.gp.id, reference:"QA", recipient:"QA", lines:[{itemId:f.gp.items[0]!.id,accepted:"8",rejected:"2"}] });
     await expect(recordGatePassReceiving(ctx(), { gatePassId:f.gp.id, reference:"QA", recipient:"QA", lines:[{itemId:f.gp.items[0]!.id,accepted:"9",rejected:"1"}] })).rejects.toThrow();
   });
+  it("deduplicates repeated signed receiving after reconciliation and after invoice without mutations", async () => {
+    const f = await fixture();
+    await issueGatePass(ctx(), f.gp.id);
+    await dispatchGatePass(ctx(), f.gp.id);
+    const receipt = { gatePassId: f.gp.id, reference: "SIGNED-RECEIVING-001", recipient: "Customer receiver", notes: "Received", lines: [{ itemId: f.gp.items[0]!.id, accepted: "8", rejected: "2" }] };
+    const first = await recordGatePassReceiving(ctx(), receipt);
+    const recorded = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
+    const replay = await recordGatePassReceiving(ctx(), receipt);
+    const unchanged = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
+    expect(replay.status).toBe(first.status);
+    expect(unchanged.version).toBe(recorded.version);
+    expect(unchanged.receivingAt?.toISOString()).toBe(recorded.receivingAt?.toISOString());
+    await expect(recordGatePassReceiving(ctx(), { ...receipt, reference: "CHANGED-RECEIPT" })).rejects.toThrow();
+    await invoiceAcceptedGatePass(ctx(), invoiceInput(f));
+    const invoiced = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
+    expect((await recordGatePassReceiving(ctx(), receipt)).status).toBe("INVOICED");
+    const postReplay = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
+    expect(postReplay.version).toBe(invoiced.version);
+    expect(await db.invoice.count({ where: { customerId: f.customer.id } })).toBe(1);
+  });
   it("fully rejected goods never create invoices and cumulative returns cannot exceed rejection", async () => {
     const f=await fixture(); await accepted(f,"0","10");
     await expect(invoiceAcceptedGatePass(ctx(),invoiceInput(f))).rejects.toThrow();

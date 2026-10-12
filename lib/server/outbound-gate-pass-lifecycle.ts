@@ -191,10 +191,26 @@ export async function recordGatePassReceiving(ctx: Context, input: unknown) {
   return withSerializableRetry(async (tx) => {
     await assertOutboundGatePassActor(tx, ctx, "returns.create");
     const gp = await getGatePassForUpdate(tx, ctx, parsed.gatePassId);
-    if (gp.status !== "IN_TRANSIT" && gp.status !== "RECEIVING_PENDING")
-      throw new GatePassWorkflowError("Receiving is closed or dispatch has not occurred.");
     const byItem = new Map(parsed.lines.map((x) => [x.itemId, x]));
     if (byItem.size !== gp.items.length) throw new GatePassWorkflowError("All gate pass items must be reconciled.");
+    // A browser retry with the same signed receiving evidence must be a read-only
+    // replay, including after the delivery has been invoiced. Never write a
+    // second receiving event, advance the version or reopen a closed receipt.
+    const sameReceiving = Boolean(gp.receivingAt)
+      && gp.receivingReference === parsed.reference
+      && gp.receivingRecipient === parsed.recipient
+      && (gp.receivingNotes ?? "") === parsed.notes
+      && gp.items.every((item) => {
+        const submitted = byItem.get(item.id);
+        return submitted
+          && item.acceptedQuantity.eq(new Prisma.Decimal(submitted.accepted))
+          && item.rejectedQuantity.eq(new Prisma.Decimal(submitted.rejected));
+      });
+    if (sameReceiving && ["RECEIVING_PENDING", "ACCEPTED", "PARTIALLY_ACCEPTED", "REJECTED", "INVOICED"].includes(gp.status)) {
+      return { id: gp.id, status: gp.status };
+    }
+    if (gp.status !== "IN_TRANSIT" && gp.status !== "RECEIVING_PENDING")
+      throw new GatePassWorkflowError("Receiving is closed or dispatch has not occurred.");
     const decision = decideOutboundReceiving(gp.items.map((item) => {
       const next = byItem.get(item.id);
       if (!next) throw new GatePassWorkflowError("Receiving line does not match this gate pass.");

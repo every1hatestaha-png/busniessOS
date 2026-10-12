@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { canPerformAction, requirePermission } from "@/lib/server/authorization";
 import { GatePassWorkflowControls } from "@/components/gate-passes/workflow-controls";
 import { getOutboundGatePass } from "@/lib/server/outbound-gate-passes";
+import { db } from "@/lib/server/db";
 import { requireOutboundGatePassDraftFeature } from "@/lib/server/outbound-gate-pass-feature";
 
 export default async function OutboundGatePassPage({ params }: { params: Promise<{ id: string }> }) {
@@ -12,6 +13,10 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
   requireOutboundGatePassDraftFeature(workspaceId);
   const gatePass = await getOutboundGatePass(workspaceId, id);
   if (!gatePass) notFound();
+  const fbrConfig = await db.fbrIntegrationConfig.findUnique({ where: { workspaceId }, select: { enabled: true } });
+  const deferredBillingReady = process.env.OUTBOUND_GP_ACCEPTANCE_BILLING_LEGALLY_APPROVED === "true"
+    && Boolean(process.env.OUTBOUND_GP_ACCEPTANCE_BILLING_APPROVAL_REFERENCE?.trim())
+    && !fbrConfig?.enabled;
 
   return <div className="mx-auto max-w-5xl space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -46,6 +51,7 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
       status={gatePass.status}
       customerReference={gatePass.receivingReference}
       recipient={gatePass.receivingRecipient}
+      deferredBillingReady={deferredBillingReady}
       canIssue={canPerformAction(role, "sales.create")}
       canDispatch={canPerformAction(role, "inventory.adjust")}
       canReceive={canPerformAction(role, "returns.create")}
