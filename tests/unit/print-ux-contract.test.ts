@@ -85,6 +85,24 @@ describe("print UX regression contracts", () => {
     expect(desktop).toContain("document.fonts.ready");
   });
 
+  it("prints an invoice-independent signed-receiving acknowledgement with thermal-safe columns", () => {
+    const receivingPage = source("app/(dashboard)/gate-passes/[id]/receiving/print/page.tsx");
+    const detail = source("app/(dashboard)/gate-passes/[id]/page.tsx");
+    const css = source("app/globals.css");
+    expect(receivingPage).toContain("data-receiving-acknowledgement-print");
+    expect(receivingPage).toContain("Print Receiving 80mm");
+    expect(receivingPage).toContain('format="thermal"');
+    expect(receivingPage).toContain("Customer receiving signature / stamp");
+    expect(receivingPage).toContain("INTERIM RECEIVING");
+    expect(receivingPage).toContain("Mixed units:");
+    expect(receivingPage).toContain("not an invoice");
+    expect(receivingPage).toContain('getOutboundGatePass(workspaceId, id)');
+    expect(receivingPage).toContain('requirePermission("business.read")');
+    expect(detail).toContain("/receiving/print");
+    expect(css).toContain("[data-receiving-acknowledgement-print] [data-gp-thermal-hide]");
+    expect(receivingPage).not.toContain("stockQuantity: {");
+  });
+
   it("routes cash-bank printing to the dedicated ledger report", () => {
     expect(source("app/(dashboard)/accounting/cash-bank/[id]/page.tsx")).toContain("/reports/cash-bank?accountId=");
   });
