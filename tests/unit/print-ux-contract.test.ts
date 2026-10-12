@@ -53,6 +53,21 @@ describe("print UX regression contracts", () => {
     expect(source("app/(dashboard)/reports/supplier-statement/page.tsx")).toContain("printable={Boolean(statement)}");
   });
 
+  it("isolates the independent gate pass document and has a thermal-aware print variant", () => {
+    const page = source("app/(dashboard)/gate-passes/[id]/print/page.tsx");
+    const css = source("app/globals.css");
+    expect(page).toContain("data-document data-gate-pass-print");
+    expect(page).toContain('data-print-orientation="portrait"');
+    expect(page).toContain('<PrintButton label="Print A4 Gate Pass"');
+    expect(page).toContain('format="thermal"');
+    expect(page).toContain("data-gatepass-items");
+    expect(page).toContain("data-document-signatures");
+    expect(page).toContain("Receiver Signature / Stamp");
+    expect(page).not.toContain("invoice.invoiceNumber");
+    expect(css).toContain('html[data-print-format="thermal"] [data-gate-pass-print]');
+    expect(css).toContain('html[data-print-format="thermal"] [data-gate-pass-print] [data-gp-sku]');
+  });
+
   it("routes cash-bank printing to the dedicated ledger report", () => {
     expect(source("app/(dashboard)/accounting/cash-bank/[id]/page.tsx")).toContain("/reports/cash-bank?accountId=");
   });
