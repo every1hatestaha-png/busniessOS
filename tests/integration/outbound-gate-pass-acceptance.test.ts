@@ -424,6 +424,43 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     expect(shown).toContain("available 2");
     expect(shown).not.toContain("Confirm Dispatch");
   });
+  it("rejects an unrepresentable fractional BOM acceptance without changing receiving or invoice records", async () => {
+    const f = await fixture("1", 100);
+    const componentId = await createProduct(ctx(), {
+      name: "Synthetic precision component", sku: randomUUID(), category: "QA",
+      costPrice: 12, sellingPrice: 15, stockQuantity: 100,
+      reorderLevel: 0, unit: "KG", status: "ACTIVE", description: "",
+    });
+    const [bom] = await db.$queryRaw<Array<{ id: string }>>`
+      INSERT INTO "customer_sales_boms" ("workspaceId","customerId","productId","productCode")
+      VALUES (${tenant}::uuid,${f.customer.id}::uuid,${f.productId}::uuid,'SYNTHETIC-PRECISION')
+      RETURNING "id"::text AS "id"
+    `;
+    await db.$executeRaw`
+      INSERT INTO "customer_sales_bom_items" ("customerSalesBomId","componentProductId","quantityPerUnit")
+      VALUES (${bom!.id}::uuid,${componentId}::uuid,0.25)
+    `;
+    await issueGatePass(ctx(), f.gp.id);
+    await dispatchGatePass(ctx(), f.gp.id);
+    const itemId = f.gp.items[0]!.id;
+    const impossible = {
+      gatePassId: f.gp.id, reference: "PRECISION-SIGNED-001", recipient: "Receiving QA",
+      lines: [{ itemId, accepted: "0.0001", rejected: "0.9999" }],
+    };
+    await expect(recordGatePassReceiving(ctx(), impossible))
+      .rejects.toThrow("cannot be represented exactly");
+    const unchanged = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id }, include: { items: true } });
+    expect(unchanged.status).toBe("IN_TRANSIT");
+    expect(unchanged.receivingAt).toBeNull();
+    expect(unchanged.items[0]!.acceptedQuantity.isZero()).toBe(true);
+    expect(await db.invoice.count({ where: { customerId: f.customer.id } })).toBe(0);
+    expect((await db.product.findUniqueOrThrow({ where: { id: componentId } })).stockQuantity.toNumber()).toBe(99.75);
+    await recordGatePassReceiving(ctx(), { ...impossible,
+      lines: [{ itemId, accepted: "1", rejected: "0" }],
+    });
+    const final = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
+    expect(final.status).toBe("ACCEPTED");
+  });
   it("handles fractional BOM components in a managed warehouse with balanced returns", async () => {
     const warehouseId = randomUUID();
     await db.$executeRaw`UPDATE "warehouses" SET "isDefault"=false WHERE "workspaceId"=${tenant}::uuid AND "isDefault"=true`;
