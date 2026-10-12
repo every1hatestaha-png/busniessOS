@@ -110,6 +110,17 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     await dispatchGatePass(ctx(), f.gp.id);
     const receipt = { gatePassId: f.gp.id, reference: "SIGNED-RECEIVING-001", recipient: "Customer receiver", notes: "Received", lines: [{ itemId: f.gp.items[0]!.id, accepted: "8", rejected: "2" }] };
     const first = await recordGatePassReceiving(ctx(), receipt);
+    // A customer receiving acknowledgement is a separate printable proof
+    // of entered quantities, not a transaction, invoice, or sales receipt.
+    const { default: PrintReceiving } = await import("@/app/(dashboard)/gate-passes/[id]/receiving/print/page");
+    const beforePrinting = await db.inventoryTransaction.count({ where: { workspaceId: tenant } });
+    const rendered = renderToStaticMarkup(await PrintReceiving({ params: Promise.resolve({ id: f.gp.id }) }));
+    expect(rendered).toContain("SIGNED-RECEIVING-001");
+    expect(rendered).toContain("Customer receiving signature / stamp");
+    expect(rendered).toContain("Print Receiving 80mm");
+    expect(rendered).toContain("not an invoice");
+    expect(await db.invoice.count({ where: { customerId: f.customer.id } })).toBe(0);
+    expect(await db.inventoryTransaction.count({ where: { workspaceId: tenant } })).toBe(beforePrinting);
     const recorded = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
     const replay = await recordGatePassReceiving(ctx(), receipt);
     const unchanged = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
