@@ -337,6 +337,11 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     expect(rows[0]!.soldQuantity.toNumber()).toBe(8);
     expect(rows[0]!.totalQuantityConsumed.toNumber()).toBe(16);
     expect(rows[0]!.unitCost.toNumber()).toBe(10);
+    // Return the synthetic component's current unit cost to its original value.
+    // The preceding mutation proved invoice snapshots are immutable, but an
+    // unrelated direct product repricing must not contaminate the global
+    // stock-vs-GL reconciliation acceptance test.
+    await db.product.update({ where: { id: componentId }, data: { costPrice: 10 } });
     const gl = await db.generalLedgerEntry.findMany({ where: { sourceId: sale.salesOrderId! } });
     expect(gl.filter((row) => row.debit.eq(560))).toHaveLength(1);
     const countComponents = await db.inventoryTransaction.count({
