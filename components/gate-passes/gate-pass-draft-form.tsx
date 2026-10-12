@@ -40,8 +40,10 @@ export function OutboundGatePassDraftForm({
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
       <input type="hidden" name="itemsJson" value={itemsJson} readOnly />
       <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-        Draft capture only. No stock is reserved or dispatched. Printing for physical dispatch,
-        receiving and commercial invoicing remain locked until their controls are certified.
+        Saving a draft does not move stock or create a sale. After issuing the gate pass,
+        you can print an A4 or 80mm copy. Printing is not authorization to dispatch and
+        this document is not a tax invoice. Physical dispatch and accepted-goods
+        invoicing require the separately approved billing controls.
       </div>
       {state.error && <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{state.error}</p>}
       <div className="grid gap-4 sm:grid-cols-2">
