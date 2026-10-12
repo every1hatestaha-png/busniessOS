@@ -42,8 +42,12 @@ async function main() {
         assert.equal(await page.locator("[data-receiving-acknowledgement-print]").count(), 1);
         assert.equal(await page.getByText("INTERIM RECEIVING — NOT FINAL").count(), 1);
         assert.equal(await page.getByText("SIGNED-SYNTHETIC-RECEIVING-001").count(), 1);
-        const hidden = await page.locator("[data-gp-thermal-hide]").first().evaluate((el) => getComputedStyle(el).display);
-        assert.equal(hidden === "none", paper === "thermal", "Receiving thermal detail columns not hidden correctly");
+        const thermalLines = page.locator("[data-receiving-thermal-line]");
+        assert.equal(await thermalLines.count(), 48, "Printable thermal receipt must include every item");
+        const fullWidthVisible = await page.locator("[data-receiving-thermal]").evaluate((el) => getComputedStyle(el).display !== "none");
+        assert.equal(fullWidthVisible, paper === "thermal", "Full-width receiving layout must display on thermal paper only");
+        const a4Visible = await page.locator("[data-receiving-a4]").evaluate((el) => getComputedStyle(el).display !== "none");
+        assert.equal(a4Visible, paper === "a4", "A4 receiving table should not crush thermal descriptions");
       } else {
         const skuDisplay = await page.locator("[data-gp-sku]").first().evaluate((el) => getComputedStyle(el).display);
         assert.equal(skuDisplay === "none", paper === "thermal", "SKU column print visibility is incorrect");
@@ -63,6 +67,9 @@ async function main() {
         assert.ok(p[2] - p[0] >= expected[0] && p[2] - p[0] <= expected[1], `${documentType}/${paper} printed wrong paper width: ${p.join(",")}`);
       }
       assert.equal(errors.length, 0, `${documentType}/${paper} browser errors: ${errors.join("; ")}`);
+      if (documentType === "receiving" && paper === "thermal") {
+        assert.ok(pages.length <= 7, `80mm receiving used ${pages.length} sheets for 48 items; narrow-column regression`);
+      }
       console.log(`PASS ${documentType}/${paper}: ${pages.length} page(s), paper width ${(pages[0][2] - pages[0][0]).toFixed(1)}pt, 48 lines, clean print surface`);
       await page.close();
       }

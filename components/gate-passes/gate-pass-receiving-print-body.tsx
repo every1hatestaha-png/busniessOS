@@ -42,7 +42,7 @@ export function GatePassReceivingPrintBody({ workspace, data }: {
       </div>
     </section>
     <section className="min-w-0">
-      <table data-gatepass-items className="w-full table-fixed border-collapse text-left text-xs">
+      <table data-gatepass-items data-receiving-a4 className="w-full table-fixed border-collapse text-left text-xs">
         <thead><tr className="border-y-2 border-black">
           <th className="w-[40%] py-2 pr-2">Product / Description</th>
           <th data-gp-thermal-hide className="w-[13%] py-2 text-right">Sent</th>
@@ -60,6 +60,13 @@ export function GatePassReceivingPrintBody({ workspace, data }: {
           <td className="break-words py-2 pl-1">{item.unit}</td>
         </tr>)}</tbody>
       </table>
+      <div data-receiving-thermal className="hidden">
+        {data.items.map((item, index) => <div data-receiving-thermal-line key={item.id} className="mb-2 space-y-1 border-b border-neutral-300 pb-2 text-xs">
+          <p className="break-words font-semibold">{index + 1}. {item.name}</p>
+          <p className="break-words">Accepted {item.accepted} {item.unit} · Rejected {item.rejected} {item.unit}</p>
+          {item.awaiting !== "0" && <p className="font-semibold">Awaiting {item.awaiting} {item.unit}</p>}
+        </div>)}
+      </div>
       {data.totals &&
         <p data-document-section className="mt-2 text-right text-xs font-semibold">
           Totals: Sent {data.totals.sent} · Accepted {data.totals.accepted} ·

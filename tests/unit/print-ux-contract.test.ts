@@ -91,6 +91,9 @@ describe("print UX regression contracts", () => {
     const detail = source("app/(dashboard)/gate-passes/[id]/page.tsx");
     const css = source("app/globals.css");
     expect(body).toContain("data-receiving-acknowledgement-print");
+    expect(body).toContain("data-receiving-thermal-line");
+    expect(body).toContain("data-receiving-a4");
+    expect(css).toContain("[data-receiving-thermal] { display: block !important; }");
     expect(receivingPage).toContain("Print Receiving 80mm");
     expect(receivingPage).toContain('format="thermal"');
     expect(body).toContain("Customer receiving signature / stamp");
