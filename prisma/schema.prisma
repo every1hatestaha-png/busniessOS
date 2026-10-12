@@ -111,6 +111,7 @@ enum PaymentMethod {
 }
 
 enum DocumentKind {
+  GATE_PASS
   SALES_ORDER
   PURCHASE_ORDER
   INVOICE
@@ -199,6 +200,8 @@ enum InventoryTransactionType {
   SALE_CANCELLATION
   PURCHASE_CANCELLATION
   PURCHASE_RECEIPT
+  GATE_PASS_DISPATCH
+  GATE_PASS_RETURN
 }
 
 enum PricingMode {
@@ -261,6 +264,7 @@ model Workspace {
   suppliers                 Supplier[]
   products                  Product[]
   inventoryTransactions     InventoryTransaction[]
+  outboundGatePasses        OutboundGatePass[]
   salesOrders               SalesOrder[]
   purchaseOrders            PurchaseOrder[]
   invoices                  Invoice[]
@@ -348,6 +352,7 @@ model Customer {
   updatedAt      DateTime       @updatedAt
 
   workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  outboundGatePasses OutboundGatePass[]
   salesOrders   SalesOrder[]
   invoices      Invoice[]
   payments      Payment[]
@@ -418,6 +423,7 @@ model Product {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
+  outboundGatePassItems OutboundGatePassItem[]
   workspace             Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   inventoryTransactions InventoryTransaction[]
   salesOrderItems       SalesOrderItem[]
@@ -587,6 +593,7 @@ model InventoryTransaction {
 }
 
 model SalesOrder {
+  outboundGatePass OutboundGatePass? @relation("OutboundGatePassSale")
   id             String           @id @default(uuid())
   workspaceId    String
   customerId     String
@@ -784,6 +791,7 @@ model GoodReceivedNoteItem {
 }
 
 model Invoice {
+  outboundGatePass OutboundGatePass? @relation("OutboundGatePassInvoice")
   id            String        @id @default(uuid())
   workspaceId   String
   customerId    String
@@ -1264,4 +1272,83 @@ model FbrInvoiceAttempt {
 
   @@index([submissionId, createdAt])
   @@map("fbr_invoice_attempts")
+}
+
+ 
+// A separate, opt-in outbound delivery workflow. Draft capture is the only
+// implemented runtime mutation. Issuance / stock transfer / invoicing stay
+// disabled until dedicated inventory and finance acceptance.
+enum OutboundGatePassStatus {
+  DRAFT
+  ISSUED
+  IN_TRANSIT
+  RECEIVING_PENDING
+  ACCEPTED
+  PARTIALLY_ACCEPTED
+  REJECTED
+  INVOICED
+  CANCELLED
+}
+
+model OutboundGatePass {
+  id                  String                  @id @default(uuid())
+  workspaceId         String
+  customerId          String
+  warehouseId         String?                 @db.Uuid
+  gatePassNumber      String
+  status              OutboundGatePassStatus  @default(DRAFT)
+  gatePassDate        DateTime
+  deliveryAddress     String?
+  notes               String?
+  idempotencyKey      String
+  requestFingerprint  String
+  createdById         String
+  issuedAt            DateTime?
+  dispatchedAt        DateTime?
+  receivingReference String?
+  receivingRecipient String?
+  receivingNotes String?
+  receivingAt DateTime?
+  invoiceId String? @unique
+  salesOrderId String? @unique
+  complianceReviewedById String?
+  complianceReviewedAt DateTime?
+  version Int @default(0)
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+
+  workspace  Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer   Customer               @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  invoice    Invoice?               @relation("OutboundGatePassInvoice", fields: [invoiceId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "outbound_gp_invoice_fk")
+  salesOrder SalesOrder?            @relation("OutboundGatePassSale", fields: [salesOrderId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "outbound_gp_sale_fk")
+  items      OutboundGatePassItem[]
+
+  @@unique([workspaceId, gatePassNumber])
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, status, createdAt])
+  @@index([workspaceId, customerId])
+  @@map("outbound_gate_passes")
+}
+
+model OutboundGatePassItem {
+  id                    String   @id @default(uuid())
+  gatePassId            String
+  productId             String
+  productNameSnapshot   String
+  productSkuSnapshot    String?
+  productUnitSnapshot   ProductUnit
+  dispatchedQuantity    Decimal  @db.Decimal(15, 4)
+  acceptedQuantity      Decimal  @default(0) @db.Decimal(15, 4)
+  rejectedQuantity      Decimal  @default(0) @db.Decimal(15, 4)
+  returnedQuantity      Decimal  @default(0) @db.Decimal(15, 4)
+  unitPriceSnapshot     Decimal  @default(0) @db.Decimal(15, 2)
+  unitCostSnapshot      Decimal  @default(0) @db.Decimal(15, 2)
+  createdAt             DateTime @default(now())
+
+  gatePass OutboundGatePass @relation(fields: [gatePassId], references: [id], onDelete: Restrict)
+  product  Product          @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([gatePassId, productId])
+  @@index([productId])
+  @@map("outbound_gate_pass_items")
 }

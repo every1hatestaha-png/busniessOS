@@ -19,6 +19,7 @@ import type { WorkspaceVertical } from "@/lib/verticals/registry";
 export function TopNav({
   workspaceName,
   workspaceId,
+  gatePassEnabled,
   workspaces,
   role,
   enabledModules,
@@ -26,6 +27,7 @@ export function TopNav({
 }: {
   workspaceName: string;
   workspaceId: string;
+  gatePassEnabled: boolean;
   workspaces: Array<{ workspaceId: string; workspace: { name: string } }>;
   role: Role;
   enabledModules: string[];
@@ -57,7 +59,7 @@ export function TopNav({
             }}
           >
             <SheetTitle className="sr-only">Navigation menu</SheetTitle>
-            <Sidebar workspaceName={workspaceName} role={role} enabledModules={enabledModules} vertical={vertical} />
+            <Sidebar workspaceName={workspaceName} gatePassEnabled={gatePassEnabled} role={role} enabledModules={enabledModules} vertical={vertical} />
           </SheetContent>
         </Sheet>
 
