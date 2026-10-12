@@ -10,7 +10,7 @@ import { applyManagedWarehouseStockDelta, ManagedWarehouseStockError } from "@/l
 import { consumeCustomerSalesBomComponents, CustomerSalesBomError, restoreSaleBomComponents } from "@/lib/server/customer-sales-bom";
 import { saleEditSchema, type SaleEditInput } from "@/lib/validation/sale-edit";
 import type { InvoiceIssuedSnapshot } from "@/lib/server/invoice-snapshot";
-import { assertStandaloneSaleMutationAllowed } from "@/lib/server/gate-pass-sale-integrity";
+import { assertStandaloneSaleMutationAllowed, GatePassSaleMutationError } from "@/lib/server/gate-pass-sale-integrity";
 
 export class SaleEditDomainError extends Error {}
 
@@ -43,7 +43,12 @@ export async function updateSaleAndInvoice(context: EditContext, input: SaleEdit
       },
     });
     if (!order) throw new SaleEditDomainError("Sale not found.");
-    await assertStandaloneSaleMutationAllowed(tx, context.workspaceId, order.id);
+    try {
+      await assertStandaloneSaleMutationAllowed(tx, context.workspaceId, order.id);
+    } catch (error) {
+      if (error instanceof GatePassSaleMutationError) throw new SaleEditDomainError(error.message);
+      throw error;
+    }
     if (order.status === "CANCELLED") throw new SaleEditDomainError("Cancelled invoices cannot be edited.");
 
     const invoice = order.invoices[0];
