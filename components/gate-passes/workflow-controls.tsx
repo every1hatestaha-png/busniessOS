@@ -25,13 +25,14 @@ function ActionFeedback({ state }: { state: GatePassActionState }) {
 }
 
 export function GatePassWorkflowControls({
-  id, status, items, customerReference, recipient, deferredBillingReady, canIssue, canDispatch, canReceive, canInvoice,
+  id, status, items, customerReference, recipient, receivingNotes, deferredBillingReady, canIssue, canDispatch, canReceive, canInvoice,
 }: {
   id: string;
   status: Status;
   items: Item[];
   customerReference: string | null;
   recipient: string | null;
+  receivingNotes: string | null;
   deferredBillingReady: boolean;
   canIssue: boolean;
   canDispatch: boolean;
@@ -91,7 +92,7 @@ export function GatePassWorkflowControls({
           <td className="p-2"><input aria-label={`${item.name} accepted`} inputMode="decimal" className={inputClass} value={receivingLines[i]?.accepted ?? "0"} onChange={(e) => setReceivingLines((old) => old.map((x) => x.itemId === item.id ? {...x, accepted: e.target.value}: x))}/></td>
           <td className="p-2"><input aria-label={`${item.name} rejected`} inputMode="decimal" className={inputClass} value={receivingLines[i]?.rejected ?? "0"} onChange={(e) => setReceivingLines((old) => old.map((x) => x.itemId === item.id ? {...x, rejected: e.target.value}: x))}/></td>
         </tr>)}</tbody></table></div>
-      <label className="block text-sm space-y-1"><span>Receiving notes</span><textarea name="notes" maxLength={500} className={inputClass}/></label>
+      <label className="block text-sm space-y-1"><span>Receiving notes</span><textarea name="notes" maxLength={500} defaultValue={receivingNotes ?? ""} className={inputClass}/></label>
       <ActionFeedback state={receiveState}/><button disabled={receiving} className={buttonClass}>Record Receiving</button>
     </form>}
 

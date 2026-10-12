@@ -125,6 +125,7 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
       status={gatePass.status}
       customerReference={gatePass.receivingReference}
       recipient={gatePass.receivingRecipient}
+      receivingNotes={gatePass.receivingNotes}
       deferredBillingReady={deferredBillingReady}
       canIssue={canPerformAction(role, "sales.create")}
       canDispatch={canPerformAction(role, "inventory.adjust") && (configuredBOMs.length === 0 || bomDispatchEnabled) && stockShortages.length === 0}
