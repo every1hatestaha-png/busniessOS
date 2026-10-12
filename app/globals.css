@@ -170,6 +170,13 @@
     size: 80mm auto;
     margin: 4mm;
   }
+  /* Chromium ignores an 'auto' height in named 80mm pages and silently
+     falls back to A4. Keep existing Restaurant thermal behavior isolated;
+     Gate Pass uses a separately paginated 80mm roll-compatible profile. */
+  @page gatepass-thermal {
+    size: 80mm 297mm;
+    margin: 4mm;
+  }
   @page cheque {
     size: 190mm 90mm;
     margin: 0;
@@ -267,6 +274,7 @@
   [data-gate-pass-print] [data-gatepass-items] tr { break-inside: avoid; }
   [data-gate-pass-print] [data-document-signatures] { break-inside: avoid; }
   html[data-print-format="thermal"] [data-gate-pass-print] {
+    page: gatepass-thermal !important;
     width: 72mm !important;
     max-width: 72mm !important;
     font-size: 7.5pt !important;

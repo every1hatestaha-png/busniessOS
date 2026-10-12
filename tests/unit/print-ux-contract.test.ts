@@ -68,6 +68,8 @@ describe("print UX regression contracts", () => {
     expect(body).toContain("Receiver signature / stamp");
     expect(page).not.toContain("invoice.invoiceNumber");
     expect(css).toContain('html[data-print-format="thermal"] [data-gate-pass-print]');
+    expect(css).toContain("size: 80mm 297mm");
+    expect(css).toContain("page: gatepass-thermal !important");
     expect(css).toContain('html[data-print-format="thermal"] [data-gate-pass-print] [data-gp-sku]');
   });
 
