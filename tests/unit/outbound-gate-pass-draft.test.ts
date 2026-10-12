@@ -70,6 +70,16 @@ describe("outbound gate pass draft safety", () => {
     }
   });
 
+  it("describes issue-time printing without implying that a printout authorizes physical dispatch", () => {
+    const form = readFileSync("components/gate-passes/gate-pass-draft-form.tsx", "utf8");
+    expect(form).toContain("After issuing the gate pass,");
+    expect(form).toContain("A4 or 80mm copy");
+    expect(form).toContain("Printing is not authorization to dispatch");
+    expect(form).toContain("not a tax invoice");
+    expect(form).toContain("separately approved billing controls");
+    expect(form).not.toContain("Printing for physical dispatch,");
+  });
+
   it("keeps the feature opt-in", () => {
     const source = readFileSync("lib/server/outbound-gate-pass-feature.ts", "utf8");
     expect(source).toContain("OUTBOUND_GATE_PASS_V1_ENABLED");
