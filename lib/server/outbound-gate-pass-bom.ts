@@ -116,6 +116,7 @@ export async function planGatePassBomDispatch(
       const product = productById.get(productId);
       const quantityPerUnit = row.quantityPerUnit!;
       if (!product || !row.componentName || row.componentStatus !== "ACTIVE" ||
+          product.costPrice.isNegative() || !product.costPrice.isFinite() ||
           productId === item.productId || seen.has(productId) ||
           quantityPerUnit.lte(0) || quantityPerUnit.decimalPlaces() > 4) {
         throw new GatePassBomError("Customer assembly components are invalid or duplicated.");

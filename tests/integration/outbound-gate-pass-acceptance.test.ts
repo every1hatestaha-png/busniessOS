@@ -322,6 +322,13 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     expect((await db.outboundGatePassItem.findUniqueOrThrow({
       where: { id: gp.items[0]!.id },
     })).bomComponentsSnapshot).toEqual(gp.items[0]!.bomComponentsSnapshot);
+    await expect(db.outboundGatePassItem.update({
+      where: { id: gp.items[0]!.id },
+      data: { unitCostSnapshot: 999 },
+    })).rejects.toThrow();
+    expect((await db.outboundGatePassItem.findUniqueOrThrow({
+      where: { id: gp.items[0]!.id },
+    })).unitCostSnapshot.toNumber()).toBe(70);
     // Mutation of the customer's active BOM after dispatch MUST NOT change
     // the components or cost carried by the original physical shipment.
     await db.$executeRaw`

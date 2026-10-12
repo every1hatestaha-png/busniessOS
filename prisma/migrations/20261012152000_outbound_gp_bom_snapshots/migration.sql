@@ -16,6 +16,14 @@ CREATE FUNCTION prevent_outbound_gp_bom_snapshot_rewrite()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE pass_status TEXT;
 BEGIN
+  IF OLD."unitCostSnapshot" IS DISTINCT FROM NEW."unitCostSnapshot" THEN
+    SELECT "status"::text INTO pass_status
+    FROM "outbound_gate_passes" WHERE "id"=NEW."gatePassId" FOR SHARE;
+    IF pass_status NOT IN ('DRAFT','ISSUED') THEN
+      RAISE EXCEPTION 'Gate Pass dispatch valuation is immutable after shipment'
+        USING ERRCODE='23514';
+    END IF;
+  END IF;
   IF OLD."bomComponentsSnapshot" IS DISTINCT FROM NEW."bomComponentsSnapshot" THEN
     IF OLD."bomComponentsSnapshot" IS NOT NULL THEN
       RAISE EXCEPTION 'Gate Pass component snapshot is immutable' USING ERRCODE='23514';
@@ -30,5 +38,5 @@ BEGIN
   RETURN NEW;
 END $$;
 CREATE TRIGGER outbound_gp_bom_snapshot_immutable
-BEFORE UPDATE OF "bomComponentsSnapshot" ON "outbound_gate_pass_items"
+BEFORE UPDATE OF "bomComponentsSnapshot", "unitCostSnapshot" ON "outbound_gate_pass_items"
 FOR EACH ROW EXECUTE FUNCTION prevent_outbound_gp_bom_snapshot_rewrite();
