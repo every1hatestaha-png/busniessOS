@@ -69,5 +69,11 @@ jobs:
           npx prisma validate
           npx prisma migrate deploy
 
+      - name: Confirm integration test discovery
+        run: |
+          test "$RUN_INTEGRATION_TESTS" = "true"
+          test "$RUN_OUTBOUND_GP_ACCEPTANCE" = "true"
+          test -f tests/integration/outbound-gate-pass-acceptance.test.ts
+
       - name: Execute real Gate Pass end-to-end acceptance
         run: npx vitest run tests/integration/outbound-gate-pass-acceptance.test.ts --reporter=verbose
