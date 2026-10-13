@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { PrintButton } from "@/components/invoices/print-button";
 import { formatPkrAmountInWords } from "@/lib/amount-in-words";
 
 export function StandaloneChequePrinter() {
