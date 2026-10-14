@@ -38,7 +38,7 @@ describe("Ahmad-only outbound workflow acceptance", () => {
     const invoice = source.split("export async function invoiceAcceptedGatePass(")[1]!;
     const returns = source.split("export async function confirmRejectedStockReturn(")[1]!.split("export async function invoiceAcceptedGatePass(")[0]!;
     expect(source).toContain("async function deductGatePassStock(");
-    expect(source).toContain('type: "GATE_PASS_DISPATCH"');
+    expect(source).toContain('atIssue ? "GATE_PASS_ISSUE" : "GATE_PASS_DISPATCH"');
     expect(source).toContain("stockQuantity: { decrement: item.dispatchedQuantity }");
     expect(source).toContain("async function reverseUndispatchedIssueStock(");
     expect(source).toContain("issueStockDeductedAt: new Date()");
