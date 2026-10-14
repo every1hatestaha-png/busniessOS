@@ -134,7 +134,7 @@ async function deductGatePassStock(tx: Transaction, ctx: Context, gp: Awaited<Re
           stockQuantity: { gte: item.dispatchedQuantity } },
         data: { stockQuantity: { decrement: item.dispatchedQuantity } },
       });
-      if (changed.count !== 1) throw new GatePassWorkflowError("Insufficient available stock for this gate pass.");
+      if (changed.count !== 1) throw new GatePassWorkflowError("Insufficient stock available for this gate pass.");
       await applyManagedWarehouseStockDelta(tx, {
         workspaceId: ctx.workspaceId, warehouseId: gp.warehouseId,
         productId: item.productId, delta: item.dispatchedQuantity.negated(),
