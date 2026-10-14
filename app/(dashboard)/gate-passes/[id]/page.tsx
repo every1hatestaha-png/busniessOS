@@ -129,6 +129,7 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
       deferredBillingReady={deferredBillingReady}
       canIssue={canPerformAction(role, "sales.create") && (process.env.OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED !== "true" || canPerformAction(role, "inventory.adjust"))}
       issueDeductsStock={process.env.OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED === "true"}
+      stockAlreadyDeducted={Boolean(gatePass.issueStockDeductedAt)}
       canDispatch={canPerformAction(role, "inventory.adjust") && (Boolean(gatePass.issueStockDeductedAt) || configuredBOMs.length === 0 || bomDispatchEnabled) && stockShortages.length === 0}
       canReceive={canPerformAction(role, "returns.create")}
       canInvoice={canPerformAction(role, "financial.manage")}
