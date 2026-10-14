@@ -202,6 +202,8 @@ enum InventoryTransactionType {
   PURCHASE_RECEIPT
   GATE_PASS_DISPATCH
   GATE_PASS_RETURN
+  GATE_PASS_ISSUE
+  GATE_PASS_ISSUE_CANCEL
 }
 
 enum PricingMode {
