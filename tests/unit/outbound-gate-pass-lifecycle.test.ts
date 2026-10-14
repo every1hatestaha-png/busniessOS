@@ -32,13 +32,17 @@ describe("Ahmad-only outbound workflow acceptance", () => {
     expect(issueInvoiceFromGatePassSchema.safeParse({ ...valid, lines: [{ itemId: uuid(2), unitPrice: "2", taxRate: 101 }] }).success).toBe(false);
   });
 
-  it("moves stock at dispatch, records a physical return and avoids second stock deduction at invoice", () => {
+  it("moves stock at issue for V2, preserves legacy dispatch and avoids second stock deduction at invoice", () => {
     const source = readFileSync("lib/server/outbound-gate-pass-lifecycle.ts", "utf8");
     const dispatch = source.split("export async function dispatchGatePass(")[1]!.split("export async function recordGatePassReceiving(")[0]!;
     const invoice = source.split("export async function invoiceAcceptedGatePass(")[1]!;
     const returns = source.split("export async function confirmRejectedStockReturn(")[1]!.split("export async function invoiceAcceptedGatePass(")[0]!;
-    expect(dispatch).toContain("type: \"GATE_PASS_DISPATCH\"");
-    expect(dispatch).toContain("stockQuantity: { decrement: item.dispatchedQuantity }");
+    expect(source).toContain("async function deductGatePassStock(");
+    expect(source).toContain('atIssue ? "GATE_PASS_ISSUE" : "GATE_PASS_DISPATCH"');
+    expect(source).toContain("stockQuantity: { decrement: item.dispatchedQuantity }");
+    expect(source).toContain("async function reverseUndispatchedIssueStock(");
+    expect(source).toContain("issueStockDeductedAt: new Date()");
+    expect(dispatch).toContain("if (!gp.issueStockDeductedAt) await deductGatePassStock");
     expect(returns).toContain("type: \"GATE_PASS_RETURN\"");
     expect(returns).toContain("stockQuantity: { increment: delta }");
     expect(invoice).toContain("postSaleToGeneralLedger(");

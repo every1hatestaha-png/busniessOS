@@ -279,7 +279,118 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     expect(await db.fbrInvoiceSubmission.count({where:{workspaceId:tenant}})).toBe(0);
     await db.fbrIntegrationConfig.delete({where:{workspaceId:tenant}});
   });
-  it("cancels only undispatched documents and never changes stock", async () => {
+  it("AHMAD V2: issued GP reserves stock once, cancel restores once, dispatch does not re-deduct", async () => {
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "true");
+    try {
+    const f = await fixture();
+    const stock = async () => (await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber();
+    expect(await stock()).toBe(100);
+    await issueGatePass(ctx(), f.gp.id);
+    expect(await stock()).toBe(90);
+    await issueGatePass(ctx(), f.gp.id);
+    expect(await stock()).toBe(90);
+    await dispatchGatePass(ctx(), f.gp.id);
+    expect(await stock()).toBe(90);
+    await expect(cancelUndispatchedGatePass(ctx(), f.gp.id)).rejects.toThrow();
+
+    const g = await fixture();
+    await issueGatePass(ctx(), g.gp.id);
+    expect((await db.product.findUniqueOrThrow({ where: { id: g.productId } })).stockQuantity.toNumber()).toBe(90);
+    await cancelUndispatchedGatePass(ctx(), g.gp.id);
+    await cancelUndispatchedGatePass(ctx(), g.gp.id);
+    expect((await db.product.findUniqueOrThrow({ where: { id: g.productId } })).stockQuantity.toNumber()).toBe(100);
+    expect(await db.inventoryTransaction.count({ where: { productId: g.productId, type: "GATE_PASS_ISSUE" } })).toBe(1);
+    expect(await db.inventoryTransaction.count({ where: { productId: g.productId, type: "GATE_PASS_ISSUE_CANCEL" } })).toBe(1);
+    } finally {
+      vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
+    }
+  });
+  it("AHMAD V2: insufficient issue stock rolls back status, snapshots and inventory writes", async () => {
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "true");
+    try {
+      const f = await fixture("10", 5);
+      await expect(issueGatePass(ctx(), f.gp.id)).rejects.toThrow("Insufficient stock available");
+      const gp = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
+      expect(gp.status).toBe("DRAFT");
+      expect(gp.issueStockDeductedAt).toBeNull();
+      expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(5);
+      expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_ISSUE" } })).toBe(0);
+    } finally {
+      vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
+    }
+  });
+  it("AHMAD V2: serializes two issue attempts against last available units", async () => {
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "true");
+    try {
+      const f = await fixture("4", 5);
+      const g = await createOutboundGatePassDraft(ctx(), { ...f.draft, idempotencyKey: randomUUID() });
+      const settled = await Promise.allSettled([issueGatePass(ctx(), f.gp.id), issueGatePass(ctx(), g.id)]);
+      expect(settled.filter((entry) => entry.status === "fulfilled")).toHaveLength(1);
+      expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(1);
+      expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_ISSUE" } })).toBe(1);
+    } finally {
+      vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
+    }
+  });
+  it("AHMAD V2: freezes BOM components at issue and reverses parent and components exactly once", async () => {
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "true");
+    try {
+      const f = await fixture("10", 100);
+      const componentId = await createProduct(ctx(), {
+        name: "Synthetic V2 component", sku: randomUUID(), category: "QA",
+        costPrice: 10, sellingPrice: 25, stockQuantity: 100, reorderLevel: 0,
+        unit: "PIECE", status: "ACTIVE", description: "",
+      });
+      const [bom] = await db.$queryRaw<Array<{ id: string }>>`
+        INSERT INTO "customer_sales_boms" ("workspaceId","customerId","productId","productCode")
+        VALUES (${tenant}::uuid,${f.customer.id}::uuid,${f.productId}::uuid,'SYNTHETIC-V2-BOM')
+        RETURNING "id"::text AS "id"
+      `;
+      await db.$executeRaw`
+        INSERT INTO "customer_sales_bom_items" ("customerSalesBomId","componentProductId","quantityPerUnit")
+        VALUES (${bom!.id}::uuid,${componentId}::uuid,2)
+      `;
+      await issueGatePass(ctx(), f.gp.id);
+      const issued = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id }, include: { items: true } });
+      expect(issued.issueStockDeductedAt).not.toBeNull();
+      expect(issued.items[0]!.bomComponentsSnapshot).toMatchObject({ version: 1, components: [{ productId: componentId }] });
+      await expect(db.outboundGatePassItem.update({
+        where: { id: issued.items[0]!.id }, data: { unitCostSnapshot: 999 },
+      })).rejects.toThrow();
+      await expect(db.outboundGatePassItem.update({
+        where: { id: issued.items[0]!.id }, data: { bomComponentsSnapshot: { version: 1, components: [] } },
+      })).rejects.toThrow();
+      expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(90);
+      expect((await db.product.findUniqueOrThrow({ where: { id: componentId } })).stockQuantity.toNumber()).toBe(80);
+      await cancelUndispatchedGatePass(ctx(), f.gp.id);
+      await cancelUndispatchedGatePass(ctx(), f.gp.id);
+      expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(100);
+      expect((await db.product.findUniqueOrThrow({ where: { id: componentId } })).stockQuantity.toNumber()).toBe(100);
+      expect(await db.inventoryTransaction.count({ where: { productId: componentId, type: "GATE_PASS_ISSUE_CANCEL" } })).toBe(1);
+    } finally {
+      vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
+    }
+  });
+  it("AHMAD V2: cancel restores reserved stock using historical cost when WAC changed", async () => {
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "true");
+    try {
+      const f = await fixture("10", 100);
+      await issueGatePass(ctx(), f.gp.id);
+      expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(90);
+      // Simulate an independent cost change after stock reservation.
+      await db.product.update({ where: { id: f.productId }, data: { costPrice: new Prisma.Decimal("55.00") } });
+      await cancelUndispatchedGatePass(ctx(), f.gp.id);
+      const restored = await db.product.findUniqueOrThrow({ where: { id: f.productId } });
+      expect(restored.stockQuantity.toNumber()).toBe(100);
+      expect(restored.costPrice.toNumber()).toBe(54.5); // 90*55 + 10*50 = 100*54.5
+      // Reset the isolated synthetic fixture's direct cost change so the
+      // independent full inventory/GL reconciliation test remains meaningful.
+      await db.product.update({ where: { id: f.productId }, data: { costPrice: new Prisma.Decimal("50.00") } });
+    } finally {
+      vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
+    }
+  });
+  it("restores issued Gate Pass reserved stock once on pre-dispatch cancellation", async () => {
     const f=await fixture(); await issueGatePass(ctx(),f.gp.id); await cancelUndispatchedGatePass(ctx(),f.gp.id); await cancelUndispatchedGatePass(ctx(),f.gp.id);
     await expect(dispatchGatePass(ctx(),f.gp.id)).rejects.toThrow();
     expect((await db.product.findUniqueOrThrow({where:{id:f.productId}})).stockQuantity.toNumber()).toBe(100);
@@ -343,6 +454,31 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     expect(attempts.filter(x=>x.status==="fulfilled")).toHaveLength(1);
     expect((await db.product.findUniqueOrThrow({where:{id:f.productId}})).stockQuantity.toNumber()).toBe(1);
     expect(await db.inventoryTransaction.count({where:{productId:f.productId,type:"GATE_PASS_DISPATCH"}})).toBe(1);
+  });
+  it("AHMAD V2: issuing and cancelling a managed-warehouse GP reverses original warehouse stock once", async () => {
+    const warehouseId = randomUUID();
+    await db.$executeRaw`UPDATE "warehouses" SET "isDefault"=false WHERE "workspaceId"=${tenant}::uuid AND "name"='Synthetic GP warehouse'`;
+    await db.$executeRaw`INSERT INTO "warehouses" ("id","workspaceId","name","code","isDefault") VALUES (${warehouseId}::uuid,${tenant}::uuid,'Synthetic GP warehouse',${randomUUID()},true)`;
+    await db.$executeRaw`INSERT INTO "workspace_modules" ("workspaceId","moduleKey","enabled","config") VALUES (${tenant}::uuid,'inventory',true,'{"warehouseStockMode":"MANAGED"}'::jsonb)
+      ON CONFLICT ("workspaceId","moduleKey") DO UPDATE SET "enabled"=true,"config"='{"warehouseStockMode":"MANAGED"}'::jsonb`;
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "true");
+    try {
+      const f = await fixture("10", 100, warehouseId);
+      const warehouse = async () => db.$queryRaw<Array<{quantity:Prisma.Decimal}>>`SELECT "quantity" FROM "warehouse_stocks" WHERE "workspaceId"=${tenant}::uuid AND "warehouseId"=${warehouseId}::uuid AND "productId"=${f.productId}::uuid`;
+      expect((await warehouse())[0]!.quantity.toNumber()).toBe(100);
+      await issueGatePass(ctx(), f.gp.id);
+      await issueGatePass(ctx(), f.gp.id);
+      expect((await warehouse())[0]!.quantity.toNumber()).toBe(90);
+      expect((await db.product.findUniqueOrThrow({where:{id:f.productId}})).stockQuantity.toNumber()).toBe(90);
+      await cancelUndispatchedGatePass(ctx(), f.gp.id);
+      await cancelUndispatchedGatePass(ctx(), f.gp.id);
+      expect((await warehouse())[0]!.quantity.toNumber()).toBe(100);
+      expect((await db.product.findUniqueOrThrow({where:{id:f.productId}})).stockQuantity.toNumber()).toBe(100);
+    } finally {
+      vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
+      await db.$executeRaw`UPDATE "workspace_modules" SET "enabled"=false WHERE "workspaceId"=${tenant}::uuid AND "moduleKey"='inventory'`;
+      await db.$executeRaw`UPDATE "warehouses" SET "isDefault"=false,"isActive"=false WHERE "id"=${warehouseId}::uuid AND "workspaceId"=${tenant}::uuid`;
+    }
   });
   it("deducts managed warehouse and core stock once and restores rejection in the same warehouse", async () => {
     const warehouseId=randomUUID();
@@ -594,7 +730,7 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
   it("reconciles owned inventory including transit to the inventory GL asset", async () => {
     const products=await db.product.findMany({where:{workspaceId:tenant}});
     const stock=products.reduce((n,p)=>n.plus(p.stockQuantity.mul(p.costPrice)),new Prisma.Decimal(0));
-    const passes=await db.outboundGatePass.findMany({where:{workspaceId:tenant,status:{in:["IN_TRANSIT","RECEIVING_PENDING","ACCEPTED","PARTIALLY_ACCEPTED","REJECTED","INVOICED"]}},include:{items:true}});
+    const passes=await db.outboundGatePass.findMany({where:{workspaceId:tenant,OR:[{status:{in:["IN_TRANSIT","RECEIVING_PENDING","ACCEPTED","PARTIALLY_ACCEPTED","REJECTED","INVOICED"]}},{status:"ISSUED",issueStockDeductedAt:{not:null}}]},include:{items:true}});
     const transit=passes.reduce((n,gp)=>gp.items.reduce((s,item)=>s.plus(ownedTransitInventory({dispatched:item.dispatchedQuantity,accepted:item.acceptedQuantity,rejected:item.rejectedQuantity,returned:item.returnedQuantity,status:gp.status,unitCost:item.unitCostSnapshot}).value),n),new Prisma.Decimal(0));
     const ledger=await db.generalLedgerEntry.aggregate({where:{workspaceId:tenant,account:{systemCode:"INVENTORY"}},_sum:{debit:true,credit:true}});
     expect(stock.plus(transit).toNumber()).toBe(new Prisma.Decimal(ledger._sum.debit??0).minus(ledger._sum.credit??0).toNumber());
