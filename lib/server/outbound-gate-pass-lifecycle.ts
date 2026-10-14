@@ -163,17 +163,38 @@ async function reverseUndispatchedIssueStock(tx: Transaction, ctx: Context, gp: 
   if (mode === "MANAGED") {
     await assertManagedWarehouseSelection(tx, { workspaceId: ctx.workspaceId, warehouseId: gp.warehouseId });
   }
+  let roundingDelta = new Prisma.Decimal(0);
+  // Restore the exact historical cost, not the product's possibly newer WAC.
+  // Reprice the returning quantity into today's stock and post only the cent
+  // rounding residual to the inventory GL. All writes are one serializable tx.
+  async function restoreHistoricalStock(productId: string, quantity: Prisma.Decimal, historicalCost: Prisma.Decimal) {
+    if (!quantity.isFinite() || quantity.lte(0) || !historicalCost.isFinite() ||
+        historicalCost.isNegative() || !historicalCost.eq(historicalCost.toDecimalPlaces(2))) {
+      throw new GatePassWorkflowError("Reserved stock valuation is invalid; no reversal was applied.");
+    }
+    const product = await tx.product.findFirst({
+      where: { workspaceId: ctx.workspaceId, id: productId },
+      select: { stockQuantity: true, costPrice: true },
+    });
+    if (!product) throw new GatePassWorkflowError("Reserved product is unavailable for reversal.");
+    const nextQty = product.stockQuantity.plus(quantity);
+    const previousValue = product.stockQuantity.mul(product.costPrice);
+    const returnedValue = quantity.mul(historicalCost);
+    const nextCost = previousValue.plus(returnedValue).div(nextQty).toDecimalPlaces(2);
+    const update = await tx.product.updateMany({
+      where: { workspaceId: ctx.workspaceId, id: productId,
+        stockQuantity: product.stockQuantity, costPrice: product.costPrice },
+      data: { stockQuantity: { increment: quantity }, costPrice: nextCost },
+    });
+    if (update.count !== 1) throw new GatePassWorkflowError("Reserved stock changed during valuation reversal.");
+    await applyManagedWarehouseStockDelta(tx, {
+      workspaceId: ctx.workspaceId, warehouseId: gp.warehouseId, productId, delta: quantity,
+    });
+    roundingDelta = roundingDelta.plus(nextQty.mul(nextCost).minus(previousValue).minus(returnedValue));
+  }
+
   const components = new Map<string, { quantity: Prisma.Decimal; cost: Prisma.Decimal }>();
   for (const item of gp.items) {
-    const restored = await tx.product.updateMany({
-      where: { workspaceId: ctx.workspaceId, id: item.productId },
-      data: { stockQuantity: { increment: item.dispatchedQuantity } },
-    });
-    if (restored.count !== 1) throw new GatePassWorkflowError("Reserved parent product is unavailable for reversal.");
-    await applyManagedWarehouseStockDelta(tx, {
-      workspaceId: ctx.workspaceId, warehouseId: gp.warehouseId,
-      productId: item.productId, delta: item.dispatchedQuantity,
-    });
     const embedded = readGatePassBomSnapshot(item.bomComponentsSnapshot);
     const embeddedCost = embedded.reduce((total, part) => total.plus(
       new Prisma.Decimal(part.quantityPerUnit).mul(part.unitCost)
@@ -182,6 +203,7 @@ async function reverseUndispatchedIssueStock(tx: Transaction, ctx: Context, gp: 
     if (!parentCost.isFinite() || parentCost.isNegative()) {
       throw new GatePassWorkflowError("Reserved stock valuation is invalid; cancellation was not applied.");
     }
+    await restoreHistoricalStock(item.productId, item.dispatchedQuantity, parentCost);
     await tx.inventoryTransaction.create({ data: {
       workspaceId: ctx.workspaceId, productId: item.productId, type: "GATE_PASS_ISSUE_CANCEL",
       quantityChanged: item.dispatchedQuantity, unitCost: parentCost.toDecimalPlaces(2),
@@ -201,19 +223,19 @@ async function reverseUndispatchedIssueStock(tx: Transaction, ctx: Context, gp: 
     }
   }
   for (const [productId, { quantity, cost }] of components) {
-    const result = await tx.product.updateMany({
-      where: { workspaceId: ctx.workspaceId, id: productId },
-      data: { stockQuantity: { increment: quantity } },
-    });
-    if (result.count !== 1) throw new GatePassWorkflowError("Reserved component is unavailable for reversal.");
-    await applyManagedWarehouseStockDelta(tx, {
-      workspaceId: ctx.workspaceId, warehouseId: gp.warehouseId, productId, delta: quantity,
-    });
+    await restoreHistoricalStock(productId, quantity, cost);
     await tx.inventoryTransaction.create({ data: {
       workspaceId: ctx.workspaceId, productId, type: "GATE_PASS_ISSUE_CANCEL",
       quantityChanged: quantity, unitCost: cost,
       reference: `BOM:CANCEL:${gp.gatePassNumber}`,
     } });
+  }
+  if (!roundingDelta.isZero()) {
+    await postInventoryAdjustmentToGeneralLedger(tx, {
+      workspaceId: ctx.workspaceId, sourceId: gp.id,
+      documentNo: `${gp.gatePassNumber}-ISSUE-CANCEL-WAC-${gp.version + 1}`,
+      date: new Date(), value: roundingDelta.toDecimalPlaces(2),
+    });
   }
 }
 
