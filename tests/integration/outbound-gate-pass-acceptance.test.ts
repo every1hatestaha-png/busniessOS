@@ -371,6 +371,25 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
       vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
     }
   });
+  it("AHMAD V2: cancel restores reserved stock using historical cost when WAC changed", async () => {
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "true");
+    try {
+      const f = await fixture("10", 100);
+      await issueGatePass(ctx(), f.gp.id);
+      expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(90);
+      // Simulate an independent cost change after stock reservation.
+      await db.product.update({ where: { id: f.productId }, data: { costPrice: new Prisma.Decimal("55.00") } });
+      await cancelUndispatchedGatePass(ctx(), f.gp.id);
+      const restored = await db.product.findUniqueOrThrow({ where: { id: f.productId } });
+      expect(restored.stockQuantity.toNumber()).toBe(100);
+      expect(restored.costPrice.toNumber()).toBe(54.5); // 90*55 + 10*50 = 100*54.5
+      // Reset the isolated synthetic fixture's direct cost change so the
+      // independent full inventory/GL reconciliation test remains meaningful.
+      await db.product.update({ where: { id: f.productId }, data: { costPrice: new Prisma.Decimal("50.00") } });
+    } finally {
+      vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
+    }
+  });
   it("restores issued Gate Pass reserved stock once on pre-dispatch cancellation", async () => {
     const f=await fixture(); await issueGatePass(ctx(),f.gp.id); await cancelUndispatchedGatePass(ctx(),f.gp.id); await cancelUndispatchedGatePass(ctx(),f.gp.id);
     await expect(dispatchGatePass(ctx(),f.gp.id)).rejects.toThrow();
