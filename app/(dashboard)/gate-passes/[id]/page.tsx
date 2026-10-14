@@ -31,7 +31,7 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
   // comparing against either core stock or the original managed warehouse.
   // This avoids suggesting dispatch is possible when two different assembly
   // lines compete for the same component stock.
-  const stockShortages = gatePass.status === "ISSUED" ? await db.$queryRaw<Array<{
+  const stockShortages = gatePass.status === "ISSUED" && !gatePass.issueStockDeductedAt ? await db.$queryRaw<Array<{
     name: string; required: string; available: string;
   }>>`
     WITH required_components AS (
@@ -109,7 +109,7 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
     {gatePass.receivingReference && <p className="text-sm"><span className="font-semibold">Customer receiving reference: </span>{gatePass.receivingReference}{gatePass.receivingRecipient ? ` · ${gatePass.receivingRecipient}` : ""}</p>}
     {gatePass.receivingAt && <Link href={`/gate-passes/${gatePass.id}/receiving/print`} className="inline-flex rounded-md border px-4 py-2 text-sm font-medium">Print Customer Receiving Acknowledgement</Link>}
     {gatePass.invoiceId && <Link href={`/invoices/${gatePass.invoiceId}`} className="inline-flex rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white">View and print final invoice</Link>}
-    {gatePass.status === "ISSUED" && configuredBOMs.length > 0 && !bomDispatchEnabled && <div role="status" className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+    {gatePass.status === "ISSUED" && !gatePass.issueStockDeductedAt && configuredBOMs.length > 0 && !bomDispatchEnabled && <div role="status" className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
       <p className="font-semibold">Assembly products require component-stock reconciliation before dispatch.</p>
       <p className="mt-1">Gate Pass printing is available, but dispatching this assembled customer BOM through the deferred-invoice workflow is not yet supported. Use the standard Sales flow until the component-return adapter is certified.</p>
       <ul className="mt-2 list-disc pl-5">{configuredBOMs.map((row) => <li key={row.name}>{row.name}</li>)}</ul>
@@ -127,8 +127,9 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
       recipient={gatePass.receivingRecipient}
       receivingNotes={gatePass.receivingNotes}
       deferredBillingReady={deferredBillingReady}
-      canIssue={canPerformAction(role, "sales.create")}
-      canDispatch={canPerformAction(role, "inventory.adjust") && (configuredBOMs.length === 0 || bomDispatchEnabled) && stockShortages.length === 0}
+      canIssue={canPerformAction(role, "sales.create") && (process.env.OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED !== "true" || canPerformAction(role, "inventory.adjust"))}
+      issueDeductsStock={process.env.OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED === "true"}
+      canDispatch={canPerformAction(role, "inventory.adjust") && (Boolean(gatePass.issueStockDeductedAt) || configuredBOMs.length === 0 || bomDispatchEnabled) && stockShortages.length === 0}
       canReceive={canPerformAction(role, "returns.create")}
       canInvoice={canPerformAction(role, "financial.manage")}
       items={gatePass.items.map((item) => ({
