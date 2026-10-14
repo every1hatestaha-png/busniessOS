@@ -298,7 +298,7 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     await cancelUndispatchedGatePass(ctx(), g.gp.id);
     expect((await db.product.findUniqueOrThrow({ where: { id: g.productId } })).stockQuantity.toNumber()).toBe(100);
   });
-  it("cancels only undispatched documents and never changes stock", async () => {
+  it("restores issued Gate Pass reserved stock once on pre-dispatch cancellation", async () => {
     const f=await fixture(); await issueGatePass(ctx(),f.gp.id); await cancelUndispatchedGatePass(ctx(),f.gp.id); await cancelUndispatchedGatePass(ctx(),f.gp.id);
     await expect(dispatchGatePass(ctx(),f.gp.id)).rejects.toThrow();
     expect((await db.product.findUniqueOrThrow({where:{id:f.productId}})).stockQuantity.toNumber()).toBe(100);
