@@ -686,7 +686,7 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
   it("reconciles owned inventory including transit to the inventory GL asset", async () => {
     const products=await db.product.findMany({where:{workspaceId:tenant}});
     const stock=products.reduce((n,p)=>n.plus(p.stockQuantity.mul(p.costPrice)),new Prisma.Decimal(0));
-    const passes=await db.outboundGatePass.findMany({where:{workspaceId:tenant,status:{in:["IN_TRANSIT","RECEIVING_PENDING","ACCEPTED","PARTIALLY_ACCEPTED","REJECTED","INVOICED"]}},include:{items:true}});
+    const passes=await db.outboundGatePass.findMany({where:{workspaceId:tenant,OR:[{status:{in:["IN_TRANSIT","RECEIVING_PENDING","ACCEPTED","PARTIALLY_ACCEPTED","REJECTED","INVOICED"]}},{status:"ISSUED",issueStockDeductedAt:{not:null}}]},include:{items:true}});
     const transit=passes.reduce((n,gp)=>gp.items.reduce((s,item)=>s.plus(ownedTransitInventory({dispatched:item.dispatchedQuantity,accepted:item.acceptedQuantity,rejected:item.rejectedQuantity,returned:item.returnedQuantity,status:gp.status,unitCost:item.unitCostSnapshot}).value),n),new Prisma.Decimal(0));
     const ledger=await db.generalLedgerEntry.aggregate({where:{workspaceId:tenant,account:{systemCode:"INVENTORY"}},_sum:{debit:true,credit:true}});
     expect(stock.plus(transit).toNumber()).toBe(new Prisma.Decimal(ledger._sum.debit??0).minus(ledger._sum.credit??0).toNumber());
