@@ -108,7 +108,7 @@ export function GatePassWorkflowControls({
       <ActionFeedback state={returnState}/><button disabled={returning} className={buttonClass}>Confirm Physical Return</button>
     </form>}
 
-    {deferredBillingReady && canInvoice && ["ACCEPTED", "PARTIALLY_ACCEPTED"].includes(status) && <form action={invoice} className="space-y-4 rounded-md border p-4">
+    {deferredBillingReady && canInvoice && ["ACCEPTED", "PARTIALLY_ACCEPTED"].includes(status) && <form id="generate-invoice" action={invoice} className="scroll-mt-24 space-y-4 rounded-md border p-4">
       <h2 className="font-semibold">Generate invoice for accepted goods</h2>
       <p className="text-sm text-muted-foreground">Verify prices and tax per line. Stock was moved at dispatch and will not be deducted again.</p>
       <input type="hidden" name="gatePassId" value={id}/><input type="hidden" name="linesJson" value={JSON.stringify(invoiceLines)} readOnly/>
