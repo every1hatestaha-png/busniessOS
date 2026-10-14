@@ -154,6 +154,7 @@ export async function deductGatePassBomComponents(
     workspaceId: string;
     warehouseId: string | null;
     gatePassNumber: string;
+    movementType?: "GATE_PASS_DISPATCH" | "GATE_PASS_ISSUE";
     deductions: Map<string, Prisma.Decimal>;
     products: Map<string, { costPrice: Prisma.Decimal; name: string }>;
   },
@@ -182,7 +183,7 @@ export async function deductGatePassBomComponents(
       throw error;
     }
     await tx.inventoryTransaction.create({
-      data: { workspaceId: input.workspaceId, productId, type: "GATE_PASS_DISPATCH",
+      data: { workspaceId: input.workspaceId, productId, type: input.movementType ?? "GATE_PASS_DISPATCH",
         quantityChanged: quantity.negated(), unitCost: product.costPrice,
         reference: `BOM:${input.gatePassNumber}` },
     });
