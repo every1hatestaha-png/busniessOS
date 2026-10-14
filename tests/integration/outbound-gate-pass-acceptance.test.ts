@@ -279,6 +279,25 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     expect(await db.fbrInvoiceSubmission.count({where:{workspaceId:tenant}})).toBe(0);
     await db.fbrIntegrationConfig.delete({where:{workspaceId:tenant}});
   });
+  it("AHMAD V2: issued GP reserves stock once, cancel restores once, dispatch does not re-deduct", async () => {
+    const f = await fixture();
+    const stock = async () => (await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber();
+    expect(await stock()).toBe(100);
+    await issueGatePass(ctx(), f.gp.id);
+    expect(await stock()).toBe(90);
+    await issueGatePass(ctx(), f.gp.id);
+    expect(await stock()).toBe(90);
+    await dispatchGatePass(ctx(), f.gp.id);
+    expect(await stock()).toBe(90);
+    await expect(cancelUndispatchedGatePass(ctx(), f.gp.id)).rejects.toThrow();
+
+    const g = await fixture();
+    await issueGatePass(ctx(), g.gp.id);
+    expect((await db.product.findUniqueOrThrow({ where: { id: g.productId } })).stockQuantity.toNumber()).toBe(90);
+    await cancelUndispatchedGatePass(ctx(), g.gp.id);
+    await cancelUndispatchedGatePass(ctx(), g.gp.id);
+    expect((await db.product.findUniqueOrThrow({ where: { id: g.productId } })).stockQuantity.toNumber()).toBe(100);
+  });
   it("cancels only undispatched documents and never changes stock", async () => {
     const f=await fixture(); await issueGatePass(ctx(),f.gp.id); await cancelUndispatchedGatePass(ctx(),f.gp.id); await cancelUndispatchedGatePass(ctx(),f.gp.id);
     await expect(dispatchGatePass(ctx(),f.gp.id)).rejects.toThrow();
