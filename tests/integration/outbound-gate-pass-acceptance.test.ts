@@ -455,6 +455,31 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     expect((await db.product.findUniqueOrThrow({where:{id:f.productId}})).stockQuantity.toNumber()).toBe(1);
     expect(await db.inventoryTransaction.count({where:{productId:f.productId,type:"GATE_PASS_DISPATCH"}})).toBe(1);
   });
+  it("AHMAD V2: issuing and cancelling a managed-warehouse GP reverses original warehouse stock once", async () => {
+    const warehouseId = randomUUID();
+    await db.$executeRaw`UPDATE "warehouses" SET "isDefault"=false WHERE "workspaceId"=${tenant}::uuid AND "name"='Synthetic GP warehouse'`;
+    await db.$executeRaw`INSERT INTO "warehouses" ("id","workspaceId","name","code","isDefault") VALUES (${warehouseId}::uuid,${tenant}::uuid,'Synthetic GP warehouse',${randomUUID()},true)`;
+    await db.$executeRaw`INSERT INTO "workspace_modules" ("workspaceId","moduleKey","enabled","config") VALUES (${tenant}::uuid,'inventory',true,'{"warehouseStockMode":"MANAGED"}'::jsonb)
+      ON CONFLICT ("workspaceId","moduleKey") DO UPDATE SET "enabled"=true,"config"='{"warehouseStockMode":"MANAGED"}'::jsonb`;
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "true");
+    try {
+      const f = await fixture("10", 100, warehouseId);
+      const warehouse = async () => db.$queryRaw<Array<{quantity:Prisma.Decimal}>>`SELECT "quantity" FROM "warehouse_stocks" WHERE "workspaceId"=${tenant}::uuid AND "warehouseId"=${warehouseId}::uuid AND "productId"=${f.productId}::uuid`;
+      expect((await warehouse())[0]!.quantity.toNumber()).toBe(100);
+      await issueGatePass(ctx(), f.gp.id);
+      await issueGatePass(ctx(), f.gp.id);
+      expect((await warehouse())[0]!.quantity.toNumber()).toBe(90);
+      expect((await db.product.findUniqueOrThrow({where:{id:f.productId}})).stockQuantity.toNumber()).toBe(90);
+      await cancelUndispatchedGatePass(ctx(), f.gp.id);
+      await cancelUndispatchedGatePass(ctx(), f.gp.id);
+      expect((await warehouse())[0]!.quantity.toNumber()).toBe(100);
+      expect((await db.product.findUniqueOrThrow({where:{id:f.productId}})).stockQuantity.toNumber()).toBe(100);
+    } finally {
+      vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
+      await db.$executeRaw`UPDATE "workspace_modules" SET "enabled"=false WHERE "workspaceId"=${tenant}::uuid AND "moduleKey"='inventory'`;
+      await db.$executeRaw`UPDATE "warehouses" SET "isDefault"=false,"isActive"=false WHERE "id"=${warehouseId}::uuid AND "workspaceId"=${tenant}::uuid`;
+    }
+  });
   it("deducts managed warehouse and core stock once and restores rejection in the same warehouse", async () => {
     const warehouseId=randomUUID();
     await db.$executeRaw`UPDATE "warehouses" SET "isDefault"=false WHERE "workspaceId"=${tenant}::uuid AND "name"='Synthetic GP warehouse'`;
