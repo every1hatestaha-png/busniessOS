@@ -354,6 +354,12 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
       const issued = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id }, include: { items: true } });
       expect(issued.issueStockDeductedAt).not.toBeNull();
       expect(issued.items[0]!.bomComponentsSnapshot).toMatchObject({ version: 1, components: [{ productId: componentId }] });
+      await expect(db.outboundGatePassItem.update({
+        where: { id: issued.items[0]!.id }, data: { unitCostSnapshot: 999 },
+      })).rejects.toThrow();
+      await expect(db.outboundGatePassItem.update({
+        where: { id: issued.items[0]!.id }, data: { bomComponentsSnapshot: { version: 1, components: [] } },
+      })).rejects.toThrow();
       expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(90);
       expect((await db.product.findUniqueOrThrow({ where: { id: componentId } })).stockQuantity.toNumber()).toBe(80);
       await cancelUndispatchedGatePass(ctx(), f.gp.id);
