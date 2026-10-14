@@ -280,6 +280,8 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     await db.fbrIntegrationConfig.delete({where:{workspaceId:tenant}});
   });
   it("AHMAD V2: issued GP reserves stock once, cancel restores once, dispatch does not re-deduct", async () => {
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "true");
+    try {
     const f = await fixture();
     const stock = async () => (await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber();
     expect(await stock()).toBe(100);
@@ -297,6 +299,11 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     await cancelUndispatchedGatePass(ctx(), g.gp.id);
     await cancelUndispatchedGatePass(ctx(), g.gp.id);
     expect((await db.product.findUniqueOrThrow({ where: { id: g.productId } })).stockQuantity.toNumber()).toBe(100);
+    expect(await db.inventoryTransaction.count({ where: { productId: g.productId, type: "GATE_PASS_DISPATCH" } })).toBe(1);
+    expect(await db.inventoryTransaction.count({ where: { productId: g.productId, type: "GATE_PASS_RETURN" } })).toBe(1);
+    } finally {
+      vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
+    }
   });
   it("restores issued Gate Pass reserved stock once on pre-dispatch cancellation", async () => {
     const f=await fixture(); await issueGatePass(ctx(),f.gp.id); await cancelUndispatchedGatePass(ctx(),f.gp.id); await cancelUndispatchedGatePass(ctx(),f.gp.id);
