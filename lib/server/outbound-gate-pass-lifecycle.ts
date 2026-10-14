@@ -81,71 +81,16 @@ async function audit(tx: Transaction, ctx: Context, id: string, action: string, 
   });
 }
 
-export async function issueGatePass(ctx: Context, id: string) {
-  assertPermission(ctx, "sales.create");
-  assertTenant(ctx.workspaceId);
-  return withSerializableRetry(async (tx) => {
-    await assertOutboundGatePassActor(tx, ctx, "sales.create");
-    const gp = await getGatePassForUpdate(tx, ctx, id);
-    if (gp.status === "ISSUED") return { id }; // Identical issue retry: no second audit or version bump.
-    if (gp.status !== "DRAFT" || !gp.items.length) throw new GatePassWorkflowError("Only populated drafts can be issued.");
-    const ids = gp.items.map((x) => x.productId);
-    // Issuance is document-only. Customer BOMs require a certified dispatch
-    // adapter, but must not prevent drafting and printing the gate pass.
-    const products = await tx.product.findMany({
-      where: { workspaceId: ctx.workspaceId, id: { in: ids }, status: "ACTIVE" },
-      select: { id: true, sellingPrice: true, costPrice: true },
-    });
-    if (products.length !== ids.length) throw new GatePassWorkflowError("One or more products are unavailable.");
-    const productMap = new Map(products.map((x) => [x.id, x]));
-    for (const item of gp.items) {
-      const product = productMap.get(item.productId)!;
-      if (product.sellingPrice.isNegative() || product.costPrice.isNegative())
-        throw new GatePassWorkflowError("Invalid product valuation.");
-      await tx.outboundGatePassItem.update({
-        where: { id: item.id, gatePassId: gp.id },
-        data: { unitPriceSnapshot: product.sellingPrice, unitCostSnapshot: product.costPrice },
-      });
-    }
-    await tx.outboundGatePass.update({ where: { id, workspaceId: ctx.workspaceId }, data: { status: "ISSUED", issuedAt: new Date(), version: { increment: 1 } } });
-    await audit(tx, ctx, id, "gate_pass.issued", { number: gp.gatePassNumber });
-    return { id };
-  });
-}
-
-export async function cancelUndispatchedGatePass(ctx: Context, id: string) {
-  assertPermission(ctx, "sales.create");
-  assertTenant(ctx.workspaceId);
-  return withSerializableRetry(async (tx) => {
-    await assertOutboundGatePassActor(tx, ctx, "sales.create");
-    const gp = await getGatePassForUpdate(tx, ctx, id);
-    if (gp.status === "CANCELLED") return { id };
-    if (!["DRAFT", "ISSUED"].includes(gp.status))
-      throw new GatePassWorkflowError("Dispatched goods cannot be cancelled. Reconcile receiving and physical returns.");
-    await tx.outboundGatePass.update({
-      where: { id, workspaceId: ctx.workspaceId }, data: { status: "CANCELLED", version: { increment: 1 } },
-    });
-    await audit(tx, ctx, id, "gate_pass.cancelled_before_dispatch", { number: gp.gatePassNumber });
-    return { id };
-  });
-}
-
-export async function dispatchGatePass(ctx: Context, id: string) {
-  assertPermission(ctx, "inventory.adjust");
-  assertTenant(ctx.workspaceId);
-  assertAcceptanceBillingLegallyApproved();
-  return withSerializableRetry(async (tx) => {
-    await assertOutboundGatePassActor(tx, ctx, "inventory.adjust");
-    await assertFbrCompatibility(tx, ctx.workspaceId);
-    const gp = await getGatePassForUpdate(tx, ctx, id);
-    if (gp.status !== "ISSUED") throw new GatePassWorkflowError("Only an issued gate pass can be dispatched.");
+// All parent and customer-BOM deductions are one serializable transaction.
+// For V2 call at ISSUE; legacy GPs still call this at DISPATCH.
+async function deductGatePassStock(tx: Transaction, ctx: Context, gp: Awaited<ReturnType<typeof getGatePassForUpdate>>) {
     const mode = await getWarehouseStockModeInTransaction(tx, ctx.workspaceId);
     if ((mode === "MANAGED") !== Boolean(gp.warehouseId)) throw new GatePassWorkflowError("Warehouse stock mode changed after draft creation.");
     if (mode === "MANAGED") {
       await assertManagedWarehouseSelection(tx, { workspaceId: ctx.workspaceId, warehouseId: gp.warehouseId });
     }
     const productIds = gp.items.map((x) => x.productId);
-    // Freeze customer-specific BOM components at physical dispatch. A later
+    // Freeze customer-specific BOM components when stock first leaves available inventory. A later
     // change to their configuration cannot cause a duplicate consumption or
     // alter historical sale costs when the receiver accepts the shipment.
     const bomPlan = await planGatePassBomDispatch(tx, {
@@ -182,14 +127,14 @@ export async function dispatchGatePass(ctx: Context, id: string) {
           ...(embedded ? { bomComponentsSnapshot: embedded.snapshot as unknown as Prisma.InputJsonValue } : {}),
         },
       });
-      // Actual stock is moved OUT of the warehouse at dispatch. The inventory
+      // Available stock moves OUT of the warehouse at issue (V2) or dispatch (legacy). The inventory
       // asset stays in the GL until accepted goods are recognized as COGS.
       const changed = await tx.product.updateMany({
         where: { id: item.productId, workspaceId: ctx.workspaceId,
           stockQuantity: { gte: item.dispatchedQuantity } },
         data: { stockQuantity: { decrement: item.dispatchedQuantity } },
       });
-      if (changed.count !== 1) throw new GatePassWorkflowError("Insufficient stock for shipment.");
+      if (changed.count !== 1) throw new GatePassWorkflowError("Insufficient available stock for this gate pass.");
       await applyManagedWarehouseStockDelta(tx, {
         workspaceId: ctx.workspaceId, warehouseId: gp.warehouseId,
         productId: item.productId, delta: item.dispatchedQuantity.negated(),
@@ -205,6 +150,147 @@ export async function dispatchGatePass(ctx: Context, id: string) {
       gatePassNumber: gp.gatePassNumber,
       deductions: bomPlan.deductions, products: bomPlan.products,
     });
+}
+
+// Reverse only a V2-issued, physically undispatched Gate Pass.
+// Inventory remains an owned GL asset throughout reservation; no sale or COGS posts.
+async function reverseUndispatchedIssueStock(tx: Transaction, ctx: Context, gp: Awaited<ReturnType<typeof getGatePassForUpdate>>) {
+  const mode = await getWarehouseStockModeInTransaction(tx, ctx.workspaceId);
+  if ((mode === "MANAGED") !== Boolean(gp.warehouseId)) {
+    throw new GatePassWorkflowError("Warehouse stock mode changed; reconcile before cancelling issued stock.");
+  }
+  if (mode === "MANAGED") {
+    await assertManagedWarehouseSelection(tx, { workspaceId: ctx.workspaceId, warehouseId: gp.warehouseId });
+  }
+  const components = new Map<string, { quantity: Prisma.Decimal; cost: Prisma.Decimal }>();
+  for (const item of gp.items) {
+    const restored = await tx.product.updateMany({
+      where: { workspaceId: ctx.workspaceId, id: item.productId },
+      data: { stockQuantity: { increment: item.dispatchedQuantity } },
+    });
+    if (restored.count !== 1) throw new GatePassWorkflowError("Reserved parent product is unavailable for reversal.");
+    await applyManagedWarehouseStockDelta(tx, {
+      workspaceId: ctx.workspaceId, warehouseId: gp.warehouseId,
+      productId: item.productId, delta: item.dispatchedQuantity,
+    });
+    const embedded = readGatePassBomSnapshot(item.bomComponentsSnapshot);
+    const embeddedCost = embedded.reduce((total, part) => total.plus(
+      new Prisma.Decimal(part.quantityPerUnit).mul(part.unitCost)
+    ), new Prisma.Decimal(0));
+    const parentCost = item.unitCostSnapshot.minus(embeddedCost);
+    if (!parentCost.isFinite() || parentCost.isNegative()) {
+      throw new GatePassWorkflowError("Reserved stock valuation is invalid; cancellation was not applied.");
+    }
+    await tx.inventoryTransaction.create({ data: {
+      workspaceId: ctx.workspaceId, productId: item.productId, type: "GATE_PASS_RETURN",
+      quantityChanged: item.dispatchedQuantity, unitCost: parentCost.toDecimalPlaces(2),
+      reference: `CANCEL:${gp.gatePassNumber}`,
+    } });
+    for (const part of embedded) {
+      const quantity = item.dispatchedQuantity.mul(part.quantityPerUnit);
+      if (quantity.decimalPlaces() > 4) throw new GatePassWorkflowError("Reserved component return precision is invalid.");
+      const prior = components.get(part.productId);
+      if (prior && !prior.cost.eq(part.unitCost)) {
+        throw new GatePassWorkflowError("Reserved component valuation disagrees across Gate Pass lines.");
+      }
+      components.set(part.productId, {
+        quantity: (prior?.quantity ?? new Prisma.Decimal(0)).plus(quantity),
+        cost: new Prisma.Decimal(part.unitCost),
+      });
+    }
+  }
+  for (const [productId, { quantity, cost }] of components) {
+    const result = await tx.product.updateMany({
+      where: { workspaceId: ctx.workspaceId, id: productId },
+      data: { stockQuantity: { increment: quantity } },
+    });
+    if (result.count !== 1) throw new GatePassWorkflowError("Reserved component is unavailable for reversal.");
+    await applyManagedWarehouseStockDelta(tx, {
+      workspaceId: ctx.workspaceId, warehouseId: gp.warehouseId, productId, delta: quantity,
+    });
+    await tx.inventoryTransaction.create({ data: {
+      workspaceId: ctx.workspaceId, productId, type: "GATE_PASS_RETURN",
+      quantityChanged: quantity, unitCost: cost,
+      reference: `BOM:CANCEL:${gp.gatePassNumber}`,
+    } });
+  }
+}
+
+export async function issueGatePass(ctx: Context, id: string) {
+  assertPermission(ctx, "sales.create");
+  assertTenant(ctx.workspaceId);
+  return withSerializableRetry(async (tx) => {
+    await assertOutboundGatePassActor(tx, ctx, "sales.create");
+    const gp = await getGatePassForUpdate(tx, ctx, id);
+    if (gp.status === "ISSUED") return { id }; // Identical issue retry: no second audit or version bump.
+    if (gp.status !== "DRAFT" || !gp.items.length) throw new GatePassWorkflowError("Only populated drafts can be issued.");
+    const ids = gp.items.map((x) => x.productId);
+    // Issuance is document-only. Customer BOMs require a certified dispatch
+    // adapter, but must not prevent drafting and printing the gate pass.
+    const products = await tx.product.findMany({
+      where: { workspaceId: ctx.workspaceId, id: { in: ids }, status: "ACTIVE" },
+      select: { id: true, sellingPrice: true, costPrice: true },
+    });
+    if (products.length !== ids.length) throw new GatePassWorkflowError("One or more products are unavailable.");
+    const productMap = new Map(products.map((x) => [x.id, x]));
+    for (const item of gp.items) {
+      const product = productMap.get(item.productId)!;
+      if (product.sellingPrice.isNegative() || product.costPrice.isNegative())
+        throw new GatePassWorkflowError("Invalid product valuation.");
+      await tx.outboundGatePassItem.update({
+        where: { id: item.id, gatePassId: gp.id },
+        data: { unitPriceSnapshot: product.sellingPrice, unitCostSnapshot: product.costPrice },
+      });
+    }
+    const issueStockV2 = process.env.OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED === "true";
+    if (issueStockV2) {
+      assertPermission(ctx, "inventory.adjust");
+      await assertOutboundGatePassActor(tx, ctx, "inventory.adjust");
+    }
+    await tx.outboundGatePass.update({ where: { id, workspaceId: ctx.workspaceId }, data: { status: "ISSUED", issuedAt: new Date(), version: { increment: 1 } } });
+    if (issueStockV2) {
+      await deductGatePassStock(tx, ctx, gp);
+      await tx.outboundGatePass.update({ where: { id, workspaceId: ctx.workspaceId }, data: { issueStockDeductedAt: new Date() } });
+    }
+    await audit(tx, ctx, id, "gate_pass.issued", { number: gp.gatePassNumber });
+    return { id };
+  });
+}
+
+export async function cancelUndispatchedGatePass(ctx: Context, id: string) {
+  assertPermission(ctx, "sales.create");
+  assertTenant(ctx.workspaceId);
+  return withSerializableRetry(async (tx) => {
+    await assertOutboundGatePassActor(tx, ctx, "sales.create");
+    const gp = await getGatePassForUpdate(tx, ctx, id);
+    if (gp.status === "CANCELLED") return { id };
+    if (!["DRAFT", "ISSUED"].includes(gp.status))
+      throw new GatePassWorkflowError("Dispatched goods cannot be cancelled. Reconcile receiving and physical returns.");
+    if (gp.issueStockDeductedAt) {
+      assertPermission(ctx, "inventory.adjust");
+      await assertOutboundGatePassActor(tx, ctx, "inventory.adjust");
+      await reverseUndispatchedIssueStock(tx, ctx, gp);
+    }
+    await tx.outboundGatePass.update({
+      where: { id, workspaceId: ctx.workspaceId }, data: { status: "CANCELLED", version: { increment: 1 } },
+    });
+    await audit(tx, ctx, id, "gate_pass.cancelled_before_dispatch", { number: gp.gatePassNumber });
+    return { id };
+  });
+}
+
+export async function dispatchGatePass(ctx: Context, id: string) {
+  assertPermission(ctx, "inventory.adjust");
+  assertTenant(ctx.workspaceId);
+  assertAcceptanceBillingLegallyApproved();
+  return withSerializableRetry(async (tx) => {
+    await assertOutboundGatePassActor(tx, ctx, "inventory.adjust");
+    await assertFbrCompatibility(tx, ctx.workspaceId);
+    const gp = await getGatePassForUpdate(tx, ctx, id);
+    if (gp.status !== "ISSUED") throw new GatePassWorkflowError("Only an issued gate pass can be dispatched.");
+    // Marker distinguishes new V2 reserved stock from legacy passes issued before rollout.
+    // Never re-deduct the same stock at physical dispatch.
+    if (!gp.issueStockDeductedAt) await deductGatePassStock(tx, ctx, gp);
     await tx.outboundGatePass.update({ where: { id, workspaceId: ctx.workspaceId }, data: { status: "IN_TRANSIT", dispatchedAt: new Date(), version: { increment: 1 } } });
     await audit(tx, ctx, id, "gate_pass.dispatched", { number: gp.gatePassNumber, lineCount: gp.items.length });
     return { id };
