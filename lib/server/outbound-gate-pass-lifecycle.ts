@@ -83,7 +83,7 @@ async function audit(tx: Transaction, ctx: Context, id: string, action: string, 
 
 // All parent and customer-BOM deductions are one serializable transaction.
 // For V2 call at ISSUE; legacy GPs still call this at DISPATCH.
-async function deductGatePassStock(tx: Transaction, ctx: Context, gp: Awaited<ReturnType<typeof getGatePassForUpdate>>) {
+async function deductGatePassStock(tx: Transaction, ctx: Context, gp: Awaited<ReturnType<typeof getGatePassForUpdate>>, atIssue = false) {
     const mode = await getWarehouseStockModeInTransaction(tx, ctx.workspaceId);
     if ((mode === "MANAGED") !== Boolean(gp.warehouseId)) throw new GatePassWorkflowError("Warehouse stock mode changed after draft creation.");
     if (mode === "MANAGED") {
@@ -141,13 +141,14 @@ async function deductGatePassStock(tx: Transaction, ctx: Context, gp: Awaited<Re
       });
       await tx.inventoryTransaction.create({
         data: { workspaceId: ctx.workspaceId, productId: item.productId,
-          type: "GATE_PASS_DISPATCH", quantityChanged: item.dispatchedQuantity.negated(),
+          type: atIssue ? "GATE_PASS_ISSUE" : "GATE_PASS_DISPATCH", quantityChanged: item.dispatchedQuantity.negated(),
           unitCost: cost, reference: gp.gatePassNumber },
       });
     }
     await deductGatePassBomComponents(tx, {
       workspaceId: ctx.workspaceId, warehouseId: gp.warehouseId,
       gatePassNumber: gp.gatePassNumber,
+      movementType: atIssue ? "GATE_PASS_ISSUE" : "GATE_PASS_DISPATCH",
       deductions: bomPlan.deductions, products: bomPlan.products,
     });
 }
@@ -182,7 +183,7 @@ async function reverseUndispatchedIssueStock(tx: Transaction, ctx: Context, gp: 
       throw new GatePassWorkflowError("Reserved stock valuation is invalid; cancellation was not applied.");
     }
     await tx.inventoryTransaction.create({ data: {
-      workspaceId: ctx.workspaceId, productId: item.productId, type: "GATE_PASS_RETURN",
+      workspaceId: ctx.workspaceId, productId: item.productId, type: "GATE_PASS_ISSUE_CANCEL",
       quantityChanged: item.dispatchedQuantity, unitCost: parentCost.toDecimalPlaces(2),
       reference: `CANCEL:${gp.gatePassNumber}`,
     } });
@@ -209,7 +210,7 @@ async function reverseUndispatchedIssueStock(tx: Transaction, ctx: Context, gp: 
       workspaceId: ctx.workspaceId, warehouseId: gp.warehouseId, productId, delta: quantity,
     });
     await tx.inventoryTransaction.create({ data: {
-      workspaceId: ctx.workspaceId, productId, type: "GATE_PASS_RETURN",
+      workspaceId: ctx.workspaceId, productId, type: "GATE_PASS_ISSUE_CANCEL",
       quantityChanged: quantity, unitCost: cost,
       reference: `BOM:CANCEL:${gp.gatePassNumber}`,
     } });
@@ -249,7 +250,7 @@ export async function issueGatePass(ctx: Context, id: string) {
     }
     await tx.outboundGatePass.update({ where: { id, workspaceId: ctx.workspaceId }, data: { status: "ISSUED", issuedAt: new Date(), version: { increment: 1 } } });
     if (issueStockV2) {
-      await deductGatePassStock(tx, ctx, gp);
+      await deductGatePassStock(tx, ctx, gp, true);
       await tx.outboundGatePass.update({ where: { id, workspaceId: ctx.workspaceId }, data: { issueStockDeductedAt: new Date() } });
     }
     await audit(tx, ctx, id, "gate_pass.issued", { number: gp.gatePassNumber });
