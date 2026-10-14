@@ -299,8 +299,8 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     await cancelUndispatchedGatePass(ctx(), g.gp.id);
     await cancelUndispatchedGatePass(ctx(), g.gp.id);
     expect((await db.product.findUniqueOrThrow({ where: { id: g.productId } })).stockQuantity.toNumber()).toBe(100);
-    expect(await db.inventoryTransaction.count({ where: { productId: g.productId, type: "GATE_PASS_DISPATCH" } })).toBe(1);
-    expect(await db.inventoryTransaction.count({ where: { productId: g.productId, type: "GATE_PASS_RETURN" } })).toBe(1);
+    expect(await db.inventoryTransaction.count({ where: { productId: g.productId, type: "GATE_PASS_ISSUE" } })).toBe(1);
+    expect(await db.inventoryTransaction.count({ where: { productId: g.productId, type: "GATE_PASS_ISSUE_CANCEL" } })).toBe(1);
     } finally {
       vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
     }
@@ -309,12 +309,12 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "true");
     try {
       const f = await fixture("10", 5);
-      await expect(issueGatePass(ctx(), f.gp.id)).rejects.toThrow("Insufficient available stock");
+      await expect(issueGatePass(ctx(), f.gp.id)).rejects.toThrow("Insufficient stock available");
       const gp = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
       expect(gp.status).toBe("DRAFT");
       expect(gp.issueStockDeductedAt).toBeNull();
       expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(5);
-      expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_DISPATCH" } })).toBe(0);
+      expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_ISSUE" } })).toBe(0);
     } finally {
       vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
     }
@@ -327,7 +327,7 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
       const settled = await Promise.allSettled([issueGatePass(ctx(), f.gp.id), issueGatePass(ctx(), g.id)]);
       expect(settled.filter((entry) => entry.status === "fulfilled")).toHaveLength(1);
       expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(1);
-      expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_DISPATCH" } })).toBe(1);
+      expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_ISSUE" } })).toBe(1);
     } finally {
       vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
     }
@@ -366,7 +366,7 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
       await cancelUndispatchedGatePass(ctx(), f.gp.id);
       expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(100);
       expect((await db.product.findUniqueOrThrow({ where: { id: componentId } })).stockQuantity.toNumber()).toBe(100);
-      expect(await db.inventoryTransaction.count({ where: { productId: componentId, type: "GATE_PASS_RETURN" } })).toBe(1);
+      expect(await db.inventoryTransaction.count({ where: { productId: componentId, type: "GATE_PASS_ISSUE_CANCEL" } })).toBe(1);
     } finally {
       vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
     }
