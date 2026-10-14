@@ -1304,6 +1304,7 @@ model OutboundGatePass {
   requestFingerprint  String
   createdById         String
   issuedAt            DateTime?
+  issueStockDeductedAt DateTime? // nullable: existing in-flight GPs remain dispatch-time stock
   dispatchedAt        DateTime?
   receivingReference String?
   receivingRecipient String?
