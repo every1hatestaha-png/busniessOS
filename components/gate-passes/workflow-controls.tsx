@@ -25,7 +25,7 @@ function ActionFeedback({ state }: { state: GatePassActionState }) {
 }
 
 export function GatePassWorkflowControls({
-  id, status, items, customerReference, recipient, receivingNotes, deferredBillingReady, canIssue, canDispatch, canReceive, canInvoice,
+  id, status, items, customerReference, recipient, receivingNotes, deferredBillingReady, canIssue, issueDeductsStock, canDispatch, canReceive, canInvoice,
 }: {
   id: string;
   status: Status;
@@ -35,6 +35,7 @@ export function GatePassWorkflowControls({
   receivingNotes: string | null;
   deferredBillingReady: boolean;
   canIssue: boolean;
+  issueDeductsStock: boolean;
   canDispatch: boolean;
   canReceive: boolean;
   canInvoice: boolean;
@@ -60,7 +61,7 @@ export function GatePassWorkflowControls({
     </div>}
     {canIssue && status === "DRAFT" && <form action={issue} className="rounded-md border p-4 space-y-3">
       <h2 className="font-semibold">Issue gate pass</h2>
-      <p className="text-sm text-muted-foreground">Freeze document details before printing and dispatch.</p>
+      <p className="text-sm text-muted-foreground">{issueDeductsStock ? "Issuing deducts available stock once and freezes the product and BOM valuation. Cancel before dispatch to restore stock." : "Freeze document details before printing and dispatch."}</p>
       <input type="hidden" name="gatePassId" value={id}/>
       <ActionFeedback state={issueState}/><button type="submit" disabled={issuing} className={buttonClass}>Issue Gate Pass</button>
     </form>}
@@ -73,7 +74,7 @@ export function GatePassWorkflowControls({
 
     {deferredBillingReady && canDispatch && status === "ISSUED" && <form action={dispatch} className="rounded-md border p-4 space-y-3">
       <h2 className="font-semibold">Confirm physical dispatch</h2>
-      <p className="text-sm text-muted-foreground">This moves quantities out of warehouse stock once. Only confirm when goods physically leave.</p>
+      <p className="text-sm text-muted-foreground">{issueDeductsStock ? "For a V2 Gate Pass, stock was deducted at issue. Confirm only when goods physically leave; dispatch never deducts it again." : "Existing Gate Pass: this moves quantities out of warehouse stock once. Only confirm when goods physically leave."}</p>
       <input type="hidden" name="gatePassId" value={id}/>
       <ActionFeedback state={dispatchState}/><button type="submit" disabled={dispatching} className={buttonClass}>Confirm Dispatch</button>
     </form>}
