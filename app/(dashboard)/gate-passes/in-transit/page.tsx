@@ -9,7 +9,10 @@ export default async function GatePassTransitInventoryPage() {
   const { workspaceId } = await requirePermission("financial.manage");
   requireOutboundGatePassDraftFeature(workspaceId);
   const rows = await db.outboundGatePass.findMany({
-    where: { workspaceId, status: { in: ["IN_TRANSIT", "RECEIVING_PENDING", "ACCEPTED", "PARTIALLY_ACCEPTED", "REJECTED", "INVOICED"] } },
+    where: { workspaceId, OR: [
+      { status: { in: ["IN_TRANSIT", "RECEIVING_PENDING", "ACCEPTED", "PARTIALLY_ACCEPTED", "REJECTED", "INVOICED"] } },
+      { status: "ISSUED", issueStockDeductedAt: { not: null } },
+    ] },
     include: { items: true }, orderBy: { dispatchedAt: "asc" },
   });
   const lines = rows.flatMap((gp) => gp.items.map((item) => {
@@ -24,7 +27,7 @@ export default async function GatePassTransitInventoryPage() {
   return <div className="mx-auto max-w-5xl space-y-5">
     <header><Link href="/gate-passes" className="text-sm underline">All gate passes</Link>
       <h1 className="mt-2 text-2xl font-bold">Owned goods outside warehouse</h1>
-      <p className="text-sm text-muted-foreground">Uninvoiced shipped goods and rejected goods not physically returned. Amounts use dispatch cost, not sales value.</p></header>
+      <p className="text-sm text-muted-foreground">Includes issued Gate Pass goods removed from available stock, shipped goods and rejected goods awaiting physical return. Amounts use historical cost, not sales value.</p></header>
     <p className="rounded-md border p-4 text-sm font-semibold">Outstanding in-transit cost: PKR {total.toFixed(2)}</p>
     <div className="overflow-x-auto rounded-md border"><table className="w-full min-w-[600px] text-sm">
       <thead><tr><th className="p-3 text-left">Gate pass</th><th className="p-3 text-left">Product</th><th className="p-3 text-right">Quantity outside</th><th className="p-3 text-right">Value PKR</th></tr></thead>
