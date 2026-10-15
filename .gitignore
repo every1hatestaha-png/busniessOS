@@ -57,3 +57,4 @@ next-env.d.ts
 
 # Synthetic Restaurant browser build
 .tmp-restaurant-browser-v188/
+.tmp-gatepass-browser-print/

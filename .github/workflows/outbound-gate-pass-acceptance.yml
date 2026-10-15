@@ -10,6 +10,7 @@ on:
       - 'prisma/**'
       - 'tests/**/outbound-gate-pass*'
       - '.github/workflows/outbound-gate-pass-acceptance.yml'
+      - 'scripts/rehearse-gate-pass-v2-upgrade.cjs'
 permissions:
   contents: read
 jobs:
@@ -44,14 +45,21 @@ jobs:
       - run: npx prisma validate
       - name: Disposable service only
         run: npx prisma migrate deploy
+      - name: Rehearse additive V2 upgrade with unchanged legacy business data
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/munshios_gatepass_upgrade_ci?sslmode=disable
+        run: node scripts/rehearse-gate-pass-v2-upgrade.cjs
       - name: Real lifecycle, concurrency, stock, GL and tenant boundaries
         run: >-
           npx vitest run tests/integration/outbound-gate-pass-acceptance.test.ts
           tests/unit/outbound-gate-pass-actions.test.ts tests/unit/outbound-gate-pass-lifecycle.test.ts
           tests/unit/outbound-gate-pass-workspace-scope.test.ts tests/unit/outbound-gate-pass-policy.test.ts
           tests/unit/outbound-gate-pass-draft.test.ts
+          tests/unit/outbound-gate-pass-edit-action.test.ts
+          tests/unit/outbound-gate-pass-upgrade-guard.test.ts
+          tests/unit/print-routing.test.ts tests/unit/gate-pass-desktop-print-routing.test.ts
       - run: npm run test:finance
       - run: npx tsc --noEmit
-      - run: npx eslint 'app/(dashboard)/gate-passes' components/gate-passes lib/delivery-acceptance 'lib/server/outbound-gate-pass*.ts' tests/integration/outbound-gate-pass-acceptance.test.ts tests/unit/outbound-gate-pass-actions.test.ts
+      - run: npx eslint 'app/(dashboard)/gate-passes' components/gate-passes lib/delivery-acceptance 'lib/server/outbound-gate-pass*.ts' scripts/rehearse-gate-pass-v2-upgrade.cjs tests/integration/outbound-gate-pass-acceptance.test.ts tests/unit/outbound-gate-pass-actions.test.ts tests/unit/outbound-gate-pass-edit-action.test.ts tests/unit/gate-pass-desktop-print-routing.test.ts
       - name: Deployment remains disabled
-        run: node -e "require('node:assert/strict').equal(require('./vercel.json').git.deploymentEnabled['feat/gate-pass-receiving-invoice-foundation'],false)"
+        run: node -e "for (const b of ['feat/gate-pass-receiving-invoice-foundation','fix/gate-pass-v2-release-20261015']) require('node:assert/strict').equal(require('./vercel.json').git.deploymentEnabled[b],false)"

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { Prisma } from "@prisma/client";
-import { ownedTransitInventory } from "@/lib/delivery-acceptance/transit-reconciliation";
+import { ownedTransitInventory, gatePassInventoryValue } from "@/lib/delivery-acceptance/transit-reconciliation";
 import { receivingInputSchema, returnedGoodsSchema, issueInvoiceFromGatePassSchema } from "@/lib/delivery-acceptance/lifecycle-validation";
 
 const uuid = (n: number) => `${String(n).padStart(8, "0")}-0000-4000-8000-000000000001`;
@@ -71,5 +71,16 @@ describe("Ahmad-only outbound workflow acceptance", () => {
     expect(ownedTransitInventory({ ...base, status: "INVOICED" }).value.toString()).toBe("100");
     expect(ownedTransitInventory({ ...base, status: "INVOICED", returned: D("2") }).quantity.toString()).toBe("0");
     expect(() => ownedTransitInventory({ ...base, status: "INVOICED", returned: D("3") })).toThrow();
+  });
+  it("conserves the rounded dispatched value across accepted, returned and remaining fractions", () => {
+    const D = (n:string) => new Prisma.Decimal(n);
+    const base={dispatched:D("1"),accepted:D("0.5"),rejected:D("0.5"),unitCost:D("50.01"),status:"INVOICED" as const};
+    const cogs=gatePassInventoryValue(base.accepted,base.unitCost);
+    expect(cogs.toFixed(2)).toBe("25.01");
+    for (const returned of ["0","0.1","0.25","0.5"]) {
+      const remaining=ownedTransitInventory({...base,returned:D(returned)});
+      const returnedValue=gatePassInventoryValue(base.dispatched,base.unitCost).minus(gatePassInventoryValue(base.dispatched.minus(returned),base.unitCost));
+      expect(cogs.plus(remaining.value).plus(returnedValue).toFixed(2)).toBe("50.01");
+    }
   });
 });

@@ -12,7 +12,11 @@ const boxes = (pdf) =>
 
 async function main() {
   const server = http.createServer((req, res) => {
-    const relative = "." + new URL(req.url, "http://localhost").pathname;
+    const pathname = new URL(req.url, "http://localhost").pathname;
+    // Only real fixture screens/documents get SPA fallback. A wrongly generated
+    // /gate-passes/new/print remains a real HTTP404, making this regression fail.
+    const fixtureRoute = /^\/gate-passes\/(?:new|pending-invoices|in-transit|[0-9a-f-]{36}(?:\/print)?)\/?$/.test(pathname);
+    const relative = fixtureRoute ? "./index.html" : "." + pathname;
     const file = path.resolve(output, relative);
     const target = file === output ? path.join(output, "index.html") : file;
     if (!target.startsWith(output + path.sep) || !fs.existsSync(target)) {
@@ -27,6 +31,27 @@ async function main() {
   try {
     browser = await chromium.launch({ headless: true });
     const url = `http://127.0.0.1:${server.address().port}`;
+    const id="10000000-0000-4000-8000-000000000001";
+    for (const scenario of [
+      ...["new","pending-invoices","in-transit"].map(segment=>({path:`/gate-passes/${segment}`,status:"ISSUED",navigate:false})),
+      ...["DRAFT","CANCELLED","ISSUED"].map(status=>({path:`/gate-passes/${id}`,status,navigate:status==="ISSUED"})),
+    ]) {
+      const page=await browser.newPage({viewport:{width:390,height:844}});
+      const failures=[];
+      page.on("pageerror",error=>failures.push(error.message));
+      page.on("response",response=>{if(response.status()===404)failures.push(`HTTP404 ${new URL(response.url()).pathname}`);});
+      await page.goto(`${url}${scenario.path}?status=${scenario.status}`);
+      await page.locator("[data-gate-pass-print] tbody tr").first().waitFor();
+      const dispatch=()=>page.evaluate(async()=>{
+        await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+        window.dispatchEvent(new KeyboardEvent("keydown",{key:"p",ctrlKey:true,bubbles:true,cancelable:true}));
+      });
+      if (scenario.navigate) await Promise.all([page.waitForURL(u=>u.pathname===`/gate-passes/${id}/print`),dispatch()]);
+      else {await dispatch();assert.equal(new URL(page.url()).pathname,scenario.path);}
+      assert.deepEqual(failures,[]);
+      console.log(`PASS Ctrl+P ${scenario.path}/${scenario.status}: ${scenario.navigate?"issued print route":"no invalid navigation"}`);
+      await page.close();
+    }
     for (const documentType of ["gate-pass", "receiving"]) {
       for (const paper of ["a4", "thermal"]) {
       const page = await browser.newPage({ viewport: { width: 1024, height: 768 } });

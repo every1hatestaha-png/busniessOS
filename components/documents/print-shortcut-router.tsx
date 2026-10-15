@@ -16,6 +16,7 @@ export function PrintShortcutRouter() {
       if (!printRoute) return;
 
       event.preventDefault();
+      if (printRoute.startsWith("/gate-passes/") && !document.querySelector("[data-gate-pass-print-route]")?.getAttribute("data-gate-pass-print-route")) return;
       // Ctrl/Cmd+P must open the Gate Pass print dialog after document loading.
       window.location.assign(printRoute.startsWith("/gate-passes/") ? `${printRoute}?autoprint=1` : printRoute);
     }

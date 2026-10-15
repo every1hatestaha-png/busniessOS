@@ -13,6 +13,7 @@ const DEDICATED_PRINT_ROUTES = [
 export function getDedicatedPrintRoute(pathname: string): string | null {
   const normalized = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
   if (normalized.endsWith("/print")) return null;
+  if (["/gate-passes/new", "/gate-passes/pending-invoices", "/gate-passes/in-transit"].includes(normalized)) return null;
 
   return DEDICATED_PRINT_ROUTES.some((pattern) => pattern.test(normalized))
     ? `${normalized}/print`

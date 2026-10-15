@@ -24,3 +24,8 @@ export const outboundGatePassDraftSchema = z.object({
   }
 });
 export type OutboundGatePassDraftInput = z.input<typeof outboundGatePassDraftSchema>;
+export const outboundGatePassDraftEditSchema = outboundGatePassDraftSchema.safeExtend({
+  gatePassId: z.string().uuid(),
+  version: z.preprocess(value => value === null || value === "" ? undefined : value, z.coerce.number().int().min(0)),
+});
+export type OutboundGatePassDraftEditInput = z.input<typeof outboundGatePassDraftEditSchema>;

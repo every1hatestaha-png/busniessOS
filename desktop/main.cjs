@@ -1241,7 +1241,7 @@ function createMainWindow() {
     appendLog(level >= 2 ? "WARN" : "INFO", `[renderer] [${prefix}] ${message}${sourceId ? ` (${sourceId}:${line})` : ""}`);
   });
 
-  mainWindow.webContents.on("before-input-event", (event, input) => {
+  mainWindow.webContents.on("before-input-event", async (event, input) => {
     if (input.type !== "keyDown" || input.key.toLowerCase() !== "p" || !(input.control || input.meta)) return;
     event.preventDefault();
     const printActivePage = () => {
@@ -1255,11 +1255,15 @@ function createMainWindow() {
     // of printing the stock/receiving controls.
     let current;
     try { current = new URL(mainWindow?.webContents.getURL() || ""); } catch { printActivePage(); return; }
-    if (current.origin !== serverOrigin || !/^\/gate-passes\/[^/]+\/?$/.test(current.pathname)) {
+    const pathname = current.pathname.replace(/\/+$/, "");
+    if (current.origin !== serverOrigin || !/^\/gate-passes\/[^/]+$/.test(pathname)
+        || ["/gate-passes/new", "/gate-passes/pending-invoices", "/gate-passes/in-transit"].includes(pathname)) {
       printActivePage();
       return;
     }
-    const pathname = current.pathname.replace(/\/+$/, "");
+    // A draft/cancelled GP (or a not-found/auth page) has no printable document.
+    const allowed = await mainWindow.webContents.executeJavaScript("Boolean(document.querySelector('[data-gate-pass-print-route]')?.getAttribute('data-gate-pass-print-route'))").catch(() => false);
+    if (!allowed || !mainWindow || mainWindow.isDestroyed()) return;
     const printUrl = new URL(`${pathname}/print`, serverOrigin);
     void mainWindow.loadURL(printUrl.toString()).then(async () => {
       if (!mainWindow || mainWindow.isDestroyed()) return;
