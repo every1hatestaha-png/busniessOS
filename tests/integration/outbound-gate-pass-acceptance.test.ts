@@ -401,6 +401,59 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
       vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_CUTOVER_AT", "2000-01-01T00:00:00.000Z");
     }
   });
+  it("blocks V2 issue atomically when dispatch approval is absent or incomplete", async () => {
+    const f = await fixture();
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "true");
+    try {
+      vi.stubEnv("OUTBOUND_GP_ACCEPTANCE_BILLING_LEGALLY_APPROVED", "false");
+      await expect(issueGatePass(ctx(), f.gp.id)).rejects.toThrow("tax/legal approval");
+      vi.stubEnv("OUTBOUND_GP_ACCEPTANCE_BILLING_LEGALLY_APPROVED", "true");
+      vi.stubEnv("OUTBOUND_GP_ACCEPTANCE_BILLING_APPROVAL_REFERENCE", "");
+      await expect(issueGatePass(ctx(), f.gp.id)).rejects.toThrow("approval reference");
+      const gp = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id }, include: { items: true } });
+      expect(gp.status).toBe("DRAFT");
+      expect(gp.issueStockDeductedAt).toBeNull();
+      expect(gp.items[0]!.unitPriceSnapshot.toNumber()).toBe(0);
+      expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(100);
+      expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_ISSUE" } })).toBe(0);
+    } finally {
+      vi.stubEnv("OUTBOUND_GP_ACCEPTANCE_BILLING_LEGALLY_APPROVED", "true");
+      vi.stubEnv("OUTBOUND_GP_ACCEPTANCE_BILLING_APPROVAL_REFERENCE", "SYNTHETIC-LOCAL-ONLY");
+      vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
+    }
+  });
+  it("keeps legacy draft ISSUE behavior unchanged when dispatch approval is absent", async () => {
+    const f = await fixture();
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
+    vi.stubEnv("OUTBOUND_GP_ACCEPTANCE_BILLING_LEGALLY_APPROVED", "false");
+    try {
+      await issueGatePass(ctx(), f.gp.id);
+      const gp = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
+      expect(gp.status).toBe("ISSUED");
+      expect(gp.issueStockDeductedAt).toBeNull();
+      expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(100);
+      await expect(dispatchGatePass(ctx(), f.gp.id)).rejects.toThrow("tax/legal approval");
+      expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_DISPATCH" } })).toBe(0);
+    } finally {
+      vi.stubEnv("OUTBOUND_GP_ACCEPTANCE_BILLING_LEGALLY_APPROVED", "true");
+    }
+  });
+  it("blocks V2 issue before stock reservation if this workspace has an incompatible integration", async () => {
+    const f = await fixture();
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "true");
+    await db.fbrIntegrationConfig.create({ data: { workspaceId: tenant, enabled: true } });
+    try {
+      await expect(issueGatePass(ctx(), f.gp.id)).rejects.toThrow("FBR-enabled");
+      const gp = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
+      expect(gp.status).toBe("DRAFT");
+      expect(gp.issueStockDeductedAt).toBeNull();
+      expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(100);
+      expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_ISSUE" } })).toBe(0);
+    } finally {
+      await db.fbrIntegrationConfig.delete({ where: { workspaceId: tenant } });
+      vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
+    }
+  });
   it("AHMAD V2: insufficient issue stock rolls back status, snapshots and inventory writes", async () => {
     vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "true");
     try {

@@ -258,6 +258,13 @@ export async function issueGatePass(ctx: Context, id: string) {
       throw new GatePassWorkflowError("Gate Pass V2 requires a valid UTC rollout cutover before issuing documents.");
     }
     const issueStockV2 = issueMode === "v2";
+    if (issueStockV2) {
+      // V2 removes stock from availability at ISSUE, before physical dispatch.
+      // Check the same mandatory dispatch prerequisites *before* any stock or
+      // document mutation, so a blocked dispatch cannot strand reserved stock.
+      assertAcceptanceBillingLegallyApproved();
+      await assertFbrCompatibility(tx, ctx.workspaceId);
+    }
     const ids = gp.items.map((x) => x.productId);
     // Issuance is document-only. Customer BOMs require a certified dispatch
     // adapter, but must not prevent drafting and printing the gate pass.
