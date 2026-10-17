@@ -129,6 +129,34 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     expect(html).toContain("Save draft changes"); expect(html).toContain("Revised synthetic delivery");
     expect(html).toContain('value="2.5"');
   });
+  it.each(["empty", "missing", "self-referencing"] as const)("blocks V2 ISSUE for a %s customer BOM before changing stock", async (configuration) => {
+    const f = await fixture("2", 100);
+    const [bom] = await db.$queryRaw<Array<{ id: string }>>`
+      INSERT INTO "customer_sales_boms" ("workspaceId","customerId","productId","productCode","isActive")
+      VALUES (${tenant}::uuid,${f.customer.id}::uuid,${f.productId}::uuid,'SYNTHETIC-EMPTY-BOM',true)
+      RETURNING "id"::text AS "id"
+    `;
+    if (configuration !== "empty") {
+      const componentId = configuration === "self-referencing" ? f.productId : randomUUID();
+      await db.$executeRaw`
+        INSERT INTO "customer_sales_bom_items" ("customerSalesBomId","componentProductId","quantityPerUnit")
+        VALUES (${bom!.id}::uuid,${componentId}::uuid,1)
+      `;
+    }
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "true");
+    try {
+      const { default: Detail } = await import("@/app/(dashboard)/gate-passes/[id]/page");
+      const html = renderToStaticMarkup(await Detail({ params: Promise.resolve({ id: f.gp.id }) }));
+      expect(html).toContain(configuration === "empty" ? "no components are configured" : "a component is missing, inactive or refers to the assembly itself");
+      expect(html.match(/<button[^>]*>Issue Gate Pass<\/button>/)?.[0]).toMatch(/\sdisabled(?:=|\s|>)/);
+      await expect(issueGatePass(ctx(), f.gp.id)).rejects.toThrow();
+      expect((await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } })).status).toBe("DRAFT");
+      expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toString()).toBe("100");
+      expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_ISSUE" } })).toBe(0);
+    } finally {
+      vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
+    }
+  });
   it("rejects foreign/stale-role draft edits atomically", async () => {
     const f = await fixture();
     const edit = {...f.draft,gatePassId:f.gp.id,version:0,notes:"Changed"};
@@ -542,6 +570,13 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
       })).rejects.toThrow();
       expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(90);
       expect((await db.product.findUniqueOrThrow({ where: { id: componentId } })).stockQuantity.toNumber()).toBe(80);
+      // V2 stock and component snapshots are already frozen. A later BOM edit
+      // must not strand the issued document or hide its Dispatch action.
+      await db.$executeRaw`DELETE FROM "customer_sales_bom_items" WHERE "customerSalesBomId"=${bom!.id}::uuid`;
+      const { default: Detail } = await import("@/app/(dashboard)/gate-passes/[id]/page");
+      const issuedHtml = renderToStaticMarkup(await Detail({ params: Promise.resolve({ id: f.gp.id }) }));
+      expect(issuedHtml).toContain("Confirm Dispatch");
+      expect(issuedHtml).not.toContain("Customer assembly configuration is incomplete");
       await cancelUndispatchedGatePass(ctx(), f.gp.id);
       await cancelUndispatchedGatePass(ctx(), f.gp.id);
       expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(100);
