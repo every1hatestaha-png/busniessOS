@@ -14,7 +14,7 @@ The allowlisted workspace remains `4bc313cf-2869-4d87-8f1e-22a147f18d2d`. Do not
 - These are reported operating facts, **not** independent verification of the transaction's tax point or the customer contract. They do not set or waive the separately guarded deferred-invoicing approval. Never invent a legal-approval reference.
 - The production workspace's `ntn` and `strn` fields were found empty in a narrowly scoped read-only check on 17 October. Empty software fields do not establish its actual tax registration status.
 
-The disposable PostgreSQL acceptance suite now explicitly checks a future-only V2 credit shipment that is fully rejected. It must leave sales orders, invoices, customer receivables, and sale ledger unchanged while restoring stock only when rejected goods physically return.
+The disposable PostgreSQL acceptance suite explicitly checks future-only V2 credit shipments that are fully rejected or partially accepted. Full rejection must leave sales orders, invoices, customer receivables, and sale ledger unchanged. Partial acceptance bills only accepted units as an unpaid credit invoice, without a second stock deduction. Rejected stock returns only when goods physically arrive, and repeat return requests must be idempotent.
 
 ## Source-only protection
 
