@@ -28,6 +28,7 @@ function failure(error: unknown): GatePassActionState {
 }
 function invalidate(id: string) {
   revalidatePath("/gate-passes");
+  revalidatePath("/gate-passes/pending-invoices");
   revalidatePath(`/gate-passes/${id}`);
   revalidatePath("/inventory");
   revalidatePath("/invoices");
@@ -60,7 +61,7 @@ export async function dispatchGatePassAction(_: GatePassActionState, form: FormD
     const id = uuid.parse(form.get("gatePassId"));
     await dispatchGatePass(ctx, id);
     invalidate(id);
-    return { ok: "Dispatch recorded and stock moved into shipment." };
+    return { ok: "Physical dispatch recorded." };
   } catch (error) { return failure(error); }
 }
 

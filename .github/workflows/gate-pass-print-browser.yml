@@ -48,5 +48,6 @@ jobs:
             .tmp-gatepass-browser-print/gate-pass-*.png
             .tmp-gatepass-browser-print/receiving-*.pdf
             .tmp-gatepass-browser-print/receiving-*.png
+            .tmp-gatepass-browser-print/invoice-*.png
           include-hidden-files: true
           if-no-files-found: error

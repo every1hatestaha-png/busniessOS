@@ -29,7 +29,7 @@ async function main() {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   let browser;
   try {
-    browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({ headless: true, channel: process.env.GATEPASS_BROWSER_CHANNEL || undefined });
     const url = `http://127.0.0.1:${server.address().port}`;
     const id="10000000-0000-4000-8000-000000000001";
     for (const scenario of [
@@ -51,6 +51,40 @@ async function main() {
       assert.deepEqual(failures,[]);
       console.log(`PASS Ctrl+P ${scenario.path}/${scenario.status}: ${scenario.navigate?"issued print route":"no invalid navigation"}`);
       await page.close();
+    }
+    for (const width of [390, 1280]) {
+      for (const scenario of [
+        {status:"ISSUED",billing:"approved",total:"145.61",final:false},
+        {status:"PARTIALLY_ACCEPTED",billing:"blocked",total:"116.49",final:false},
+        {status:"PARTIALLY_ACCEPTED",billing:"approved",total:"116.49",final:true},
+      ]) {
+        const page=await browser.newPage({viewport:{width,height:844}});
+        const errors=[];page.on("pageerror",error=>errors.push(error.message));
+        await page.goto(`${url}/?document=invoice-preparation&status=${scenario.status}&billing=${scenario.billing}`);
+        await page.getByRole("heading",{name:"Create Invoice from Gate Pass"}).waitFor();
+        const button=page.getByRole("button",{name:"Create Final Invoice"});
+        if(scenario.final)assert.equal(await button.isDisabled(),true,"Tax must be explicitly selected");
+        else assert.equal(await button.count(),0,"Preparation cannot offer final issuance");
+        await page.getByLabel("Synthetic component unit price").fill("12.34");
+        await page.getByLabel("Synthetic component tax percent").fill("18");
+        await page.getByText(`PKR ${scenario.total}`,{exact:true}).waitFor();
+        if(scenario.final){
+          await button.click();assert.equal(await page.evaluate(()=>window.__gpInvoiceCalls),0,"Acknowledgement cannot be bypassed");
+          await page.getByRole("checkbox").check();await button.click();
+          assert.equal(await page.getByRole("button",{name:"Creating invoice…"}).isDisabled(),true);
+          await page.getByRole("button",{name:"Creating invoice…"}).evaluate(el=>el.click());
+          await page.getByRole("alert").waitFor();
+          assert.equal(await page.evaluate(()=>window.__gpInvoiceCalls),1,"Repeated click while pending cannot submit twice");
+        } else {
+          await page.getByLabel("Synthetic component unit price").press("Enter");
+          assert.equal(await page.evaluate(()=>window.__gpInvoiceCalls),0,"Preparation must not invoke a mutation");
+        }
+        assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,"Page overflow");
+        assert.deepEqual(errors,[]);
+        await page.screenshot({path:path.join(output,`invoice-${scenario.status}-${scenario.billing}-${width}.png`),fullPage:true});
+        console.log(`PASS invoice preparation ${scenario.status}/${scenario.billing}/${width}: exact preview, guarded manual issuance, no page overflow/errors`);
+        await page.close();
+      }
     }
     for (const documentType of ["gate-pass", "receiving"]) {
       for (const paper of ["a4", "thermal"]) {

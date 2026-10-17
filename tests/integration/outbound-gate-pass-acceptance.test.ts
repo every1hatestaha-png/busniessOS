@@ -79,6 +79,37 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_DISPATCH" } })).toBe(0);
     expect((await db.customer.findUniqueOrThrow({ where: { id: f.customer.id } })).currentBalance.toNumber()).toBe(0);
   });
+  it("offers manual preparation from an issued Gate Pass with no mutation or premature invoice", async () => {
+    const f = await fixture();
+    await issueGatePass(ctx(), f.gp.id);
+    async function state() {
+      return {
+        gatePass: await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } }),
+        stock: (await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toString(),
+        balance: (await db.customer.findUniqueOrThrow({ where: { id: f.customer.id } })).currentBalance.toString(),
+        invoices: await db.invoice.count({ where: { customerId: f.customer.id } }),
+        ledger: await db.ledgerEntry.count({ where: { customerId: f.customer.id } }),
+        audit: await db.auditLog.count({ where: { entityId: f.gp.id } }),
+      };
+    }
+    const before = await state();
+    vi.stubEnv("OUTBOUND_GP_ACCEPTANCE_BILLING_LEGALLY_APPROVED", "false");
+    try {
+      const { default: Pending } = await import("@/app/(dashboard)/gate-passes/pending-invoices/page");
+      const { default: Detail } = await import("@/app/(dashboard)/gate-passes/[id]/page");
+      const pending = renderToStaticMarkup(await Pending());
+      expect(pending).toContain(`/gate-passes/${f.gp.id}#generate-invoice`);
+      expect(pending).toContain("Create Invoice from Gate Pass");
+      const detail = renderToStaticMarkup(await Detail({ params: Promise.resolve({ id: f.gp.id }) }));
+      expect(detail).toContain('id="generate-invoice"');
+      expect(detail).toContain("Preparation only");
+      expect(detail).not.toContain("Create Final Invoice");
+      await expect(invoiceAcceptedGatePass(ctx(), invoiceInput(f))).rejects.toThrow("approval");
+      expect(await state()).toEqual(before);
+    } finally { vi.stubEnv("OUTBOUND_GP_ACCEPTANCE_BILLING_LEGALLY_APPROVED", "true"); }
+    await expect(invoiceAcceptedGatePass(ctx(), invoiceInput(f))).rejects.toThrow("receiving");
+    expect(await state()).toEqual(before);
+  });
   it("edits a draft with replay and stale-tab protection and no inventory or finance effects", async () => {
     const f = await fixture();
     const edit = {...f.draft,gatePassId:f.gp.id,version:0,notes:"Revised synthetic delivery",items:[{productId:f.productId,quantity:"2.5000"}]};
