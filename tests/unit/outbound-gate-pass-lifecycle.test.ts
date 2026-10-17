@@ -60,6 +60,13 @@ describe("Ahmad-only outbound workflow acceptance", () => {
     expect(page).toContain("issueStockReady={v2IssueStockReady}");
     expect(page).toContain("Gate Pass printing is available");
   });
+  it("tells operators the correct stock timing for future V2 and legacy passes", () => {
+    const listPage = readFileSync("app/(dashboard)/gate-passes/page.tsx", "utf8");
+    expect(listPage).toContain("stock is deducted once at ISSUE");
+    expect(listPage).toContain("not deducted again at DISPATCH");
+    expect(listPage).toContain("legacy dispatch-time stock rule");
+    expect(listPage).not.toContain("When approved, stock moves once at dispatch.");
+  });
   it("fails closed unless tax timing has separately been approved", () => {
     const source = readFileSync("lib/server/outbound-gate-pass-lifecycle.ts", "utf8");
     const issue = source.split("export async function issueGatePass(")[1]!.split("export async function cancelUndispatchedGatePass(")[0]!;

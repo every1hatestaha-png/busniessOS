@@ -15,7 +15,7 @@ export default async function GatePassesPage() {
     </header>
     {canPerformAction(role, "financial.manage") && <Link href="/gate-passes/pending-invoices" className="inline-flex rounded-md border px-3 py-2 text-sm font-medium">Pending Invoices</Link>}
     {canPerformAction(role, "financial.manage") && <Link href="/gate-passes/in-transit" className="ml-2 inline-flex rounded-md border px-3 py-2 text-sm font-medium">In-Transit Stock</Link>}
-    <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Dispatch requires verified legal approval for acceptance-based billing. When approved, stock moves once at dispatch. Record signed customer receiving before preparing accepted-only invoices.</p>
+    <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Dispatch requires verified approval for acceptance-based billing. For future V2 Gate Passes, available stock is deducted once at ISSUE and is not deducted again at DISPATCH. Older Gate Passes retain the legacy dispatch-time stock rule. Record signed customer receiving before preparing accepted-only credit invoices. Existing records are not changed by a V2 cutover.</p>
     <div className="overflow-x-auto rounded-md border">
       <table className="w-full min-w-[640px] text-left text-sm">
         <thead className="bg-muted/40"><tr><th className="p-3">Gate pass</th><th className="p-3">Customer</th><th className="p-3">Date</th><th className="p-3">Items</th><th className="p-3">Status</th></tr></thead>
