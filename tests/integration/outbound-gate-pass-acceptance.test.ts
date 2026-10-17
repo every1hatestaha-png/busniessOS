@@ -424,6 +424,44 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
       vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
     }
   });
+  it("AHMAD V2: a rejected credit shipment never becomes a sale and only physical returns restore stock", async () => {
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "true");
+    try {
+      const f = await fixture("10", 100);
+      const stock = async () => (await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber();
+      await issueGatePass(ctx(), f.gp.id);
+      expect(await stock()).toBe(90);
+      await dispatchGatePass(ctx(), f.gp.id);
+      expect(await stock()).toBe(90);
+      expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_ISSUE" } })).toBe(1);
+      expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_DISPATCH" } })).toBe(0);
+
+      const receiving = {
+        gatePassId: f.gp.id, reference: "SYNTHETIC-REJECTED-CREDIT", recipient: "Customer receiver",
+        lines: [{ itemId: f.gp.items[0]!.id, accepted: "0", rejected: "10" }],
+      };
+      await recordGatePassReceiving(ctx(), receiving);
+      expect((await getOutboundGatePass(tenant, f.gp.id))!.status).toBe("REJECTED");
+      expect(await stock()).toBe(90); // A rejection is not proof of physical return.
+      await expect(invoiceAcceptedGatePass(ctx(), invoiceInput(f))).rejects.toThrow();
+      expect(await db.salesOrder.count({ where: { customerId: f.customer.id } })).toBe(0);
+      expect(await db.invoice.count({ where: { customerId: f.customer.id } })).toBe(0);
+      expect(await db.ledgerEntry.count({ where: { customerId: f.customer.id, type: "SALE" } })).toBe(0);
+      expect((await db.customer.findUniqueOrThrow({ where: { id: f.customer.id } })).currentBalance.toNumber()).toBe(0);
+
+      await confirmRejectedStockReturn(ctx(), { gatePassId: f.gp.id, lines: [{ itemId: f.gp.items[0]!.id, returned: "4" }] });
+      expect(await stock()).toBe(94);
+      const finalReturn = { gatePassId: f.gp.id, lines: [{ itemId: f.gp.items[0]!.id, returned: "10" }] };
+      await confirmRejectedStockReturn(ctx(), finalReturn);
+      await confirmRejectedStockReturn(ctx(), finalReturn);
+      expect(await stock()).toBe(100);
+      expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_RETURN" } })).toBe(2);
+      expect(await db.invoice.count({ where: { customerId: f.customer.id } })).toBe(0);
+      expect((await db.customer.findUniqueOrThrow({ where: { id: f.customer.id } })).currentBalance.toNumber()).toBe(0);
+    } finally {
+      vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
+    }
+  });
   it("keeps an existing draft legacy when V2 is enabled after its creation", async () => {
     const f = await fixture();
     vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "true");
