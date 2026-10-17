@@ -8,6 +8,15 @@
  */
 export type GatePassIssueStockMode = "legacy" | "v2" | "misconfigured";
 
+/** Read-only stock preview: V2 before ISSUE, legacy only after document ISSUE. */
+export function needsGatePassStockPreview(
+  status: string,
+  stockAlreadyDeducted: boolean,
+  mode: GatePassIssueStockMode,
+): boolean {
+  return !stockAlreadyDeducted && (status === "ISSUED" || (status === "DRAFT" && mode === "v2"));
+}
+
 export function gatePassIssueStockMode(
   createdAt: Date,
   enabled: string | undefined,

@@ -55,7 +55,9 @@ describe("Ahmad-only outbound workflow acceptance", () => {
     const page = readFileSync("app/(dashboard)/gate-passes/[id]/page.tsx", "utf8");
     expect(page).toContain("configuredBOMs.length === 0");
     expect(page).toContain("customer_sales_boms");
-    expect(page).toContain("component-stock reconciliation before dispatch");
+    expect(page).toContain('isUnissuedV2Draft ? "V2 issue" : "dispatch"');
+    expect(page).toContain("needsGatePassStockPreview(");
+    expect(page).toContain("issueStockReady={v2IssueStockReady}");
     expect(page).toContain("Gate Pass printing is available");
   });
   it("fails closed unless tax timing has separately been approved", () => {

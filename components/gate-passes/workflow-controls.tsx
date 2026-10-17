@@ -26,7 +26,7 @@ function ActionFeedback({ state }: { state: GatePassActionState }) {
 }
 
 export function GatePassWorkflowControls({
-  id, status, items, customerReference, recipient, receivingNotes, deferredBillingReady, canIssue, canCancel, issueDeductsStock, stockAlreadyDeducted, canDispatch, canReceive, canInvoice,
+  id, status, items, customerReference, recipient, receivingNotes, deferredBillingReady, canIssue, canCancel, issueDeductsStock, issueStockReady, stockAlreadyDeducted, canDispatch, canReceive, canInvoice,
 }: {
   id: string;
   status: Status;
@@ -38,6 +38,7 @@ export function GatePassWorkflowControls({
   canIssue: boolean;
   canCancel: boolean;
   issueDeductsStock: boolean;
+  issueStockReady: boolean;
   stockAlreadyDeducted: boolean;
   canDispatch: boolean;
   canReceive: boolean;
@@ -64,8 +65,9 @@ export function GatePassWorkflowControls({
       <h2 className="font-semibold">Issue gate pass</h2>
       <p className="text-sm text-muted-foreground">{issueDeductsStock ? "Issuing deducts available stock once and freezes the product and BOM valuation. Cancel before dispatch to restore stock." : "Freeze document details before printing and dispatch."}</p>
       {issueDeductsStock && !deferredBillingReady && <p role="status" className="text-sm text-amber-950">V2 issuance is blocked until billing and dispatch prerequisites are approved. No stock will be reserved.</p>}
+      {issueDeductsStock && !issueStockReady && <p role="status" className="text-sm text-amber-950">V2 issuance is paused due to the stock or assembly checks above. No stock will be deducted.</p>}
       <input type="hidden" name="gatePassId" value={id}/>
-      <ActionFeedback state={issueState}/><button type="submit" disabled={issuing || (issueDeductsStock && !deferredBillingReady)} className={buttonClass}>{issuing ? "Issuing…" : "Issue Gate Pass"}</button>
+      <ActionFeedback state={issueState}/><button type="submit" disabled={issuing || (issueDeductsStock && (!deferredBillingReady || !issueStockReady))} className={buttonClass}>{issuing ? "Issuing…" : "Issue Gate Pass"}</button>
     </form>}
     {status !== "DRAFT" && status !== "CANCELLED" && <Link href={`/gate-passes/${id}/print`} className="inline-flex rounded-md border px-4 py-2 text-sm font-medium">Print gate pass</Link>}
     {canCancel && (status === "DRAFT" || status === "ISSUED") && <form action={cancel} className="space-y-2">
