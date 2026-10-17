@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useActionState, useState } from "react";
+import { GatePassInvoicePreparation } from "@/components/gate-passes/invoice-preparation";
 import {
   issueGatePassAction, dispatchGatePassAction, cancelGatePassAction, receivingGatePassAction,
-  returnedGatePassAction, invoiceGatePassAction,
+  returnedGatePassAction,
   type GatePassActionState,
 } from "@/app/(dashboard)/gate-passes/lifecycle-actions";
 
@@ -47,10 +48,8 @@ export function GatePassWorkflowControls({
   const [cancelState, cancel, cancelling] = useActionState(cancelGatePassAction, {} as GatePassActionState);
   const [receiveState, receive, receiving] = useActionState(receivingGatePassAction, {} as GatePassActionState);
   const [returnState, physicalReturn, returning] = useActionState(returnedGatePassAction, {} as GatePassActionState);
-  const [invoiceState, invoice, invoicing] = useActionState(invoiceGatePassAction, {} as GatePassActionState);
   const [receivingLines, setReceivingLines] = useState(items.map((x) => ({ itemId: x.id, accepted: x.accepted, rejected: x.rejected })));
   const [returnLines, setReturnLines] = useState(items.map((x) => ({ itemId: x.id, returned: x.returned })));
-  const [invoiceLines, setInvoiceLines] = useState(items.filter((x) => Number(x.accepted) > 0).map((x) => ({ itemId: x.id, unitPrice: x.price, taxRate: null as number | null })));
   const inputClass = "w-full rounded-md border bg-background px-3 py-2 text-sm";
   const buttonClass = "rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50";
   const canWriteReceiving = status === "IN_TRANSIT" || status === "RECEIVING_PENDING";
@@ -64,8 +63,9 @@ export function GatePassWorkflowControls({
     {canIssue && status === "DRAFT" && <form action={issue} className="rounded-md border p-4 space-y-3">
       <h2 className="font-semibold">Issue gate pass</h2>
       <p className="text-sm text-muted-foreground">{issueDeductsStock ? "Issuing deducts available stock once and freezes the product and BOM valuation. Cancel before dispatch to restore stock." : "Freeze document details before printing and dispatch."}</p>
+      {issueDeductsStock && !deferredBillingReady && <p role="status" className="text-sm text-amber-950">V2 issuance is blocked until billing and dispatch prerequisites are approved. No stock will be reserved.</p>}
       <input type="hidden" name="gatePassId" value={id}/>
-      <ActionFeedback state={issueState}/><button type="submit" disabled={issuing} className={buttonClass}>Issue Gate Pass</button>
+      <ActionFeedback state={issueState}/><button type="submit" disabled={issuing || (issueDeductsStock && !deferredBillingReady)} className={buttonClass}>{issuing ? "Issuing…" : "Issue Gate Pass"}</button>
     </form>}
     {status !== "DRAFT" && status !== "CANCELLED" && <Link href={`/gate-passes/${id}/print`} className="inline-flex rounded-md border px-4 py-2 text-sm font-medium">Print gate pass</Link>}
     {canCancel && (status === "DRAFT" || status === "ISSUED") && <form action={cancel} className="space-y-2">
@@ -111,20 +111,6 @@ export function GatePassWorkflowControls({
       <ActionFeedback state={returnState}/><button disabled={returning} className={buttonClass}>Confirm Physical Return</button>
     </form>}
 
-    {deferredBillingReady && canInvoice && ["ACCEPTED", "PARTIALLY_ACCEPTED"].includes(status) && <form id="generate-invoice" action={invoice} className="scroll-mt-24 space-y-4 rounded-md border p-4">
-      <h2 className="font-semibold">Generate invoice for accepted goods</h2>
-      <p className="text-sm text-muted-foreground">Verify prices and tax per line. Stock was moved at dispatch and will not be deducted again.</p>
-      <input type="hidden" name="gatePassId" value={id}/><input type="hidden" name="linesJson" value={JSON.stringify(invoiceLines)} readOnly/>
-      <div className="overflow-x-auto"><table className="w-full min-w-[650px] text-sm"><thead><tr><th className="p-2 text-left">Accepted product</th><th className="p-2 text-right">Quantity</th><th className="p-2">Unit price (PKR)</th><th className="p-2">Tax %</th></tr></thead>
-        <tbody>{items.filter((x) => Number(x.accepted) > 0).map((item) => {
-          const line = invoiceLines.find((x) => x.itemId === item.id);
-          return <tr className="border-t" key={item.id}><td className="p-2">{item.name}</td><td className="p-2 text-right">{item.accepted}</td>
-            <td className="p-2"><input inputMode="decimal" aria-label={`${item.name} unit price`} className={inputClass} value={line?.unitPrice ?? "0"} onChange={(e) => setInvoiceLines((old) => old.map((x) => x.itemId === item.id ? {...x, unitPrice: e.target.value}: x))}/></td>
-            <td className="p-2"><input type="number" min="0" max="100" step="0.0001" aria-label={`${item.name} tax percent`} className={inputClass} value={line?.taxRate ?? ""} required onChange={(e) => setInvoiceLines((old) => old.map((x) => x.itemId === item.id ? {...x, taxRate: e.target.value === "" ? null : Number(e.target.value)}: x))}/></td>
-          </tr>;
-        })}</tbody></table></div>
-      <label className="flex items-start gap-2 text-sm"><input type="checkbox" required name="complianceAcknowledged" value="yes" className="mt-1"/><span>I have reviewed whether Pakistan tax rules require an earlier invoice at payment or delivery. No required tax invoice is being deferred or duplicated.</span></label>
-      <ActionFeedback state={invoiceState}/><button disabled={invoicing} className={buttonClass}>Create Final Invoice</button>
-    </form>}
+    {canInvoice && <GatePassInvoicePreparation id={id} status={status} items={items} deferredBillingReady={deferredBillingReady}/>}
   </section>;
 }

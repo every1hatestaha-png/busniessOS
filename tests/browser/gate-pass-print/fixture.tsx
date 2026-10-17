@@ -3,9 +3,12 @@ import { createRoot } from "react-dom/client";
 import { GatePassPrintBody, type GatePassPrintableData } from "../../../components/gate-passes/gate-pass-print-body";
 import { GatePassReceivingPrintBody, type GatePassReceivingPrintData } from "../../../components/gate-passes/gate-pass-receiving-print-body";
 import { PrintShortcutRouter } from "../../../components/documents/print-shortcut-router";
+import { GatePassInvoicePreparation } from "../../../components/gate-passes/invoice-preparation";
+import { invoiceCallCount } from "./actions";
 import "../../../app/globals.css";
 
 const params = new URLSearchParams(location.search);
+Object.defineProperty(window, "__gpInvoiceCalls", { get: invoiceCallCount });
 const paper = params.get("paper");
 const documentType = params.get("document") === "receiving" ? "receiving" : "gate-pass";
 if (paper === "thermal") document.documentElement.dataset.printFormat = "thermal";
@@ -52,10 +55,14 @@ const workspace = { name: "Synthetic GatePass Printer Company", address: "Test a
 createRoot(document.getElementById("root")!).render(
   <main data-gate-pass-print-route={["DRAFT","CANCELLED"].includes(params.get("status")??"") ? "" : "/gate-passes/10000000-0000-4000-8000-000000000001/print"} className="mx-auto max-w-4xl space-y-4 p-5 print:m-0 print:max-w-none print:p-0">
     <PrintShortcutRouter/>
-    <nav data-gp-synthetic-toolbar className="print:hidden">This toolbar must never be printed</nav>
+    {params.get("document") === "invoice-preparation" ? <GatePassInvoicePreparation
+      id="10000000-0000-4000-8000-000000000001" status={params.get("status") ?? "ISSUED"}
+      deferredBillingReady={params.get("billing") === "approved"}
+      items={[{ id: "line-1", name: "Synthetic component", quantity: "10", accepted: "8", price: "200" }]}
+    /> : <><nav data-gp-synthetic-toolbar className="print:hidden">This toolbar must never be printed</nav>
     {documentType === "receiving"
       ? <GatePassReceivingPrintBody workspace={workspace} data={receiving} />
       : <GatePassPrintBody workspace={workspace} gp={gp} date="12/10/2026"
-          recipient={gp.customer.companyName!} totalQuantity="—" totalUnit="Mixed units" isSingleUnit={false} />}
+          recipient={gp.customer.companyName!} totalQuantity="—" totalUnit="Mixed units" isSingleUnit={false} />}</>}
   </main>
 );

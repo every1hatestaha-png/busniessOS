@@ -3,25 +3,25 @@ import { requirePermission } from "@/lib/server/authorization";
 import { requireOutboundGatePassDraftFeature } from "@/lib/server/outbound-gate-pass-feature";
 import { db } from "@/lib/server/db";
 
-export default async function PendingAcceptedInvoicesPage() {
+export default async function PendingInvoicesPage() {
   const { workspaceId } = await requirePermission("financial.manage");
   requireOutboundGatePassDraftFeature(workspaceId);
   const rows = await db.outboundGatePass.findMany({
-    where: { workspaceId, status: { in: ["ISSUED", "IN_TRANSIT", "RECEIVING_PENDING", "ACCEPTED", "PARTIALLY_ACCEPTED"] } },
-    orderBy: { issuedAt: "asc" },
+    where: { workspaceId, invoiceId: null, status: { in: ["ISSUED", "IN_TRANSIT", "RECEIVING_PENDING", "ACCEPTED", "PARTIALLY_ACCEPTED"] } },
+    orderBy: [{ issuedAt: "asc" }, { id: "asc" }],
     include: { customer: { select: { name: true, companyName: true } }, items: true },
   });
   return <div className="mx-auto max-w-5xl space-y-5">
     <header><Link href="/gate-passes" className="text-sm underline">All gate passes</Link>
       <h1 className="mt-2 text-2xl font-bold">Pending Invoices</h1>
-      <p className="text-sm text-muted-foreground">Issued gate passes stay visible while customer receiving is pending. Invoicing is available only after receiving is reconciled, subject to compliance checks.</p></header>
+      <p className="text-sm text-muted-foreground">Prepare an invoice manually from any issued Gate Pass. Preparation does not issue an invoice or change stock or balances. Final issuance requires confirmed receiving and billing approval.</p></header>
     <div className="overflow-x-auto rounded-md border"><table className="w-full min-w-[650px] text-sm">
       <thead><tr className="bg-muted/50"><th className="p-3 text-left">Gate pass</th><th className="p-3 text-left">Customer</th><th className="p-3">Accepted lines</th><th className="p-3">Rejected lines</th><th className="p-3">Receiving</th><th className="p-3">Action</th></tr></thead>
       <tbody>{rows.map((row) => { const confirmed = row.status === "ACCEPTED" || row.status === "PARTIALLY_ACCEPTED"; return <tr className="border-t" key={row.id}><td className="p-3 font-mono">{row.gatePassNumber}</td><td className="p-3">{row.customer.companyName || row.customer.name}</td>
         <td className="p-3 text-center">{row.items.filter((x) => x.acceptedQuantity.greaterThan(0)).length}</td>
         <td className="p-3 text-center">{row.items.filter((x) => x.rejectedQuantity.greaterThan(0)).length}</td>
         <td className="p-3">{confirmed ? "Receiving confirmed" : "Awaiting receiving"}</td>
-        <td className="p-3"><Link href={`/gate-passes/${row.id}${confirmed ? "#generate-invoice" : ""}`} className={confirmed ? "inline-flex rounded-md bg-emerald-700 px-3 py-2 font-medium text-white hover:bg-emerald-800" : "underline"}>{confirmed ? "Generate Invoice" : "Review gate pass"}</Link></td></tr>; })}</tbody>
+        <td className="p-3"><Link href={`/gate-passes/${row.id}#generate-invoice`} className="inline-flex rounded-md bg-emerald-700 px-3 py-2 font-medium text-white hover:bg-emerald-800">Create Invoice from Gate Pass</Link></td></tr>; })}</tbody>
     </table>{!rows.length && <p className="p-4 text-sm text-muted-foreground">No issued gate passes or accepted receiving documents are awaiting invoicing.</p>}</div>
   </div>;
 }
