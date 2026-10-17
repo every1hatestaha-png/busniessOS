@@ -462,6 +462,52 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
       vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
     }
   });
+  it("AHMAD V2: a partly accepted credit shipment bills accepted units only and never re-deducts stock", async () => {
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "true");
+    try {
+      const f = await fixture("10", 100);
+      const stock = async () => (await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber();
+      await issueGatePass(ctx(), f.gp.id);
+      expect(await stock()).toBe(90);
+      await dispatchGatePass(ctx(), f.gp.id);
+      expect(await stock()).toBe(90);
+
+      await recordGatePassReceiving(ctx(), {
+        gatePassId: f.gp.id, reference: "SYNTHETIC-PARTIAL-CREDIT", recipient: "Customer receiver",
+        lines: [{ itemId: f.gp.items[0]!.id, accepted: "8", rejected: "2" }],
+      });
+      expect((await getOutboundGatePass(tenant, f.gp.id))!.status).toBe("PARTIALLY_ACCEPTED");
+      expect(await db.invoice.count({ where: { customerId: f.customer.id } })).toBe(0);
+      expect((await db.customer.findUniqueOrThrow({ where: { id: f.customer.id } })).currentBalance.toNumber()).toBe(0);
+
+      const created = await invoiceAcceptedGatePass(ctx(), invoiceInput(f));
+      const replay = await invoiceAcceptedGatePass(ctx(), invoiceInput(f));
+      expect(replay.id).toBe(created.id);
+      const invoice = await db.invoice.findUniqueOrThrow({
+        where: { id: created.id }, include: { salesOrder: { include: { items: true } } },
+      });
+      expect(invoice.status).toBe("UNPAID");
+      expect(invoice.paidAmount.toNumber()).toBe(0);
+      expect(invoice.amount.toNumber()).toBe(1888);
+      expect(invoice.salesOrder!.items).toHaveLength(1);
+      expect(invoice.salesOrder!.items[0]!.quantity.toNumber()).toBe(8);
+      expect((await db.customer.findUniqueOrThrow({ where: { id: f.customer.id } })).currentBalance.toNumber()).toBe(1888);
+      expect(await db.invoice.count({ where: { customerId: f.customer.id } })).toBe(1);
+      expect(await db.ledgerEntry.count({ where: { customerId: f.customer.id, type: "SALE" } })).toBe(1);
+      expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_ISSUE" } })).toBe(1);
+      expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_DISPATCH" } })).toBe(0);
+      expect(await stock()).toBe(90);
+
+      const returned = { gatePassId: f.gp.id, lines: [{ itemId: f.gp.items[0]!.id, returned: "2" }] };
+      await confirmRejectedStockReturn(ctx(), returned);
+      await confirmRejectedStockReturn(ctx(), returned);
+      expect(await stock()).toBe(92);
+      expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_RETURN" } })).toBe(1);
+      expect((await db.customer.findUniqueOrThrow({ where: { id: f.customer.id } })).currentBalance.toNumber()).toBe(1888);
+    } finally {
+      vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
+    }
+  });
   it("keeps an existing draft legacy when V2 is enabled after its creation", async () => {
     const f = await fixture();
     vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "true");
