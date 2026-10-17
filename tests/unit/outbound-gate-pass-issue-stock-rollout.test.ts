@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gatePassIssueStockMode } from "@/lib/delivery-acceptance/issue-stock-rollout";
+import { gatePassIssueStockMode, needsGatePassStockPreview } from "@/lib/delivery-acceptance/issue-stock-rollout";
 
 const cutover = "2026-11-01T00:00:00.000Z";
 
@@ -28,5 +28,16 @@ describe("Gate Pass V2: future-only issue-stock cutover", () => {
       expect(gatePassIssueStockMode(draft, "true", invalid)).toBe("misconfigured");
     }
     expect(gatePassIssueStockMode(new Date("invalid"), "true", cutover)).toBe("misconfigured");
+  });
+
+  it("previews availability on a V2 draft before issuing, never reserves stock", () => {
+    expect(needsGatePassStockPreview("DRAFT", false, "v2")).toBe(true);
+    expect(needsGatePassStockPreview("DRAFT", false, "legacy")).toBe(false);
+    expect(needsGatePassStockPreview("DRAFT", false, "misconfigured")).toBe(false);
+    expect(needsGatePassStockPreview("ISSUED", false, "legacy")).toBe(true);
+    expect(needsGatePassStockPreview("ISSUED", false, "v2")).toBe(true);
+    expect(needsGatePassStockPreview("ISSUED", true, "v2")).toBe(false);
+    expect(needsGatePassStockPreview("IN_TRANSIT", false, "v2")).toBe(false);
+    expect(needsGatePassStockPreview("CANCELLED", false, "v2")).toBe(false);
   });
 });

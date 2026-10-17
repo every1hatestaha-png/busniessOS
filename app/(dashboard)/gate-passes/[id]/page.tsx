@@ -6,7 +6,7 @@ import { GatePassWorkflowControls } from "@/components/gate-passes/workflow-cont
 import { getOutboundGatePass } from "@/lib/server/outbound-gate-passes";
 import { db } from "@/lib/server/db";
 import { requireOutboundGatePassDraftFeature } from "@/lib/server/outbound-gate-pass-feature";
-import { gatePassIssueStockMode } from "@/lib/delivery-acceptance/issue-stock-rollout";
+import { gatePassIssueStockMode, needsGatePassStockPreview } from "@/lib/delivery-acceptance/issue-stock-rollout";
 
 export default async function OutboundGatePassPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -23,6 +23,7 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
   // their own component dispatch/return adapter. Never present a button that
   // will fail after the operator has physically shipped the goods.
   const bomDispatchEnabled = process.env.OUTBOUND_GATE_PASS_BOM_DISPATCH_ENABLED === "true";
+  const isUnissuedV2Draft = gatePass.status === "DRAFT" && issueMode === "v2";
   const configuredBOMs = await db.$queryRaw<Array<{ name: string }>>`
     SELECT DISTINCT i."productNameSnapshot" AS name
     FROM "outbound_gate_pass_items" i
@@ -37,7 +38,11 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
   // comparing against either core stock or the original managed warehouse.
   // This avoids suggesting dispatch is possible when two different assembly
   // lines compete for the same component stock.
-  const stockShortages = gatePass.status === "ISSUED" && !gatePass.issueStockDeductedAt ? await db.$queryRaw<Array<{
+  // Preview future-only V2 stock at DRAFT, before an operator can attempt ISSUE.
+  // Legacy drafts intentionally remain document-only and are checked at DISPATCH.
+  // This preview never reserves stock; the serializable ISSUE transaction is authoritative.
+  const needsStockPreview = needsGatePassStockPreview(gatePass.status, Boolean(gatePass.issueStockDeductedAt), issueMode);
+  const stockShortages = needsStockPreview ? await db.$queryRaw<Array<{
     name: string; required: string; available: string;
   }>>`
     WITH required_components AS (
@@ -83,6 +88,7 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
   const deferredBillingReady = process.env.OUTBOUND_GP_ACCEPTANCE_BILLING_LEGALLY_APPROVED === "true"
     && Boolean(process.env.OUTBOUND_GP_ACCEPTANCE_BILLING_APPROVAL_REFERENCE?.trim())
     && !fbrConfig?.enabled;
+  const v2IssueStockReady = stockShortages.length === 0 && (configuredBOMs.length === 0 || bomDispatchEnabled);
 
   return <div className="mx-auto max-w-5xl space-y-5" data-gate-pass-print-route={["DRAFT", "CANCELLED"].includes(gatePass.status) ? "" : `/gate-passes/${gatePass.id}/print`}>
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -115,14 +121,14 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
     {gatePass.receivingReference && <p className="text-sm"><span className="font-semibold">Customer receiving reference: </span>{gatePass.receivingReference}{gatePass.receivingRecipient ? ` · ${gatePass.receivingRecipient}` : ""}</p>}
     {gatePass.receivingAt && <Link href={`/gate-passes/${gatePass.id}/receiving/print`} className="inline-flex rounded-md border px-4 py-2 text-sm font-medium">Print Customer Receiving Acknowledgement</Link>}
     {gatePass.invoiceId && <Link href={`/invoices/${gatePass.invoiceId}`} className="inline-flex rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white">View and print final invoice</Link>}
-    {gatePass.status === "ISSUED" && !gatePass.issueStockDeductedAt && configuredBOMs.length > 0 && !bomDispatchEnabled && <div role="status" className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
-      <p className="font-semibold">Assembly products require component-stock reconciliation before dispatch.</p>
-      <p className="mt-1">Gate Pass printing is available, but dispatching this assembled customer BOM through the deferred-invoice workflow is not yet supported. Use the standard Sales flow until the component-return adapter is certified.</p>
+    {(isUnissuedV2Draft || (gatePass.status === "ISSUED" && !gatePass.issueStockDeductedAt)) && configuredBOMs.length > 0 && !bomDispatchEnabled && <div role="status" className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+      <p className="font-semibold">Assembly products require component-stock reconciliation before {isUnissuedV2Draft ? "V2 issue" : "dispatch"}.</p>
+      <p className="mt-1">{isUnissuedV2Draft ? "V2 issue is paused before any stock deduction." : "Gate Pass printing is available, but dispatch is paused."} The customer BOM stock adapter is not yet enabled; use the standard Sales flow until the component-return adapter is certified.</p>
       <ul className="mt-2 list-disc pl-5">{configuredBOMs.map((row) => <li key={row.name}>{row.name}</li>)}</ul>
     </div>}
-    {gatePass.status === "ISSUED" && stockShortages.length > 0 && <div role="alert" className="rounded-md border border-amber-400 bg-amber-50 p-4 text-sm text-amber-950">
-      <p className="font-semibold">Insufficient dispatch stock — shipment cannot be recorded yet.</p>
-      <p className="mt-1">Replenish or correct the listed items first. Gate Pass printing remains available; no inventory was changed.</p>
+    {stockShortages.length > 0 && <div role="alert" className="rounded-md border border-amber-400 bg-amber-50 p-4 text-sm text-amber-950">
+      <p className="font-semibold">Insufficient {isUnissuedV2Draft ? "V2 issue" : "dispatch"} stock — {isUnissuedV2Draft ? "issuance" : "shipment"} cannot proceed yet.</p>
+      <p className="mt-1">Review the listed items before {isUnissuedV2Draft ? "issuing" : "dispatching"}. This is a read-only preview, not a stock reservation; the server will check again during the actual action. No inventory was changed.</p>
       <ul className="mt-2 list-disc pl-5">{stockShortages.map((item) => <li key={item.name}>{item.name}: required {item.required}, available {item.available}</li>)}</ul>
     </div>}
     {issueMode === "misconfigured" && gatePass.status === "DRAFT" && <div role="alert" className="rounded-md border border-amber-400 bg-amber-50 p-4 text-sm text-amber-950">
@@ -137,6 +143,7 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
       receivingNotes={gatePass.receivingNotes}
       deferredBillingReady={deferredBillingReady}
       canIssue={issueMode !== "misconfigured" && canPerformAction(role, "sales.create") && (issueMode !== "v2" || canPerformAction(role, "inventory.adjust"))}
+      issueStockReady={v2IssueStockReady}
       canCancel={canPerformAction(role, "sales.create") && (!gatePass.issueStockDeductedAt || canPerformAction(role, "inventory.adjust"))}
       issueDeductsStock={issueMode === "v2"}
       stockAlreadyDeducted={Boolean(gatePass.issueStockDeductedAt)}
