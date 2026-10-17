@@ -51,7 +51,7 @@ describe("gate pass: Ahmad-only workspace isolation", () => {
     const action = readFileSync("app/(dashboard)/gate-passes/actions.ts", "utf8");
     expect(action).toContain("outboundGatePassDraftFeatureEnabled(context.workspaceId)");
     const service = readFileSync("lib/server/outbound-gate-passes.ts", "utf8");
-    expect(service.match(/assertWorkspaceGatePassEnabled\(.*?\);/g)?.length).toBe(3);
+    expect(service.match(/assertWorkspaceGatePassEnabled\(.*?\);/g)?.length).toBe(4);
   });
 
   it("does not show any gate-pass draft entry on Sales in other tenants", () => {

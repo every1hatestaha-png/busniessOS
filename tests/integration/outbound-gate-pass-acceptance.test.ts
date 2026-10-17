@@ -6,12 +6,16 @@ import { db } from "@/lib/server/db";
 import { createProduct } from "@/lib/server/products";
 import { createCustomerReturn, cancelSale } from "@/lib/server/sales";
 import { updateSaleAndInvoice } from "@/lib/server/sale-edit";
-import { createOutboundGatePassDraft, getOutboundGatePass, listOutboundGatePasses } from "@/lib/server/outbound-gate-passes";
+import { createOutboundGatePassDraft, updateOutboundGatePassDraft, getOutboundGatePass, listOutboundGatePasses } from "@/lib/server/outbound-gate-passes";
 import { issueGatePass, dispatchGatePass, recordGatePassReceiving, confirmRejectedStockReturn, invoiceAcceptedGatePass, cancelUndispatchedGatePass } from "@/lib/server/outbound-gate-pass-lifecycle";
 import { ownedTransitInventory } from "@/lib/delivery-acceptance/transit-reconciliation";
 import { renderToStaticMarkup } from "react-dom/server";
 
 vi.mock("@/lib/server/auth", () => ({ requireWorkspace: async () => ({ workspaceId: tenant, workspace: await db.workspace.findUniqueOrThrow({where:{id:tenant}}), user: {id:userId}, role:"OWNER" }) }));
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...await importOriginal<typeof import("next/navigation")>(),
+  useRouter: () => ({refresh:vi.fn(),push:vi.fn()}),
+}));
 
 const tenant = "4bc313cf-2869-4d87-8f1e-22a147f18d2d";
 const other = randomUUID();
@@ -71,6 +75,59 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     expect(await db.invoice.count({ where: { customerId: f.customer.id } })).toBe(0);
     expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_DISPATCH" } })).toBe(0);
     expect((await db.customer.findUniqueOrThrow({ where: { id: f.customer.id } })).currentBalance.toNumber()).toBe(0);
+  });
+  it("edits a draft with replay and stale-tab protection and no inventory or finance effects", async () => {
+    const f = await fixture();
+    const edit = {...f.draft,gatePassId:f.gp.id,version:0,notes:"Revised synthetic delivery",items:[{productId:f.productId,quantity:"2.5000"}]};
+    await updateOutboundGatePassDraft(ctx(),edit);
+    await updateOutboundGatePassDraft(ctx(),edit);
+    await expect(updateOutboundGatePassDraft(ctx(),{...edit,notes:"Stale overwrite"})).rejects.toThrow("another tab");
+    const saved = await getOutboundGatePass(tenant,f.gp.id);
+    expect(saved!.version).toBe(1); expect(saved!.items[0]!.dispatchedQuantity.toString()).toBe("2.5");
+    expect(saved!.gatePassNumber).toBe(f.gp.gatePassNumber);
+    expect((await createOutboundGatePassDraft(ctx(),f.draft)).id).toBe(f.gp.id);
+    expect(await db.auditLog.count({where:{entityId:f.gp.id,action:"GATE_PASS_DRAFT_UPDATED"}})).toBe(1);
+    expect((await db.product.findUniqueOrThrow({where:{id:f.productId}})).stockQuantity.toString()).toBe("100");
+    expect(await db.inventoryTransaction.count({where:{productId:f.productId,type:{in:["GATE_PASS_ISSUE","GATE_PASS_DISPATCH"]}}})).toBe(0);
+    expect(await db.invoice.count({where:{customerId:f.customer.id}})).toBe(0);
+    const {default:Edit} = await import("@/app/(dashboard)/gate-passes/[id]/edit/page");
+    const html = renderToStaticMarkup(await Edit({params:Promise.resolve({id:f.gp.id})}));
+    expect(html).toContain("Save draft changes"); expect(html).toContain("Revised synthetic delivery");
+    expect(html).toContain('value="2.5"');
+  });
+  it("rejects foreign/stale-role draft edits atomically", async () => {
+    const f = await fixture();
+    const edit = {...f.draft,gatePassId:f.gp.id,version:0,notes:"Changed"};
+    await expect(updateOutboundGatePassDraft({...ctx(),workspaceId:other},edit)).rejects.toThrow("not enabled");
+    const customer = await db.customer.create({data:{workspaceId:other,name:"Synthetic foreign draft buyer"}});
+    await expect(updateOutboundGatePassDraft(ctx(),{...edit,customerId:customer.id})).rejects.toThrow("active customer");
+    await db.workspaceMember.update({where:{workspaceId_userId:{workspaceId:tenant,userId}},data:{role:"STAFF"}});
+    try {
+      // STAFF may create sales; a persisted role with no sales permission may not edit.
+      await db.workspaceMember.delete({where:{workspaceId_userId:{workspaceId:tenant,userId}}});
+      await expect(updateOutboundGatePassDraft(ctx(),edit)).rejects.toThrow("permission denied");
+    } finally { await db.workspaceMember.upsert({where:{workspaceId_userId:{workspaceId:tenant,userId}},create:{workspaceId:tenant,userId,role:"OWNER"},update:{role:"OWNER"}}); }
+    const saved = await getOutboundGatePass(tenant,f.gp.id);
+    expect(saved!.version).toBe(0); expect(saved!.items[0]!.id).toBe(f.gp.items[0]!.id);
+  });
+  it("serializes draft edits against V2 issue and never edits reserved stock", async () => {
+    const f = await fixture("2");
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED","true");
+    try {
+      const results = await Promise.allSettled([
+        updateOutboundGatePassDraft(ctx(),{...f.draft,gatePassId:f.gp.id,version:0,items:[{productId:f.productId,quantity:"3"}]}),
+        issueGatePass(ctx(),f.gp.id),
+      ]);
+      expect(results[1]!.status).toBe("fulfilled");
+      const gp = await getOutboundGatePass(tenant,f.gp.id);
+      expect(gp!.status).toBe("ISSUED"); expect(gp!.issueStockDeductedAt).not.toBeNull();
+      const quantity = gp!.items[0]!.dispatchedQuantity;
+      expect((await db.product.findUniqueOrThrow({where:{id:f.productId}})).stockQuantity.toString()).toBe(new Prisma.Decimal(100).minus(quantity).toString());
+      expect(await db.inventoryTransaction.count({where:{productId:f.productId,type:"GATE_PASS_ISSUE"}})).toBe(1);
+      await expect(updateOutboundGatePassDraft(ctx(),{...f.draft,gatePassId:f.gp.id,version:gp!.version})).rejects.toThrow("unissued draft");
+      await cancelUndispatchedGatePass(ctx(),f.gp.id);
+      expect((await db.product.findUniqueOrThrow({where:{id:f.productId}})).stockQuantity.toString()).toBe("100");
+    } finally { vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED","false"); }
   });
   it("deducts stock once under parallel dispatch, invoices acceptance once, restores only physical returns", async () => {
     const f = await fixture(); await issueGatePass(ctx(), f.gp.id);
@@ -395,6 +452,10 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     await expect(dispatchGatePass(ctx(),f.gp.id)).rejects.toThrow();
     expect((await db.product.findUniqueOrThrow({where:{id:f.productId}})).stockQuantity.toNumber()).toBe(100);
   });
+  it.each(["new","pending-invoices","in-transit"])("reproduces the invalid %s/print URL as an authenticated HTTP404", async (id) => {
+    const {default:Print}=await import("@/app/(dashboard)/gate-passes/[id]/print/page");
+    await expect(Print({params:Promise.resolve({id})})).rejects.toMatchObject({digest:"NEXT_HTTP_ERROR_FALLBACK;404"});
+  });
   it("renders issued independent print and accepted-only pending invoices before final invoicing", async () => {
     const f=await fixture();
     const {default:Print}=await import("@/app/(dashboard)/gate-passes/[id]/print/page");
@@ -409,6 +470,10 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     await invoiceAcceptedGatePass(ctx(),invoiceInput(f));
     expect(renderToStaticMarkup(await Pending())).not.toContain(f.gp.gatePassNumber);
     const invoice=await db.outboundGatePass.findUniqueOrThrow({where:{id:f.gp.id}});
+    const {default:Invoice}=await import("@/app/(dashboard)/invoices/[id]/page");
+    const document=renderToStaticMarkup(await Invoice({params:Promise.resolve({id:invoice.invoiceId!})}));
+    expect(document).toContain("Original Gate Pass:"); expect(document).toContain(f.gp.gatePassNumber);
+    expect(document).toContain("Print invoice"); expect(document).toContain("80mm receipt");
     const foreign=await db.customer.create({data:{workspaceId:tenant,name:"Different synthetic buyer"}});
     await expect(db.invoice.update({where:{id:invoice.invoiceId!},data:{customerId:foreign.id}})).rejects.toThrow();
   });
@@ -726,6 +791,33 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
       await db.$executeRaw`UPDATE "workspace_modules" SET "enabled"=false WHERE "workspaceId"=${tenant}::uuid AND "moduleKey"='inventory'`;
       await db.$executeRaw`UPDATE "warehouses" SET "isDefault"=false,"isActive"=false WHERE "id"=${warehouseId}::uuid AND "workspaceId"=${tenant}::uuid`;
     }
+  });
+  it.each(["before", "after"])("reconciles fractional assembly return %s invoice to the exact cent", async (timing) => {
+    const f = await fixture("1");
+    const componentId = await createProduct(ctx(),{name:"Synthetic cent-rounding component",sku:randomUUID(),category:"QA",costPrice:0.02,sellingPrice:1,stockQuantity:100,reorderLevel:0,unit:"KG",status:"ACTIVE",description:""});
+    const secondId = await createProduct(ctx(),{name:"Synthetic second cent-rounding assembly",sku:randomUUID(),category:"QA",costPrice:50,sellingPrice:200,stockQuantity:100,reorderLevel:0,unit:"PIECE",status:"ACTIVE",description:""});
+    await updateOutboundGatePassDraft(ctx(),{...f.draft,gatePassId:f.gp.id,version:0,items:[{productId:f.productId,quantity:"1"},{productId:secondId,quantity:"1"}]});
+    for (const productId of [f.productId,secondId]) {
+      const [bom] = await db.$queryRaw<Array<{id:string}>>`INSERT INTO customer_sales_boms ("workspaceId","customerId","productId","productCode") VALUES (${tenant}::uuid,${f.customer.id}::uuid,${productId}::uuid,${"SYNTHETIC-CENTS-"+productId}) RETURNING id::text`;
+      await db.$executeRaw`INSERT INTO customer_sales_bom_items ("customerSalesBomId","componentProductId","quantityPerUnit") VALUES (${bom!.id}::uuid,${componentId}::uuid,0.5)`;
+    }
+    await issueGatePass(ctx(),f.gp.id); await dispatchGatePass(ctx(),f.gp.id);
+    f.gp = await db.outboundGatePass.findUniqueOrThrow({where:{id:f.gp.id},include:{items:true}});
+    await recordGatePassReceiving(ctx(),{gatePassId:f.gp.id,reference:"SYNTHETIC-CENTS",recipient:"Synthetic receiver",lines:f.gp.items.map(i=>({itemId:i.id,accepted:"0.5",rejected:"0.5"}))});
+    const returned={gatePassId:f.gp.id,lines:f.gp.items.map(i=>({itemId:i.id,returned:"0.5"}))};
+    if (timing === "before") await confirmRejectedStockReturn(ctx(),returned);
+    const invoice = await invoiceAcceptedGatePass(ctx(),{gatePassId:f.gp.id,complianceAcknowledged:true,lines:f.gp.items.map(i=>({itemId:i.id,unitPrice:"200",taxRate:18}))});
+    const pass = await getOutboundGatePass(tenant,f.gp.id);
+    const transit=pass!.items.reduce((sum,item)=>sum.plus(ownedTransitInventory({dispatched:item.dispatchedQuantity,accepted:item.acceptedQuantity,rejected:item.rejectedQuantity,returned:item.returnedQuantity,status:pass!.status,unitCost:item.unitCostSnapshot}).value),new Prisma.Decimal(0));
+    const sale = await db.invoice.findUniqueOrThrow({where:{id:invoice.id}});
+    const stockValue = async () => (await db.product.findMany({where:{id:{in:[f.productId,secondId,componentId]}}})).reduce((sum,p)=>sum.plus(p.stockQuantity.mul(p.costPrice).toDecimalPlaces(2)),new Prisma.Decimal(0));
+    const ledgerValue = async () => {const rows=await db.generalLedgerEntry.findMany({where:{workspaceId:tenant,sourceId:{in:[f.productId,secondId,componentId,f.gp.id,sale.salesOrderId!]},account:{systemCode:"INVENTORY"}}});return rows.reduce((sum,e)=>sum.plus(e.debit).minus(e.credit),new Prisma.Decimal(0));};
+    expect((await stockValue()).plus(transit).toFixed(2)).toBe((await ledgerValue()).toFixed(2));
+    if (timing === "after") await confirmRejectedStockReturn(ctx(),returned);
+    await confirmRejectedStockReturn(ctx(),returned);
+    expect((await stockValue()).toFixed(2)).toBe((await ledgerValue()).toFixed(2));
+    expect((await db.product.findUniqueOrThrow({where:{id:componentId}})).stockQuantity.toString()).toBe("99");
+    expect((await db.customer.findUniqueOrThrow({where:{id:f.customer.id}})).currentBalance.toString()).toBe("236");
   });
   it("reconciles owned inventory including transit to the inventory GL asset", async () => {
     const products=await db.product.findMany({where:{workspaceId:tenant}});

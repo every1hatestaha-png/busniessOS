@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { GatePassPrintBody, type GatePassPrintableData } from "../../../components/gate-passes/gate-pass-print-body";
 import { GatePassReceivingPrintBody, type GatePassReceivingPrintData } from "../../../components/gate-passes/gate-pass-receiving-print-body";
+import { PrintShortcutRouter } from "../../../components/documents/print-shortcut-router";
 import "../../../app/globals.css";
 
 const params = new URLSearchParams(location.search);
@@ -49,7 +50,8 @@ const receiving: GatePassReceivingPrintData = {
 };
 const workspace = { name: "Synthetic GatePass Printer Company", address: "Test address", phone: "000-0000000" };
 createRoot(document.getElementById("root")!).render(
-  <main className="mx-auto max-w-4xl space-y-4 p-5 print:m-0 print:max-w-none print:p-0">
+  <main data-gate-pass-print-route={["DRAFT","CANCELLED"].includes(params.get("status")??"") ? "" : "/gate-passes/10000000-0000-4000-8000-000000000001/print"} className="mx-auto max-w-4xl space-y-4 p-5 print:m-0 print:max-w-none print:p-0">
+    <PrintShortcutRouter/>
     <nav data-gp-synthetic-toolbar className="print:hidden">This toolbar must never be printed</nav>
     {documentType === "receiving"
       ? <GatePassReceivingPrintBody workspace={workspace} data={receiving} />

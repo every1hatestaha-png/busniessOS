@@ -19,6 +19,7 @@ import {
   assertGatePassBomAcceptedPrecision,
 } from "@/lib/server/outbound-gate-pass-bom";
 import { decideOutboundReceiving } from "@/lib/delivery-acceptance/policy";
+import { gatePassInventoryValue } from "@/lib/delivery-acceptance/transit-reconciliation";
 import {
   receivingInputSchema, returnedGoodsSchema, issueInvoiceFromGatePassSchema,
 } from "@/lib/delivery-acceptance/lifecycle-validation";
@@ -178,8 +179,8 @@ async function reverseUndispatchedIssueStock(tx: Transaction, ctx: Context, gp: 
     });
     if (!product) throw new GatePassWorkflowError("Reserved product is unavailable for reversal.");
     const nextQty = product.stockQuantity.plus(quantity);
-    const previousValue = product.stockQuantity.mul(product.costPrice);
-    const returnedValue = quantity.mul(historicalCost);
+    const previousValue = gatePassInventoryValue(product.stockQuantity,product.costPrice);
+    const returnedValue = gatePassInventoryValue(quantity,historicalCost);
     const nextCost = previousValue.plus(returnedValue).div(nextQty).toDecimalPlaces(2);
     const update = await tx.product.updateMany({
       where: { workspaceId: ctx.workspaceId, id: productId,
@@ -190,7 +191,7 @@ async function reverseUndispatchedIssueStock(tx: Transaction, ctx: Context, gp: 
     await applyManagedWarehouseStockDelta(tx, {
       workspaceId: ctx.workspaceId, warehouseId: gp.warehouseId, productId, delta: quantity,
     });
-    roundingDelta = roundingDelta.plus(nextQty.mul(nextCost).minus(previousValue).minus(returnedValue));
+    roundingDelta = roundingDelta.plus(gatePassInventoryValue(nextQty,nextCost).minus(previousValue).minus(returnedValue));
   }
 
   const components = new Map<string, { quantity: Prisma.Decimal; cost: Prisma.Decimal }>();
@@ -414,15 +415,18 @@ export async function confirmRejectedStockReturn(ctx: Context, input: unknown) {
         });
         if (!product) throw new GatePassWorkflowError("Original assembly is unavailable for stock return.");
         const newQuantity = product.stockQuantity.plus(delta);
-        const historicalCost = item.unitCostSnapshot.mul(delta);
-        const previousValue = product.costPrice.mul(product.stockQuantity);
+        // Cumulative allocation makes split/replayed returns agree to the cent
+        // with accepted COGS and the remaining owned-inventory pool.
+        const historicalCost = gatePassInventoryValue(item.dispatchedQuantity.minus(item.returnedQuantity),item.unitCostSnapshot)
+          .minus(gatePassInventoryValue(item.dispatchedQuantity.minus(desired),item.unitCostSnapshot));
+        const previousValue = gatePassInventoryValue(product.stockQuantity,product.costPrice);
         const newPrice = previousValue.plus(historicalCost).div(newQuantity).toDecimalPlaces(2);
         const productUpdate = await tx.product.updateMany({
           where: { id: item.productId, workspaceId: ctx.workspaceId, stockQuantity: product.stockQuantity },
           data: { stockQuantity: { increment: delta }, costPrice: newPrice },
         });
         if (productUpdate.count !== 1) throw new GatePassWorkflowError("Assembly inventory changed during reconciliation.");
-        valuationRoundingDelta = valuationRoundingDelta.plus(newQuantity.mul(newPrice).minus(previousValue).minus(historicalCost));
+        valuationRoundingDelta = valuationRoundingDelta.plus(gatePassInventoryValue(newQuantity,newPrice).minus(previousValue).minus(historicalCost));
       } else {
         const productUpdate = await tx.product.updateMany({
           where: { id: item.productId, workspaceId: ctx.workspaceId },
@@ -496,7 +500,7 @@ export async function invoiceAcceptedGatePass(ctx: Context, input: unknown) {
     const taxTotal = priced.reduce((n, x) => n.plus(x.tax), new Prisma.Decimal(0));
     const total = subtotal.plus(taxTotal);
     if (total.lessThanOrEqualTo(0)) throw new GatePassWorkflowError("Invoice total must be positive.");
-    const cost = priced.reduce((n, x) => n.plus(x.item.unitCostSnapshot.mul(x.item.acceptedQuantity)), new Prisma.Decimal(0)).toDecimalPlaces(2);
+    const cost = priced.reduce((n, x) => n.plus(gatePassInventoryValue(x.item.acceptedQuantity,x.item.unitCostSnapshot)), new Prisma.Decimal(0));
     const customer = await tx.customer.findFirst({ where: { workspaceId: ctx.workspaceId, id: gp.customerId, status: "ACTIVE" },
       select: { id: true, name: true, companyName: true, phone: true, address: true, city: true,
         taxId: true, province: true, registrationType: true, currentBalance: true, creditLimit: true, creditDays: true } });

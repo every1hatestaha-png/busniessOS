@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useActionState, useState } from "react";
 
-import { createOutboundGatePassDraftAction, type CreateOutboundGatePassState } from "@/app/(dashboard)/gate-passes/actions";
+import { createOutboundGatePassDraftAction, updateOutboundGatePassDraftAction, type CreateOutboundGatePassState } from "@/app/(dashboard)/gate-passes/actions";
 
 type Option = { id: string; name: string };
 type ProductOption = Option & { sku: string; unit: string; stockQuantity: string };
@@ -18,16 +18,18 @@ export function OutboundGatePassDraftForm({
   warehouses,
   managedWarehouse,
   idempotencyKey,
+  editing,
 }: {
   customers: Option[];
   products: ProductOption[];
   warehouses: WarehouseOption[];
   managedWarehouse: boolean;
   idempotencyKey: string;
+  editing?: {gatePassId:string;version:number;customerId:string;warehouseId:string;date:string;deliveryAddress:string;notes:string;items:Array<{productId:string;quantity:string}>};
 }) {
-  const [state, formAction, pending] = useActionState(createOutboundGatePassDraftAction, initialState);
-  const [lines, setLines] = useState<DraftLine[]>([{ key: 0, productId: "", quantity: "1" }]);
-  const [nextKey, setNextKey] = useState(1);
+  const [state, formAction, pending] = useActionState(editing ? updateOutboundGatePassDraftAction : createOutboundGatePassDraftAction, initialState);
+  const [lines, setLines] = useState<DraftLine[]>(()=>editing?.items.map((item,key)=>({...item,key}))??[{ key: 0, productId: "", quantity: "1" }]);
+  const [nextKey, setNextKey] = useState(editing?.items.length??1);
 
   const itemsJson = JSON.stringify(lines.map((line) => ({ productId: line.productId, quantity: line.quantity })));
   const chosen = new Set(lines.map((line) => line.productId).filter(Boolean));
@@ -38,6 +40,7 @@ export function OutboundGatePassDraftForm({
   return (
     <form action={formAction} className="space-y-5">
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
+      {editing && <><input type="hidden" name="gatePassId" value={editing.gatePassId}/><input type="hidden" name="version" value={editing.version}/></>}
       <input type="hidden" name="itemsJson" value={itemsJson} readOnly />
       <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
         Saving a draft does not move stock or create a sale. After issuing the gate pass,
@@ -49,25 +52,25 @@ export function OutboundGatePassDraftForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="space-y-1 text-sm">
           <span className="font-medium">Customer</span>
-          <select name="customerId" required defaultValue="" className="w-full rounded-md border bg-background px-3 py-2">
+          <select name="customerId" required defaultValue={editing?.customerId??""} className="w-full rounded-md border bg-background px-3 py-2">
             <option value="" disabled>Select customer</option>
             {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
           </select>
         </label>
         <label className="space-y-1 text-sm">
           <span className="font-medium">Gate pass date</span>
-          <input name="date" type="date" required defaultValue={new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Karachi" })} className="w-full rounded-md border bg-background px-3 py-2" />
+          <input name="date" type="date" required defaultValue={editing?.date??new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Karachi" })} className="w-full rounded-md border bg-background px-3 py-2" />
         </label>
         {managedWarehouse && <label className="space-y-1 text-sm">
           <span className="font-medium">Source warehouse</span>
-          <select name="warehouseId" defaultValue="" required className="w-full rounded-md border bg-background px-3 py-2">
+          <select name="warehouseId" defaultValue={editing?.warehouseId??""} required className="w-full rounded-md border bg-background px-3 py-2">
             <option value="" disabled>Select warehouse</option>
             {warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name} ({warehouse.code})</option>)}
           </select>
         </label>}
         <label className="space-y-1 text-sm">
           <span className="font-medium">Delivery address</span>
-          <input name="deliveryAddress" maxLength={500} className="w-full rounded-md border bg-background px-3 py-2" placeholder="Destination company address" />
+          <input name="deliveryAddress" maxLength={500} defaultValue={editing?.deliveryAddress} className="w-full rounded-md border bg-background px-3 py-2" placeholder="Destination company address" />
         </label>
       </div>
 
@@ -112,12 +115,12 @@ export function OutboundGatePassDraftForm({
       </section>
       <label className="block space-y-1 text-sm">
         <span className="font-medium">Notes</span>
-        <textarea name="notes" maxLength={500} rows={3} className="w-full rounded-md border bg-background px-3 py-2" placeholder="Transport or delivery notes" />
+        <textarea name="notes" maxLength={500} rows={3} defaultValue={editing?.notes} className="w-full rounded-md border bg-background px-3 py-2" placeholder="Transport or delivery notes" />
       </label>
       <div className="flex flex-wrap items-center gap-3">
         <button type="submit" disabled={!canSubmit || customers.length === 0 || products.length === 0 || (managedWarehouse && warehouses.length === 0)}
           className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-          {pending ? "Saving draft..." : "Save gate pass draft"}
+          {pending ? "Saving draft..." : editing ? "Save draft changes" : "Save gate pass draft"}
         </button>
         <Link href="/gate-passes" className="text-sm underline underline-offset-4">Back to gate passes</Link>
       </div>

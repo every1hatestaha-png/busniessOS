@@ -24,6 +24,11 @@ describe("getDedicatedPrintRoute", () => {
     expect(getDedicatedPrintRoute("/goods-receipts/grn-123/print")).toBeNull();
   });
 
+  it.each(["new", "pending-invoices", "in-transit"])("never turns the %s screen into a nonexistent print route", (segment) => {
+    expect(getDedicatedPrintRoute(`/gate-passes/${segment}`)).toBeNull();
+    expect(getDedicatedPrintRoute(`/gate-passes/${segment}/`)).toBeNull();
+  });
+
   it("leaves pages with inline print surfaces alone", () => {
     expect(getDedicatedPrintRoute("/invoices/inv-123")).toBeNull();
     expect(getDedicatedPrintRoute("/payments/pay-123")).toBeNull();

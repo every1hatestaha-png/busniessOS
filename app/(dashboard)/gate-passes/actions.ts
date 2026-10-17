@@ -4,12 +4,36 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
-import { outboundGatePassDraftSchema } from "@/lib/delivery-acceptance/draft-validation";
+import { outboundGatePassDraftSchema, outboundGatePassDraftEditSchema } from "@/lib/delivery-acceptance/draft-validation";
 import { requirePermission } from "@/lib/server/authorization";
 import { outboundGatePassDraftFeatureEnabled } from "@/lib/server/outbound-gate-pass-feature";
-import { createOutboundGatePassDraft, OutboundGatePassDomainError } from "@/lib/server/outbound-gate-passes";
+import { createOutboundGatePassDraft, updateOutboundGatePassDraft, OutboundGatePassDomainError } from "@/lib/server/outbound-gate-passes";
 
 export type CreateOutboundGatePassState = { error?: string };
+
+export async function updateOutboundGatePassDraftAction(_previous: CreateOutboundGatePassState, form: FormData): Promise<CreateOutboundGatePassState> {
+  const context = await requirePermission("sales.create");
+  if (!outboundGatePassDraftFeatureEnabled(context.workspaceId)) return {error:"Gate pass drafts are unavailable in this workspace."};
+  let id: string;
+  try {
+    const itemsJson = form.get("itemsJson");
+    if (typeof itemsJson !== "string" || itemsJson.length > 25_000) return {error:"Invalid gate pass items."};
+    const data = outboundGatePassDraftEditSchema.parse({
+      gatePassId:form.get("gatePassId"),version:form.get("version"),
+      customerId:form.get("customerId"),warehouseId:form.get("warehouseId")??"",
+      date:form.get("date"),deliveryAddress:form.get("deliveryAddress")??"",notes:form.get("notes")??"",
+      idempotencyKey:form.get("idempotencyKey"),items:JSON.parse(itemsJson),
+    });
+    const result = await updateOutboundGatePassDraft({workspaceId:context.workspaceId,userId:context.user.id},data);
+    id = result.id;
+  } catch (error) {
+    if (error instanceof OutboundGatePassDomainError || error instanceof z.ZodError) return {error:error.message};
+    return {error:"Could not update the draft. Refresh and try again."};
+  }
+  revalidatePath("/gate-passes");
+  revalidatePath(`/gate-passes/${id}`);
+  redirect(`/gate-passes/${id}`);
+}
 
 export async function createOutboundGatePassDraftAction(
   _previous: CreateOutboundGatePassState,
