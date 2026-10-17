@@ -60,8 +60,12 @@ describe("Ahmad-only outbound workflow acceptance", () => {
   });
   it("fails closed unless tax timing has separately been approved", () => {
     const source = readFileSync("lib/server/outbound-gate-pass-lifecycle.ts", "utf8");
+    const issue = source.split("export async function issueGatePass(")[1]!.split("export async function cancelUndispatchedGatePass(")[0]!;
     expect(source).toContain('OUTBOUND_GP_ACCEPTANCE_BILLING_LEGALLY_APPROVED !== "true"');
-    expect(source.split("assertAcceptanceBillingLegallyApproved();").length).toBe(3);
+    expect(source.split("assertAcceptanceBillingLegallyApproved();").length).toBe(4);
+    expect(issue).toContain("await assertFbrCompatibility(tx, ctx.workspaceId);");
+    expect(issue.indexOf("assertAcceptanceBillingLegallyApproved();")).toBeLessThan(issue.indexOf("await tx.outboundGatePassItem.update"));
+    expect(issue.indexOf("await assertFbrCompatibility(tx, ctx.workspaceId);")).toBeLessThan(issue.indexOf("await tx.outboundGatePassItem.update"));
   });
   it("reconciles warehouse-out goods, invoiced acceptance, and physically returned rejection", () => {
     const D = (n: string) => new Prisma.Decimal(n);

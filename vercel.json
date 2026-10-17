@@ -46,7 +46,8 @@
       "architecture/restaurant-recovery-compat-v1-98": false,
       "feat/gate-pass-receiving-invoice-foundation": false,
       "fix/gate-pass-v2-release-20261015": false,
-      "fix/gate-pass-v2-future-only-cutover-20261017": false
+      "fix/gate-pass-v2-future-only-cutover-20261017": false,
+      "fix/gate-pass-v2-preissue-dispatch-guard-20261017": false
     }
   }
 }
