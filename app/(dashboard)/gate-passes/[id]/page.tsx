@@ -6,6 +6,7 @@ import { GatePassWorkflowControls } from "@/components/gate-passes/workflow-cont
 import { getOutboundGatePass } from "@/lib/server/outbound-gate-passes";
 import { db } from "@/lib/server/db";
 import { requireOutboundGatePassDraftFeature } from "@/lib/server/outbound-gate-pass-feature";
+import { gatePassIssueStockMode } from "@/lib/delivery-acceptance/issue-stock-rollout";
 
 export default async function OutboundGatePassPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -13,6 +14,11 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
   requireOutboundGatePassDraftFeature(workspaceId);
   const gatePass = await getOutboundGatePass(workspaceId, id);
   if (!gatePass) notFound();
+  const issueMode = gatePassIssueStockMode(
+    gatePass.createdAt,
+    process.env.OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED,
+    process.env.OUTBOUND_GP_ISSUE_STOCK_V2_CUTOVER_AT,
+  );
   // Read-only, tenant-scoped preview: configured customer assemblies require
   // their own component dispatch/return adapter. Never present a button that
   // will fail after the operator has physically shipped the goods.
@@ -119,6 +125,9 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
       <p className="mt-1">Replenish or correct the listed items first. Gate Pass printing remains available; no inventory was changed.</p>
       <ul className="mt-2 list-disc pl-5">{stockShortages.map((item) => <li key={item.name}>{item.name}: required {item.required}, available {item.available}</li>)}</ul>
     </div>}
+    {issueMode === "misconfigured" && gatePass.status === "DRAFT" && <div role="alert" className="rounded-md border border-amber-400 bg-amber-50 p-4 text-sm text-amber-950">
+      Gate Pass issuance is paused until the administrator configures a valid UTC V2 cutover. No inventory was changed.
+    </div>}
     <GatePassWorkflowControls
       key={`${gatePass.id}:${gatePass.updatedAt.toISOString()}`}
       id={gatePass.id}
@@ -127,8 +136,9 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
       recipient={gatePass.receivingRecipient}
       receivingNotes={gatePass.receivingNotes}
       deferredBillingReady={deferredBillingReady}
-      canIssue={canPerformAction(role, "sales.create") && (process.env.OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED !== "true" || canPerformAction(role, "inventory.adjust"))}
-      issueDeductsStock={process.env.OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED === "true"}
+      canIssue={issueMode !== "misconfigured" && canPerformAction(role, "sales.create") && (issueMode !== "v2" || canPerformAction(role, "inventory.adjust"))}
+      canCancel={canPerformAction(role, "sales.create") && (!gatePass.issueStockDeductedAt || canPerformAction(role, "inventory.adjust"))}
+      issueDeductsStock={issueMode === "v2"}
       stockAlreadyDeducted={Boolean(gatePass.issueStockDeductedAt)}
       canDispatch={canPerformAction(role, "inventory.adjust") && (Boolean(gatePass.issueStockDeductedAt) || configuredBOMs.length === 0 || bomDispatchEnabled) && stockShortages.length === 0}
       canReceive={canPerformAction(role, "returns.create")}
