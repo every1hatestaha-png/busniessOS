@@ -33,6 +33,9 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     vi.stubEnv("OUTBOUND_GP_ACCEPTANCE_BILLING_LEGALLY_APPROVED", "true");
     vi.stubEnv("OUTBOUND_GP_ACCEPTANCE_BILLING_APPROVAL_REFERENCE", "SYNTHETIC-LOCAL-ONLY");
     vi.stubEnv("OUTBOUND_GATE_PASS_BOM_DISPATCH_ENABLED", "true");
+    // The disposable acceptance fixtures are all created after this synthetic
+    // cutover. Production must use its actual future activation instant.
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_CUTOVER_AT", "2000-01-01T00:00:00.000Z");
     const user = await db.user.create({ data: { clerkId: randomUUID(), email: `${randomUUID()}@example.invalid` } }); userId = user.id;
     await db.workspace.upsert({ where: { id: tenant }, update: {}, create: { id: tenant, name: "Synthetic Ahmad acceptance" } });
     await db.workspaceMember.create({ data: { workspaceId: tenant, userId, role: "OWNER" } });
@@ -360,6 +363,42 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     expect(await db.inventoryTransaction.count({ where: { productId: g.productId, type: "GATE_PASS_ISSUE_CANCEL" } })).toBe(1);
     } finally {
       vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
+    }
+  });
+  it("keeps an existing draft legacy when V2 is enabled after its creation", async () => {
+    const f = await fixture();
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "true");
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_CUTOVER_AT", "2099-01-01T00:00:00.000Z");
+    try {
+      await issueGatePass(ctx(), f.gp.id);
+      const issued = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
+      expect(issued.status).toBe("ISSUED");
+      expect(issued.issueStockDeductedAt).toBeNull();
+      expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(100);
+      expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_ISSUE" } })).toBe(0);
+
+      // Historical behavior is retained even with the V2 flag ON.
+      await dispatchGatePass(ctx(), f.gp.id);
+      expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(90);
+      expect(await db.inventoryTransaction.count({ where: { productId: f.productId, type: "GATE_PASS_DISPATCH" } })).toBe(1);
+    } finally {
+      vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
+      vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_CUTOVER_AT", "2000-01-01T00:00:00.000Z");
+    }
+  });
+  it("blocks V2 issue entirely when an activation cutoff is missing", async () => {
+    const f = await fixture();
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "true");
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_CUTOVER_AT", "");
+    try {
+      await expect(issueGatePass(ctx(), f.gp.id)).rejects.toThrow("valid UTC rollout cutover");
+      const gp = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
+      expect(gp.status).toBe("DRAFT");
+      expect(gp.issueStockDeductedAt).toBeNull();
+      expect((await db.product.findUniqueOrThrow({ where: { id: f.productId } })).stockQuantity.toNumber()).toBe(100);
+    } finally {
+      vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
+      vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_CUTOVER_AT", "2000-01-01T00:00:00.000Z");
     }
   });
   it("AHMAD V2: insufficient issue stock rolls back status, snapshots and inventory writes", async () => {

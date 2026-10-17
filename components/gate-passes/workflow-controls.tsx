@@ -25,7 +25,7 @@ function ActionFeedback({ state }: { state: GatePassActionState }) {
 }
 
 export function GatePassWorkflowControls({
-  id, status, items, customerReference, recipient, receivingNotes, deferredBillingReady, canIssue, issueDeductsStock, stockAlreadyDeducted, canDispatch, canReceive, canInvoice,
+  id, status, items, customerReference, recipient, receivingNotes, deferredBillingReady, canIssue, canCancel, issueDeductsStock, stockAlreadyDeducted, canDispatch, canReceive, canInvoice,
 }: {
   id: string;
   status: Status;
@@ -35,6 +35,7 @@ export function GatePassWorkflowControls({
   receivingNotes: string | null;
   deferredBillingReady: boolean;
   canIssue: boolean;
+  canCancel: boolean;
   issueDeductsStock: boolean;
   stockAlreadyDeducted: boolean;
   canDispatch: boolean;
@@ -67,7 +68,7 @@ export function GatePassWorkflowControls({
       <ActionFeedback state={issueState}/><button type="submit" disabled={issuing} className={buttonClass}>Issue Gate Pass</button>
     </form>}
     {status !== "DRAFT" && status !== "CANCELLED" && <Link href={`/gate-passes/${id}/print`} className="inline-flex rounded-md border px-4 py-2 text-sm font-medium">Print gate pass</Link>}
-    {canIssue && (status === "DRAFT" || status === "ISSUED") && <form action={cancel} className="space-y-2">
+    {canCancel && (status === "DRAFT" || status === "ISSUED") && <form action={cancel} className="space-y-2">
       <input type="hidden" name="gatePassId" value={id}/>
       <ActionFeedback state={cancelState}/>
       <button disabled={cancelling} className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-800">Cancel Undispatched Gate Pass</button>

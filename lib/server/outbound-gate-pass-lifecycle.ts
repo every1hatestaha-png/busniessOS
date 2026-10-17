@@ -19,6 +19,7 @@ import {
   assertGatePassBomAcceptedPrecision,
 } from "@/lib/server/outbound-gate-pass-bom";
 import { decideOutboundReceiving } from "@/lib/delivery-acceptance/policy";
+import { gatePassIssueStockMode } from "@/lib/delivery-acceptance/issue-stock-rollout";
 import { gatePassInventoryValue } from "@/lib/delivery-acceptance/transit-reconciliation";
 import {
   receivingInputSchema, returnedGoodsSchema, issueInvoiceFromGatePassSchema,
@@ -248,6 +249,15 @@ export async function issueGatePass(ctx: Context, id: string) {
     const gp = await getGatePassForUpdate(tx, ctx, id);
     if (gp.status === "ISSUED") return { id }; // Identical issue retry: no second audit or version bump.
     if (gp.status !== "DRAFT" || !gp.items.length) throw new GatePassWorkflowError("Only populated drafts can be issued.");
+    const issueMode = gatePassIssueStockMode(
+      gp.createdAt,
+      process.env.OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED,
+      process.env.OUTBOUND_GP_ISSUE_STOCK_V2_CUTOVER_AT,
+    );
+    if (issueMode === "misconfigured") {
+      throw new GatePassWorkflowError("Gate Pass V2 requires a valid UTC rollout cutover before issuing documents.");
+    }
+    const issueStockV2 = issueMode === "v2";
     const ids = gp.items.map((x) => x.productId);
     // Issuance is document-only. Customer BOMs require a certified dispatch
     // adapter, but must not prevent drafting and printing the gate pass.
@@ -266,7 +276,6 @@ export async function issueGatePass(ctx: Context, id: string) {
         data: { unitPriceSnapshot: product.sellingPrice, unitCostSnapshot: product.costPrice },
       });
     }
-    const issueStockV2 = process.env.OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED === "true";
     if (issueStockV2) {
       assertPermission(ctx, "inventory.adjust");
       await assertOutboundGatePassActor(tx, ctx, "inventory.adjust");
