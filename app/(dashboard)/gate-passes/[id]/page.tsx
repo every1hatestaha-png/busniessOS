@@ -24,8 +24,24 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
   // will fail after the operator has physically shipped the goods.
   const bomDispatchEnabled = process.env.OUTBOUND_GATE_PASS_BOM_DISPATCH_ENABLED === "true";
   const isUnissuedV2Draft = gatePass.status === "DRAFT" && issueMode === "v2";
-  const configuredBOMs = await db.$queryRaw<Array<{ name: string }>>`
-    SELECT DISTINCT i."productNameSnapshot" AS name
+  const configuredBOMs = await db.$queryRaw<Array<{ name: string; configurationIssue: string | null }>>`
+    SELECT DISTINCT i."productNameSnapshot" AS name,
+      CASE
+        WHEN NOT EXISTS (
+          SELECT 1 FROM "customer_sales_bom_items" bi
+          WHERE bi."customerSalesBomId"=b."id"
+        ) THEN 'no components are configured'
+        WHEN EXISTS (
+          SELECT 1 FROM "customer_sales_bom_items" bi
+          LEFT JOIN "products" component
+            ON component."id"=bi."componentProductId"::text
+            AND component."workspaceId"=${workspaceId}
+          WHERE bi."customerSalesBomId"=b."id"
+            AND (component."id" IS NULL OR component."status"::text <> 'ACTIVE'
+              OR bi."componentProductId"=b."productId")
+        ) THEN 'a component is missing, inactive or refers to the assembly itself'
+        ELSE NULL
+      END AS "configurationIssue"
     FROM "outbound_gate_pass_items" i
     JOIN "customer_sales_boms" b ON b."productId"::text = i."productId"
     WHERE i."gatePassId"=${gatePass.id}
@@ -34,6 +50,7 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
       AND b."isActive"=true
     ORDER BY name
   `;
+  const invalidConfiguredBOMs = configuredBOMs.filter((bom) => bom.configurationIssue !== null);
   // Aggregate both assembled parent and accessory quantities before
   // comparing against either core stock or the original managed warehouse.
   // This avoids suggesting dispatch is possible when two different assembly
@@ -88,7 +105,8 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
   const deferredBillingReady = process.env.OUTBOUND_GP_ACCEPTANCE_BILLING_LEGALLY_APPROVED === "true"
     && Boolean(process.env.OUTBOUND_GP_ACCEPTANCE_BILLING_APPROVAL_REFERENCE?.trim())
     && !fbrConfig?.enabled;
-  const v2IssueStockReady = stockShortages.length === 0 && (configuredBOMs.length === 0 || bomDispatchEnabled);
+  const v2IssueStockReady = stockShortages.length === 0 && invalidConfiguredBOMs.length === 0
+    && (configuredBOMs.length === 0 || bomDispatchEnabled);
 
   return <div className="mx-auto max-w-5xl space-y-5" data-gate-pass-print-route={["DRAFT", "CANCELLED"].includes(gatePass.status) ? "" : `/gate-passes/${gatePass.id}/print`}>
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -121,6 +139,11 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
     {gatePass.receivingReference && <p className="text-sm"><span className="font-semibold">Customer receiving reference: </span>{gatePass.receivingReference}{gatePass.receivingRecipient ? ` · ${gatePass.receivingRecipient}` : ""}</p>}
     {gatePass.receivingAt && <Link href={`/gate-passes/${gatePass.id}/receiving/print`} className="inline-flex rounded-md border px-4 py-2 text-sm font-medium">Print Customer Receiving Acknowledgement</Link>}
     {gatePass.invoiceId && <Link href={`/invoices/${gatePass.invoiceId}`} className="inline-flex rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white">View and print final invoice</Link>}
+    {(isUnissuedV2Draft || (gatePass.status === "ISSUED" && !gatePass.issueStockDeductedAt)) && invalidConfiguredBOMs.length > 0 && <div role="alert" className="rounded-md border border-amber-400 bg-amber-50 p-4 text-sm text-amber-950">
+      <p className="font-semibold">Customer assembly configuration is incomplete. {isUnissuedV2Draft ? "V2 issuance" : "Dispatch"} cannot proceed yet.</p>
+      <p className="mt-1">Correct the assembly configuration before proceeding. This check changes no stock or existing documents.</p>
+      <ul className="mt-2 list-disc pl-5">{invalidConfiguredBOMs.map((row) => <li key={row.name}>{row.name}: {row.configurationIssue}</li>)}</ul>
+    </div>}
     {(isUnissuedV2Draft || (gatePass.status === "ISSUED" && !gatePass.issueStockDeductedAt)) && configuredBOMs.length > 0 && !bomDispatchEnabled && <div role="status" className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
       <p className="font-semibold">Assembly products require component-stock reconciliation before {isUnissuedV2Draft ? "V2 issue" : "dispatch"}.</p>
       <p className="mt-1">{isUnissuedV2Draft ? "V2 issue is paused before any stock deduction." : "Gate Pass printing is available, but dispatch is paused."} The customer BOM stock adapter is not yet enabled; use the standard Sales flow until the component-return adapter is certified.</p>
@@ -147,7 +170,7 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
       canCancel={canPerformAction(role, "sales.create") && (!gatePass.issueStockDeductedAt || canPerformAction(role, "inventory.adjust"))}
       issueDeductsStock={issueMode === "v2"}
       stockAlreadyDeducted={Boolean(gatePass.issueStockDeductedAt)}
-      canDispatch={canPerformAction(role, "inventory.adjust") && (Boolean(gatePass.issueStockDeductedAt) || configuredBOMs.length === 0 || bomDispatchEnabled) && stockShortages.length === 0}
+      canDispatch={canPerformAction(role, "inventory.adjust") && (Boolean(gatePass.issueStockDeductedAt) || ((configuredBOMs.length === 0 || bomDispatchEnabled) && invalidConfiguredBOMs.length === 0)) && stockShortages.length === 0}
       canReceive={canPerformAction(role, "returns.create")}
       canInvoice={canPerformAction(role, "financial.manage")}
       items={gatePass.items.map((item) => ({
