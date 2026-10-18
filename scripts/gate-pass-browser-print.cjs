@@ -86,6 +86,33 @@ async function main() {
         await page.close();
       }
     }
+    for (const width of [390,1280]) {
+      for (const role of ["OWNER","ADMIN"]) {
+        const page=await browser.newPage({viewport:{width,height:844}});
+        const errors=[];page.on("pageerror",error=>errors.push(error.message));
+        await page.goto(`${url}/?document=owner-declaration&status=DRAFT&role=${role}`);
+        const button=page.getByRole("button",{name:"Issue Gate Pass",exact:true});
+        await button.waitFor();assert.equal(await button.isDisabled(),true);
+        assert.equal(await page.evaluate(()=>window.__gpIssueCalls),0);
+        if (role === "OWNER") {
+          await page.getByLabel("Customer terms / tax-position reference").fill("SYNTHETIC-OWNER-BASIS");
+          await page.getByLabel("Why no invoice is required before acceptance").fill("Synthetic browser-only factual basis and delivery terms; not an actual approval or legal clearance.");
+          assert.equal(await button.isDisabled(),true,"A textual basis alone cannot imply consent");
+          const boxes=page.getByRole("checkbox");assert.equal(await boxes.count(),3);
+          for (const box of await boxes.all()) {assert.equal(await box.isChecked(),false);await box.check();}
+          assert.equal(await button.isDisabled(),false);await button.click();
+          assert.equal(await page.getByRole("button",{name:"Issuing…"}).isDisabled(),true);
+          await page.getByRole("button",{name:"Issuing…"}).evaluate(el=>el.click());
+          await page.getByRole("alert").waitFor();assert.equal(await page.evaluate(()=>window.__gpIssueCalls),1);
+          assert.equal(await button.isDisabled(),true,"A reset after an error must clear consent readiness too");
+        } else assert.equal(await page.getByLabel("Why no invoice is required before acceptance").count(),0);
+        assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+        assert.deepEqual(errors,[]);
+        await page.screenshot({path:path.join(output,`owner-declaration-${role}-${width}.png`),fullPage:true});
+        console.log(`PASS owner declaration ${role}/${width}: explicit consent, role-scoped UI, single pending submission`);
+        await page.close();
+      }
+    }
     for (const documentType of ["gate-pass", "receiving"]) {
       for (const paper of ["a4", "thermal"]) {
       const page = await browser.newPage({ viewport: { width: 1024, height: 768 } });

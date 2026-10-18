@@ -4,11 +4,13 @@ import { GatePassPrintBody, type GatePassPrintableData } from "../../../componen
 import { GatePassReceivingPrintBody, type GatePassReceivingPrintData } from "../../../components/gate-passes/gate-pass-receiving-print-body";
 import { PrintShortcutRouter } from "../../../components/documents/print-shortcut-router";
 import { GatePassInvoicePreparation } from "../../../components/gate-passes/invoice-preparation";
-import { invoiceCallCount } from "./actions";
+import { GatePassWorkflowControls } from "../../../components/gate-passes/workflow-controls";
+import { invoiceCallCount, issueCallCount } from "./actions";
 import "../../../app/globals.css";
 
 const params = new URLSearchParams(location.search);
 Object.defineProperty(window, "__gpInvoiceCalls", { get: invoiceCallCount });
+Object.defineProperty(window, "__gpIssueCalls", { get: issueCallCount });
 const paper = params.get("paper");
 const documentType = params.get("document") === "receiving" ? "receiving" : "gate-pass";
 if (paper === "thermal") document.documentElement.dataset.printFormat = "thermal";
@@ -55,7 +57,15 @@ const workspace = { name: "Synthetic GatePass Printer Company", address: "Test a
 createRoot(document.getElementById("root")!).render(
   <main data-gate-pass-print-route={["DRAFT","CANCELLED"].includes(params.get("status")??"") ? "" : "/gate-passes/10000000-0000-4000-8000-000000000001/print"} className="mx-auto max-w-4xl space-y-4 p-5 print:m-0 print:max-w-none print:p-0">
     <PrintShortcutRouter/>
-    {params.get("document") === "invoice-preparation" ? <GatePassInvoicePreparation
+    {params.get("document") === "owner-declaration" ? <GatePassWorkflowControls
+      id="10000000-0000-4000-8000-000000000001" status="DRAFT"
+      items={[{id:"line-1",name:"Synthetic component",quantity:"10",accepted:"0",rejected:"0",returned:"0",price:"200"}]}
+      customerReference={null} recipient={null} receivingNotes={null}
+      deferredBillingReady={false} ownerAttestationEnabled={true} canAttestBilling={params.get("role")==="OWNER"}
+      documentVersion={0}
+      canIssue={true} canCancel={false} issueDeductsStock={true} issueStockReady={true} stockAlreadyDeducted={false}
+      canDispatch={false} canReceive={false} canInvoice={false}
+    /> : params.get("document") === "invoice-preparation" ? <GatePassInvoicePreparation
       id="10000000-0000-4000-8000-000000000001" status={params.get("status") ?? "ISSUED"}
       deferredBillingReady={params.get("billing") === "approved"}
       items={[{ id: "line-1", name: "Synthetic component", quantity: "10", accepted: "8", price: "200" }]}

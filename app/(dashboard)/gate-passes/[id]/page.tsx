@@ -7,6 +7,7 @@ import { getOutboundGatePass } from "@/lib/server/outbound-gate-passes";
 import { db } from "@/lib/server/db";
 import { requireOutboundGatePassDraftFeature } from "@/lib/server/outbound-gate-pass-feature";
 import { gatePassIssueStockMode, needsGatePassStockPreview } from "@/lib/delivery-acceptance/issue-stock-rollout";
+import { readOwnerBillingDeclaration } from "@/lib/server/outbound-gate-pass-billing-authorization";
 
 export default async function OutboundGatePassPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -102,9 +103,10 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
     ORDER BY name
   ` : [];
   const fbrConfig = await db.fbrIntegrationConfig.findUnique({ where: { workspaceId }, select: { enabled: true } });
-  const deferredBillingReady = process.env.OUTBOUND_GP_ACCEPTANCE_BILLING_LEGALLY_APPROVED === "true"
-    && Boolean(process.env.OUTBOUND_GP_ACCEPTANCE_BILLING_APPROVAL_REFERENCE?.trim())
-    && !fbrConfig?.enabled;
+  const ownerDeclaration = await readOwnerBillingDeclaration(db, gatePass);
+  const deferredBillingReady = ((process.env.OUTBOUND_GP_ACCEPTANCE_BILLING_LEGALLY_APPROVED === "true"
+    && Boolean(process.env.OUTBOUND_GP_ACCEPTANCE_BILLING_APPROVAL_REFERENCE?.trim()))
+    || Boolean(ownerDeclaration)) && !fbrConfig?.enabled;
   const v2IssueStockReady = stockShortages.length === 0 && invalidConfiguredBOMs.length === 0
     && (configuredBOMs.length === 0 || bomDispatchEnabled);
 
@@ -136,6 +138,11 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
       </table>
     </div>
     {gatePass.notes && <p className="text-sm"><span className="font-semibold">Notes: </span>{gatePass.notes}</p>}
+    {ownerDeclaration && <div role="status" className="rounded-md border p-4 text-sm">
+      <p className="font-semibold">Owner invoice-timing declaration recorded</p>
+      <p>Reference: {ownerDeclaration.reference}. This records the workspace owner&apos;s declaration; it is not independent tax or legal certification.</p>
+      <p className="mt-1 whitespace-pre-wrap">{ownerDeclaration.basis}</p>
+    </div>}
     {gatePass.receivingReference && <p className="text-sm"><span className="font-semibold">Customer receiving reference: </span>{gatePass.receivingReference}{gatePass.receivingRecipient ? ` · ${gatePass.receivingRecipient}` : ""}</p>}
     {gatePass.receivingAt && <Link href={`/gate-passes/${gatePass.id}/receiving/print`} className="inline-flex rounded-md border px-4 py-2 text-sm font-medium">Print Customer Receiving Acknowledgement</Link>}
     {gatePass.invoiceId && <Link href={`/invoices/${gatePass.invoiceId}`} className="inline-flex rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white">View and print final invoice</Link>}
@@ -165,6 +172,9 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
       recipient={gatePass.receivingRecipient}
       receivingNotes={gatePass.receivingNotes}
       deferredBillingReady={deferredBillingReady}
+      ownerAttestationEnabled={process.env.OUTBOUND_GP_OWNER_ATTESTATION_ENABLED === "true" && issueMode === "v2" && !fbrConfig?.enabled}
+      canAttestBilling={role === "OWNER"}
+      documentVersion={gatePass.version}
       canIssue={issueMode !== "misconfigured" && canPerformAction(role, "sales.create") && (issueMode !== "v2" || canPerformAction(role, "inventory.adjust"))}
       issueStockReady={v2IssueStockReady}
       canCancel={canPerformAction(role, "sales.create") && (!gatePass.issueStockDeductedAt || canPerformAction(role, "inventory.adjust"))}

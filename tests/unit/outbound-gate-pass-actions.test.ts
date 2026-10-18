@@ -23,4 +23,14 @@ describe("gate pass direct server-action authorization",()=>{
   it("uses the required financial permission and rejects invalid input without invoicing",async()=>{
     expect(await invoiceGatePassAction({},new FormData())).toHaveProperty("error");expect(m.permission).toHaveBeenCalledWith("financial.manage");expect(m.service).not.toHaveBeenCalled();
   });
+  it("passes an explicit declaration payload without accepting a submitted signer identity",async()=>{
+    const form=new FormData(); form.set("gatePassId","00000000-0000-4000-8000-000000000001");form.set("ownerDeclaration","yes");
+    form.set("ownerReference","SYNTHETIC-REFERENCE");form.set("ownerBasis","Synthetic delivery terms and factual invoice timing basis only.");
+    form.set("ownerDraftVersion","0");
+    form.set("ownerTaxTimingAssessed","yes");form.set("ownerNoEarlierInvoiceObligation","yes");form.set("ownerResponsibilityAcknowledged","yes");
+    form.set("actorId","forged-owner");
+    await issueGatePassAction({},form);
+    expect(m.service).toHaveBeenCalledWith({workspaceId:m.workspace,userId:"authenticated-actor",role:"OWNER"},form.get("gatePassId"),expect.objectContaining({taxTimingAssessed:true,noEarlierInvoiceObligation:true,responsibilityAcknowledged:true}));
+    expect(m.service.mock.calls[0]![2]).not.toHaveProperty("actorId");
+  });
 });
