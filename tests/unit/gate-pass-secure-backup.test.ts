@@ -45,6 +45,8 @@ describe("private Gate Pass backup restore safety", () => {
     expect(source).toContain("ReparsePoint");
     expect(source).toContain("'--host', '127.0.0.1'");
     expect(source).toContain("'--single-transaction'");
+    expect(source).toContain("'--no-tablespaces'");
+    expect(source).toContain("'--tablespace=pg_default'");
     expect(source).not.toContain("pgTool('dropdb')");
     expect(source).toContain("No automatic cleanup performed");
   });

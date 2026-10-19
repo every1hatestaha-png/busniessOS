@@ -515,7 +515,7 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     vi.stubEnv("OUTBOUND_GP_ACCEPTANCE_BILLING_LEGALLY_APPROVED", enabled ? "false" : "true");
     vi.stubEnv("OUTBOUND_GP_ACCEPTANCE_BILLING_APPROVAL_REFERENCE", enabled ? "" : "SYNTHETIC-LOCAL-ONLY");
   }
-  it("owner declaration: audits actual OWNER once and completes cumulative receiving, credit invoice and physical return without professional-clearance flags", async () => {
+  it("owner declaration: completes issued-document reconciliation after pausing new V2 issuance without professional-clearance flags", async () => {
     ownerMode(true);
     try {
       const f = await fixture();
@@ -524,6 +524,9 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
       expect(audits).toHaveLength(1);
       expect(audits[0]!.actorId).toBe(userId);
       expect(audits[0]!.metadata).toMatchObject({ kind:"OWNER_DECLARATION_NOT_INDEPENDENT_CLEARANCE", actorRole:"OWNER", customerId:f.customer.id });
+      // Controlled pause: retain marker-aware code and the existing declaration
+      // while disabling new V2 issuance. An issued document must still reconcile.
+      vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
       await dispatchGatePass(ctx(),f.gp.id);
       await expect(dispatchGatePass(ctx(),f.gp.id)).rejects.toThrow("Only an issued");
       const receipt = (accepted:string,rejected:string) => ({gatePassId:f.gp.id,reference:"SYNTHETIC-OWNER-RCV",recipient:"Synthetic receiver",lines:[{itemId:f.gp.items[0]!.id,accepted,rejected}]});

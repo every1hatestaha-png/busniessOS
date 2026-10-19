@@ -251,6 +251,8 @@ export function normalizeWindowsDataDirectory(value) {
 
 async function encryptedRestoreDirectory(dataDirectory) {
   const directory = normalizeWindowsDataDirectory(dataDirectory);
+  if ((await fsp.lstat(path.win32.join(directory, 'pg_wal'))).isSymbolicLink())
+    fail('External WAL restore storage requires independent review.');
   // Reject reparse points, including mounted volumes/junctions, rather than
   // attributing their contents to the drive letter of a different volume.
   let current = directory;
@@ -287,8 +289,8 @@ async function restore(file) {
   await encryptedRestoreDirectory(dataDirectory);
   const db = localDbName();
   console.log(`Creating NEW LOCAL disposable database ${db}. Production will not be contacted.`);
-  await runSmall(pgTool('createdb'), ['-h', '127.0.0.1', '-p', '5432', '-U', user, '-T', 'template0', '-E', 'UTF8', db], env);
-  const args = ['--host', '127.0.0.1', '--port', '5432', '--username', user, '--dbname', db, '--no-owner', '--no-privileges', '--exit-on-error', '--single-transaction'];
+  await runSmall(pgTool('createdb'), ['-h', '127.0.0.1', '-p', '5432', '-U', user, '-T', 'template0', '-E', 'UTF8', '--tablespace=pg_default', db], env);
+  const args = ['--host', '127.0.0.1', '--port', '5432', '--username', user, '--dbname', db, '--no-owner', '--no-privileges', '--no-tablespaces', '--exit-on-error', '--single-transaction'];
   const cp = spawn(pgTool('pg_restore'), args, { env, stdio: ['pipe', 'ignore', 'pipe'], windowsHide: true });
   cp.stderr.resume();
   let spawnError;
