@@ -20,3 +20,58 @@ After exact-head review/CI and production project verification, configure togeth
 The owner must authenticate and truthfully complete the declaration on a newly created V2 Gate Pass before ISSUE. Founder approval of the workflow is not that per-delivery declaration. No synthetic production transaction is authorized for testing. Normal future inventory receipts must replenish shortages; do not change existing stock/BOM data.
 
 If stopping new V2 issuance, retain marker-aware code and leave access to prior declarations available for already-issued documents. Never deploy pre-V2 dispatch logic, rewrite audit evidence, backfill markers or edit historical transactions. Keep the existing additive schema. Physical printer acceptance and a successful backup restore are not claimed here.
+
+## Recovery helper and controlled-release hold
+
+`scripts/gate-pass-secure-backup.mjs` incorporates the existing private backup
+helper with the reproduced Windows `data_directory` correction. PostgreSQL may
+return `C:/...` or `C:\...`; both drive-absolute formats are normalized. Relative,
+UNC/device, traversal, alternate-stream and control-character paths are refused.
+Actual encrypted storage is still mandatory: junctions/mount-point reparse paths
+are rejected and BitLocker must report FullyEncrypted/On. Access denied means
+STOP, never permission to bypass encryption. Inherited PG service/options
+settings are cleared before child operations. Failed local restores are retained
+for private inspection; there is no automatic database deletion.
+
+Synthetic verification only (no production contact):
+
+```powershell
+node scripts/gate-pass-secure-backup.mjs selftest
+```
+
+The existing `.gpbak` format/passphrase remains compatible. Production archive
+restoration must run in a private interactive operator process with official
+PostgreSQL18 utilities, independently verified encrypted/access-restricted
+storage, sufficient capacity and an isolated authenticated loopback PG18 server.
+Enter passphrases only at masked prompts; never in arguments, chat, Git or logs.
+Never use the synthetic trust-authenticated test cluster for customer data.
+The helper creates a fresh local database only, restores atomically, and cannot
+restore over production. A successful restore command is transport/schema-load
+evidence; separately attest checksums, constraints and financial/tenant integrity
+with sanitized aggregate queries. Synthetic crypto tests are not proof that the
+actual production archive restores. A stale archive must not be represented as a
+fresh recovery point. No archive or credential belongs in this repository.
+
+Before any protected release, independently satisfy:
+
+- Fresh encrypted backup and successful isolated restore/integrity evidence;
+  retain existing backups and owner-held offline recovery material.
+- Physical inventory/BOM/warehouse readiness using genuine receipts and counts;
+  never invent stock or adjust opening balances for acceptance testing.
+- Genuine customer terms, tax-timing assessment and document-specific billing
+  basis. An unknown/earlier-invoice obligation remains blocked; an agent must
+  never sign acknowledgements or manufacture legal clearance.
+- Explicit owner authorization for the exact protected merge/deployment and
+  future-only activation. Keep FBR off, migration-on-build disabled and historical
+  Gate Passes (including GP-000001) untouched. Do not backdate the cutover.
+- Physical printer acceptance remains required unless the owner explicitly
+  excludes printing from the initial scope and a safe paperless workflow is
+  established. Software PDF tests are insufficient hardware evidence.
+- Real operational acceptance requires Ahmad's specific authority and genuine
+  business details. No synthetic production documents or transactions.
+
+Stop on unexpected integrity/restore/deployment results. After any V2 document is
+issued, rollback must preserve marker-aware dispatch/return/invoice code and its
+audit evidence. Pause new issuance only through a reviewed compatible flag plan;
+do not remove support needed to reconcile issued documents, reverse ledgers,
+delete data, remove enums, or restore an old backup over later transactions.
