@@ -29,7 +29,9 @@ describe("gate pass direct server-action authorization",()=>{
     form.set("ownerDraftVersion","0");
     form.set("ownerTaxTimingAssessed","yes");form.set("ownerNoEarlierInvoiceObligation","yes");form.set("ownerResponsibilityAcknowledged","yes");
     form.set("actorId","forged-owner");
-    await issueGatePassAction({},form);
+    const result = await issueGatePassAction({},form);
+    expect(result.ok).toContain("Printing is optional for an approved digital-only workflow.");
+    expect(result.ok).not.toContain("Print it before dispatch");
     expect(m.service).toHaveBeenCalledWith({workspaceId:m.workspace,userId:"authenticated-actor",role:"OWNER"},form.get("gatePassId"),expect.objectContaining({taxTimingAssessed:true,noEarlierInvoiceObligation:true,responsibilityAcknowledged:true}));
     expect(m.service.mock.calls[0]![2]).not.toHaveProperty("actorId");
   });
