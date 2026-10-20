@@ -508,6 +508,87 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
       vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
     }
   });
+  const ownerDeclaration = { draftVersion: 0, reference: "SYNTHETIC-OWNER-BASIS", basis: "Synthetic local owner declaration of applicable tax position and customer acceptance terms, not real legal clearance.", taxTimingAssessed: true, noEarlierInvoiceObligation: true, responsibilityAcknowledged: true };
+  function ownerMode(enabled: boolean) {
+    vi.stubEnv("OUTBOUND_GP_OWNER_ATTESTATION_ENABLED", enabled ? "true" : "false");
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", enabled ? "true" : "false");
+    vi.stubEnv("OUTBOUND_GP_ACCEPTANCE_BILLING_LEGALLY_APPROVED", enabled ? "false" : "true");
+    vi.stubEnv("OUTBOUND_GP_ACCEPTANCE_BILLING_APPROVAL_REFERENCE", enabled ? "" : "SYNTHETIC-LOCAL-ONLY");
+  }
+  it("owner declaration: completes issued-document reconciliation after pausing new V2 issuance without professional-clearance flags", async () => {
+    ownerMode(true);
+    try {
+      const f = await fixture();
+      await Promise.all([issueGatePass(ctx(), f.gp.id, ownerDeclaration), issueGatePass(ctx(), f.gp.id, ownerDeclaration)]);
+      const audits = await db.auditLog.findMany({ where: { workspaceId:tenant, entityId:f.gp.id, action:"gate_pass.owner_billing_declared" } });
+      expect(audits).toHaveLength(1);
+      expect(audits[0]!.actorId).toBe(userId);
+      expect(audits[0]!.metadata).toMatchObject({ kind:"OWNER_DECLARATION_NOT_INDEPENDENT_CLEARANCE", actorRole:"OWNER", customerId:f.customer.id });
+      // Controlled pause: retain marker-aware code and the existing declaration
+      // while disabling new V2 issuance. An issued document must still reconcile.
+      vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "false");
+      await dispatchGatePass(ctx(),f.gp.id);
+      await expect(dispatchGatePass(ctx(),f.gp.id)).rejects.toThrow("Only an issued");
+      const receipt = (accepted:string,rejected:string) => ({gatePassId:f.gp.id,reference:"SYNTHETIC-OWNER-RCV",recipient:"Synthetic receiver",lines:[{itemId:f.gp.items[0]!.id,accepted,rejected}]});
+      await recordGatePassReceiving(ctx(),receipt("3","2"));
+      await expect(invoiceAcceptedGatePass(ctx(),invoiceInput(f))).rejects.toThrow("reconciled");
+      await recordGatePassReceiving(ctx(),receipt("8","2"));
+      const first = await invoiceAcceptedGatePass(ctx(),invoiceInput(f));
+      expect((await invoiceAcceptedGatePass(ctx(),invoiceInput(f))).id).toBe(first.id);
+      const invoice = await db.invoice.findUniqueOrThrow({where:{id:first.id}});
+      expect(invoice.status).toBe("UNPAID"); expect(invoice.paidAmount.toNumber()).toBe(0); expect(invoice.amount.toNumber()).toBe(1888);
+      expect(await db.payment.count({where:{workspaceId:tenant,customerId:f.customer.id}})).toBe(0);
+      expect((await db.customer.findUniqueOrThrow({where:{id:f.customer.id}})).currentBalance.toNumber()).toBe(1888);
+      const returned = {gatePassId:f.gp.id,lines:[{itemId:f.gp.items[0]!.id,returned:"2"}]};
+      await confirmRejectedStockReturn(ctx(),returned); await confirmRejectedStockReturn(ctx(),returned);
+      expect((await db.product.findUniqueOrThrow({where:{id:f.productId}})).stockQuantity.toNumber()).toBe(92);
+      expect(await db.inventoryTransaction.count({where:{productId:f.productId,type:"GATE_PASS_ISSUE"}})).toBe(1);
+      expect(await db.inventoryTransaction.count({where:{productId:f.productId,type:"GATE_PASS_DISPATCH"}})).toBe(0);
+      expect(await db.inventoryTransaction.count({where:{productId:f.productId,type:"GATE_PASS_RETURN"}})).toBe(1);
+      const gl = await db.generalLedgerEntry.aggregate({where:{workspaceId:tenant,sourceId:invoice.salesOrderId!},_sum:{debit:true,credit:true}});
+      expect(gl._sum.debit?.eq(gl._sum.credit!)).toBe(true);
+    } finally { ownerMode(false); }
+  });
+  it("owner declaration: rejects missing consent, disabled opt-in, stale non-owner and FBR with atomic audit/stock rollback", async () => {
+    ownerMode(true);
+    try {
+      const f=await fixture();
+      await expect(issueGatePass(ctx(),f.gp.id,{...ownerDeclaration,noEarlierInvoiceObligation:false})).rejects.toThrow();
+      vi.stubEnv("OUTBOUND_GP_OWNER_ATTESTATION_ENABLED","false");
+      await expect(issueGatePass(ctx(),f.gp.id,ownerDeclaration)).rejects.toThrow("new V2");
+      vi.stubEnv("OUTBOUND_GP_OWNER_ATTESTATION_ENABLED","true");
+      await db.workspaceMember.update({where:{workspaceId_userId:{workspaceId:tenant,userId}},data:{role:"ADMIN"}});
+      await expect(issueGatePass(ctx(),f.gp.id,ownerDeclaration)).rejects.toThrow("current workspace OWNER");
+      await db.workspaceMember.update({where:{workspaceId_userId:{workspaceId:tenant,userId}},data:{role:"OWNER"}});
+      await db.fbrIntegrationConfig.create({data:{workspaceId:tenant,enabled:true}});
+      await expect(issueGatePass(ctx(),f.gp.id,ownerDeclaration)).rejects.toThrow("FBR-enabled");
+      await db.fbrIntegrationConfig.delete({where:{workspaceId:tenant}});
+      await updateOutboundGatePassDraft(ctx(),{...f.draft,gatePassId:f.gp.id,version:0,notes:"Synthetic revised customer delivery terms"});
+      await expect(issueGatePass(ctx(),f.gp.id,ownerDeclaration)).rejects.toThrow("draft changed after review");
+      expect((await db.outboundGatePass.findUniqueOrThrow({where:{id:f.gp.id}})).status).toBe("DRAFT");
+      expect((await db.product.findUniqueOrThrow({where:{id:f.productId}})).stockQuantity.toNumber()).toBe(100);
+      expect(await db.auditLog.count({where:{workspaceId:tenant,entityId:f.gp.id,action:"gate_pass.owner_billing_declared"}})).toBe(0);
+      const short=await fixture("10",0);
+      await expect(issueGatePass(ctx(),short.gp.id,ownerDeclaration)).rejects.toThrow();
+      expect(await db.auditLog.count({where:{workspaceId:tenant,entityId:short.gp.id,action:"gate_pass.owner_billing_declared"}})).toBe(0);
+      expect(await db.fbrInvoiceSubmission.count({where:{workspaceId:tenant}})).toBe(0);
+    } finally {
+      await db.workspaceMember.update({where:{workspaceId_userId:{workspaceId:tenant,userId}},data:{role:"OWNER"}});
+      await db.fbrIntegrationConfig.deleteMany({where:{workspaceId:tenant}});
+      ownerMode(false);
+    }
+  });
+  it("owner declaration: cannot reinterpret historical drafts or authorize their legacy dispatch", async () => {
+    ownerMode(true);
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_CUTOVER_AT","2099-01-01T00:00:00.000Z");
+    try {
+      const f=await fixture(); await issueGatePass(ctx(),f.gp.id,ownerDeclaration);
+      expect((await db.outboundGatePass.findUniqueOrThrow({where:{id:f.gp.id}})).issueStockDeductedAt).toBeNull();
+      await expect(dispatchGatePass(ctx(),f.gp.id)).rejects.toThrow("tax/legal");
+      expect(await db.auditLog.count({where:{workspaceId:tenant,entityId:f.gp.id,action:"gate_pass.owner_billing_declared"}})).toBe(0);
+      expect((await db.product.findUniqueOrThrow({where:{id:f.productId}})).stockQuantity.toNumber()).toBe(100);
+    } finally { vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_CUTOVER_AT","2000-01-01T00:00:00.000Z"); ownerMode(false); }
+  });
   it("keeps an existing draft legacy when V2 is enabled after its creation", async () => {
     const f = await fixture();
     vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "true");

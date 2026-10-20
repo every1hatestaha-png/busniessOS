@@ -20,6 +20,7 @@ import {
 } from "@/lib/server/outbound-gate-pass-bom";
 import { decideOutboundReceiving } from "@/lib/delivery-acceptance/policy";
 import { gatePassIssueStockMode } from "@/lib/delivery-acceptance/issue-stock-rollout";
+import { readOwnerBillingDeclaration, recordOwnerBillingDeclaration } from "@/lib/server/outbound-gate-pass-billing-authorization";
 import { gatePassInventoryValue } from "@/lib/delivery-acceptance/transit-reconciliation";
 import {
   receivingInputSchema, returnedGoodsSchema, issueInvoiceFromGatePassSchema,
@@ -74,6 +75,15 @@ async function getGatePassForUpdate(tx: Transaction, ctx: Context, id: string) {
   });
   if (!record) throw new GatePassWorkflowError("Gate pass not found.");
   return record;
+}
+
+async function assertBillingAuthorization(tx: Transaction, ctx: Context, gp: Awaited<ReturnType<typeof getGatePassForUpdate>>, ownerDeclaration?: unknown) {
+  if (ownerDeclaration !== undefined) {
+    await recordOwnerBillingDeclaration(tx, ctx, gp, ownerDeclaration);
+    return;
+  }
+  if (await readOwnerBillingDeclaration(tx, gp)) return;
+  assertAcceptanceBillingLegallyApproved();
 }
 
 async function audit(tx: Transaction, ctx: Context, id: string, action: string, metadata?: Prisma.InputJsonValue) {
@@ -241,7 +251,7 @@ async function reverseUndispatchedIssueStock(tx: Transaction, ctx: Context, gp: 
   }
 }
 
-export async function issueGatePass(ctx: Context, id: string) {
+export async function issueGatePass(ctx: Context, id: string, ownerDeclaration?: unknown) {
   assertPermission(ctx, "sales.create");
   assertTenant(ctx.workspaceId);
   return withSerializableRetry(async (tx) => {
@@ -262,7 +272,7 @@ export async function issueGatePass(ctx: Context, id: string) {
       // V2 removes stock from availability at ISSUE, before physical dispatch.
       // Check the same mandatory dispatch prerequisites *before* any stock or
       // document mutation, so a blocked dispatch cannot strand reserved stock.
-      assertAcceptanceBillingLegallyApproved();
+      await assertBillingAuthorization(tx, ctx, gp, ownerDeclaration);
       await assertFbrCompatibility(tx, ctx.workspaceId);
     }
     const ids = gp.items.map((x) => x.productId);
@@ -322,11 +332,11 @@ export async function cancelUndispatchedGatePass(ctx: Context, id: string) {
 export async function dispatchGatePass(ctx: Context, id: string) {
   assertPermission(ctx, "inventory.adjust");
   assertTenant(ctx.workspaceId);
-  assertAcceptanceBillingLegallyApproved();
   return withSerializableRetry(async (tx) => {
     await assertOutboundGatePassActor(tx, ctx, "inventory.adjust");
     await assertFbrCompatibility(tx, ctx.workspaceId);
     const gp = await getGatePassForUpdate(tx, ctx, id);
+    await assertBillingAuthorization(tx, ctx, gp);
     if (gp.status !== "ISSUED") throw new GatePassWorkflowError("Only an issued gate pass can be dispatched.");
     // Marker distinguishes new V2 reserved stock from legacy passes issued before rollout.
     // Never re-deduct the same stock at physical dispatch.
@@ -477,12 +487,12 @@ export async function confirmRejectedStockReturn(ctx: Context, input: unknown) {
 export async function invoiceAcceptedGatePass(ctx: Context, input: unknown) {
   assertPermission(ctx, "financial.manage");
   assertTenant(ctx.workspaceId);
-  assertAcceptanceBillingLegallyApproved();
   const request = issueInvoiceFromGatePassSchema.parse(input);
   return withSerializableRetry(async (tx) => {
     await assertOutboundGatePassActor(tx, ctx, "financial.manage");
     await assertFbrCompatibility(tx, ctx.workspaceId);
     const gp = await getGatePassForUpdate(tx, ctx, request.gatePassId);
+    await assertBillingAuthorization(tx, ctx, gp);
     if (gp.status === "INVOICED" && gp.invoiceId) {
       const existing = await tx.invoice.findFirst({ where: { id: gp.invoiceId, workspaceId: ctx.workspaceId }, select: { issuedSnapshot: true } });
       const snapshot = parseInvoiceIssuedSnapshot(existing?.issuedSnapshot);

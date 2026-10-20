@@ -6,6 +6,7 @@ import { z } from "zod";
 import { requirePermission } from "@/lib/server/authorization";
 import { outboundGatePassDraftFeatureEnabled } from "@/lib/server/outbound-gate-pass-feature";
 import { GatePassBomError } from "@/lib/server/outbound-gate-pass-bom";
+import { GatePassBillingAuthorizationError } from "@/lib/server/outbound-gate-pass-billing-authorization";
 import {
   issueGatePass, dispatchGatePass, cancelUndispatchedGatePass, recordGatePassReceiving,
   confirmRejectedStockReturn, invoiceAcceptedGatePass, GatePassWorkflowError,
@@ -22,7 +23,7 @@ async function context(permission: "sales.create" | "inventory.adjust" | "return
 }
 
 function failure(error: unknown): GatePassActionState {
-  if (error instanceof GatePassWorkflowError || error instanceof GatePassBomError || error instanceof z.ZodError)
+  if (error instanceof GatePassWorkflowError || error instanceof GatePassBomError || error instanceof GatePassBillingAuthorizationError || error instanceof z.ZodError)
     return { error: error.message };
   return { error: "The operation could not be completed. Refresh and try again." };
 }
@@ -39,9 +40,16 @@ export async function issueGatePassAction(_: GatePassActionState, form: FormData
   const ctx = await context("sales.create");
   try {
     const id = uuid.parse(form.get("gatePassId"));
-    await issueGatePass(ctx, id);
+    const declaration = form.get("ownerDeclaration") === "yes" ? {
+      draftVersion: typeof form.get("ownerDraftVersion") === "string" ? Number(form.get("ownerDraftVersion")) : undefined,
+      reference: form.get("ownerReference"), basis: form.get("ownerBasis"),
+      taxTimingAssessed: form.get("ownerTaxTimingAssessed") === "yes",
+      noEarlierInvoiceObligation: form.get("ownerNoEarlierInvoiceObligation") === "yes",
+      responsibilityAcknowledged: form.get("ownerResponsibilityAcknowledged") === "yes",
+    } : undefined;
+    await issueGatePass(ctx, id, declaration);
     invalidate(id);
-    return { ok: "Gate pass issued. Print it before dispatch." };
+    return { ok: "Gate pass issued. Confirm dispatch when the goods physically leave. Printing is optional for an approved digital-only workflow." };
   } catch (error) { return failure(error); }
 }
 
