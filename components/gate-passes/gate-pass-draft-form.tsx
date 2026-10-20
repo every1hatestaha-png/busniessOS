@@ -51,10 +51,11 @@ export function OutboundGatePassDraftForm({
       {editing && <><input type="hidden" name="gatePassId" value={editing.gatePassId}/><input type="hidden" name="version" value={editing.version}/></>}
       <input type="hidden" name="itemsJson" value={itemsJson} readOnly />
       <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-        Saving a draft does not move stock or create a sale. For future V2 Gate Passes, stock
-        is deducted once at ISSUE after server-side stock checks and the required invoice-timing
-        authorization. Printing is optional in an approved digital-only workflow; it does not
-        authorize physical dispatch.
+        Saving a draft does not move stock or create a sale. After issuing the gate pass,
+        you can print an A4 or 80mm copy. For future V2 documents, stock is deducted once
+        at ISSUE, subject to real stock checks and invoice-timing authorization. Printing is not authorization to dispatch;
+        this document is not a tax invoice. Physical dispatch and accepted-goods invoicing
+        require separately approved billing controls.
       </div>
       {state.error && <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{state.error}</p>}
       <div className="grid gap-4 sm:grid-cols-2">
