@@ -84,8 +84,8 @@ export function GatePassWorkflowControls({
 
   const ownerDeclarationFields = <fieldset className="space-y-3 rounded-md border p-4">
         <legend className="px-1 font-semibold">Owner invoice-timing declaration</legend>
-        <p className="text-sm">Use this acceptance-only workflow only if no tax invoice is required before customer acceptance. Credit terms and disabled FBR transmission alone do not establish this. If the position is unknown or an invoice is due at delivery, do not issue through this workflow.</p>
-        <p className="text-sm text-muted-foreground">This records your own declaration for this Gate Pass, not independent professional clearance. Stock deduction and this audit record commit together.</p>
+        <p className="text-sm">Use this acceptance-only workflow only if no tax invoice is required before customer acceptance. Credit terms and disabled FBR transmission alone do not establish this. If the position is unknown or an invoice is due at delivery, do not use this acceptance-based workflow.</p>
+        <p className="text-sm text-muted-foreground">This records your own declaration for this Gate Pass, not independent professional clearance. For V2, ISSUE records this audit with its stock movement. For an eligible older issued Gate Pass, the declaration and stock movement commit together at physical DISPATCH.</p>
         <input type="hidden" name="ownerDeclaration" value="yes"/>
         <input type="hidden" name="ownerDraftVersion" value={documentVersion}/>
         <label className="block space-y-1 text-sm"><span>Customer terms / tax-position reference</span><input name="ownerReference" required minLength={8} maxLength={160} className={inputClass} value={ownerReference} onChange={e => setOwnerReference(e.target.value)}/></label>
