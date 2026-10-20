@@ -78,11 +78,13 @@ async function getGatePassForUpdate(tx: Transaction, ctx: Context, id: string) {
 }
 
 async function assertBillingAuthorization(tx: Transaction, ctx: Context, gp: Awaited<ReturnType<typeof getGatePassForUpdate>>, ownerDeclaration?: unknown) {
+  // A recorded, exact-document declaration remains valid during receiving and
+  // invoicing. Browser retries must never append another declaration.
+  if (await readOwnerBillingDeclaration(tx, gp)) return;
   if (ownerDeclaration !== undefined) {
     await recordOwnerBillingDeclaration(tx, ctx, gp, ownerDeclaration);
     return;
   }
-  if (await readOwnerBillingDeclaration(tx, gp)) return;
   assertAcceptanceBillingLegallyApproved();
 }
 
@@ -329,15 +331,17 @@ export async function cancelUndispatchedGatePass(ctx: Context, id: string) {
   });
 }
 
-export async function dispatchGatePass(ctx: Context, id: string) {
+export async function dispatchGatePass(ctx: Context, id: string, ownerDeclaration?: unknown) {
   assertPermission(ctx, "inventory.adjust");
   assertTenant(ctx.workspaceId);
   return withSerializableRetry(async (tx) => {
     await assertOutboundGatePassActor(tx, ctx, "inventory.adjust");
     await assertFbrCompatibility(tx, ctx.workspaceId);
     const gp = await getGatePassForUpdate(tx, ctx, id);
-    await assertBillingAuthorization(tx, ctx, gp);
     if (gp.status !== "ISSUED") throw new GatePassWorkflowError("Only an issued gate pass can be dispatched.");
+    // Any legacy owner declaration and physical dispatch stock movement commit
+    // in this one locked serializable transaction, or both roll back.
+    await assertBillingAuthorization(tx, ctx, gp, ownerDeclaration);
     // Marker distinguishes new V2 reserved stock from legacy passes issued before rollout.
     // Never re-deduct the same stock at physical dispatch.
     if (!gp.issueStockDeductedAt) await deductGatePassStock(tx, ctx, gp);
