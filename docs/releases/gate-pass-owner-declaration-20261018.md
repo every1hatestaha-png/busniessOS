@@ -7,7 +7,7 @@ This is not a tax exemption or a substitute for an invoice required by law. The 
 ## Controls
 
 - Default OFF: `OUTBOUND_GP_OWNER_ATTESTATION_ENABLED=true` is required separately from V2, the existing exact Ahmad UUID gate and valid future UTC cutover.
-- Only future V2 drafts qualify; historical/legacy documents do not acquire this authorization. Existing valid marked V2 documents retain their recorded declaration if new V2 issuance is paused.
+- For the V2 ISSUE-time declaration, only future V2 drafts qualify; historical/legacy documents do not become V2 ISSUE documents. A separately gated declaration at legacy physical DISPATCH is described at the end of this guide. Existing valid marked V2 documents retain their recorded declaration if new V2 issuance is paused.
 - At ISSUE, persisted membership and entitlement are locked and checked; only OWNER can sign. The submitted identity/role is never accepted. The real actor, customer, immutable document creation time, reference, basis and three express acknowledgements are recorded once in the existing audit table, within the stock transaction. Failed ISSUE rolls back both declaration and stock. No schema migration.
 - DISPATCH and accepted-only invoicing recheck the exact-document evidence. FBR-enabled workspaces remain blocked independently. Existing pricing, tax, credit-limit, accepted-quantity, permission, inventory, immutable snapshot and GL safeguards remain authoritative.
 - The record is labelled `OWNER_DECLARATION_NOT_INDEPENDENT_CLEARANCE`. The UI never describes it as professional certification. No checkboxes start selected. After a failed/reset submission they must be confirmed again.
