@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { canPerformAction, requirePermission } from "@/lib/server/authorization";
 import { GatePassWorkflowControls } from "@/components/gate-passes/workflow-controls";
+import { GatePassStockShortageGuidance, type GatePassStockShortage } from "@/components/gate-passes/stock-shortage-guidance";
 import { getOutboundGatePass } from "@/lib/server/outbound-gate-passes";
 import { db } from "@/lib/server/db";
 import { requireOutboundGatePassDraftFeature } from "@/lib/server/outbound-gate-pass-feature";
@@ -60,9 +61,7 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
   // Legacy drafts intentionally remain document-only and are checked at DISPATCH.
   // This preview never reserves stock; the serializable ISSUE transaction is authoritative.
   const needsStockPreview = needsGatePassStockPreview(gatePass.status, Boolean(gatePass.issueStockDeductedAt), issueMode);
-  const stockShortages = needsStockPreview ? await db.$queryRaw<Array<{
-    name: string; required: string; available: string;
-  }>>`
+  const stockShortages = needsStockPreview ? await db.$queryRaw<GatePassStockShortage[]>`
     WITH required_components AS (
       SELECT i."componentProductId"::text AS "productId",
         SUM(i."quantityPerUnit" * gpi."dispatchedQuantity") AS required
@@ -87,7 +86,7 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
         SELECT "productId", required FROM required_parents
       ) all_requirements GROUP BY "productId"
     ), availability AS (
-      SELECT rt.required, COALESCE(p."name", 'Unavailable inventory product') AS name,
+      SELECT rt.required, p."id" AS "productId", COALESCE(p."name", 'Unavailable inventory product') AS name,
         CASE WHEN ${gatePass.warehouseId}::uuid IS NOT NULL
           THEN LEAST(COALESCE(p."stockQuantity",0), COALESCE(ws."quantity",0))
           ELSE COALESCE(p."stockQuantity",0) END AS available,
@@ -98,7 +97,8 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
         AND ws."workspaceId"=${workspaceId}::uuid
         AND ws."warehouseId"=${gatePass.warehouseId}::uuid
     )
-    SELECT name,required::text,available::text
+    SELECT name,"productId",required::text,available::text,
+      GREATEST(required - available, 0)::text AS shortfall
     FROM availability WHERE status IS DISTINCT FROM 'ACTIVE' OR available < required
     ORDER BY name
   ` : [];
@@ -156,15 +156,13 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
       <p className="mt-1">{isUnissuedV2Draft ? "V2 issue is paused before any stock deduction." : "Gate Pass printing is available, but dispatch is paused."} The customer BOM stock adapter is not yet enabled; use the standard Sales flow until the component-return adapter is certified.</p>
       <ul className="mt-2 list-disc pl-5">{configuredBOMs.map((row) => <li key={row.name}>{row.name}</li>)}</ul>
     </div>}
-    {stockShortages.length > 0 && <div role="alert" className="rounded-md border border-amber-400 bg-amber-50 p-4 text-sm text-amber-950">
-      <p className="font-semibold">Insufficient {isUnissuedV2Draft ? "V2 issue" : "dispatch"} stock — {isUnissuedV2Draft ? "issuance" : "shipment"} cannot proceed yet.</p>
-      <p className="mt-1">Review the listed items before {isUnissuedV2Draft ? "issuing" : "dispatching"}. This is a read-only preview, not a stock reservation; the server will check again during the actual action. No inventory was changed.</p>
-      <ul className="mt-2 list-disc pl-5">{stockShortages.map((item) => <li key={item.name}>{item.name}: required {item.required}, available {item.available}</li>)}</ul>
-      {gatePass.status === "ISSUED" && !gatePass.dispatchedAt && canPerformAction(role, "sales.create") && <>
-        <p className="mt-2">To ship a smaller genuine quantity, prepare a separate replacement draft and adjust it to the actually available inventory. The original issued document stays unchanged until separately cancelled. No stock is created by copying.</p>
-        <Link href={`/gate-passes/new?copyFrom=${encodeURIComponent(gatePass.id)}`} className="mt-2 inline-flex rounded-md border border-amber-700 px-3 py-2 font-semibold">Prepare replacement draft</Link>
-      </>}
-    </div>}
+    <GatePassStockShortageGuidance
+      shortages={stockShortages}
+      isV2Draft={isUnissuedV2Draft}
+      canReviewInventory={canPerformAction(role, "business.read")}
+      canCreateReplacement={gatePass.status === "ISSUED" && !gatePass.dispatchedAt && canPerformAction(role, "sales.create")}
+      gatePassId={gatePass.id}
+    />
     {issueMode === "misconfigured" && gatePass.status === "DRAFT" && <div role="alert" className="rounded-md border border-amber-400 bg-amber-50 p-4 text-sm text-amber-950">
       Gate Pass issuance is paused until the administrator configures a valid UTC V2 cutover. No inventory was changed.
     </div>}
