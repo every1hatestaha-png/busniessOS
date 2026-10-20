@@ -49,7 +49,7 @@ export async function issueGatePassAction(_: GatePassActionState, form: FormData
     } : undefined;
     await issueGatePass(ctx, id, declaration);
     invalidate(id);
-    return { ok: "Gate pass issued. Print it before dispatch." };
+    return { ok: "Gate pass issued. Confirm dispatch when the goods physically leave. Printing is optional for an approved digital-only workflow." };
   } catch (error) { return failure(error); }
 }
 
