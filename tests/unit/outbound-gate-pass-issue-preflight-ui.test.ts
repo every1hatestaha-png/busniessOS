@@ -63,7 +63,7 @@ describe("Gate Pass V2 read-only pre-issue warning", () => {
     }));
     expect(html).toContain("Owner invoice-timing declaration");
     expect(html).toContain('name="ownerDraftVersion" value="1"');
-    expect(html).toContain("LEGACY");
+    expect(html).toContain("Legacy Gate Pass:");
     expect(html).not.toContain('checked=""');
     expect(html.match(/<button[^>]*>Confirm Dispatch<\/button>/)?.[0]).toContain('disabled=""');
   });
