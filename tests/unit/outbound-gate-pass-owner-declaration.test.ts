@@ -40,12 +40,26 @@ describe("explicit owner declaration without fictitious professional certificati
     enable();
     expect(await readOwnerBillingDeclaration({ auditLog: { findFirst: vi.fn().mockResolvedValue(row) } } as never, gp)).toBeNull();
   });
+  it("reads a signed historical dispatch declaration only with explicit legacy opt-in", async () => {
+    enable();
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "true");
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_CUTOVER_AT", "2099-01-01T00:00:00.000Z");
+    const legacyGp = { ...gp, issueStockDeductedAt: null, status: "IN_TRANSIT" };
+    const findFirst = vi.fn().mockResolvedValue({ actorId: "owner-id", createdAt, metadata });
+    const db = { auditLog: { findFirst } } as never;
+    expect(await readOwnerBillingDeclaration(db, legacyGp)).toBeNull();
+    vi.stubEnv("OUTBOUND_GP_LEGACY_OWNER_DISPATCH_ENABLED", "true");
+    expect(await readOwnerBillingDeclaration(db, legacyGp)).toMatchObject({ actorId: "owner-id", kind: "OWNER_DECLARATION_NOT_INDEPENDENT_CLEARANCE" });
+    expect(findFirst).toHaveBeenCalledTimes(1);
+    expect(await readOwnerBillingDeclaration(db, { ...legacyGp, workspaceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" })).toBeNull();
+  });
   it("never widens other tenants, historical documents or a disabled opt-in", async () => {
     enable(); const findFirst = vi.fn(); const db = { auditLog: { findFirst } } as never;
     expect(await readOwnerBillingDeclaration(db, { ...gp, workspaceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" })).toBeNull();
     vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED", "true");
     vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_CUTOVER_AT", "2099-01-01T00:00:00.000Z");
     expect(await readOwnerBillingDeclaration(db, { ...gp, issueStockDeductedAt: null })).toBeNull();
+    vi.stubEnv("OUTBOUND_GP_LEGACY_OWNER_DISPATCH_ENABLED", "false");
     vi.stubEnv("OUTBOUND_GP_OWNER_ATTESTATION_ENABLED", "false");
     expect(await readOwnerBillingDeclaration(db, gp)).toBeNull();
     expect(findFirst).not.toHaveBeenCalled();

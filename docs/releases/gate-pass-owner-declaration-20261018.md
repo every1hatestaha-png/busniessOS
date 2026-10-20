@@ -7,7 +7,7 @@ This is not a tax exemption or a substitute for an invoice required by law. The 
 ## Controls
 
 - Default OFF: `OUTBOUND_GP_OWNER_ATTESTATION_ENABLED=true` is required separately from V2, the existing exact Ahmad UUID gate and valid future UTC cutover.
-- Only future V2 drafts qualify; historical/legacy documents do not acquire this authorization. Existing valid marked V2 documents retain their recorded declaration if new V2 issuance is paused.
+- For the V2 ISSUE-time declaration, only future V2 drafts qualify; historical/legacy documents do not become V2 ISSUE documents. A separately gated declaration at legacy physical DISPATCH is described at the end of this guide. Existing valid marked V2 documents retain their recorded declaration if new V2 issuance is paused.
 - At ISSUE, persisted membership and entitlement are locked and checked; only OWNER can sign. The submitted identity/role is never accepted. The real actor, customer, immutable document creation time, reference, basis and three express acknowledgements are recorded once in the existing audit table, within the stock transaction. Failed ISSUE rolls back both declaration and stock. No schema migration.
 - DISPATCH and accepted-only invoicing recheck the exact-document evidence. FBR-enabled workspaces remain blocked independently. Existing pricing, tax, credit-limit, accepted-quantity, permission, inventory, immutable snapshot and GL safeguards remain authoritative.
 - The record is labelled `OWNER_DECLARATION_NOT_INDEPENDENT_CLEARANCE`. The UI never describes it as professional certification. No checkboxes start selected. After a failed/reset submission they must be confirmed again.
@@ -75,3 +75,14 @@ issued, rollback must preserve marker-aware dispatch/return/invoice code and its
 audit evidence. Pause new issuance only through a reviewed compatible flag plan;
 do not remove support needed to reconcile issued documents, reverse ledgers,
 delete data, remove enums, or restore an old backup over later transactions.
+
+
+## Existing ISSUED legacy Gate Passes, opt-in owner dispatch
+
+Existing Gate Passes created before the V2 cutover **remain legacy**, including their dispatch-time stock movement. Never backdate their creation time, insert V2 issue markers or manually deduct stock. Without transaction-specific invoice-timing authority, their physical dispatch remains blocked.
+
+The separate default-off `OUTBOUND_GP_LEGACY_OWNER_DISPATCH_ENABLED=true` production opt-in allows the currently persisted workspace OWNER to record a truthful document-specific invoice-timing declaration **at physical DISPATCH** of an eligible legacy ISSUED Gate Pass. This requires `OUTBOUND_GP_OWNER_ATTESTATION_ENABLED=true`, the exact authorized workspace, the existing enabled workflow, genuine tax/customer-terms review, matching immutable customer/document identity and current document version, valid stock/warehouse/BOM, financial permission and FBR disabled. Ordinary staff cannot sign for the OWNER.
+
+The owner declaration audit and the existing legacy DISPATCH stock deduction occur in one locked serializable transaction. An invalid declaration, insufficient stock, changed version or authorization failure rolls both back. The signed audit remains available for receiving and accepted-only invoicing without a second declaration or stock movement. The existing ISSUE-time V2 path is unchanged. This uses existing audit metadata and needs no migration or historical mutation.
+
+Enable this flag only in the intended production project and rebuild the exact reviewed Git commit. Customer physical dispatch and receiving must remain genuine actions by authorized operators. Never fabricate a declaration, stock receipt, signature or tax clearance on the owner's behalf. Known insufficient-stock historical Gate Passes remain blocked until genuine stock is received.

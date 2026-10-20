@@ -172,7 +172,9 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
       recipient={gatePass.receivingRecipient}
       receivingNotes={gatePass.receivingNotes}
       deferredBillingReady={deferredBillingReady}
-      ownerAttestationEnabled={process.env.OUTBOUND_GP_OWNER_ATTESTATION_ENABLED === "true" && issueMode === "v2" && !fbrConfig?.enabled}
+      ownerAttestationEnabled={process.env.OUTBOUND_GP_OWNER_ATTESTATION_ENABLED === "true"
+        && (issueMode === "v2" || (issueMode === "legacy" && process.env.OUTBOUND_GP_LEGACY_OWNER_DISPATCH_ENABLED === "true"))
+        && !fbrConfig?.enabled}
       canAttestBilling={role === "OWNER"}
       documentVersion={gatePass.version}
       canIssue={issueMode !== "misconfigured" && canPerformAction(role, "sales.create") && (issueMode !== "v2" || canPerformAction(role, "inventory.adjust"))}
