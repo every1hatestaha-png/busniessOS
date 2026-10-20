@@ -160,6 +160,10 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
       <p className="font-semibold">Insufficient {isUnissuedV2Draft ? "V2 issue" : "dispatch"} stock — {isUnissuedV2Draft ? "issuance" : "shipment"} cannot proceed yet.</p>
       <p className="mt-1">Review the listed items before {isUnissuedV2Draft ? "issuing" : "dispatching"}. This is a read-only preview, not a stock reservation; the server will check again during the actual action. No inventory was changed.</p>
       <ul className="mt-2 list-disc pl-5">{stockShortages.map((item) => <li key={item.name}>{item.name}: required {item.required}, available {item.available}</li>)}</ul>
+      {gatePass.status === "ISSUED" && !gatePass.dispatchedAt && canPerformAction(role, "sales.create") && <>
+        <p className="mt-2">To ship a smaller genuine quantity, prepare a separate replacement draft and adjust it to the actually available inventory. The original issued document stays unchanged until separately cancelled. No stock is created by copying.</p>
+        <Link href={`/gate-passes/new?copyFrom=${encodeURIComponent(gatePass.id)}`} className="mt-2 inline-flex rounded-md border border-amber-700 px-3 py-2 font-semibold">Prepare replacement draft</Link>
+      </>}
     </div>}
     {issueMode === "misconfigured" && gatePass.status === "DRAFT" && <div role="alert" className="rounded-md border border-amber-400 bg-amber-50 p-4 text-sm text-amber-950">
       Gate Pass issuance is paused until the administrator configures a valid UTC V2 cutover. No inventory was changed.
