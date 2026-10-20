@@ -27,6 +27,16 @@ function failure(error: unknown): GatePassActionState {
     return { error: error.message };
   return { error: "The operation could not be completed. Refresh and try again." };
 }
+function requestedOwnerDeclaration(form: FormData) {
+  return form.get("ownerDeclaration") === "yes" ? {
+    draftVersion: typeof form.get("ownerDraftVersion") === "string" ? Number(form.get("ownerDraftVersion")) : undefined,
+    reference: form.get("ownerReference"), basis: form.get("ownerBasis"),
+    taxTimingAssessed: form.get("ownerTaxTimingAssessed") === "yes",
+    noEarlierInvoiceObligation: form.get("ownerNoEarlierInvoiceObligation") === "yes",
+    responsibilityAcknowledged: form.get("ownerResponsibilityAcknowledged") === "yes",
+  } : undefined;
+}
+
 function invalidate(id: string) {
   revalidatePath("/gate-passes");
   revalidatePath("/gate-passes/pending-invoices");
@@ -40,14 +50,7 @@ export async function issueGatePassAction(_: GatePassActionState, form: FormData
   const ctx = await context("sales.create");
   try {
     const id = uuid.parse(form.get("gatePassId"));
-    const declaration = form.get("ownerDeclaration") === "yes" ? {
-      draftVersion: typeof form.get("ownerDraftVersion") === "string" ? Number(form.get("ownerDraftVersion")) : undefined,
-      reference: form.get("ownerReference"), basis: form.get("ownerBasis"),
-      taxTimingAssessed: form.get("ownerTaxTimingAssessed") === "yes",
-      noEarlierInvoiceObligation: form.get("ownerNoEarlierInvoiceObligation") === "yes",
-      responsibilityAcknowledged: form.get("ownerResponsibilityAcknowledged") === "yes",
-    } : undefined;
-    await issueGatePass(ctx, id, declaration);
+    await issueGatePass(ctx, id, requestedOwnerDeclaration(form));
     invalidate(id);
     return { ok: "Gate pass issued. Confirm dispatch when the goods physically leave. Printing is optional for an approved digital-only workflow." };
   } catch (error) { return failure(error); }
@@ -67,7 +70,7 @@ export async function dispatchGatePassAction(_: GatePassActionState, form: FormD
   const ctx = await context("inventory.adjust");
   try {
     const id = uuid.parse(form.get("gatePassId"));
-    await dispatchGatePass(ctx, id);
+    await dispatchGatePass(ctx, id, requestedOwnerDeclaration(form));
     invalidate(id);
     return { ok: "Physical dispatch recorded." };
   } catch (error) { return failure(error); }
