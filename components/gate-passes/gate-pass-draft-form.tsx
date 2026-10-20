@@ -106,28 +106,29 @@ export function OutboundGatePassDraftForm({
                 ))}
               </select>
             </label>
-            <label className="space-y-1 text-xs">
-              <span>Quantity</span>
+            <div className="space-y-1 text-xs">
+              <label className="block space-y-1"><span>Quantity</span>
               <input required inputMode="decimal" type="text" value={line.quantity} className="w-full rounded-md border bg-background px-3 py-2 text-sm" onChange={(event) => {
                 const value = event.target.value;
                 setLines((previous) => previous.map((candidate) => candidate.key === line.key ? { ...candidate, quantity: value } : candidate));
               }} />
+              </label>
               {(() => {
                 const chosenProduct = products.find((product) => product.id === line.productId);
                 if (!chosenProduct) return null;
                 const available = Number(chosenProduct.stockQuantity);
                 const insufficient = Number(line.quantity) > available && Number.isFinite(available);
-                return <span className="block text-xs text-muted-foreground">
+                return <div className="text-xs text-muted-foreground">
                   Core available: {chosenProduct.stockQuantity} {chosenProduct.unit}.
-                  {insufficient && <span role="alert" className="block text-amber-800">Requested quantity exceeds current core stock. Additional stock is required for the full shipment.</span>}
+                  {insufficient && <p role="alert" className="text-amber-800">Requested quantity exceeds current core stock. Additional stock is required for the full shipment.</p>}
                   {available > 0 && Number.isFinite(available) && <button
                     type="button" disabled={pending} className="mt-1 underline underline-offset-2"
                     onClick={() => setLines((previous) => previous.map((candidate) =>
                       candidate.key === line.key ? {...candidate, quantity: chosenProduct.stockQuantity} : candidate
                     ))}>Use core available quantity</button>}
-                </span>;
+                </div>;
               })()}
-            </label>
+            </div>
             <div className="flex items-end">
               <button type="button" disabled={lines.length === 1 || pending} className="w-full rounded-md border px-2 py-2 text-xs disabled:opacity-50" onClick={() => {
                 setLines((previous) => previous.filter((candidate) => candidate.key !== line.key));
