@@ -23,6 +23,25 @@ describe("gate pass direct server-action authorization",()=>{
   it("uses the required financial permission and rejects invalid input without invoicing",async()=>{
     expect(await invoiceGatePassAction({},new FormData())).toHaveProperty("error");expect(m.permission).toHaveBeenCalledWith("financial.manage");expect(m.service).not.toHaveBeenCalled();
   });
+  it("binds the legacy dispatch declaration to the authenticated actor, not submitted identity",async()=>{
+    const form=new FormData();
+    form.set("gatePassId","00000000-0000-4000-8000-000000000001");
+    form.set("ownerDeclaration","yes");form.set("ownerDraftVersion","1");
+    form.set("ownerReference","SYNTHETIC-LEGACY-DISPATCH");
+    form.set("ownerBasis","Synthetic customer terms and documented timing basis for dispatch test.");
+    form.set("ownerTaxTimingAssessed","yes");form.set("ownerNoEarlierInvoiceObligation","yes");
+    form.set("ownerResponsibilityAcknowledged","yes");
+    form.set("userId","forged-owner");form.set("workspaceId","foreign-tenant");
+    await dispatchGatePassAction({},form);
+    expect(m.permission).toHaveBeenCalledWith("inventory.adjust");
+    expect(m.service).toHaveBeenCalledWith(
+      {workspaceId:m.workspace,userId:"authenticated-actor",role:"OWNER"},
+      "00000000-0000-4000-8000-000000000001",
+      expect.objectContaining({draftVersion:1,noEarlierInvoiceObligation:true,responsibilityAcknowledged:true})
+    );
+    expect(m.service.mock.calls[0]![2]).not.toHaveProperty("userId");
+    expect(m.service.mock.calls[0]![2]).not.toHaveProperty("workspaceId");
+  });
   it("passes an explicit declaration payload without accepting a submitted signer identity",async()=>{
     const form=new FormData(); form.set("gatePassId","00000000-0000-4000-8000-000000000001");form.set("ownerDeclaration","yes");
     form.set("ownerReference","SYNTHETIC-REFERENCE");form.set("ownerBasis","Synthetic delivery terms and factual invoice timing basis only.");
