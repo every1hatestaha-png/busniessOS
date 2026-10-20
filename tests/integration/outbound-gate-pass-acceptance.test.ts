@@ -612,6 +612,13 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
       expect((await invoiceAcceptedGatePass(ctx(), invoiceInput(f))).id).toBe(invoice.id);
       await confirmRejectedStockReturn(ctx(),{gatePassId:f.gp.id,lines:[{itemId:f.gp.items[0]!.id,returned:"2"}]});
       expect((await db.product.findUniqueOrThrow({where:{id:f.productId}})).stockQuantity.toNumber()).toBe(92);
+      // Even a valid OWNER declaration cannot create or consume nonexistent stock.
+      const short = await fixture("10", 0);
+      await issueGatePass(ctx(), short.gp.id);
+      await expect(dispatchGatePass(ctx(), short.gp.id, { ...ownerDeclaration, draftVersion: 1 })).rejects.toThrow("Insufficient stock");
+      expect(await db.auditLog.count({where:{workspaceId:tenant,entityId:short.gp.id,action:"gate_pass.owner_billing_declared"}})).toBe(0);
+      expect((await db.outboundGatePass.findUniqueOrThrow({where:{id:short.gp.id}})).status).toBe("ISSUED");
+      expect(await db.inventoryTransaction.count({where:{productId:short.productId,type:"GATE_PASS_DISPATCH"}})).toBe(0);
     } finally {
       await db.workspaceMember.update({where:{workspaceId_userId:{workspaceId:tenant,userId}},data:{role:"OWNER"}});
       vi.stubEnv("OUTBOUND_GP_LEGACY_OWNER_DISPATCH_ENABLED", "false");
