@@ -56,6 +56,27 @@ describe("Gate Pass V2 read-only pre-issue warning", () => {
     expect(html).not.toContain('checked=""');
     expect(html.match(/<button[^>]*>Issue Gate Pass<\/button>/)?.[0]).toContain('disabled=""');
   });
+  it("offers the exact-document owner declaration at eligible legacy dispatch, with no preselected consents", () => {
+    const html = renderToStaticMarkup(createElement(GatePassWorkflowControls, {
+      ...base, status:"ISSUED", issueDeductsStock:false, canIssue:false, canDispatch:true,
+      deferredBillingReady:false, ownerAttestationEnabled:true, canAttestBilling:true, documentVersion:1,
+    }));
+    expect(html).toContain("Owner invoice-timing declaration");
+    expect(html).toContain('name="ownerDraftVersion" value="1"');
+    expect(html).toContain("LEGACY");
+    expect(html).not.toContain('checked=""');
+    expect(html.match(/<button[^>]*>Confirm Dispatch<\/button>/)?.[0]).toContain('disabled=""');
+  });
+  it("keeps legacy dispatch unavailable without actual owner authority or available stock", () => {
+    for (const props of [{canAttestBilling:false,canDispatch:true},{canAttestBilling:true,canDispatch:false}]) {
+      const html = renderToStaticMarkup(createElement(GatePassWorkflowControls, {
+        ...base, status:"ISSUED", issueDeductsStock:false, canIssue:false, deferredBillingReady:false,
+        ownerAttestationEnabled:true, documentVersion:1, ...props,
+      }));
+      expect(html).not.toContain('name="ownerBasis"');
+      expect(html).not.toContain("Confirm Dispatch</button>");
+    }
+  });
   it("does not offer owner declarations to other roles or legacy drafts", () => {
     for (const props of [{canAttestBilling:false,issueDeductsStock:true},{canAttestBilling:true,issueDeductsStock:false}]) {
       const html = renderToStaticMarkup(createElement(GatePassWorkflowControls, { ...base, deferredBillingReady:false, ownerAttestationEnabled:true, ...props }));
