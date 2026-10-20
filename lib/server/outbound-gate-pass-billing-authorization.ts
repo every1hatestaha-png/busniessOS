@@ -12,12 +12,22 @@ export class GatePassBillingAuthorizationError extends Error {}
 type Document = { id: string; workspaceId: string; customerId: string; createdAt: Date; status: string; version: number; issueStockDeductedAt: Date | null };
 const action = "gate_pass.owner_billing_declared";
 
+function issueMode(gp: Document) {
+  return gatePassIssueStockMode(gp.createdAt,
+    process.env.OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED,
+    process.env.OUTBOUND_GP_ISSUE_STOCK_V2_CUTOVER_AT);
+}
+
+/** The explicit legacy opt-in permits real owner authorization at DISPATCH.
+ * Existing issued documents keep their dispatch-time stock rule unchanged. */
 function eligible(gp: Document) {
+  const mode = issueMode(gp);
+  const v2 = Boolean(gp.issueStockDeductedAt) || mode === "v2";
+  const legacy = mode === "legacy" && !gp.issueStockDeductedAt
+    && process.env.OUTBOUND_GP_LEGACY_OWNER_DISPATCH_ENABLED === "true";
   return process.env.OUTBOUND_GP_OWNER_ATTESTATION_ENABLED === "true"
     && outboundGatePassDraftFeatureEnabled(gp.workspaceId)
-    && (Boolean(gp.issueStockDeductedAt) || gatePassIssueStockMode(gp.createdAt,
-      process.env.OUTBOUND_GP_ISSUE_STOCK_V2_ENABLED,
-      process.env.OUTBOUND_GP_ISSUE_STOCK_V2_CUTOVER_AT) === "v2");
+    && (v2 || legacy);
 }
 
 export async function readOwnerBillingDeclaration(db: Pick<Prisma.TransactionClient, "auditLog">, gp: Document) {
@@ -41,8 +51,11 @@ export async function recordOwnerBillingDeclaration(
   gp: Document,
   input: unknown,
 ) {
-  if (gp.workspaceId !== ctx.workspaceId || !eligible(gp) || gp.status !== "DRAFT")
-    throw new GatePassBillingAuthorizationError("Owner declarations are available only for new V2 drafts in the enabled workspace.");
+  const v2Issue = issueMode(gp) === "v2" && gp.status === "DRAFT";
+  const legacyDispatch = issueMode(gp) === "legacy" && gp.status === "ISSUED"
+    && !gp.issueStockDeductedAt && process.env.OUTBOUND_GP_LEGACY_OWNER_DISPATCH_ENABLED === "true";
+  if (gp.workspaceId !== ctx.workspaceId || !eligible(gp) || !(v2Issue || legacyDispatch))
+    throw new GatePassBillingAuthorizationError("Owner declarations require an eligible V2 draft or legacy issued Gate Pass in the enabled workspace.");
   await assertOutboundGatePassActor(tx, ctx, "financial.manage");
   // The lifecycle already holds this membership FOR SHARE. Never trust ctx.role,
   // form fields or a stale session for the declaration's signing authority.
@@ -56,6 +69,7 @@ export async function recordOwnerBillingDeclaration(
   await writeAudit(tx, {
     workspaceId: ctx.workspaceId, actorId: ctx.userId, entityType: "OutboundGatePass", entityId: gp.id, action,
     metadata: { ...declaration, version: 1, kind: "OWNER_DECLARATION_NOT_INDEPENDENT_CLEARANCE", actorRole: "OWNER",
-      customerId: gp.customerId, gatePassCreatedAt: gp.createdAt.toISOString() },
+      customerId: gp.customerId, gatePassCreatedAt: gp.createdAt.toISOString(),
+      declarationStage: v2Issue ? "V2_ISSUE" : "LEGACY_DISPATCH" },
   });
 }
