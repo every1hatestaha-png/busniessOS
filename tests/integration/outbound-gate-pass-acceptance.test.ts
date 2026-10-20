@@ -555,7 +555,7 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
       const f=await fixture();
       await expect(issueGatePass(ctx(),f.gp.id,{...ownerDeclaration,noEarlierInvoiceObligation:false})).rejects.toThrow();
       vi.stubEnv("OUTBOUND_GP_OWNER_ATTESTATION_ENABLED","false");
-      await expect(issueGatePass(ctx(),f.gp.id,ownerDeclaration)).rejects.toThrow("new V2");
+      await expect(issueGatePass(ctx(),f.gp.id,ownerDeclaration)).rejects.toThrow("eligible V2 draft");
       vi.stubEnv("OUTBOUND_GP_OWNER_ATTESTATION_ENABLED","true");
       await db.workspaceMember.update({where:{workspaceId_userId:{workspaceId:tenant,userId}},data:{role:"ADMIN"}});
       await expect(issueGatePass(ctx(),f.gp.id,ownerDeclaration)).rejects.toThrow("current workspace OWNER");
@@ -575,6 +575,47 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
     } finally {
       await db.workspaceMember.update({where:{workspaceId_userId:{workspaceId:tenant,userId}},data:{role:"OWNER"}});
       await db.fbrIntegrationConfig.deleteMany({where:{workspaceId:tenant}});
+      ownerMode(false);
+    }
+  });
+  it("legacy owner dispatch: atomic signed authorization, stock movement, receiving, accepted-only invoice and return", async () => {
+    ownerMode(true);
+    vi.stubEnv("OUTBOUND_GP_LEGACY_OWNER_DISPATCH_ENABLED", "true");
+    vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_CUTOVER_AT", "2099-01-01T00:00:00.000Z");
+    try {
+      const f = await fixture();
+      await issueGatePass(ctx(), f.gp.id);
+      const issued = await db.outboundGatePass.findUniqueOrThrow({ where: { id: f.gp.id } });
+      expect(issued.status).toBe("ISSUED");
+      expect(issued.issueStockDeductedAt).toBeNull();
+      const declaration = { ...ownerDeclaration, draftVersion: issued.version };
+      await expect(dispatchGatePass(ctx(), f.gp.id, { ...declaration, taxTimingAssessed: false })).rejects.toThrow();
+      expect(await db.auditLog.count({ where: { workspaceId: tenant, entityId: f.gp.id, action: "gate_pass.owner_billing_declared" } })).toBe(0);
+      expect((await db.product.findUniqueOrThrow({where:{id:f.productId}})).stockQuantity.toNumber()).toBe(100);
+      await expect(dispatchGatePass(ctx(), f.gp.id, {...declaration, draftVersion: issued.version - 1})).rejects.toThrow("draft changed after review");
+      await db.workspaceMember.update({ where:{workspaceId_userId:{workspaceId:tenant,userId}},data:{role:"ADMIN"} });
+      await expect(dispatchGatePass(ctx(), f.gp.id, declaration)).rejects.toThrow("current workspace OWNER");
+      await db.workspaceMember.update({ where:{workspaceId_userId:{workspaceId:tenant,userId}},data:{role:"OWNER"} });
+      await dispatchGatePass(ctx(), f.gp.id, declaration);
+      const signed = await db.auditLog.findMany({ where: {workspaceId:tenant,entityId:f.gp.id,action:"gate_pass.owner_billing_declared"} });
+      expect(signed).toHaveLength(1);
+      expect(signed[0]!.metadata).toMatchObject({ kind:"OWNER_DECLARATION_NOT_INDEPENDENT_CLEARANCE", declarationStage:"LEGACY_DISPATCH", customerId:f.customer.id });
+      expect((await db.outboundGatePass.findUniqueOrThrow({where:{id:f.gp.id}})).status).toBe("IN_TRANSIT");
+      expect((await db.product.findUniqueOrThrow({where:{id:f.productId}})).stockQuantity.toNumber()).toBe(90);
+      expect(await db.inventoryTransaction.count({where:{productId:f.productId,type:"GATE_PASS_DISPATCH"}})).toBe(1);
+      expect(await db.inventoryTransaction.count({where:{productId:f.productId,type:"GATE_PASS_ISSUE"}})).toBe(0);
+      await expect(dispatchGatePass(ctx(), f.gp.id, declaration)).rejects.toThrow("Only an issued");
+      await recordGatePassReceiving(ctx(), { gatePassId:f.gp.id,reference:"SYNTHETIC-LEGACY-RCV",recipient:"Synthetic receiving customer",
+        lines:[{itemId:f.gp.items[0]!.id, accepted:"8",rejected:"2"}] });
+      const invoice = await invoiceAcceptedGatePass(ctx(), invoiceInput(f));
+      expect((await db.invoice.findUniqueOrThrow({where:{id:invoice.id}})).status).toBe("UNPAID");
+      expect((await invoiceAcceptedGatePass(ctx(), invoiceInput(f))).id).toBe(invoice.id);
+      await confirmRejectedStockReturn(ctx(),{gatePassId:f.gp.id,lines:[{itemId:f.gp.items[0]!.id,returned:"2"}]});
+      expect((await db.product.findUniqueOrThrow({where:{id:f.productId}})).stockQuantity.toNumber()).toBe(92);
+    } finally {
+      await db.workspaceMember.update({where:{workspaceId_userId:{workspaceId:tenant,userId}},data:{role:"OWNER"}});
+      vi.stubEnv("OUTBOUND_GP_LEGACY_OWNER_DISPATCH_ENABLED", "false");
+      vi.stubEnv("OUTBOUND_GP_ISSUE_STOCK_V2_CUTOVER_AT","2000-01-01T00:00:00.000Z");
       ownerMode(false);
     }
   });
