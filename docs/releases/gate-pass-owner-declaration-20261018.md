@@ -75,3 +75,14 @@ issued, rollback must preserve marker-aware dispatch/return/invoice code and its
 audit evidence. Pause new issuance only through a reviewed compatible flag plan;
 do not remove support needed to reconcile issued documents, reverse ledgers,
 delete data, remove enums, or restore an old backup over later transactions.
+
+
+## Existing ISSUED legacy Gate Passes, opt-in owner dispatch
+
+Existing Gate Passes created before the V2 cutover **remain legacy**, including their dispatch-time stock movement. Never backdate their creation time, insert V2 issue markers or manually deduct stock. Without transaction-specific invoice-timing authority, their physical dispatch remains blocked.
+
+The separate default-off `OUTBOUND_GP_LEGACY_OWNER_DISPATCH_ENABLED=true` production opt-in allows the currently persisted workspace OWNER to record a truthful document-specific invoice-timing declaration **at physical DISPATCH** of an eligible legacy ISSUED Gate Pass. This requires `OUTBOUND_GP_OWNER_ATTESTATION_ENABLED=true`, the exact authorized workspace, the existing enabled workflow, genuine tax/customer-terms review, matching immutable customer/document identity and current document version, valid stock/warehouse/BOM, financial permission and FBR disabled. Ordinary staff cannot sign for the OWNER.
+
+The owner declaration audit and the existing legacy DISPATCH stock deduction occur in one locked serializable transaction. An invalid declaration, insufficient stock, changed version or authorization failure rolls both back. The signed audit remains available for receiving and accepted-only invoicing without a second declaration or stock movement. The existing ISSUE-time V2 path is unchanged. This uses existing audit metadata and needs no migration or historical mutation.
+
+Enable this flag only in the intended production project and rebuild the exact reviewed Git commit. Customer physical dispatch and receiving must remain genuine actions by authorized operators. Never fabricate a declaration, stock receipt, signature or tax clearance on the owner's behalf. Known insufficient-stock historical Gate Passes remain blocked until genuine stock is received.
