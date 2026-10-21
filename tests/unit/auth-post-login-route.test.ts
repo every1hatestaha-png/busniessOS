@@ -90,7 +90,7 @@ describe("canonical Supabase post-login workspace routing", () => {
   it("rejects non-owners attempting a platform return after sign in", async () => {
     process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL = "different@example.invalid";
     try {
-      expect((await open("/platform")).headers.get("location")).toBe(origin + "/dashboard");
+      expect((await open("/platform")).headers.get("location")).toBe(origin + "/platform/access-denied");
       expect(mocks.memberships).not.toHaveBeenCalled();
     } finally {
       delete process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL;
