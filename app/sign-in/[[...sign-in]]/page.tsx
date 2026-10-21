@@ -13,7 +13,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 const LOGIN_VISUAL = "/auth/faisal-mosque.webp";
 const RESEND_COOLDOWN_SECONDS = 30;
 
-export default function SignInPage() {
+export default function SignInPage({ platformLogin = false }: { platformLogin?: boolean }) {
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [email, setEmail] = useState("");
@@ -78,7 +78,7 @@ export default function SignInPage() {
     }
 
     const destination = postAuthDestination(
-      searchParams.get("redirect_url") ?? searchParams.get("next"),
+      platformLogin ? "/platform" : searchParams.get("redirect_url") ?? searchParams.get("next"),
       window.location.href,
     );
     window.location.assign(destination);
@@ -128,7 +128,7 @@ export default function SignInPage() {
     }
 
     const destination = postAuthDestination(
-      searchParams.get("redirect_url") ?? searchParams.get("next"),
+      platformLogin ? "/platform" : searchParams.get("redirect_url") ?? searchParams.get("next"),
       window.location.href,
     );
     window.location.assign(destination);
