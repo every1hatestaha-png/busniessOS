@@ -23,7 +23,8 @@ export async function GET(request: Request) {
       process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL,
       process.env.MUNSHIOS_PLATFORM_OWNER_SUPABASE_ID,
     );
-    const response = NextResponse.redirect(new URL(owner ? "/platform" : "/dashboard", request.url));
+    const destination = owner ? "/platform" : "/platform/access-denied";
+    const response = NextResponse.redirect(new URL(destination, request.url));
     response.headers.set("Cache-Control", "no-store");
     return response;
   }

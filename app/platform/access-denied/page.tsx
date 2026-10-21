@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { getSupabaseAuthUser } from "@/lib/supabase/server";
+import { SwitchPlatformAccount } from "@/components/platform/switch-platform-account";
 
 export default async function PlatformAccessDeniedPage() {
   const user = await getSupabaseAuthUser();
@@ -20,11 +21,11 @@ export default async function PlatformAccessDeniedPage() {
           Signed in as: {user.email ?? "Unknown account"}
         </p>
         <p className="mt-4 text-sm leading-6 text-slate-600">
-          Use the sign-out control in the business dashboard, then sign in with the registered
-          MunshiOS platform owner account. Your business data remains unchanged.
+          Switch to the registered platform owner account to continue. Your business data remains unchanged.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
-          <Link href="/dashboard" className="rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white">Return to business</Link>
+          <SwitchPlatformAccount />
+          <Link href="/dashboard" className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700">Return to business</Link>
           <Link href="/" className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700">MunshiOS home</Link>
         </div>
       </section>
