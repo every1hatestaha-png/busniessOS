@@ -8,7 +8,7 @@ export type PlatformIdentity = {
 export type PlatformAssurance = {
   currentLevel: string | null;
   nextLevel: string | null;
-  currentAuthenticationMethods?: Array<{ method: string; timestamp: number }> | null;
+  currentAuthenticationMethods?: Array<{ method: string; timestamp: number }> | string[] | null;
 };
 
 export const PLATFORM_MFA_MAX_AGE_MS = 10 * 60 * 1000;
@@ -33,7 +33,7 @@ export function hasRecentPlatformMfa(
 ): boolean {
   if (assurance?.currentLevel !== "aal2" || assurance.nextLevel !== "aal2") return false;
   return Boolean(assurance.currentAuthenticationMethods?.some((entry) => {
-    if (entry.method !== "totp" || !Number.isFinite(entry.timestamp)) return false;
+    if (typeof entry === "string" || (entry.method !== "totp" && entry.method !== "mfa/totp") || !Number.isFinite(entry.timestamp)) return false;
     const ageMs = nowMs - entry.timestamp * 1000;
     return ageMs >= 0 && ageMs <= PLATFORM_MFA_MAX_AGE_MS;
   }));
