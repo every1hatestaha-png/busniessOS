@@ -1,11 +1,11 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { auth, clerkClient } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
 import { db } from "@/lib/server/db";
 import { getCurrentUser, requireWorkspace } from "@/lib/server/auth";
+import { getVerifiedPlatformOwnerIdentity } from "@/lib/server/platform-security";
 import {
   computeWorkspaceAccess,
   type SubscriptionSnapshot,
@@ -86,29 +86,8 @@ export async function requireWorkspaceAccess() {
 }
 
 export async function requirePlatformOwner() {
-  const configuredOwner = process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL?.trim().toLowerCase();
-  if (!configuredOwner) redirect("/dashboard");
-
-  const session = await auth({ acceptsToken: ["session_token", "oauth_token"] });
-  const userId = "userId" in session ? session.userId : null;
-  if (!userId) redirect("/platform/sign-in");
-
-  const clerkUser = await (await clerkClient()).users.getUser(userId);
-  const primaryEmailAddress = clerkUser.primaryEmailAddressId
-    ? clerkUser.emailAddresses.find((email) => email.id === clerkUser.primaryEmailAddressId)
-    : undefined;
-  const authenticatedEmail = primaryEmailAddress?.emailAddress?.trim().toLowerCase();
-
-  if (
-    !authenticatedEmail ||
-    primaryEmailAddress?.verification?.status !== "verified" ||
-    authenticatedEmail !== configuredOwner
-  ) {
-    redirect("/dashboard");
-  }
-
-  const user = await getCurrentUser();
-  return user;
+  await getVerifiedPlatformOwnerIdentity();
+  return getCurrentUser();
 }
 
 export async function requestWorkspaceActivation(input: { planCode: string; billing: "monthly" | "annual" }) {
