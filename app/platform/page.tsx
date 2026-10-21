@@ -10,6 +10,7 @@ import {
   suspendSubscriptionAction,
 } from "@/app/platform/actions";
 import { SecurePlatformForm } from "@/components/platform/secure-platform-form";
+import { AdminSignOut } from "@/components/admin/admin-signout";
 import { requirePlatformMfa } from "@/lib/server/platform-security";
 import { getPlatformDashboard } from "@/lib/server/subscriptions";
 
@@ -54,7 +55,10 @@ export default async function PlatformPage() {
           <header className="border-b border-[#e2e8e5] bg-white/90 px-5 py-5 backdrop-blur sm:px-7 lg:px-10">
             <div className="mx-auto flex max-w-[1500px] flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">MunshiOS Administration</p><h1 className="mt-1 text-3xl font-semibold tracking-tight">Owner dashboard</h1><p className="mt-1 text-sm text-slate-500">Manage customer access without entering customer accounting data.</p></div>
-              <div className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700"><span className="size-2 rounded-full bg-emerald-500" /> MFA-protected owner session</div>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700"><span className="size-2 rounded-full bg-emerald-500" /> MFA-protected owner session</div>
+                <AdminSignOut />
+              </div>
             </div>
           </header>
 
