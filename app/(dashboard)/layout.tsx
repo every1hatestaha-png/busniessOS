@@ -8,6 +8,8 @@ import { listCurrentUserWorkspaces, requireWorkspace } from "@/lib/server/auth";
 import { listWorkspaceModules } from "@/lib/server/industry-modules";
 import { getWorkspaceAccess } from "@/lib/server/subscriptions";
 import { resolveWorkspaceVertical } from "@/lib/verticals/registry";
+import { isPlatformOwner } from "@/lib/platform-access";
+import { getSupabaseAuthUser } from "@/lib/supabase/server";
 
 export default async function DashboardLayout({
   children,
@@ -23,12 +25,14 @@ export default async function DashboardLayout({
   const enabledModules = workspaceModules.filter((module) => module.enabled).map((module) => module.moduleKey);
   const vertical = resolveWorkspaceVertical(workspace);
   const gatePassEnabled = outboundGatePassDraftFeatureEnabled(workspace.id);
+  const platformIdentity = await getSupabaseAuthUser();
+  const platformOwner = isPlatformOwner(platformIdentity, process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL, process.env.MUNSHIOS_PLATFORM_OWNER_SUPABASE_ID);
 
   return (
     <div className="flex min-h-dvh w-full min-w-0 bg-background text-foreground print:block print:min-h-0 print:bg-white">
       <PrintShortcutRouter />
       <div className="sticky top-0 hidden h-dvh shrink-0 print:hidden lg:block">
-        <Sidebar workspaceName={workspace.name} gatePassEnabled={gatePassEnabled} role={role} enabledModules={enabledModules} vertical={vertical} />
+        <Sidebar workspaceName={workspace.name} gatePassEnabled={gatePassEnabled} role={role} enabledModules={enabledModules} vertical={vertical} platformOwner={platformOwner} />
       </div>
       <div className="min-w-0 flex-1 print:block">
         <TopNav workspaceName={workspace.name} workspaceId={workspace.id} gatePassEnabled={gatePassEnabled} workspaces={workspaces} role={role} enabledModules={enabledModules} vertical={vertical} />
