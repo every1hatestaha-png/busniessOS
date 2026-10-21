@@ -13,7 +13,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 const LOGIN_VISUAL = "/auth/faisal-mosque.webp";
 const RESEND_COOLDOWN_SECONDS = 30;
 
-export default function SignInPage({ platformLogin = false }: { platformLogin?: boolean }) {
+export default function SignInPage({ platformLogin = false }: { platformLogin?: boolean } = {}) {
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [email, setEmail] = useState("");
