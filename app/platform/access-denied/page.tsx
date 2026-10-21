@@ -6,7 +6,7 @@ import { SwitchPlatformAccount } from "@/components/platform/switch-platform-acc
 
 export default async function PlatformAccessDeniedPage() {
   const user = await getSupabaseAuthUser();
-  if (!user?.email_confirmed_at) redirect("/platform/login");
+  if (!user?.email_confirmed_at) redirect("/admin");
 
   return (
     <main className="grid min-h-dvh place-items-center bg-[#fafaf8] px-5 py-10 text-slate-900">
