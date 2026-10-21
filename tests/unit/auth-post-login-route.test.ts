@@ -74,4 +74,27 @@ describe("canonical Supabase post-login workspace routing", () => {
     await open();
     expect(mocks.memberships).toHaveBeenCalledTimes(2);
   });
+
+  it("routes the confirmed platform owner directly to admin even without customer memberships", async () => {
+    process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL = local.email;
+    delete process.env.MUNSHIOS_PLATFORM_OWNER_SUPABASE_ID;
+    try {
+      mocks.memberships.mockResolvedValue([]);
+      expect((await open("/platform")).headers.get("location")).toBe(origin + "/platform");
+      expect((await open("/admin")).headers.get("location")).toBe(origin + "/platform");
+      expect(mocks.memberships).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL;
+    }
+  });
+  it("rejects non-owners attempting a platform return after sign in", async () => {
+    process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL = "different@example.invalid";
+    try {
+      expect((await open("/platform")).headers.get("location")).toBe(origin + "/dashboard");
+      expect(mocks.memberships).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL;
+    }
+  });
+
 });

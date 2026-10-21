@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function AdminEntryPage() {
-  redirect("/platform/sign-in");
+  redirect("/platform");
 }

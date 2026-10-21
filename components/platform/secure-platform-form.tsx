@@ -2,7 +2,6 @@
 
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
-import { useReverification } from "@clerk/nextjs";
 
 export function SecurePlatformForm({
   action,
@@ -13,7 +12,6 @@ export function SecurePlatformForm({
   className?: string;
   children: ReactNode;
 }) {
-  const verifiedAction = useReverification(action);
   const inFlight = useRef(false);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -30,12 +28,12 @@ export function SecurePlatformForm({
         setMessage(null);
         setFailed(false);
         try {
-          await verifiedAction(formData);
+          await action(formData);
           setMessage("Saved");
         } catch (error) {
           console.error("Platform action failed", error);
           setFailed(true);
-          setMessage("Action couldn't be completed. Refresh and try again.");
+          setMessage("Action blocked. Verify a fresh authenticator code under Security, then retry.");
         } finally {
           inFlight.current = false;
           setPending(false);
