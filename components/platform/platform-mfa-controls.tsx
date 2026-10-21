@@ -52,7 +52,7 @@ export function PlatformMfaControls() {
   async function verify() {
     if (busy) return;
     const selectedFactor = factorId ?? enrollment?.factorId;
-    if (!selectedFactor || !/^\\d{6}$/.test(code.trim())) {
+    if (!selectedFactor || !/^[0-9]{6}$/.test(code.trim())) {
       setMessage("Enter the current 6-digit code from your authenticator app.");
       return;
     }
@@ -116,7 +116,7 @@ export function PlatformMfaControls() {
         <form onSubmit={(event) => { event.preventDefault(); void verify(); }} className="space-y-3">
           <label htmlFor="platform-totp" className="block text-sm font-medium text-slate-800">Authenticator code</label>
           <input id="platform-totp" type="text" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="one-time-code"
-            value={code} onChange={(event) => setCode(event.target.value.replace(/\\D/g, "").slice(0, 6))}
+            value={code} onChange={(event) => setCode(event.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
             disabled={busy} required className="h-11 w-full max-w-xs rounded-xl border border-slate-300 px-3 text-base tracking-widest" />
           <button type="submit" disabled={busy || code.length !== 6} className="block rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
             {busy ? "Verifying…" : "Verify and open admin"}
