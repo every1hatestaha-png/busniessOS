@@ -18,9 +18,10 @@ const verified = (time: number) => ({
 
 describe("platform owner authorization", () => {
   it("accepts only a confirmed owner with the configured address", () => {
-    expect(isPlatformOwner(owner, "owner@example.test")).toBe(true);
-    expect(isPlatformOwner(owner, " Owner@Example.Test ")).toBe(true);
-    expect(isPlatformOwner(owner, undefined)).toBe(false);
+    expect(isPlatformOwner(owner, "owner@example.test", "supabase-owner")).toBe(true);
+    expect(isPlatformOwner(owner, " Owner@Example.Test ", "supabase-owner")).toBe(true);
+    expect(isPlatformOwner(owner, undefined, "supabase-owner")).toBe(false);
+    expect(isPlatformOwner(owner, "owner@example.test")).toBe(false);
     expect(isPlatformOwner(null, "owner@example.test")).toBe(false);
     expect(isPlatformOwner({ ...owner, email_confirmed_at: null }, "owner@example.test")).toBe(false);
     expect(isPlatformOwner({ ...owner, is_anonymous: true }, "owner@example.test")).toBe(false);
@@ -29,6 +30,7 @@ describe("platform owner authorization", () => {
   it("enforces optional immutable Supabase user id pinning", () => {
     expect(isPlatformOwner(owner, "owner@example.test", "supabase-owner")).toBe(true);
     expect(isPlatformOwner(owner, "owner@example.test", "different-id")).toBe(false);
+    expect(isPlatformOwner(owner, "owner@example.test", "  ")).toBe(false);
   });
 });
 
