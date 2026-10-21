@@ -159,8 +159,8 @@ async function supabaseOnlyProxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (isElectron || path.startsWith("/desktop-auth") || path.startsWith("/platform")) {
-    if (publicAuthPath(path) || path.startsWith("/desktop-auth") || path.startsWith("/platform/sign-in")) {
+  if (isElectron || path.startsWith("/desktop-auth")) {
+    if (publicAuthPath(path) || path.startsWith("/desktop-auth")) {
       return NextResponse.next();
     }
     return NextResponse.json(
@@ -191,7 +191,7 @@ const clerkProxy = clerkMiddleware(
     const isElectron = (request.headers.get("user-agent") || "").includes("Electron");
     const authHeader = request.headers.get("authorization");
 
-    if (publicAuthPath(path) || path.startsWith("/platform/sign-in")) return NextResponse.next();
+    if (publicAuthPath(path)) return NextResponse.next();
 
     if (isElectron) {
       if (!authHeader) return NextResponse.redirect(new URL("/desktop-auth", request.url));
@@ -230,7 +230,6 @@ function needsLegacyClerk(request: NextRequest) {
   return (
     isElectron ||
     path.startsWith("/desktop-auth") ||
-    path.startsWith("/platform") ||
     path.startsWith("/__clerk/") ||
     (isApiV1Request(path) && hasLegacyAuthorization)
   );
