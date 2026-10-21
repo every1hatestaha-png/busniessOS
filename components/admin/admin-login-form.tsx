@@ -58,7 +58,7 @@ export function AdminLoginForm() {
         <section className="rounded-2xl border border-white/10 bg-[#101e28] px-6 py-8 shadow-2xl sm:px-8">
           <h1 className="text-2xl font-semibold">Administrator sign in</h1>
           <p className="mt-2 text-sm leading-6 text-slate-400">Restricted owner access. Sign in with your administrator account, then verify your authenticator.</p>
-          <form onSubmit={(event) => { void signIn(event); }} className="mt-7 space-y-5">
+          <form onSubmit={signIn} className="mt-7 space-y-5">
             <div>
               <label htmlFor="admin-email" className="mb-2 block text-sm font-medium">Administrator email</label>
               <div className="relative">
