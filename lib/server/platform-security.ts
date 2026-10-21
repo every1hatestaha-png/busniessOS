@@ -1,97 +1,51 @@
 import "server-only";
 
-import { createHmac, timingSafeEqual } from "node:crypto";
-import { auth, clerkClient } from "@clerk/nextjs/server";
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-const PLATFORM_REAUTH_COOKIE = "munshios_platform_reauth";
-const PLATFORM_REAUTH_MAX_AGE_SECONDS = 10 * 60;
+import { isPlatformOwner, hasRecentPlatformMfa } from "@/lib/platform-access";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-function reauthSecret() {
-  const secret = process.env.CLERK_SECRET_KEY;
-  if (!secret) throw new Error("CLERK_SECRET_KEY is required for platform reauthentication.");
-  return secret;
-}
-
-export function createPlatformReauthToken(sessionId: string, issuedAtMs: number, secret: string) {
-  const payload = `${sessionId}.${issuedAtMs}`;
-  const signature = createHmac("sha256", secret).update(payload).digest("hex");
-  return `${issuedAtMs}.${signature}`;
-}
-
-export function verifyPlatformReauthToken(sessionId: string, token: string | undefined, secret: string, nowMs = Date.now()) {
-  if (!token) return false;
-  const [issuedAtRaw, signature] = token.split(".");
-  if (!issuedAtRaw || !signature) return false;
-  const issuedAtMs = Number(issuedAtRaw);
-  if (!Number.isFinite(issuedAtMs)) return false;
-  const ageMs = nowMs - issuedAtMs;
-  if (ageMs < 0 || ageMs > PLATFORM_REAUTH_MAX_AGE_SECONDS * 1000) return false;
-
-  const expected = createPlatformReauthToken(sessionId, issuedAtMs, secret).split(".")[1];
-  const actualBuffer = Buffer.from(signature, "hex");
-  const expectedBuffer = Buffer.from(expected, "hex");
-  return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
-}
-
-export async function markPlatformPasswordVerified(sessionId: string) {
-  const cookieStore = await cookies();
-  cookieStore.set(PLATFORM_REAUTH_COOKIE, createPlatformReauthToken(sessionId, Date.now(), reauthSecret()), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    path: "/platform",
-    maxAge: PLATFORM_REAUTH_MAX_AGE_SECONDS,
-  });
-}
-
-async function hasRecentPlatformPasswordVerification(sessionId: string) {
-  const cookieStore = await cookies();
-  return verifyPlatformReauthToken(sessionId, cookieStore.get(PLATFORM_REAUTH_COOKIE)?.value, reauthSecret());
-}
-
+/**
+ * Uses a live Supabase getUser lookup. Never use a local workspace role, email
+ * in a client cookie, or user_metadata to authorize platform administration.
+ */
 export async function getVerifiedPlatformOwnerIdentity() {
-  const configuredOwner = process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL?.trim().toLowerCase();
-  if (!configuredOwner) redirect("/dashboard");
+  const ownerEmail = process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL;
+  if (!ownerEmail?.trim()) redirect("/dashboard");
 
-  const session = await auth({ acceptsToken: ["session_token", "oauth_token"] });
-  const userId = "userId" in session ? session.userId : null;
-  if (!userId) redirect("/platform/sign-in");
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) redirect("/sign-in?redirect_url=%2Fplatform");
 
-  const clerkUser = await (await clerkClient()).users.getUser(userId);
-  const primaryEmail = clerkUser.primaryEmailAddressId
-    ? clerkUser.emailAddresses.find((entry) => entry.id === clerkUser.primaryEmailAddressId)
-    : undefined;
-  const email = primaryEmail?.emailAddress?.trim().toLowerCase();
-
-  if (!email || primaryEmail?.verification?.status !== "verified" || email !== configuredOwner) {
+  if (!isPlatformOwner(data.user, ownerEmail, process.env.MUNSHIOS_PLATFORM_OWNER_SUPABASE_ID)) {
     redirect("/dashboard");
   }
 
-  return clerkUser;
+  return data.user;
 }
 
-async function requireRecentPlatformPassword() {
-  const session = await auth({ acceptsToken: ["session_token", "oauth_token"] });
-  const sessionId = "sessionId" in session ? session.sessionId : null;
-  if (!sessionId || !(await hasRecentPlatformPasswordVerification(sessionId))) {
-    redirect("/platform/sign-in?reauth=1");
-  }
+async function getPlatformAssurance() {
+  // Identity is checked from Supabase Auth on every privileged server request.
+  await getVerifiedPlatformOwnerIdentity();
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (error || !data) return null;
+  return data;
 }
 
 export async function requirePlatformMfa() {
-  const clerkUser = await getVerifiedPlatformOwnerIdentity();
-  if (!clerkUser.twoFactorEnabled) redirect("/platform/security");
-  await requireRecentPlatformPassword();
-  return clerkUser;
+  const owner = await getVerifiedPlatformOwnerIdentity();
+  const assurance = await getPlatformAssurance();
+  if (assurance?.currentLevel !== "aal2" || assurance.nextLevel !== "aal2") {
+    redirect("/platform/security");
+  }
+  return owner;
 }
 
+/** Must be called on the server before EVERY platform mutation, not only by the UI. */
 export async function assertPlatformMfaEnabled() {
-  const clerkUser = await getVerifiedPlatformOwnerIdentity();
-  if (!clerkUser.twoFactorEnabled) {
-    throw new Error("Platform MFA is required. Enable two-factor authentication in Platform Security before continuing.");
+  const assurance = await getPlatformAssurance();
+  if (!hasRecentPlatformMfa(assurance)) {
+    throw new Error("Recent owner MFA verification required. Open /platform/security and verify your authenticator code.");
   }
-  await requireRecentPlatformPassword();
-  return clerkUser;
 }
