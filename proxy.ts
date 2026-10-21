@@ -57,6 +57,7 @@ function publicAuthPath(path: string) {
   return (
     path.startsWith("/auth/") ||
     path === "/platform/login" ||
+    path === "/admin" ||
     path.startsWith("/forgot-password") ||
     path.startsWith("/account-recovery") ||
     path.startsWith("/recovery") ||
@@ -139,7 +140,7 @@ async function routeWebRequest(request: NextRequest, signedIn: boolean, authResp
 
   if (!signedIn) {
     if (path === "/platform" || path.startsWith("/platform/") || path === "/admin" || path.startsWith("/admin/")) {
-      return redirectWithCookies(new URL("/platform/login", request.url), authResponse);
+      return redirectWithCookies(new URL("/admin", request.url), authResponse);
     }
     const signInUrl = new URL("/sign-in", request.url);
     signInUrl.searchParams.set("redirect_url", `${request.nextUrl.pathname}${request.nextUrl.search}`);
@@ -179,7 +180,15 @@ async function supabaseOnlyProxy(request: NextRequest) {
     return applyCorsHeaders(response, request.headers.get("origin"));
   }
 
-  return routeWebRequest(request, signedIn, response);
+  const routed = await routeWebRequest(request, signedIn, response);
+  if (path === "/admin" || path.startsWith("/admin/")) {
+    routed.headers.set("Cache-Control", "private, no-store");
+    routed.headers.set("X-Frame-Options", "DENY");
+    routed.headers.set("X-Content-Type-Options", "nosniff");
+    routed.headers.set("Referrer-Policy", "no-referrer");
+    routed.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  }
+  return routed;
 }
 
 const previewPublishableKey = process.env.VERCEL_ENV === "preview"
