@@ -60,3 +60,8 @@ export function postAuthDestination(value: string | null, requestUrl: string) {
   if (!next || new URL(next, requestUrl).pathname === POST_AUTH_PATH) return POST_AUTH_PATH;
   return `${POST_AUTH_PATH}?next=${encodeURIComponent(next)}`;
 }
+
+/** Admin entry points must not fall back to customer workspace resolution. */
+export function signInPostAuthDestination(value: string | null, requestUrl: string, platformLogin = false) {
+  return postAuthDestination(platformLogin ? "/platform" : value, requestUrl);
+}

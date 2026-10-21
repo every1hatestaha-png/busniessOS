@@ -50,6 +50,11 @@ describe("password login, verification and logout event contracts", () => {
     expect(mocks.navigate).toHaveBeenCalledWith("/auth/post-login");
     expect(mocks.verify).not.toHaveBeenCalled();
   });
+  it("forces the owner callback when signing in from the dedicated platform login", async () => {
+    await submit(render(() => SignInPage({ platformLogin: true }), { 0: email, 1: password }));
+    expect(mocks.login).toHaveBeenCalledExactlyOnceWith({ email, password });
+    expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith("/auth/post-login?next=%2Fplatform");
+  });
   it.each(["Invalid login credentials", "Email not confirmed"])("does not navigate or invoke recovery after %s", async message => {
     mocks.login.mockResolvedValue({ error: { message, code: message === "Email not confirmed" ? "email_not_confirmed" : "invalid_credentials", status: 400 } });
     await submit(render(SignInPage, { 0: email, 1: password }));
