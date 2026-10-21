@@ -7,17 +7,19 @@ import { getSupabaseAuthUser } from "@/lib/supabase/server";
 import { resolveVerticalDashboard } from "@/lib/verticals/registry";
 
 export async function GET(request: Request) {
-  const user = await getSupabaseAuthUser();
-  if (!user?.email_confirmed_at) {
-    return NextResponse.redirect(new URL("/sign-in", request.url));
-  }
-
   const requested = new URL(request.url).searchParams.get("next");
   const safeNext = safeInternalDestination(requested, request.url, "");
   const destinationPath = safeNext ? new URL(safeNext, request.url).pathname : "";
+  const platformRequested = destinationPath === "/admin" || destinationPath.startsWith("/admin/") || destinationPath === "/platform" || destinationPath.startsWith("/platform/");
+  const user = await getSupabaseAuthUser();
+  if (!user?.email_confirmed_at) {
+    const login = new URL(platformRequested ? "/platform/login" : "/sign-in", request.url);
+    if (safeNext && !platformRequested) login.searchParams.set("redirect_url", safeNext);
+    return NextResponse.redirect(login);
+  }
   // The platform owner may not belong to a customer workspace. The owner route
   // must be resolved BEFORE regular workspace onboarding, with its own gate.
-  if (destinationPath === "/admin" || destinationPath.startsWith("/admin/") || destinationPath === "/platform" || destinationPath.startsWith("/platform/")) {
+  if (platformRequested) {
     const owner = isPlatformOwner(
       user,
       process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL,
