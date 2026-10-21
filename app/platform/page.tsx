@@ -45,7 +45,7 @@ export default async function PlatformPage() {
             <p className="px-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">Administration</p>
             <Link href="#customer-accounts" className="mt-3 block rounded-xl border border-emerald-400/15 bg-emerald-400/10 px-3 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-400/15">Customer accounts</Link>
             <Link href="#subscriptions-access" className="mt-2 block rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-white/5 hover:text-white">Subscriptions & access</Link>
-            <Link href="/platform/security" className="mt-2 block rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-white/5 hover:text-white">Security controls</Link>
+            <Link href="/admin/security" className="mt-2 block rounded-xl px-3 py-3 text-sm text-slate-400 transition hover:bg-white/5 hover:text-white">Security controls</Link>
           </nav>
           <div className="hidden border-t border-white/10 px-5 py-5 text-xs text-slate-500 lg:block">Platform owner console</div>
         </aside>
@@ -74,7 +74,7 @@ export default async function PlatformPage() {
             <section id="customer-accounts" className="scroll-mt-6 overflow-hidden rounded-xl border border-[#e2e8e5] bg-white shadow-sm">
               <div className="flex flex-col gap-1 border-b border-[#e2e8e5] px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
                 <div><h2 className="font-semibold">Customer accounts</h2><p className="mt-1 text-sm text-slate-500">Trials, plans, access controls and account removal.</p></div>
-                <div className="flex items-center gap-3"><p className="text-xs text-slate-400">Sensitive actions require recent MFA reverification.</p><Link href="/platform/security" className="text-xs font-semibold text-emerald-700 hover:text-emerald-800">Security</Link></div>
+                <div className="flex items-center gap-3"><p className="text-xs text-slate-400">Sensitive actions require recent MFA reverification.</p><Link href="/admin/security" className="text-xs font-semibold text-emerald-700 hover:text-emerald-800">Security</Link></div>
               </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-slate-200 text-sm">
