@@ -20,10 +20,9 @@ export function isPlatformOwner(
   configuredUserId?: string,
 ): boolean {
   const ownerEmail = configuredEmail?.trim().toLowerCase();
-  if (!ownerEmail || !identity?.email_confirmed_at || identity.is_anonymous) return false;
+  if (!ownerEmail || !configuredUserId?.trim() || !identity?.email_confirmed_at || identity.is_anonymous) return false;
   if (identity.email?.trim().toLowerCase() !== ownerEmail) return false;
-  const ownerId = configuredUserId?.trim();
-  return !ownerId || identity.id === ownerId;
+  return identity.id === configuredUserId.trim();
 }
 
 /** Server-side strict step-up: a verified TOTP challenge in this session within ten minutes. */
