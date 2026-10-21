@@ -17,7 +17,7 @@ export async function GET(request: Request) {
   const destinationPath = safeNext ? new URL(safeNext, request.url).pathname : "";
   // The platform owner may not belong to a customer workspace. The owner route
   // must be resolved BEFORE regular workspace onboarding, with its own gate.
-  if (/^\\/(?:platform|admin)(?:\\/|$)/.test(destinationPath)) {
+  if (destinationPath === "/admin" || destinationPath.startsWith("/admin/") || destinationPath === "/platform" || destinationPath.startsWith("/platform/")) {
     const owner = isPlatformOwner(
       user,
       process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL,
