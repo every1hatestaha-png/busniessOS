@@ -51,6 +51,13 @@ describe("canonical Supabase post-login workspace routing", () => {
     expect((await open()).headers.get("location")).toBe(origin + "/restaurant");
     expect(mocks.memberships).toHaveBeenCalledWith({ where: { userId: local.id }, orderBy: [{ createdAt: "asc" }, { workspaceId: "asc" }], select: { workspaceId: true, role: true, workspace: true } });
   });
+  it("preserves admin intent if the Supabase session is not available on the first callback", async () => {
+    mocks.provider.mockResolvedValue(null);
+    expect((await open("/platform")).headers.get("location")).toBe(origin + "/platform/login");
+    expect((await open("/platform/security")).headers.get("location")).toBe(origin + "/platform/login");
+    expect((await open("/inventory?view=stock")).headers.get("location")).toBe(origin + "/sign-in?redirect_url=%2Finventory%3Fview%3Dstock");
+    expect(mocks.memberships).not.toHaveBeenCalled();
+  });
   it.each(["foreign-workspace", "stale-workspace"])("repairs an invalid active cookie %s without selecting that tenant", async cookie => {
     mocks.cookie = cookie;
     const response = await open();
