@@ -16,7 +16,7 @@ export function SwitchPlatformAccount() {
     try {
       const { error: signOutError } = await supabase.auth.signOut({ scope: "local" });
       if (signOutError) throw signOutError;
-      window.location.replace("/platform/login");
+      window.location.replace("/admin");
     } catch {
       setError("Could not switch accounts. Use the business dashboard sign-out control and retry.");
       setBusy(false);

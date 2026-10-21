@@ -75,7 +75,7 @@ export function PlatformMfaControls() {
         setMessage("The code was invalid or expired. Enter a new code.");
         return;
       }
-      window.location.assign("/platform");
+      window.location.replace("/admin/dashboard");
     } catch {
       setMessage("MFA verification failed. Please retry.");
     } finally {

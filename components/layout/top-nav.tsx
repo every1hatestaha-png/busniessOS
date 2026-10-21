@@ -107,7 +107,7 @@ export function TopNav({
           >
             {mobileSearchOpen ? <X /> : <Search />}
           </Button>
-          {!isDesktop && platformOwner ? <Link href="/platform" className="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50">Admin portal</Link> : null}
+          {!isDesktop && platformOwner ? <Link href="/admin/dashboard" className="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50">Admin portal</Link> : null}
           {isDesktop ? <DesktopClerkAccountMenu /> : <WebAccountMenu />}
         </div>
       </div>

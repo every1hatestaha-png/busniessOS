@@ -11,11 +11,11 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
  */
 export async function getVerifiedPlatformOwnerIdentity() {
   const ownerEmail = process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL;
-  if (!ownerEmail?.trim()) redirect("/platform/access-denied");
+  if (!ownerEmail?.trim() || !process.env.MUNSHIOS_PLATFORM_OWNER_SUPABASE_ID?.trim()) redirect("/platform/access-denied");
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user) redirect("/platform/login");
+  if (error || !data.user) redirect("/admin");
 
   if (!isPlatformOwner(data.user, ownerEmail, process.env.MUNSHIOS_PLATFORM_OWNER_SUPABASE_ID)) {
     redirect("/platform/access-denied");
@@ -36,8 +36,8 @@ async function getPlatformAssurance() {
 export async function requirePlatformMfa() {
   const owner = await getVerifiedPlatformOwnerIdentity();
   const assurance = await getPlatformAssurance();
-  if (assurance?.currentLevel !== "aal2" || assurance.nextLevel !== "aal2") {
-    redirect("/platform/security");
+  if (!hasRecentPlatformMfa(assurance)) {
+    redirect("/admin/security");
   }
   return owner;
 }

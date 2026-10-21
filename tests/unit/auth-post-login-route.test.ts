@@ -53,8 +53,8 @@ describe("canonical Supabase post-login workspace routing", () => {
   });
   it("preserves admin intent if the Supabase session is not available on the first callback", async () => {
     mocks.provider.mockResolvedValue(null);
-    expect((await open("/platform")).headers.get("location")).toBe(origin + "/platform/login");
-    expect((await open("/platform/security")).headers.get("location")).toBe(origin + "/platform/login");
+    expect((await open("/platform")).headers.get("location")).toBe(origin + "/admin");
+    expect((await open("/platform/security")).headers.get("location")).toBe(origin + "/admin");
     expect((await open("/inventory?view=stock")).headers.get("location")).toBe(origin + "/sign-in?redirect_url=%2Finventory%3Fview%3Dstock");
     expect(mocks.memberships).not.toHaveBeenCalled();
   });
@@ -84,14 +84,15 @@ describe("canonical Supabase post-login workspace routing", () => {
 
   it("routes the confirmed platform owner directly to admin even without customer memberships", async () => {
     process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL = local.email;
-    delete process.env.MUNSHIOS_PLATFORM_OWNER_SUPABASE_ID;
+    process.env.MUNSHIOS_PLATFORM_OWNER_SUPABASE_ID = "provider-owner";
     try {
       mocks.memberships.mockResolvedValue([]);
-      expect((await open("/platform")).headers.get("location")).toBe(origin + "/platform");
-      expect((await open("/admin")).headers.get("location")).toBe(origin + "/platform");
+      expect((await open("/platform")).headers.get("location")).toBe(origin + "/admin/dashboard");
+      expect((await open("/admin")).headers.get("location")).toBe(origin + "/admin/dashboard");
       expect(mocks.memberships).not.toHaveBeenCalled();
     } finally {
       delete process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL;
+      delete process.env.MUNSHIOS_PLATFORM_OWNER_SUPABASE_ID;
     }
   });
   it("rejects non-owners attempting a platform return after sign in", async () => {
