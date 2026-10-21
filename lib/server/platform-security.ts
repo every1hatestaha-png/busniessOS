@@ -36,7 +36,7 @@ async function getPlatformAssurance() {
 export async function requirePlatformMfa() {
   const owner = await getVerifiedPlatformOwnerIdentity();
   const assurance = await getPlatformAssurance();
-  if (assurance?.currentLevel !== "aal2" || assurance.nextLevel !== "aal2") {
+  if (!hasRecentPlatformMfa(assurance)) {
     redirect("/admin/security");
   }
   return owner;
