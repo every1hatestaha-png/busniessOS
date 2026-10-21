@@ -88,7 +88,7 @@ describe("canonical Supabase post-login workspace routing", () => {
     try {
       mocks.memberships.mockResolvedValue([]);
       expect((await open("/platform")).headers.get("location")).toBe(origin + "/admin/dashboard");
-      expect((await open("/admin")).headers.get("location")).toBe(origin + "/platform");
+      expect((await open("/admin")).headers.get("location")).toBe(origin + "/admin/dashboard");
       expect(mocks.memberships).not.toHaveBeenCalled();
     } finally {
       delete process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL;
