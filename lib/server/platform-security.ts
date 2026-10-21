@@ -15,7 +15,7 @@ export async function getVerifiedPlatformOwnerIdentity() {
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user) redirect("/sign-in?redirect_url=%2Fplatform");
+  if (error || !data.user) redirect("/platform/login");
 
   if (!isPlatformOwner(data.user, ownerEmail, process.env.MUNSHIOS_PLATFORM_OWNER_SUPABASE_ID)) {
     redirect("/platform/access-denied");
