@@ -7,7 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { ArrowRight, CheckCircle2, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 
 import { MAX_EMAIL_OTP_LENGTH, isValidEmailOtp, normalizeEmailOtp } from "@/lib/auth-email-otp";
-import { postAuthDestination } from "@/lib/auth-routing";
+import { signInPostAuthDestination } from "@/lib/auth-routing";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const LOGIN_VISUAL = "/auth/faisal-mosque.webp";
@@ -77,9 +77,10 @@ export default function SignInPage({ platformLogin = false }: { platformLogin?: 
       return;
     }
 
-    const destination = postAuthDestination(
-      platformLogin ? "/platform" : searchParams.get("redirect_url") ?? searchParams.get("next"),
+    const destination = signInPostAuthDestination(
+      searchParams.get("redirect_url") ?? searchParams.get("next"),
       window.location.href,
+      platformLogin,
     );
     window.location.assign(destination);
   }
@@ -127,9 +128,10 @@ export default function SignInPage({ platformLogin = false }: { platformLogin?: 
       return;
     }
 
-    const destination = postAuthDestination(
-      platformLogin ? "/platform" : searchParams.get("redirect_url") ?? searchParams.get("next"),
+    const destination = signInPostAuthDestination(
+      searchParams.get("redirect_url") ?? searchParams.get("next"),
       window.location.href,
+      platformLogin,
     );
     window.location.assign(destination);
   }
@@ -186,7 +188,7 @@ export default function SignInPage({ platformLogin = false }: { platformLogin?: 
 
             <div className="mb-8">
               <h1 className="text-[34px] font-semibold tracking-[-0.045em] text-white sm:text-[38px]">Welcome back</h1>
-              <p className="mt-2 text-[15px] text-slate-400">Sign in to continue to your workspace.</p>
+              <p className="mt-2 text-[15px] text-slate-400">{platformLogin ? "Sign in to MunshiOS administration. Owner verification is required." : "Sign in to continue to your workspace."}</p>
             </div>
 
             {emailConfirmed ? (
