@@ -56,6 +56,7 @@ async function getSupabaseSessionState(request: NextRequest) {
 function publicAuthPath(path: string) {
   return (
     path.startsWith("/auth/") ||
+    path === "/platform/login" ||
     path.startsWith("/forgot-password") ||
     path.startsWith("/account-recovery") ||
     path.startsWith("/recovery") ||
@@ -137,6 +138,9 @@ async function routeWebRequest(request: NextRequest, signedIn: boolean, authResp
   if (isPublicMarketingPath(path) || publicAuthPath(path)) return authResponse;
 
   if (!signedIn) {
+    if (path === "/platform" || path.startsWith("/platform/") || path === "/admin" || path.startsWith("/admin/")) {
+      return redirectWithCookies(new URL("/platform/login", request.url), authResponse);
+    }
     const signInUrl = new URL("/sign-in", request.url);
     signInUrl.searchParams.set("redirect_url", `${request.nextUrl.pathname}${request.nextUrl.search}`);
     return redirectWithCookies(signInUrl, authResponse);
