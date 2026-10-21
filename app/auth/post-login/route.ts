@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   const platformRequested = destinationPath === "/admin" || destinationPath.startsWith("/admin/") || destinationPath === "/platform" || destinationPath.startsWith("/platform/");
   const user = await getSupabaseAuthUser();
   if (!user?.email_confirmed_at) {
-    const login = new URL(platformRequested ? "/platform/login" : "/sign-in", request.url);
+    const login = new URL(platformRequested ? "/admin" : "/sign-in", request.url);
     if (safeNext && !platformRequested) login.searchParams.set("redirect_url", safeNext);
     return NextResponse.redirect(login);
   }
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
       process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL,
       process.env.MUNSHIOS_PLATFORM_OWNER_SUPABASE_ID,
     );
-    const destination = owner ? "/platform" : "/platform/access-denied";
+    const destination = owner ? "/admin/dashboard" : "/platform/access-denied";
     const response = NextResponse.redirect(new URL(destination, request.url));
     response.headers.set("Cache-Control", "no-store");
     return response;
