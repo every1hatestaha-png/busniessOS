@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isAuthEntryPath, isPublicMarketingPath, postAuthDestination, safeInternalDestination } from "@/lib/auth-routing";
+import { isAuthEntryPath, isPublicMarketingPath, postAuthDestination, signInPostAuthDestination, safeInternalDestination } from "@/lib/auth-routing";
 
 const BASE = "https://munshios.example/sign-in";
 
@@ -11,6 +11,13 @@ describe("auth routing security", () => {
   it("preserves a safe explicit next behind post-login membership resolution", () => {
     expect(postAuthDestination("/inventory?view=stock", BASE)).toBe("/auth/post-login?next=%2Finventory%3Fview%3Dstock");
   });
+  it("forces the platform destination even when query parameters are absent or point to a workspace", () => {
+    expect(signInPostAuthDestination(null, BASE, true)).toBe("/auth/post-login?next=%2Fplatform");
+    expect(signInPostAuthDestination("/dashboard", BASE, true)).toBe("/auth/post-login?next=%2Fplatform");
+    expect(signInPostAuthDestination("https://evil.example", BASE, true)).toBe("/auth/post-login?next=%2Fplatform");
+    expect(signInPostAuthDestination("/dashboard", BASE, false)).toBe("/auth/post-login?next=%2Fdashboard");
+  });
+
   it("recognizes authentication entry routes", () => {
     expect(isAuthEntryPath("/sign-in")).toBe(true);
     expect(isAuthEntryPath("/sign-in/verify")).toBe(true);
