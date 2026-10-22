@@ -23,7 +23,7 @@ const base = {
   canDispatch: false, canReceive: false, canInvoice: false,
 };
 
-function issueButton(props: typeof base) {
+function issueButton(props: typeof base & { ownerAttestationEnabled?: boolean; canAttestBilling?: boolean }) {
   const html = renderToStaticMarkup(createElement(GatePassWorkflowControls, props));
   return { html, button: html.match(/<button[^>]*>Issue Gate Pass<\/button>/)?.[0] ?? "" };
 }
