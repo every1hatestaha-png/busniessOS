@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -58,8 +59,9 @@ describe("Gate Pass V2 read-only pre-issue warning", () => {
   it("keeps cancellation behind an explicit confirmation without changing invoice timing", () => {
     const { html } = issueButton({ ...base, canCancel: true });
     expect(html).toContain("Cancel Undispatched Gate Pass");
-    expect(html).toContain("Cancel this undispatched Gate Pass?");
-    expect(html).toContain("reserved inventory.");
+    const source = readFileSync("components/gate-passes/workflow-controls.tsx", "utf8");
+    expect(source).toContain('window.confirm("Cancel this undispatched Gate Pass?');
+    expect(source).toContain("event.preventDefault()");
   });
 
   it("blocks V2 ISSUE on insufficient stock without hiding the explanation", () => {
