@@ -18,7 +18,7 @@ export default async function OutboundGatePassPrintPage({ params, searchParams }
   const { workspaceId, workspace } = await requirePermission("business.read");
   requireOutboundGatePassDraftFeature(workspaceId);
   const gp = await getOutboundGatePass(workspaceId, id);
-  if (!gp || gp.status === "DRAFT" || gp.status === "CANCELLED") notFound();
+  if (!gp || gp.status === "CANCELLED") notFound();
 
   const date = gp.gatePassDate.toLocaleDateString("en-GB", { timeZone: "Asia/Karachi" });
   const isSingleUnit = gp.items.every((item) => item.productUnitSnapshot === gp.items[0]?.productUnitSnapshot);
@@ -33,11 +33,12 @@ export default async function OutboundGatePassPrintPage({ params, searchParams }
     <nav aria-label="Gate pass print actions" className="flex flex-wrap items-center justify-between gap-3 print:hidden">
       <Link href={`/gate-passes/${id}`} className="text-sm font-semibold underline underline-offset-4">Back to Gate Pass</Link>
       <div className="flex flex-wrap gap-2">
-        <PrintButton label="Print A4 Gate Pass" />
-        <PrintButton label="Print 80mm Copy" format="thermal" />
+        {gp.status === "DRAFT" ? <PrintButton label="Print Draft A4" /> : <PrintButton label="Print A4 Gate Pass" />}
+        {gp.status === "DRAFT" ? <PrintButton label="Print Draft 80mm" format="thermal" /> : <PrintButton label="Print 80mm Copy" format="thermal" />}
       </div>
     </nav>
 
+    {gp.status === "DRAFT" && <p role="status" className="rounded-md border-2 border-red-800 bg-red-50 p-3 text-center text-sm font-bold text-red-900 print:hidden">Draft preview only. Not authorized for dispatch, customer delivery or final invoicing.</p>}
     <GatePassPrintBody workspace={workspace} gp={{
       gatePassNumber: gp.gatePassNumber,
       status: gp.status,
