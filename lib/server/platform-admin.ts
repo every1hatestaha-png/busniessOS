@@ -98,12 +98,7 @@ function isProtectedMember(member: ExclusiveMember) {
     || Boolean(member.supabaseId && member.supabaseId === process.env.MUNSHIOS_PLATFORM_OWNER_SUPABASE_ID);
 }
 
-type AuthCleanupPlan = {
-  admin: ReturnType<typeof createClient> | null;
-  userIds: string[];
-};
-
-async function requireAuthCleanupClient(members: ExclusiveMember[]): Promise<AuthCleanupPlan> {
+async function requireAuthCleanupClient(members: ExclusiveMember[]) {
   const exclusive = members.filter((member) => member.workspaceCount === 1);
   const needsSupabase = exclusive.some((member) => member.supabaseId || !member.clerkId?.startsWith("user_"));
   const key = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
