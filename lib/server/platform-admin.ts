@@ -173,7 +173,7 @@ export async function deleteCustomerWorkspaceAccount(
   }
 
   const result = await db.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${workspaceId}))`;
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${workspaceId}))`;
     const found = await tx.$queryRaw<Array<{ id: string; name: string }>>`
       SELECT "id", "name" FROM "workspaces" WHERE "id"=${workspaceId} FOR UPDATE
     `;
