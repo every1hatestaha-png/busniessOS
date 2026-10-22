@@ -44,6 +44,7 @@ export default async function PlatformPage() {
     { label: "Free trials", value: metrics.trials, icon: Clock3 },
     { label: "Suspended", value: metrics.suspended, icon: ShieldCheck },
     { label: "Expired", value: metrics.expired, icon: Clock3 },
+    { label: "Unassigned", value: workspaces.filter((w) => w.status === "UNASSIGNED").length, icon: Building2 },
     { label: "Members", value: totalMembers, icon: Users },
     { label: "Activation requests", value: activationRequests, icon: Activity },
   ];
