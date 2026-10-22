@@ -139,7 +139,7 @@ export type PlatformWorkspaceRow = {
   memberCount: number;
   planCode: string | null;
   planName: string | null;
-  status: SubscriptionStatus;
+  status: SubscriptionStatus | "UNASSIGNED";
   trialEndsAt: Date | null;
   currentPeriodEnd: Date | null;
   graceEndsAt: Date | null;
@@ -162,7 +162,7 @@ export async function getPlatformDashboard() {
       COUNT(DISTINCT wm."id")::int AS "memberCount",
       p."code" AS "planCode",
       p."name" AS "planName",
-      s."status",
+      COALESCE(s."status"::text, 'UNASSIGNED') AS "status",
       s."trialEndsAt",
       s."currentPeriodEnd",
       s."graceEndsAt",
@@ -183,7 +183,7 @@ export async function getPlatformDashboard() {
         LIMIT 1
       ) AS "activationRequestedAt"
     FROM "workspaces" w
-    JOIN "workspace_subscriptions" s ON s."workspaceId" = w."id"
+    LEFT JOIN "workspace_subscriptions" s ON s."workspaceId" = w."id"
     LEFT JOIN "saas_plans" p ON p."id" = s."planId"
     LEFT JOIN "workspace_members" wm ON wm."workspaceId" = w."id"
     LEFT JOIN "workspace_members" owner_member ON owner_member."workspaceId" = w."id" AND owner_member."role" = 'OWNER'
@@ -255,6 +255,7 @@ async function getSubscriptionRow(workspaceId: string) {
 export async function extendWorkspaceTrial(workspaceId: string, days: number) {
   await requirePlatformOwner();
   const safeWorkspaceId = assertWorkspaceId(workspaceId);
+  await ensureWorkspaceSubscription(safeWorkspaceId);
   const safeDays = assertDays(days, 365);
   const before = await getSubscriptionRow(safeWorkspaceId);
   if (!before) throw new Error("Customer subscription not found.");
@@ -275,6 +276,7 @@ export async function extendWorkspaceTrial(workspaceId: string, days: number) {
 export async function activateWorkspaceSubscription(workspaceId: string, planCode: string, days: number) {
   await requirePlatformOwner();
   const safeWorkspaceId = assertWorkspaceId(workspaceId);
+  await ensureWorkspaceSubscription(safeWorkspaceId);
   const safePlanCode = planCode.trim().toLowerCase();
   if (!PLATFORM_PLANS.has(safePlanCode)) throw new Error("Invalid subscription plan.");
   const safeDays = assertDays(days, 1095);
@@ -300,6 +302,7 @@ export async function activateWorkspaceSubscription(workspaceId: string, planCod
 export async function grantWorkspaceGrace(workspaceId: string, days: number) {
   await requirePlatformOwner();
   const safeWorkspaceId = assertWorkspaceId(workspaceId);
+  await ensureWorkspaceSubscription(safeWorkspaceId);
   const safeDays = assertDays(days, 90);
   const before = await getSubscriptionRow(safeWorkspaceId);
   if (!before) throw new Error("Customer subscription not found.");
@@ -320,6 +323,7 @@ export async function grantWorkspaceGrace(workspaceId: string, days: number) {
 export async function suspendWorkspaceSubscription(workspaceId: string, reason: string) {
   await requirePlatformOwner();
   const safeWorkspaceId = assertWorkspaceId(workspaceId);
+  await ensureWorkspaceSubscription(safeWorkspaceId);
   const safeReason = reason.trim();
   if (!safeReason || safeReason.length > 240) throw new Error("Suspension reason must be between 1 and 240 characters.");
   const before = await getSubscriptionRow(safeWorkspaceId);

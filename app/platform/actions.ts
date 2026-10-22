@@ -8,7 +8,7 @@ import {
   grantWorkspaceGrace,
   suspendWorkspaceSubscription,
 } from "@/lib/server/subscriptions";
-import { deleteCustomerWorkspaceAccount } from "@/lib/server/platform-admin";
+import { deleteCustomerWorkspaceAccount, getWorkspaceDeletionPreview } from "@/lib/server/platform-admin";
 import { assertPlatformMfaEnabled } from "@/lib/server/platform-security";
 
 const ALLOWED_PLANS = new Set(["starter", "business", "pro"]);
@@ -41,6 +41,7 @@ export async function extendTrialAction(formData: FormData) {
   const days = readDays(formData, 7, 365);
   await extendWorkspaceTrial(workspaceId, days);
   revalidatePath("/platform");
+  revalidatePath("/admin/dashboard");
 }
 
 export async function activateSubscriptionAction(formData: FormData) {
@@ -51,6 +52,7 @@ export async function activateSubscriptionAction(formData: FormData) {
   const days = readDays(formData, 30, 1095);
   await activateWorkspaceSubscription(workspaceId, planCode, days);
   revalidatePath("/platform");
+  revalidatePath("/admin/dashboard");
 }
 
 export async function grantGraceAction(formData: FormData) {
@@ -59,6 +61,7 @@ export async function grantGraceAction(formData: FormData) {
   const days = readDays(formData, 7, 90);
   await grantWorkspaceGrace(workspaceId, days);
   revalidatePath("/platform");
+  revalidatePath("/admin/dashboard");
 }
 
 export async function suspendSubscriptionAction(formData: FormData) {
@@ -68,6 +71,13 @@ export async function suspendSubscriptionAction(formData: FormData) {
   if (!reason || reason.length > 240) throw new Error("Suspension reason must be between 1 and 240 characters.");
   await suspendWorkspaceSubscription(workspaceId, reason);
   revalidatePath("/platform");
+  revalidatePath("/admin/dashboard");
+}
+
+export async function previewCustomerAccountDeletionAction(workspaceId: string) {
+  await requireRecentPlatformMfa();
+  if (!workspaceId || workspaceId.length > 128) throw new Error("Invalid workspace.");
+  return getWorkspaceDeletionPreview(workspaceId);
 }
 
 export async function deleteCustomerAccountAction(formData: FormData) {
@@ -75,6 +85,12 @@ export async function deleteCustomerAccountAction(formData: FormData) {
   const workspaceId = readWorkspaceId(formData);
   const confirmation = String(formData.get("confirmName") ?? "").trim();
   if (!confirmation || confirmation.length > 200) throw new Error("Type the exact business name to confirm deletion.");
-  await deleteCustomerWorkspaceAccount(workspaceId, confirmation);
+  if (formData.get("acknowledgeIrreversible") !== "yes") {
+    throw new Error("Acknowledge that this operation cannot be undone.");
+  }
+  const phrase = String(formData.get("deletePhrase") ?? "");
+  const result = await deleteCustomerWorkspaceAccount(workspaceId, confirmation, phrase);
   revalidatePath("/platform");
+  revalidatePath("/admin/dashboard");
+  return result;
 }
