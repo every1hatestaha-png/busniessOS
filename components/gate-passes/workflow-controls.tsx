@@ -108,6 +108,18 @@ export function GatePassWorkflowControls({
       setOwnerResponsibilityAcknowledged(false);
     }} className="rounded-md border p-4 space-y-3">
       <h2 className="font-semibold">Issue gate pass</h2>
+      {issueDeductsStock && <div role="status" className="space-y-1 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+        <p className="font-semibold">Issue readiness for this saved draft</p>
+        <p>Inventory / assembly: {issueStockReady
+          ? "Preflight passed. The server checks real stock and BOM again before deduction."
+          : "Blocked. Review the exact stock or customer assembly errors above. No stock was deducted."}</p>
+        <p>Invoice timing: {deferredBillingReady
+          ? "A valid document-specific billing authorization is already recorded or configured."
+          : ownerDeclarationRequested
+            ? "OWNER action required. Complete the invoice-timing declaration below only if you have verified the actual customer terms and tax position."
+            : "Blocked. Only the workspace OWNER can make an eligible document-specific declaration, or a genuine reviewed approval must be configured."}</p>
+        <p>Saving a draft does not issue it. ISSUE deducts stock once only after both checks succeed.</p>
+      </div>}
       <p className="text-sm text-muted-foreground">{issueDeductsStock ? "Issuing deducts available stock once and freezes the product and BOM valuation. Cancel before dispatch to restore stock." : "Freeze document details before printing and dispatch."}</p>
       {issueDeductsStock && !deferredBillingReady && !ownerDeclarationRequested && <p role="status" className="text-sm text-amber-950">V2 issuance is blocked until billing and dispatch prerequisites are approved. No stock will be reserved. {ownerAttestationEnabled && "The workspace OWNER must record the invoice-timing declaration."}</p>}
       {ownerDeclarationRequested && ownerDeclarationFields}
@@ -116,7 +128,9 @@ export function GatePassWorkflowControls({
       <ActionFeedback state={issueState}/><button type="submit" disabled={issuing || (issueDeductsStock && ((!deferredBillingReady && !ownerDeclarationReady) || !issueStockReady))} className={buttonClass}>{issuing ? "Issuing…" : "Issue Gate Pass"}</button>
     </form>}
     {status !== "DRAFT" && status !== "CANCELLED" && <Link href={`/gate-passes/${id}/print`} className="inline-flex rounded-md border px-4 py-2 text-sm font-medium">Print gate pass</Link>}
-    {canCancel && (status === "DRAFT" || status === "ISSUED") && <form action={cancel} className="space-y-2">
+    {canCancel && (status === "DRAFT" || status === "ISSUED") && <form action={cancel} onSubmit={(event) => {
+      if (!window.confirm("Cancel this undispatched Gate Pass? This cannot be undone. An issued V2 Gate Pass will reverse its reserved inventory.")) event.preventDefault();
+    }} className="space-y-2">
       <input type="hidden" name="gatePassId" value={id}/>
       <ActionFeedback state={cancelState}/>
       <button disabled={cancelling} className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-800">Cancel Undispatched Gate Pass</button>
