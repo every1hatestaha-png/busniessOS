@@ -100,11 +100,11 @@ function isProtectedMember(member: ExclusiveMember) {
 
 async function requireAuthCleanupClient(members: ExclusiveMember[]) {
   const supabaseUsers = members.filter((member) => member.workspaceCount === 1 && member.supabaseId);
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const key = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!supabaseUsers.length) return null;
   if (!url || !key) {
-    throw new Error("Account purge unavailable: configure the server-only Supabase service-role key before removing customer identities.");
+    throw new Error("Account purge unavailable: configure a server-only Supabase secret key before removing customer identities.");
   }
   const admin = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
@@ -173,7 +173,7 @@ export async function deleteCustomerWorkspaceAccount(
   }
 
   const result = await db.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${workspaceId}))`;
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${workspaceId})) IS NULL AS "locked"`;
     const found = await tx.$queryRaw<Array<{ id: string; name: string }>>`
       SELECT "id", "name" FROM "workspaces" WHERE "id"=${workspaceId} FOR UPDATE
     `;
