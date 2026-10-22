@@ -64,7 +64,7 @@ if (["ghsa-x562-297c-g43g", "ghsa-3qxv-5xgr-q7w9", "ghsa-h3v5-h239-pg29"].some((
   if (!desktop.includes(denyAll)) {
     throw new Error("Electron permission advisory requires the desktop's deny-all permission handler.");
   }
-  if (desktop.includes("beginFrameSubscription") || /\\boffscreen\\s*:/.test(desktop)) {
+  if (desktop.includes("beginFrameSubscription") || desktop.includes("offscreen")) {
     throw new Error("Electron frame-capture advisory requires a patched dependency if frame subscriptions or offscreen rendering are used.");
   }
 }
