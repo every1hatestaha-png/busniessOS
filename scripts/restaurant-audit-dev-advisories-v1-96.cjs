@@ -10,10 +10,16 @@ const expectedAdvisories = new Set([
   // Electron 44.3.0 pointerLock frame-attribution advisory, with verified app-level deny-all mitigation.
   // Upgrade to patched Electron 44.5.0 and remove this exception once lockfile is regenerated.
   "GHSA-x562-297c-g43g",
+  // Reviewed Electron capture findings; existing desktop never enables these APIs.
+  "GHSA-3qxv-5xgr-q7w9",
+  "GHSA-h3v5-h239-pg29",
+  // ip-address is a dev-only dependency; no application-supplied IPv6 string enters that parser.
+  "GHSA-rxp7-6hxx-x8q5",
 ]);
 
 const devOnlyPaths = [
   "node_modules/electron",
+  "node_modules/ip-address",
   "node_modules/braces",
   "node_modules/micromatch",
   "node_modules/fast-glob",
@@ -52,11 +58,14 @@ const expectedLower = new Set([...expectedAdvisories].map((value) => value.toLow
 // GHSA-x562-297c-g43g affects Electron apps granting pointerLock based on a
 // misattributed cross-origin iframe origin. Our desktop must continue rejecting
 // every permission request. Fail the audit if that mitigation is removed.
-if (foundAdvisories.has("ghsa-x562-297c-g43g")) {
+if (["ghsa-x562-297c-g43g", "ghsa-3qxv-5xgr-q7w9", "ghsa-h3v5-h239-pg29"].some((id) => foundAdvisories.has(id))) {
   const desktop = fs.readFileSync("desktop/main.cjs", "utf8");
   const denyAll = "session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));";
   if (!desktop.includes(denyAll)) {
-    throw new Error("Electron pointerLock advisory cannot be contained without the desktop's deny-all permission handler.");
+    throw new Error("Electron permission advisory requires the desktop's deny-all permission handler.");
+  }
+  if (desktop.includes("beginFrameSubscription") || /\\boffscreen\\s*:/.test(desktop)) {
+    throw new Error("Electron frame-capture advisory requires a patched dependency if frame subscriptions or offscreen rendering are used.");
   }
 }
 
