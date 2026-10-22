@@ -28,6 +28,40 @@ function issueButton(props: typeof base) {
 }
 
 describe("Gate Pass V2 read-only pre-issue warning", () => {
+  it("explains why a V2 draft with insufficient inventory cannot issue", () => {
+    const { html, button } = issueButton({ ...base, issueStockReady: false });
+    expect(button).toContain('disabled=""');
+    expect(html).toContain("Inventory / assembly:");
+    expect(html).toContain("Review the exact stock or customer assembly errors above.");
+    expect(html).toContain("Saving a draft does not issue it.");
+  });
+
+  it("identifies required OWNER declaration without fabricating authorization", () => {
+    const { html, button } = issueButton({
+      ...base, deferredBillingReady: false, ownerAttestationEnabled: true, canAttestBilling: true,
+    });
+    expect(button).toContain('disabled=""');
+    expect(html).toContain("OWNER action required.");
+    expect(html).toContain("verified the actual customer terms and tax position");
+    expect(html).toContain('name="ownerBasis"');
+  });
+
+  it("identifies missing owner permission as an authorization blocker", () => {
+    const { html, button } = issueButton({
+      ...base, deferredBillingReady: false, ownerAttestationEnabled: true, canAttestBilling: false,
+    });
+    expect(button).toContain('disabled=""');
+    expect(html).toContain("Only the workspace OWNER");
+    expect(html).not.toContain('name="ownerBasis"');
+  });
+
+  it("keeps cancellation behind an explicit confirmation without changing invoice timing", () => {
+    const { html } = issueButton({ ...base, canCancel: true });
+    expect(html).toContain("Cancel Undispatched Gate Pass");
+    expect(html).toContain("Cancel this undispatched Gate Pass?");
+    expect(html).toContain("reserved inventory.");
+  });
+
   it("blocks V2 ISSUE on insufficient stock without hiding the explanation", () => {
     const { html, button } = issueButton({ ...base, issueStockReady: false });
     expect(button).toMatch(/\sdisabled(?:=|\s|>)/);
