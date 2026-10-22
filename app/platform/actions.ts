@@ -41,6 +41,7 @@ export async function extendTrialAction(formData: FormData) {
   const days = readDays(formData, 7, 365);
   await extendWorkspaceTrial(workspaceId, days);
   revalidatePath("/platform");
+  revalidatePath("/admin/dashboard");
 }
 
 export async function activateSubscriptionAction(formData: FormData) {
@@ -51,6 +52,7 @@ export async function activateSubscriptionAction(formData: FormData) {
   const days = readDays(formData, 30, 1095);
   await activateWorkspaceSubscription(workspaceId, planCode, days);
   revalidatePath("/platform");
+  revalidatePath("/admin/dashboard");
 }
 
 export async function grantGraceAction(formData: FormData) {
@@ -59,6 +61,7 @@ export async function grantGraceAction(formData: FormData) {
   const days = readDays(formData, 7, 90);
   await grantWorkspaceGrace(workspaceId, days);
   revalidatePath("/platform");
+  revalidatePath("/admin/dashboard");
 }
 
 export async function suspendSubscriptionAction(formData: FormData) {
@@ -68,6 +71,7 @@ export async function suspendSubscriptionAction(formData: FormData) {
   if (!reason || reason.length > 240) throw new Error("Suspension reason must be between 1 and 240 characters.");
   await suspendWorkspaceSubscription(workspaceId, reason);
   revalidatePath("/platform");
+  revalidatePath("/admin/dashboard");
 }
 
 export async function previewCustomerAccountDeletionAction(workspaceId: string) {
