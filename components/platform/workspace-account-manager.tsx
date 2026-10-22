@@ -227,6 +227,7 @@ export function WorkspaceAccountManager({ workspaces }: { workspaces: ManagedWor
                         <span>Sales orders: <b>{preview.orderCount}</b></span><span>Other linked tables: <b>Included</b></span>
                       </div>
                       <p className="mt-3 text-xs leading-5 text-rose-900">This cannot be undone. Shared users in other businesses are preserved. External backups and snapshots are not purged.</p>
+                      {!preview.permanentPurgeConfigured && <p role="alert" className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-950">Permanent deletion is locked until a Supabase server-only secret key is configured in the production environment. No account data will be deleted while this is missing.</p>}
                     </div>
                     <label className="block text-xs font-semibold text-slate-700">Type the exact business name
                       <input required autoComplete="off" value={typedName} onChange={(event) => setTypedName(event.target.value)} className="mt-1.5 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm font-normal" placeholder={current.name} />
@@ -235,7 +236,7 @@ export function WorkspaceAccountManager({ workspaces }: { workspaces: ManagedWor
                       <input required autoComplete="off" value={typedPhrase} onChange={(event) => setTypedPhrase(event.target.value)} className="mt-1.5 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm font-normal" placeholder="DELETE PERMANENTLY" />
                     </label>
                     <label className="flex items-start gap-2 text-xs leading-5 text-slate-700"><input type="checkbox" checked={ack} onChange={(event) => setAck(event.target.checked)} className="mt-1 accent-rose-700" /><span>I understand that live account records and exclusive identities may be permanently deleted, and restore is not guaranteed.</span></label>
-                    <button type="submit" disabled={!exactMatch || deleting} className="w-full rounded-lg bg-rose-700 px-4 py-3 text-sm font-semibold text-white hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-40">{deleting ? "Permanently deleting..." : "Permanently delete this account"}</button>
+                    <button type="submit" disabled={!exactMatch || deleting || !preview.permanentPurgeConfigured} className="w-full rounded-lg bg-rose-700 px-4 py-3 text-sm font-semibold text-white hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-40">{deleting ? "Permanently deleting..." : "Permanently delete this account"}</button>
                   </form>
                 )}
                 {result && <div role="status" className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
