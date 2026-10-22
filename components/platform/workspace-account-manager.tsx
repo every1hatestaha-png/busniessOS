@@ -31,13 +31,14 @@ export type ManagedWorkspace = {
 type Preview = Awaited<ReturnType<typeof previewCustomerAccountDeletionAction>>;
 type DeletionResult = Awaited<ReturnType<typeof deleteCustomerAccountAction>>;
 
-const filters = ["ALL", "ACTIVE", "TRIALING", "GRACE", "SUSPENDED", "EXPIRED"] as const;
+const filters = ["ALL", "ACTIVE", "TRIALING", "GRACE", "SUSPENDED", "EXPIRED", "UNASSIGNED"] as const;
 const statusStyles: Record<string, string> = {
   ACTIVE: "bg-emerald-50 text-emerald-700 ring-emerald-200",
   TRIALING: "bg-sky-50 text-sky-700 ring-sky-200",
   GRACE: "bg-amber-50 text-amber-700 ring-amber-200",
   SUSPENDED: "bg-rose-50 text-rose-700 ring-rose-200",
   EXPIRED: "bg-slate-100 text-slate-600 ring-slate-200",
+  UNASSIGNED: "bg-violet-50 text-violet-700 ring-violet-200",
 };
 function statusStyle(value: string) {
   return statusStyles[value] ?? "bg-slate-100 text-slate-600 ring-slate-200";
@@ -133,7 +134,7 @@ export function WorkspaceAccountManager({ workspaces }: { workspaces: ManagedWor
             <label htmlFor="admin-account-filter" className="sr-only">Status filter</label>
             <select id="admin-account-filter" value={filter} onChange={(e) => setFilter(e.target.value)}
               className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700">
-              {filters.map((value) => <option key={value} value={value}>{value === "ALL" ? "All statuses" : value === "TRIALING" ? "Trials" : value[0]+value.slice(1).toLowerCase()}</option>)}
+              {filters.map((value) => <option key={value} value={value}>{value === "ALL" ? "All statuses" : value === "TRIALING" ? "Trials" : value === "UNASSIGNED" ? "Unassigned" : value[0]+value.slice(1).toLowerCase()}</option>)}
             </select>
           </div>
         </div>
