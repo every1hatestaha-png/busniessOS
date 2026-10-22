@@ -123,6 +123,9 @@ async function requireAuthCleanupClient(members: ExclusiveMember[]) {
     if (matched && member.supabaseId && matched !== member.supabaseId) {
       throw new Error("Account purge blocked: member identity mismatches Supabase Auth. Investigate before deleting.");
     }
+    if (!matched && member.supabaseId) {
+      throw new Error("Account purge blocked: pinned Supabase identity was not found. Verify identity reconciliation first.");
+    }
     if (!matched && !member.clerkId?.startsWith("user_") && !member.supabaseId) {
       throw new Error("Account purge blocked: an unclassified customer identity needs manual verification.");
     }
