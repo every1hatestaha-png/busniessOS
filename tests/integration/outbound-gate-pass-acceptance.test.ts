@@ -830,7 +830,11 @@ describe.skipIf(!run)("disposable PG18 gate pass end-to-end acceptance", () => {
   it("renders issued independent print and accepted-only pending invoices before final invoicing", async () => {
     const f=await fixture();
     const {default:Print}=await import("@/app/(dashboard)/gate-passes/[id]/print/page");
-    await expect(Print({params:Promise.resolve({id:f.gp.id})})).rejects.toThrow();
+    const draftPreview=renderToStaticMarkup(await Print({params:Promise.resolve({id:f.gp.id})}));
+    expect(draftPreview).toContain("DRAFT COPY — NOT VALID FOR DISPATCH OR CUSTOMER DELIVERY");
+    expect(draftPreview).toContain("UNISSUED DRAFT. Stock has not been deducted.");
+    expect(draftPreview).not.toContain("Receiver signature");
+    expect((await db.product.findUniqueOrThrow({where:{id:f.productId}})).stockQuantity.toNumber()).toBe(100);
     await issueGatePass(ctx(),f.gp.id);
     const printed=renderToStaticMarkup(await Print({params:Promise.resolve({id:f.gp.id})}));
     expect(printed).toContain(f.gp.gatePassNumber); expect(printed).toContain("Receiver signature"); expect(printed).not.toContain("INV-");
