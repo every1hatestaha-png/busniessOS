@@ -119,7 +119,7 @@ export function GatePassWorkflowControls({
             ? "OWNER action required. Complete the invoice-timing declaration below only if you have verified the actual customer terms and tax position."
             : "Blocked. Only the workspace OWNER can make an eligible document-specific declaration, or a genuine reviewed approval must be configured."}</p>
         <p>Saving a draft does not issue it. ISSUE deducts stock once only after both checks succeed.</p>
-      </div> 
+      </div>}
       <p className="text-sm text-muted-foreground">{issueDeductsStock ? "Issuing deducts available stock once and freezes the product and BOM valuation. Cancel before dispatch to restore stock." : "Freeze document details before printing and dispatch."}</p>
       {issueDeductsStock && !deferredBillingReady && !ownerDeclarationRequested && <p role="status" className="text-sm text-amber-950">V2 issuance is blocked until billing and dispatch prerequisites are approved. No stock will be reserved. {ownerAttestationEnabled && "The workspace OWNER must record the invoice-timing declaration."}</p>}
       {ownerDeclarationRequested && ownerDeclarationFields}
