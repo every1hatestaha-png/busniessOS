@@ -100,7 +100,8 @@ function isProtectedMember(member: ExclusiveMember) {
 
 async function requireAuthCleanupClient(members: ExclusiveMember[]) {
   const exclusive = members.filter((member) => member.workspaceCount === 1);
-  const needsSupabase = exclusive.some((member) => member.supabaseId || !member.clerkId?.startsWith("user_"));
+  // Even memberless accounts need a Storage inventory before any permanent purge.
+  const needsSupabase = true;
   const key = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!needsSupabase) return { admin: null, userIds: [] };
