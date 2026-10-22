@@ -117,7 +117,8 @@ export default async function OutboundGatePassPage({ params }: { params: Promise
         <h1 className="mt-2 font-mono text-2xl font-bold">{gatePass.gatePassNumber}</h1>
         <p className="text-sm text-muted-foreground">{gatePass.status} · {gatePass.gatePassDate.toLocaleDateString("en-GB", { timeZone: "Asia/Karachi" })}</p>
       </div>
-      {gatePass.status === "DRAFT" && <div className="flex flex-wrap items-center gap-3"><span className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">Draft only, not valid for dispatch</span>{canPerformAction(role, "sales.create") && <Link href={`/gate-passes/${gatePass.id}/edit`} className="rounded-md border px-3 py-2 text-sm font-medium">Edit draft</Link>}</div>}
+      {gatePass.status === "DRAFT" && <div className="flex flex-wrap items-center gap-3"><span className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">Draft only, not valid for dispatch</span><Link href={`/gate-passes/${gatePass.id}/print`} className="rounded-md border border-blue-600 px-3 py-2 text-sm font-semibold text-blue-700">Print Draft Preview</Link>{canPerformAction(role, "sales.create") && <Link href={`/gate-passes/${gatePass.id}/edit`} className="rounded-md border px-3 py-2 text-sm font-medium">Edit draft</Link>}</div>}
+      {gatePass.status !== "DRAFT" && gatePass.status !== "CANCELLED" && <Link href={`/gate-passes/${gatePass.id}/print`} className="rounded-md border border-blue-600 px-4 py-2 text-sm font-semibold text-blue-700">Print Gate Pass</Link>}
     </div>
     <div className="rounded-md border p-5">
       <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Customer</p>
