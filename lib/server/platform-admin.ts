@@ -91,6 +91,7 @@ type ExclusiveMember = {
   clerkId: string | null;
   supabaseId: string | null;
   workspaceCount: number;
+  externalInvitations: number;
 };
 
 function isProtectedMember(member: ExclusiveMember) {
@@ -99,7 +100,7 @@ function isProtectedMember(member: ExclusiveMember) {
 }
 
 async function requireAuthCleanupClient(members: ExclusiveMember[]) {
-  const exclusive = members.filter((member) => member.workspaceCount === 1);
+  const exclusive = members.filter((member) => member.workspaceCount === 1 && member.externalInvitations === 0);
   // Even memberless accounts need a Storage inventory before any permanent purge.
   const key = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -168,7 +169,8 @@ export async function deleteCustomerWorkspaceAccount(
 
   const memberRows = await db.$queryRaw<ExclusiveMember[]>`
     SELECT u."id" AS "userId", u."email", u."clerkId", u."supabaseId",
-      (SELECT COUNT(*)::int FROM "workspace_members" m2 WHERE m2."userId" = u."id") AS "workspaceCount"
+      (SELECT COUNT(*)::int FROM "workspace_members" m2 WHERE m2."userId" = u."id") AS "workspaceCount",
+      (SELECT COUNT(*)::int FROM "workspace_invitations" i WHERE i."invitedById" = u."id" AND i."workspaceId" <> ${workspaceId}) AS "externalInvitations"
     FROM "users" u JOIN "workspace_members" wm ON wm."userId" = u."id"
     WHERE wm."workspaceId" = ${workspaceId}
   `;
@@ -176,7 +178,7 @@ export async function deleteCustomerWorkspaceAccount(
     throw new Error("Protected platform owner identity cannot be deleted.");
   }
 
-  const exclusiveMembers = memberRows.filter((member) => member.workspaceCount === 1);
+  const exclusiveMembers = memberRows.filter((member) => member.workspaceCount === 1 && member.externalInvitations === 0);
   const authCleanup = await requireAuthCleanupClient(exclusiveMembers);
   // Clerk remains a legacy desktop provider. Do not attempt to delete synthetic
   // or Supabase-only clerk IDs and do not delete users from other workspaces.
@@ -192,14 +194,15 @@ export async function deleteCustomerWorkspaceAccount(
     `;
     if (!found.length || found[0].name !== workspace.name) throw new Error("Customer account changed. Reconfirm deletion.");
 
-    const lockedMembers = await tx.$queryRaw<Array<{ userId: string; workspaceCount: number }>>`
+    const lockedMembers = await tx.$queryRaw<Array<{ userId: string; workspaceCount: number; externalInvitations: number }>>`
       SELECT u."id" AS "userId",
-        (SELECT COUNT(*)::int FROM "workspace_members" m2 WHERE m2."userId" = u."id") AS "workspaceCount"
+        (SELECT COUNT(*)::int FROM "workspace_members" m2 WHERE m2."userId" = u."id") AS "workspaceCount",
+        (SELECT COUNT(*)::int FROM "workspace_invitations" i WHERE i."invitedById" = u."id" AND i."workspaceId" <> ${workspaceId}) AS "externalInvitations"
       FROM "users" u JOIN "workspace_members" wm ON wm."userId" = u."id"
       WHERE wm."workspaceId"=${workspaceId}
     `;
-    const expectedMemberships = memberRows.map((member) => `${member.userId}:${member.workspaceCount}`).sort().join("|");
-    const actualMemberships = lockedMembers.map((member) => `${member.userId}:${member.workspaceCount}`).sort().join("|");
+    const expectedMemberships = memberRows.map((member) => `${member.userId}:${member.workspaceCount}:${member.externalInvitations}`).sort().join("|");
+    const actualMemberships = lockedMembers.map((member) => `${member.userId}:${member.workspaceCount}:${member.externalInvitations}`).sort().join("|");
     if (expectedMemberships !== actualMemberships) {
       throw new Error("Customer membership changed during account purge. No records were deleted.");
     }
