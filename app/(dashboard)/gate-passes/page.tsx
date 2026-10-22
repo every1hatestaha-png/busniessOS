@@ -18,12 +18,12 @@ export default async function GatePassesPage() {
     <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Dispatch requires recorded invoice-timing authorization. For future V2 Gate Passes, available stock is deducted once at ISSUE and is not deducted again at DISPATCH. Older Gate Passes retain the legacy dispatch-time stock rule. Record signed customer receiving before preparing accepted-only credit invoices. Existing records are not changed by a V2 cutover.</p>
     <div className="overflow-x-auto rounded-md border">
       <table className="w-full min-w-[640px] text-left text-sm">
-        <thead className="bg-muted/40"><tr><th className="p-3">Gate pass</th><th className="p-3">Customer</th><th className="p-3">Date</th><th className="p-3">Items</th><th className="p-3">Status</th></tr></thead>
+        <thead className="bg-muted/40"><tr><th className="p-3">Gate pass</th><th className="p-3">Customer</th><th className="p-3">Date</th><th className="p-3">Items</th><th className="p-3">Status</th><th className="p-3">Print</th></tr></thead>
         <tbody>{rows.map((row) => <tr key={row.id} className="border-t">
           <td className="p-3 font-mono"><Link href={"/gate-passes/" + row.id} className="font-semibold underline underline-offset-4">{row.gatePassNumber}</Link></td>
           <td className="p-3">{row.customer.companyName || row.customer.name}</td>
           <td className="p-3">{row.gatePassDate.toLocaleDateString("en-GB", { timeZone: "Asia/Karachi" })}</td>
-          <td className="p-3">{row._count.items}</td><td className="p-3">{row.status}</td>
+          <td className="p-3">{row._count.items}</td><td className="p-3">{row.status}</td><td className="p-3">{row.status !== "CANCELLED" && <Link href={`/gate-passes/${row.id}/print`} className="font-medium underline underline-offset-4">{row.status === "DRAFT" ? "Preview draft" : "Print Gate Pass"}</Link>}</td>
         </tr>)}</tbody>
       </table>
       {rows.length === 0 && <p className="p-5 text-sm text-muted-foreground">No gate pass drafts have been created yet.</p>}

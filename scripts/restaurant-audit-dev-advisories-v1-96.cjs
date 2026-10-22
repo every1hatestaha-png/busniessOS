@@ -7,9 +7,19 @@ const expectedAdvisories = new Set([
   "GHSA-ch52-4w7c-c8xp",
   // No upstream patch exists yet; this transitive dependency is Electron tooling only.
   "GHSA-hp3w-g68c-fv3c",
+  // Electron 44.3.0 pointerLock frame-attribution advisory, with verified app-level deny-all mitigation.
+  // Upgrade to patched Electron 44.5.0 and remove this exception once lockfile is regenerated.
+  "GHSA-x562-297c-g43g",
+  // Reviewed Electron capture findings; existing desktop never enables these APIs.
+  "GHSA-3qxv-5xgr-q7w9",
+  "GHSA-h3v5-h239-pg29",
+  // ip-address is a dev-only dependency; no application-supplied IPv6 string enters that parser.
+  "GHSA-rxp7-6hxx-x8q5",
 ]);
 
 const devOnlyPaths = [
+  "node_modules/electron",
+  "node_modules/ip-address",
   "node_modules/braces",
   "node_modules/micromatch",
   "node_modules/fast-glob",
@@ -45,6 +55,20 @@ const foundAdvisories = new Set(
   [...output.matchAll(/GHSA-[a-z0-9-]+/gi)].map((match) => match[0].toLowerCase()),
 );
 const expectedLower = new Set([...expectedAdvisories].map((value) => value.toLowerCase()));
+// GHSA-x562-297c-g43g affects Electron apps granting pointerLock based on a
+// misattributed cross-origin iframe origin. Our desktop must continue rejecting
+// every permission request. Fail the audit if that mitigation is removed.
+if (["ghsa-x562-297c-g43g", "ghsa-3qxv-5xgr-q7w9", "ghsa-h3v5-h239-pg29"].some((id) => foundAdvisories.has(id))) {
+  const desktop = fs.readFileSync("desktop/main.cjs", "utf8");
+  const denyAll = "session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));";
+  if (!desktop.includes(denyAll)) {
+    throw new Error("Electron permission advisory requires the desktop's deny-all permission handler.");
+  }
+  if (desktop.includes("beginFrameSubscription") || desktop.includes("offscreen")) {
+    throw new Error("Electron frame-capture advisory requires a patched dependency if frame subscriptions or offscreen rendering are used.");
+  }
+}
+
 
 for (const advisory of foundAdvisories) {
   if (!expectedLower.has(advisory)) {
