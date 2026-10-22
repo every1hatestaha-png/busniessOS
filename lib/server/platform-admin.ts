@@ -98,27 +98,45 @@ function isProtectedMember(member: ExclusiveMember) {
     || Boolean(member.supabaseId && member.supabaseId === process.env.MUNSHIOS_PLATFORM_OWNER_SUPABASE_ID);
 }
 
-async function requireAuthCleanupClient(members: ExclusiveMember[]) {
-  const supabaseUsers = members.filter((member) => member.workspaceCount === 1 && member.supabaseId);
+type AuthCleanupPlan = {
+  admin: ReturnType<typeof createClient> | null;
+  userIds: string[];
+};
+
+async function requireAuthCleanupClient(members: ExclusiveMember[]): Promise<AuthCleanupPlan> {
+  const exclusive = members.filter((member) => member.workspaceCount === 1);
+  const needsSupabase = exclusive.some((member) => member.supabaseId || !member.clerkId?.startsWith("user_"));
   const key = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!supabaseUsers.length) return null;
+  if (!needsSupabase) return { admin: null, userIds: [] };
   if (!url || !key) {
     throw new Error("Account purge unavailable: configure a server-only Supabase secret key before removing customer identities.");
   }
-  const admin = createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-  });
-  // Reject missing admin privileges before touching Neon customer data.
-  const { error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1 });
-  if (error) throw new Error("Account purge unavailable: Supabase Auth admin access cannot be verified.");
-  const { data: buckets, error: storageError } = await admin.storage.listBuckets();
-  if (storageError) throw new Error("Account purge unavailable: Supabase Storage inventory could not be verified.");
-  if (buckets?.length) {
-    // Owner-linked uploads must be inventoried before deletion, not blindly deleted.
-    throw new Error("Account purge unavailable: Storage buckets exist. Verify object ownership and cleanup before proceeding.");
+  const admin = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+  const users: Array<{ id: string; email?: string }> = [];
+  for (let page = 1; page <= 20; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error || !data) throw new Error("Account purge unavailable: Supabase Auth users cannot be checked.");
+    users.push(...data.users.map((user) => ({ id: user.id, email: user.email })));
+    if (data.users.length < 1000) break;
+    if (page === 20) throw new Error("Account purge unavailable: Supabase Auth catalog too large for safe identity reconciliation.");
   }
-  return admin;
+  const byEmail = new Map(users.filter((user) => user.email).map((user) => [user.email!.trim().toLowerCase(), user.id]));
+  const userIds = new Set<string>();
+  for (const member of exclusive) {
+    const matched = byEmail.get(member.email.trim().toLowerCase());
+    if (matched && member.supabaseId && matched !== member.supabaseId) {
+      throw new Error("Account purge blocked: member identity mismatches Supabase Auth. Investigate before deleting.");
+    }
+    if (!matched && !member.clerkId?.startsWith("user_") && !member.supabaseId) {
+      throw new Error("Account purge blocked: an unclassified customer identity needs manual verification.");
+    }
+    if (matched) userIds.add(matched);
+  }
+  const { data: buckets, error: storageError } = await admin.storage.listBuckets();
+  if (storageError) throw new Error("Account purge unavailable: Supabase Storage cannot be inventoried.");
+  if (buckets?.length) throw new Error("Account purge blocked: Storage buckets require a separate object ownership and cleanup review.");
+  return { admin, userIds: [...userIds] };
 }
 
 export async function getWorkspaceDeletionPreview(workspaceId: string) {
@@ -164,7 +182,7 @@ export async function deleteCustomerWorkspaceAccount(
   }
 
   const exclusiveMembers = memberRows.filter((member) => member.workspaceCount === 1);
-  const authAdmin = await requireAuthCleanupClient(exclusiveMembers);
+  const authCleanup = await requireAuthCleanupClient(exclusiveMembers);
   // Clerk remains a legacy desktop provider. Do not attempt to delete synthetic
   // or Supabase-only clerk IDs and do not delete users from other workspaces.
   const clerkIdentities = exclusiveMembers.filter((member) => member.clerkId?.startsWith("user_"));
@@ -209,17 +227,17 @@ export async function deleteCustomerWorkspaceAccount(
   const failures: string[] = [];
   // Identity providers are not in the Neon transaction. We must report every
   // failed external cleanup explicitly instead of misreporting full deletion.
-  if (authAdmin) {
-    for (const member of exclusiveMembers) {
-      if (!member.supabaseId) continue;
+  if (authCleanup.admin) {
+    for (const userId of authCleanup.userIds) {
       try {
-        const { error } = await authAdmin.auth.admin.deleteUser(member.supabaseId, false);
+        const { error } = await authCleanup.admin.auth.admin.deleteUser(userId, false);
         if (error) throw error;
       } catch {
-        failures.push("Supabase Auth cleanup pending for an exclusively owned member.");
+        failures.push("Supabase Auth identity cleanup failed; review the provider user inventory.");
       }
     }
   }
+
   if (clerkIdentities.length) {
     try {
       const clerk = await clerkClient();
