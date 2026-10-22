@@ -101,10 +101,8 @@ function isProtectedMember(member: ExclusiveMember) {
 async function requireAuthCleanupClient(members: ExclusiveMember[]) {
   const exclusive = members.filter((member) => member.workspaceCount === 1);
   // Even memberless accounts need a Storage inventory before any permanent purge.
-  const needsSupabase = true;
   const key = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!needsSupabase) return { admin: null, userIds: [] };
   if (!url || !key) {
     throw new Error("Account purge unavailable: configure a server-only Supabase secret key before removing customer identities.");
   }
@@ -193,6 +191,18 @@ export async function deleteCustomerWorkspaceAccount(
       SELECT "id", "name" FROM "workspaces" WHERE "id"=${workspaceId} FOR UPDATE
     `;
     if (!found.length || found[0].name !== workspace.name) throw new Error("Customer account changed. Reconfirm deletion.");
+
+    const lockedMembers = await tx.$queryRaw<Array<{ userId: string; workspaceCount: number }>>`
+      SELECT u."id" AS "userId",
+        (SELECT COUNT(*)::int FROM "workspace_members" m2 WHERE m2."userId" = u."id") AS "workspaceCount"
+      FROM "users" u JOIN "workspace_members" wm ON wm."userId" = u."id"
+      WHERE wm."workspaceId"=${workspaceId}
+    `;
+    const expectedMemberships = memberRows.map((member) => `${member.userId}:${member.workspaceCount}`).sort().join("|");
+    const actualMemberships = lockedMembers.map((member) => `${member.userId}:${member.workspaceCount}`).sort().join("|");
+    if (expectedMemberships !== actualMemberships) {
+      throw new Error("Customer membership changed during account purge. No records were deleted.");
+    }
 
     const currentTables = await tx.$queryRaw<Array<{ table_name: string }>>`
       SELECT table_name FROM information_schema.columns
