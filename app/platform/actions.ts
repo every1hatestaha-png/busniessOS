@@ -8,7 +8,7 @@ import {
   grantWorkspaceGrace,
   suspendWorkspaceSubscription,
 } from "@/lib/server/subscriptions";
-import { deleteCustomerWorkspaceAccount } from "@/lib/server/platform-admin";
+import { deleteCustomerWorkspaceAccount, getWorkspaceDeletionPreview } from "@/lib/server/platform-admin";
 import { assertPlatformMfaEnabled } from "@/lib/server/platform-security";
 
 const ALLOWED_PLANS = new Set(["starter", "business", "pro"]);
@@ -70,11 +70,23 @@ export async function suspendSubscriptionAction(formData: FormData) {
   revalidatePath("/platform");
 }
 
+export async function previewCustomerAccountDeletionAction(workspaceId: string) {
+  await requireRecentPlatformMfa();
+  if (!workspaceId || workspaceId.length > 128) throw new Error("Invalid workspace.");
+  return getWorkspaceDeletionPreview(workspaceId);
+}
+
 export async function deleteCustomerAccountAction(formData: FormData) {
   await requireRecentPlatformMfa();
   const workspaceId = readWorkspaceId(formData);
   const confirmation = String(formData.get("confirmName") ?? "").trim();
   if (!confirmation || confirmation.length > 200) throw new Error("Type the exact business name to confirm deletion.");
-  await deleteCustomerWorkspaceAccount(workspaceId, confirmation);
+  if (formData.get("acknowledgeIrreversible") !== "yes") {
+    throw new Error("Acknowledge that this operation cannot be undone.");
+  }
+  const phrase = String(formData.get("deletePhrase") ?? "");
+  const result = await deleteCustomerWorkspaceAccount(workspaceId, confirmation, phrase);
   revalidatePath("/platform");
+  revalidatePath("/admin/dashboard");
+  return result;
 }
