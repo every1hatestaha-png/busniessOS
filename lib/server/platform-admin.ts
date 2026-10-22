@@ -149,6 +149,7 @@ export async function getWorkspaceDeletionPreview(workspaceId: string) {
   return {
     workspaceId, workspaceName: workspace.name, members, customerCount,
     productCount, invoiceCount, orderCount,
+    permanentPurgeConfigured: Boolean(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY),
     notes: "Removes active workspace records. Database backups, external exports and provider snapshots follow their separate retention policies.",
   };
 }
