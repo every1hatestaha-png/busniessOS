@@ -29,7 +29,7 @@ export type ManagedWorkspace = {
 };
 
 type Preview = Awaited<ReturnType<typeof previewCustomerAccountDeletionAction>>;
-type DeletionResult = Awaited<ReturnType<typeof deleteCustomerAccountAction>>;
+type DeletionResult = Extract<Awaited<ReturnType<typeof deleteCustomerAccountAction>>, { ok: true }>;
 
 const filters = ["ALL", "ACTIVE", "TRIALING", "GRACE", "SUSPENDED", "EXPIRED", "UNASSIGNED"] as const;
 const statusStyles: Record<string, string> = {
@@ -99,6 +99,10 @@ export function WorkspaceAccountManager({ workspaces }: { workspaces: ManagedWor
       data.set("deletePhrase", typedPhrase);
       data.set("acknowledgeIrreversible", "yes");
       const response = await deleteCustomerAccountAction(data);
+      if (!response.ok) {
+        setError(response.error);
+        return;
+      }
       setResult(response);
       setPreview(null);
     } catch (e) {
@@ -246,7 +250,7 @@ export function WorkspaceAccountManager({ workspaces }: { workspaces: ManagedWor
                   {result.warnings.map((w,i) => <p key={i} className="mt-1 text-xs">{w}</p>)}
                   <button type="button" onClick={() => window.location.reload()} className="mt-3 rounded-lg bg-amber-800 px-3 py-2 text-xs font-semibold text-white">Refresh account list</button>
                 </div>}
-                {error && <div role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs leading-5 text-rose-900">{error} <Link className="font-semibold underline" href="/admin/security">Verify MFA</Link></div>}
+                {error && <div role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs leading-5 text-rose-900">{error} {/MFA|authenticator/i.test(error) && <Link className="font-semibold underline" href="/admin/security">Verify MFA</Link>}</div>}
               </section>
             </div>
           </section>
