@@ -9,9 +9,12 @@
 CREATE OR REPLACE FUNCTION munshios_admin_purge_matches_workspace(target_id text)
 RETURNS boolean AS $$
 BEGIN
-  RETURN target_id IS NOT NULL
+  RETURN COALESCE(
+    target_id IS NOT NULL
     AND target_id <> ''
-    AND target_id = NULLIF(pg_catalog.current_setting('munshios.purge_workspace_id', true), '');
+    AND target_id = NULLIF(pg_catalog.current_setting('munshios.purge_workspace_id', true), ''),
+    false
+  );
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
