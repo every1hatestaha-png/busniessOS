@@ -10,6 +10,7 @@ import {
 } from "@/lib/server/subscriptions";
 import { deleteCustomerWorkspaceAccount, finalizeOwnerRequestedAuthCleanup, getWorkspaceDeletionPreview } from "@/lib/server/platform-admin";
 import { assertPlatformMfaEnabled } from "@/lib/server/platform-security";
+import { approveVerifiedManualPayment } from "@/lib/server/prepaid-workspace";
 
 const ALLOWED_PLANS = new Set(["starter", "business", "pro"]);
 
@@ -115,5 +116,28 @@ export async function finalizeOwnerCleanupAction() {
   } catch (error) {
     console.error("Owner legacy authentication cleanup blocked:", error);
     return { ok: false as const, error: "Auth cleanup was blocked. Verify the three protected workspaces are the only remaining businesses, and check the server logs." };
+  }
+}
+
+export type ManualPaymentState = { status?: "success" | "error"; message?: string };
+
+export async function approveManualPaymentAction(
+  _previousState: ManualPaymentState,
+  formData: FormData,
+): Promise<ManualPaymentState> {
+  if (formData.get("bankVerified") !== "yes") {
+    return { status: "error", message: "Verify the actual credited bank transaction before approving access." };
+  }
+  try {
+    await approveVerifiedManualPayment({
+      customerEmail: String(formData.get("customerEmail") ?? ""),
+      paymentReference: String(formData.get("paymentReference") ?? ""),
+      verifiedAmountPkr: Number(formData.get("verifiedAmountPkr") ?? NaN),
+    });
+    revalidatePath("/platform");
+    return { status: "success", message: "Payment approved. This customer can now create exactly one paid workspace." };
+  } catch (error) {
+    console.error("Verified manual payment approval blocked:", error);
+    return { status: "error", message: "Payment approval was blocked. Check MFA, customer email, amount, or a duplicate payment reference." };
   }
 }
