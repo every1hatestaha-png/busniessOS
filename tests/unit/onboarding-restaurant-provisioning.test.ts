@@ -26,9 +26,9 @@ describe("Restaurant provisioning transaction contract", () => {
     mocks.tx.workspaceMember.findFirst.mockResolvedValue(null);
     mocks.tx.$queryRaw.mockImplementation(async (strings: TemplateStringsArray, ...values: unknown[]) => {
       const sql = strings.join("");
+      if (sql.includes('FROM "prepaid_workspace_approvals"')) return [{ id: "prepaid-test", planCode: "starter", billingCycle: "monthly" }];
       if (sql.includes("FOR UPDATE")) return [{ id: values[0] }];
       if (sql.includes('SELECT "id" FROM "workspace_subscriptions"')) return [{ id: "subscription" }];
-      if (sql.includes('FROM "prepaid_workspace_approvals"')) return [{ id: "prepaid-test", planCode: "starter", billingCycle: "monthly" }];
       return [];
     });
   });
