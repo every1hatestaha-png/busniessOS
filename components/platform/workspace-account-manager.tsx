@@ -297,6 +297,7 @@ export function WorkspaceAccountManager({ workspaces }: { workspaces: ManagedWor
               {bulkResults.map((entry, i) => <p key={i} className="py-1"><span className="font-semibold">{entry.name}:</span> {entry.detail}</p>)}
             </div>}
             {bulkError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{bulkError} <Link href="/admin/security" className="font-semibold underline">Verify MFA</Link></p>}
+            {!bulkFinished && !bulkWorking && bulkResults.length > 0 && <button type="button" onClick={() => window.location.reload()} className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-900">Refresh to resume remaining cleanup</button>}
             {bulkFinished && <button type="button" onClick={() => window.location.reload()} className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-900">Refresh protected account inventory</button>}
           </section>
         </div>
