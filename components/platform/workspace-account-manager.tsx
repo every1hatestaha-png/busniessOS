@@ -8,6 +8,7 @@ import {
   activateSubscriptionAction,
   deleteCustomerAccountAction,
   extendTrialAction,
+  finalizeOwnerCleanupAction,
   grantGraceAction,
   previewCustomerAccountDeletionAction,
   suspendSubscriptionAction,
@@ -30,6 +31,35 @@ export type ManagedWorkspace = {
 
 type Preview = Awaited<ReturnType<typeof previewCustomerAccountDeletionAction>>;
 type DeletionResult = Extract<Awaited<ReturnType<typeof deleteCustomerAccountAction>>, { ok: true }>;
+
+// Exact one-time inventory approved by the owner on 2026-10-24.
+// Later customer registrations never enter this batch automatically.
+const OWNER_CLEANUP_TARGET_IDS = new Set([
+  "2ec45fb5-47e0-411c-9982-75422c48fda2",
+  "4492dbc1-bb03-4a8b-ad3d-2259b9848438",
+  "a5c59974-78cc-41d9-a3b0-b959e2eccad1",
+  "9b6ef094-a620-447e-86ae-1ac2c7b18f93",
+  "e0251e80-2ff7-4ae5-9fb6-a5add30289e4",
+  "b77b8aaa-0e02-46a0-ac57-ad3e08e932ef",
+  "0e7568d8-c82c-49fe-a849-6b5ee491cd1c",
+  "2aa1bfbd-0f96-45a9-a683-241913188a60",
+  "87fc04e2-c57f-42f9-aeae-a3eacf68f180",
+  "02def44e-e2d6-4eb9-8bc1-15ecfb90e046",
+  "9e99d8fe-948d-4e61-acb9-28866e2a0eb4",
+  "7e3a660a-6217-43f8-9959-a32cde278843",
+  "1880e0f7-e474-446d-b24c-f7fb767e9bb7",
+  "570a3818-a0f7-49e4-9670-344005ac706a",
+  "3df23b1a-2562-480c-ad51-f9d075de57ca",
+  "0a1f1bed-81dc-417f-b407-6b20da7eca2e",
+  "10a3e62f-de08-4729-beac-97ea75408dfc",
+  "318dc549-9943-4fc5-9dcf-fd2181fb23b4",
+]);
+
+const OWNER_CLEANUP_PROTECTED_IDS = new Set([
+  "c15e0dd4-9d61-407b-a4dc-5490e2247151",
+  "4bc313cf-2869-4d87-8f1e-22a147f18d2d",
+  "a9e7ed7d-d3c2-434a-992e-972fb088273a",
+]);
 
 const filters = ["ALL", "ACTIVE", "TRIALING", "GRACE", "SUSPENDED", "EXPIRED", "UNASSIGNED"] as const;
 const statusStyles: Record<string, string> = {
@@ -56,6 +86,21 @@ export function WorkspaceAccountManager({ workspaces }: { workspaces: ManagedWor
   const [typedPhrase, setTypedPhrase] = useState("");
   const [ack, setAck] = useState(false);
   const [result, setResult] = useState<DeletionResult | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkTyped, setBulkTyped] = useState("");
+  const [bulkAcknowledged, setBulkAcknowledged] = useState(false);
+  const [bulkWorking, setBulkWorking] = useState(false);
+  const [bulkError, setBulkError] = useState("");
+  const [bulkResults, setBulkResults] = useState<Array<{ name: string; detail: string }>>([]);
+  const [bulkFinished, setBulkFinished] = useState(false);
+  const cleanupCandidates = workspaces.filter((w) => OWNER_CLEANUP_TARGET_IDS.has(w.id));
+  const unexpectedWorkspaces = workspaces.filter((w) =>
+    !OWNER_CLEANUP_TARGET_IDS.has(w.id) && !OWNER_CLEANUP_PROTECTED_IDS.has(w.id)
+  );
+  const cleanupPhrase = cleanupCandidates.length
+    ? `DELETE ${cleanupCandidates.length} WORKSPACES`
+    : "FINALIZE AUTH CLEANUP";
+
 
   const displayed = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -112,6 +157,53 @@ export function WorkspaceAccountManager({ workspaces }: { workspaces: ManagedWor
     }
   }
 
+
+  async function runOwnerCleanup() {
+    if (bulkWorking || unexpectedWorkspaces.length !== 0 || !bulkAcknowledged || bulkTyped !== cleanupPhrase) return;
+    setBulkError("");
+    setBulkResults([]);
+    setBulkFinished(false);
+    setBulkWorking(true);
+    try {
+      for (const workspace of cleanupCandidates) {
+        const preview = await previewCustomerAccountDeletionAction(workspace.id);
+        if (preview.workspaceId !== workspace.id || preview.workspaceName !== workspace.name || !preview.permanentPurgeConfigured) {
+          throw new Error(`Deletion preview changed for ${workspace.name}. Nothing further was deleted.`);
+        }
+        const data = new FormData();
+        data.set("workspaceId", workspace.id);
+        data.set("confirmName", preview.workspaceName);
+        data.set("deletePhrase", "DELETE PERMANENTLY");
+        data.set("acknowledgeIrreversible", "yes");
+        const removed = await deleteCustomerAccountAction(data);
+        if (!removed.ok) {
+          throw new Error(`${workspace.name}: ${removed.error}`);
+        }
+        setBulkResults((results) => [...results, {
+          name: workspace.name,
+          detail: removed.identityCleanupComplete
+            ? `${removed.removedRows} rows deleted, identity removed`
+            : `${removed.removedRows} rows deleted, identity reconciliation pending`,
+        }]);
+      }
+
+      const finalized = await finalizeOwnerCleanupAction();
+      if (!finalized.ok) throw new Error(finalized.error);
+      setBulkResults((results) => [...results, {
+        name: "Supabase orphan identities",
+        detail: `${finalized.deletedAuthUsers} removed. ${finalized.warnings.length ? finalized.warnings.join(" ") : "No provider errors."}`,
+      }]);
+      setBulkFinished(finalized.identityCleanupComplete);
+      if (!finalized.identityCleanupComplete) {
+        setBulkError("Workspace cleanup completed, but some identities remain. Retry finalization after verifying the provider.");
+      }
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : "Cleanup stopped. Refresh the account list before retrying.");
+    } finally {
+      setBulkWorking(false);
+    }
+  }
+
   return (
     <section id="customer-accounts" className="scroll-mt-5 overflow-hidden rounded-2xl border border-[#e2e8e5] bg-white shadow-[0_8px_30px_rgba(15,23,42,0.03)]">
       <div className="border-b border-slate-100 px-5 py-6 sm:px-7">
@@ -123,6 +215,7 @@ export function WorkspaceAccountManager({ workspaces }: { workspaces: ManagedWor
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <span className="rounded-full border border-slate-200 px-3 py-1.5 font-semibold text-slate-600">{workspaces.length} accounts</span>
+            <button type="button" disabled={bulkWorking || (cleanupCandidates.length === 0 && workspaces.length !== 3)} onClick={() => { setBulkOpen(true); setBulkTyped(""); setBulkAcknowledged(false); setBulkError(""); setBulkResults([]); setBulkFinished(false); }} className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 font-semibold text-rose-800 hover:bg-rose-100 disabled:opacity-40">Review approved cleanup ({cleanupCandidates.length})</button>
             {pendingRequests > 0 && <button onClick={() => { setQuery(""); setFilter("ALL"); }} type="button" className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 font-semibold text-sky-800">{pendingRequests} activation requests</button>}
           </div>
         </div>
@@ -172,6 +265,43 @@ export function WorkspaceAccountManager({ workspaces }: { workspaces: ManagedWor
         </table>
       </div>
       <div className="border-t border-slate-100 px-6 py-3 text-xs text-slate-500">Showing {displayed.length} of {workspaces.length} accounts · Sensitive changes require a recent authenticator verification</div>
+
+      {bulkOpen && (
+        <div role="dialog" aria-modal="true" aria-label="Owner-approved customer cleanup" className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-slate-950/70 p-4">
+          <section className="w-full max-w-2xl space-y-4 rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-rose-700">Permanent customer cleanup</p>
+                <h3 className="mt-1 text-xl font-semibold text-slate-900">{cleanupCandidates.length} approved workspaces</h3>
+                <p className="mt-2 text-sm text-slate-600">Only the specific October 24 inventory is eligible. KHZR and both Arshad Sons businesses are permanently excluded. Owner MFA is checked again for each deletion.</p>
+              </div>
+              <button type="button" aria-label="Close bulk cleanup" disabled={bulkWorking} onClick={() => setBulkOpen(false)} className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 disabled:opacity-40"><X className="size-5" /></button>
+            </div>
+            <div className="max-h-44 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
+              {cleanupCandidates.map((workspace) => <div key={workspace.id} className="py-1 text-slate-700">{workspace.name} ({workspace.email})</div>)}
+              {cleanupCandidates.length === 0 && <p className="text-slate-600">No approved workspace targets remain. Finalize orphaned Auth identities only.</p>}
+            </div>
+            {unexpectedWorkspaces.length > 0 && <p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900">Unexpected account inventory detected. Cleanup is locked until these accounts are reviewed.</p>}
+            <label className="block text-xs font-semibold text-slate-700">Type {cleanupPhrase}
+              <input autoComplete="off" disabled={bulkWorking} value={bulkTyped} onChange={(event) => setBulkTyped(event.target.value)} className="mt-2 h-11 w-full rounded-lg border border-slate-300 px-3 text-sm font-normal" placeholder={cleanupPhrase} />
+            </label>
+            <label className="flex items-start gap-2 text-xs leading-5 text-slate-700">
+              <input type="checkbox" checked={bulkAcknowledged} disabled={bulkWorking} onChange={(event) => setBulkAcknowledged(event.target.checked)} className="mt-1 accent-rose-700" />
+              I approve permanent deletion of the listed businesses, transactions, and exclusive identities. This cannot be undone and provider backups have separate retention.
+            </label>
+            <button type="button" disabled={bulkWorking || bulkFinished || unexpectedWorkspaces.length > 0 || !bulkAcknowledged || bulkTyped !== cleanupPhrase}
+              onClick={() => { void runOwnerCleanup(); }} className="w-full rounded-lg bg-rose-700 px-4 py-3 text-sm font-semibold text-white disabled:opacity-40">
+              {bulkWorking ? "Cleaning approved workspaces..." : bulkFinished ? "Cleanup completed" : "Permanently clean approved accounts"}
+            </button>
+            {bulkResults.length > 0 && <div role="status" className="max-h-48 overflow-y-auto rounded-xl border border-slate-200 p-3 text-xs text-slate-700">
+              {bulkResults.map((entry, i) => <p key={i} className="py-1"><span className="font-semibold">{entry.name}:</span> {entry.detail}</p>)}
+            </div>}
+            {bulkError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{bulkError} <Link href="/admin/security" className="font-semibold underline">Verify MFA</Link></p>}
+            {!bulkFinished && !bulkWorking && bulkResults.length > 0 && <button type="button" onClick={() => window.location.reload()} className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-900">Refresh to resume remaining cleanup</button>}
+            {bulkFinished && <button type="button" onClick={() => window.location.reload()} className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-900">Refresh protected account inventory</button>}
+          </section>
+        </div>
+      )}
 
       {current && (
         <div role="dialog" aria-modal="true" aria-label={`Manage ${current.name}`} className="fixed inset-0 z-50 flex justify-end bg-slate-950/50 p-0 backdrop-blur-[2px]" onMouseDown={(event) => { if (event.target === event.currentTarget) closePanel(); }}>

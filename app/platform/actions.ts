@@ -8,7 +8,7 @@ import {
   grantWorkspaceGrace,
   suspendWorkspaceSubscription,
 } from "@/lib/server/subscriptions";
-import { deleteCustomerWorkspaceAccount, getWorkspaceDeletionPreview } from "@/lib/server/platform-admin";
+import { deleteCustomerWorkspaceAccount, finalizeOwnerRequestedAuthCleanup, getWorkspaceDeletionPreview } from "@/lib/server/platform-admin";
 import { assertPlatformMfaEnabled } from "@/lib/server/platform-security";
 
 const ALLOWED_PLANS = new Set(["starter", "business", "pro"]);
@@ -102,5 +102,18 @@ export async function deleteCustomerAccountAction(formData: FormData) {
       return { ok: false as const, error: "Your admin MFA verification expired. Verify your authenticator before retrying." };
     }
     return { ok: false as const, error: "Account deletion was blocked. No completed deletion was confirmed. Check the production server logs before retrying." };
+  }
+}
+
+export async function finalizeOwnerCleanupAction() {
+  try {
+    await requireRecentPlatformMfa();
+    const result = await finalizeOwnerRequestedAuthCleanup();
+    revalidatePath("/platform");
+    revalidatePath("/admin/dashboard");
+    return { ok: true as const, ...result };
+  } catch (error) {
+    console.error("Owner legacy authentication cleanup blocked:", error);
+    return { ok: false as const, error: "Auth cleanup was blocked. Verify the three protected workspaces are the only remaining businesses, and check the server logs." };
   }
 }
