@@ -32,7 +32,7 @@ export async function requirePermission(permission: Permission) {
       throw new SubscriptionRequiredError(
         access.reason === "suspended"
           ? "This workspace is suspended. Contact MunshiOS support to restore access."
-          : "Your MunshiOS trial or subscription has expired. Renew to continue making changes.",
+          : "Your MunshiOS subscription is not active. Complete payment or renew to continue making changes.",
       );
     }
   }
