@@ -7,6 +7,9 @@ const fs = require("node:fs");
 // continues to fail on any new or unexpected advisory.
 const expectedAdvisories = new Set([
   "GHSA-ch52-4w7c-c8xp",
+  // Zod v3 is pulled exclusively by the development-only shadcn CLI, not the
+  // application; production Zod v4 is patched to >=4.6.6.
+  "GHSA-mrhx-c7xc-m3w5",
   // ip-address is a dev-only dependency; no application-supplied IPv6 string enters that parser.
   "GHSA-rxp7-6hxx-x8q5",
 ]);
@@ -22,6 +25,7 @@ const devOnlyPaths = [
   "node_modules/@ts-morph/common",
   "node_modules/ts-morph",
   "node_modules/shadcn",
+  "node_modules/shadcn/node_modules/zod",
   "node_modules/http-cache-semantics",
   "node_modules/sprintf-js",
   "node_modules/roarr",
