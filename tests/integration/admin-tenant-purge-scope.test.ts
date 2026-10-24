@@ -53,9 +53,24 @@ describe("admin tenant purge transaction scope", () => {
       VALUES (${tenant.id}::uuid, ${orderId}::uuid, ${`KT-${randomUUID()}`})
     `;
 
-    await expect(db.$executeRaw`
-      DELETE FROM "kitchen_tickets" WHERE "workspaceId" = ${tenant.id}::uuid
-    `).rejects.toThrow(/Restaurant kitchen ticket history cannot be deleted/);
+    // The PostgreSQL CI owner is privileged and intentionally bypasses these
+    // triggers. Test enforcement using a non-superuser application role.
+    await db.$executeRawUnsafe(`
+      DO $
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'munshios_purge_test_app') THEN
+          CREATE ROLE munshios_purge_test_app NOLOGIN;
+        END IF;
+      END $;
+    `);
+    await db.$executeRawUnsafe('GRANT SELECT, DELETE ON TABLE "kitchen_tickets" TO munshios_purge_test_app');
+
+    await expect(db.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL ROLE munshios_purge_test_app");
+      await tx.$executeRaw`
+        DELETE FROM "kitchen_tickets" WHERE "workspaceId" = ${tenant.id}::uuid
+      `;
+    })).rejects.toThrow(/Restaurant kitchen ticket history cannot be deleted/);
 
     await db.$transaction(async (tx) => {
       await tx.$queryRaw`
@@ -65,7 +80,9 @@ describe("admin tenant purge transaction scope", () => {
         SELECT munshios_admin_purge_matches_workspace(${protectedTenant.id}) AS value
       `)[0]?.value).toBe(false);
 
+      await tx.$executeRawUnsafe("SET LOCAL ROLE munshios_purge_test_app");
       await tx.$executeRaw`DELETE FROM "kitchen_tickets" WHERE "workspaceId" = ${tenant.id}::uuid`;
+      await tx.$executeRawUnsafe("RESET ROLE");
       await tx.$executeRaw`DELETE FROM "restaurant_orders" WHERE "workspaceId" = ${tenant.id}::uuid`;
       await tx.$executeRaw`DELETE FROM "workspace_members" WHERE "workspaceId" = ${tenant.id}`;
       await tx.$executeRaw`DELETE FROM "workspaces" WHERE "id" = ${tenant.id}`;
