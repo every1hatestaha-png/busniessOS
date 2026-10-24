@@ -11,7 +11,7 @@ function formatDate(value: Date | null) {
 }
 
 function statusCopy(reason: string, daysRemaining: number | null) {
-  if (reason === "trial") return `Free trial active${daysRemaining !== null ? `, ${daysRemaining} day${daysRemaining === 1 ? "" : "s"} remaining` : ""}.`;
+  if (reason === "trial") return "Legacy trial record. New customers are required to pay before activation.";
   if (reason === "active") return `Paid access is active${daysRemaining !== null ? ` for ${daysRemaining} more day${daysRemaining === 1 ? "" : "s"}` : ""}.`;
   if (reason === "grace") return `Grace-period access is active${daysRemaining !== null ? ` for ${daysRemaining} more day${daysRemaining === 1 ? "" : "s"}` : ""}.`;
   if (reason === "override") return `Temporary access is active${daysRemaining !== null ? ` for ${daysRemaining} more day${daysRemaining === 1 ? "" : "s"}` : ""}.`;
@@ -25,7 +25,7 @@ export default async function SubscriptionPage() {
       <main className="grid min-h-dvh place-items-center bg-[#f7f8f6] px-6">
         <div className="max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
           <h1 className="text-xl font-semibold">Finish your business setup</h1>
-          <p className="mt-2 text-sm leading-6 text-slate-600">Create a workspace first. Your 30-day trial starts when the workspace is created.</p>
+          <p className="mt-2 text-sm leading-6 text-slate-600">New workspaces require payment verification before setup. MunshiOS does not offer free trials.</p>
           <Link href="/onboarding" className="mt-5 inline-flex rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white">Continue setup</Link>
         </div>
       </main>
@@ -83,7 +83,7 @@ export default async function SubscriptionPage() {
             <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
               {access.reason === "suspended"
                 ? `This workspace is suspended${access.suspensionReason ? `: ${access.suspensionReason}` : "."}`
-                : "Your trial or paid access has ended. Request activation below to restore normal transactional use."}
+                : "Your paid access has ended. Request renewal below to restore normal transactional use."}
             </div>
           )}
 
