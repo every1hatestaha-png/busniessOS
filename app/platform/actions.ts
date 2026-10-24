@@ -81,16 +81,26 @@ export async function previewCustomerAccountDeletionAction(workspaceId: string) 
 }
 
 export async function deleteCustomerAccountAction(formData: FormData) {
-  await requireRecentPlatformMfa();
-  const workspaceId = readWorkspaceId(formData);
-  const confirmation = String(formData.get("confirmName") ?? "").trim();
-  if (!confirmation || confirmation.length > 200) throw new Error("Type the exact business name to confirm deletion.");
-  if (formData.get("acknowledgeIrreversible") !== "yes") {
-    throw new Error("Acknowledge that this operation cannot be undone.");
+  try {
+    await requireRecentPlatformMfa();
+    const workspaceId = readWorkspaceId(formData);
+    const confirmation = String(formData.get("confirmName") ?? "").trim();
+    if (!confirmation || confirmation.length > 200) throw new Error("Type the exact business name to confirm deletion.");
+    if (formData.get("acknowledgeIrreversible") !== "yes") {
+      throw new Error("Acknowledge that this operation cannot be undone.");
+    }
+    const phrase = String(formData.get("deletePhrase") ?? "");
+    const result = await deleteCustomerWorkspaceAccount(workspaceId, confirmation, phrase);
+    revalidatePath("/platform");
+    revalidatePath("/admin/dashboard");
+    return { ok: true as const, ...result };
+  } catch (error) {
+    // Server Action exceptions become opaque React #441 errors in production.
+    // Keep internal database details server-side and give owners a useful status.
+    console.error("Platform workspace deletion blocked:", error);
+    if (error instanceof Error && /Recent owner MFA verification required/.test(error.message)) {
+      return { ok: false as const, error: "Your admin MFA verification expired. Verify your authenticator before retrying." };
+    }
+    return { ok: false as const, error: "Account deletion was blocked. No completed deletion was confirmed. Check the production server logs before retrying." };
   }
-  const phrase = String(formData.get("deletePhrase") ?? "");
-  const result = await deleteCustomerWorkspaceAccount(workspaceId, confirmation, phrase);
-  revalidatePath("/platform");
-  revalidatePath("/admin/dashboard");
-  return result;
 }
