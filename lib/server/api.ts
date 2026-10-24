@@ -84,7 +84,7 @@ export async function requireApiContext(permission?: Permission): Promise<ApiCon
         "SUBSCRIPTION_REQUIRED",
         access.reason === "suspended"
           ? "This workspace is suspended."
-          : "The workspace trial or subscription has expired.",
+          : "Payment or an active subscription is required for workspace transactions.",
       );
     }
   }
