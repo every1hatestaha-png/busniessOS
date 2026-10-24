@@ -216,6 +216,14 @@ export async function deleteCustomerWorkspaceAccount(
     `;
     assertWorkspaceDeletionCoverage(currentTables.map((entry) => entry.table_name));
 
+    // A transaction-local purge context lets immutable evidence triggers permit
+    // physical cleanup ONLY for this exact workspace. The context is set after
+    // MFA, owner identity, confirmation, membership and schema checks.
+    // PostgreSQL clears it automatically on commit or rollback.
+    await tx.$queryRaw`
+      SELECT pg_catalog.set_config('munshios.purge_workspace_id', ${workspaceId}, true) AS scope
+    `;
+
     // Break self-referential RESTRICT relationships before bulk deletion.
     for (const table of ["payments", "general_ledger_entries", "restaurant_returns"]) {
       await tx.$executeRawUnsafe(`UPDATE "${table}" SET "reversalOfId" = NULL WHERE "workspaceId" = $1 AND "reversalOfId" IS NOT NULL`, workspaceId);
