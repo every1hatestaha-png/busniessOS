@@ -45,8 +45,8 @@ describe("admin tenant purge transaction scope", () => {
     });
     const orderId = randomUUID();
     await db.$executeRaw`
-      INSERT INTO "restaurant_orders" ("id", "workspaceId", "orderNumber", "source", "fulfillmentType", "createdById")
-      VALUES (${orderId}::uuid, ${tenant.id}::uuid, ${`P-${randomUUID()}`}, 'POS', 'TAKEAWAY', ${user.id})
+      INSERT INTO "restaurant_orders" ("id", "workspaceId", "orderNumber", "source", "fulfillmentType", "createdById", "subtotal", "total")
+      VALUES (${orderId}::uuid, ${tenant.id}::uuid, ${`P-${randomUUID()}`}, 'POS', 'TAKEAWAY', ${user.id}, 1, 1)
     `;
     await db.$executeRaw`
       INSERT INTO "kitchen_tickets" ("workspaceId", "restaurantOrderId", "ticketNumber")
