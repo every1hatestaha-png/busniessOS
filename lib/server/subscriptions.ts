@@ -77,7 +77,7 @@ export async function getWorkspaceAccess(workspaceId: string): Promise<Workspace
   const access = computeWorkspaceAccess(rows[0]);
   // Preserve only the three explicitly approved pre-existing businesses.
   // New workspaces never inherit an exemption based on owner email.
-  if (isProtectedLegacyWorkspace(safeWorkspaceId)) {
+  if (isProtectedLegacyWorkspace(safeWorkspaceId) && rows[0].status !== "SUSPENDED") {
     return { ...access, allowed: true, reason: "override", daysRemaining: null };
   }
   // A legacy TRIALING flag must not grant a new customer unpaid access.
