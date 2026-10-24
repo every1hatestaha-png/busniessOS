@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 
 import { db } from "@/lib/server/db";
+import { isProtectedLegacyWorkspace } from "@/lib/saas/payment-first";
 import { getCurrentUser, requireWorkspace } from "@/lib/server/auth";
 import { getVerifiedPlatformOwnerIdentity } from "@/lib/server/platform-security";
 import {
@@ -35,15 +36,13 @@ export async function ensureWorkspaceSubscription(workspaceId: string) {
   const id = `sub_${randomUUID().replaceAll("-", "")}`;
   await db.$executeRaw`
     INSERT INTO "workspace_subscriptions" (
-      "id", "workspaceId", "planId", "status", "trialStartedAt", "trialEndsAt"
+      "id", "workspaceId", "planId", "status"
     )
     VALUES (
       ${id},
       ${safeWorkspaceId},
       (SELECT "id" FROM "saas_plans" WHERE "code" = 'starter' LIMIT 1),
-      'TRIALING',
-      CURRENT_TIMESTAMP,
-      CURRENT_TIMESTAMP + INTERVAL '30 days'
+      'EXPIRED'
     )
     ON CONFLICT ("workspaceId") DO NOTHING
   `;
@@ -75,7 +74,17 @@ export async function getWorkspaceAccess(workspaceId: string): Promise<Workspace
   `;
 
   if (!rows[0]) throw new Error("Workspace subscription could not be initialized.");
-  return computeWorkspaceAccess(rows[0]);
+  const access = computeWorkspaceAccess(rows[0]);
+  // Preserve only the three explicitly approved pre-existing businesses.
+  // New workspaces never inherit an exemption based on owner email.
+  if (isProtectedLegacyWorkspace(safeWorkspaceId)) {
+    return { ...access, allowed: true, reason: "override", daysRemaining: null };
+  }
+  // A legacy TRIALING flag must not grant a new customer unpaid access.
+  if (rows[0].status === "TRIALING") {
+    return { ...access, allowed: false, reason: "expired", daysRemaining: 0 };
+  }
+  return access;
 }
 
 export async function requireWorkspaceAccess() {
@@ -255,6 +264,7 @@ async function getSubscriptionRow(workspaceId: string) {
 export async function extendWorkspaceTrial(workspaceId: string, days: number) {
   await requirePlatformOwner();
   const safeWorkspaceId = assertWorkspaceId(workspaceId);
+  if (!isProtectedLegacyWorkspace(safeWorkspaceId)) throw new Error("Free trials are disabled for paying customers.");
   await ensureWorkspaceSubscription(safeWorkspaceId);
   const safeDays = assertDays(days, 365);
   const before = await getSubscriptionRow(safeWorkspaceId);
