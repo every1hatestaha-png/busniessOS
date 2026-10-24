@@ -300,3 +300,79 @@ export async function deleteCustomerWorkspaceAccount(
     warnings: failures,
   };
 }
+
+/**
+ * Owner-requested one-time cleanup of Supabase Auth profiles that were never
+ * linked to a workspace, or whose last workspace has already been purged.
+ * This operation refuses to run until ONLY the three explicitly protected
+ * production workspaces AND their three protected local members remain.
+ * It does not broadly delete future signup identities.
+ */
+const OWNER_CLEANUP_PROTECTED_WORKSPACE_IDS = [
+  "c15e0dd4-9d61-407b-a4dc-5490e2247151", // KHZR
+  "4bc313cf-2869-4d87-8f1e-22a147f18d2d", // 625 Arshad
+  "a9e7ed7d-d3c2-434a-992e-972fb088273a", // second Arshad Sons
+] as const;
+
+const OWNER_CLEANUP_LEGACY_AUTH_EMAILS = new Set([
+  "devasadamir@gmail.com",
+  "ducker@ducker.com",
+  "every1hatestaha+munshi-e2e@gmail.com",
+  "every1hatestaha+munshi-e2e2@gmail.com",
+  "every1hatestaha+munshi-e2e3@gmail.com",
+  "meerabfatima1844@gmail.com",
+  "synthtest992026@tempmail.plus",
+  "tahakhizar1106@gmail.com",
+  "tahakhizar1106+munshiaudit2809@gmail.com",
+  "testuser1234567890@mailinator.com",
+  "testuser92847@tmpbox.email",
+  "testuser9823476@disposable-mail.com",
+  "testuser98765@syntheticmail.com",
+]);
+
+export async function finalizeOwnerRequestedAuthCleanup() {
+  await assertPlatformMfaEnabled();
+  const [workspaces, localUsers] = await Promise.all([
+    db.workspace.findMany({ select: { id: true } }),
+    db.user.findMany({ select: { email: true } }),
+  ]);
+  const protectedWorkspaceIds = new Set<string>(OWNER_CLEANUP_PROTECTED_WORKSPACE_IDS);
+  if (workspaces.length !== 3 || workspaces.some((workspace) => !protectedWorkspaceIds.has(workspace.id))) {
+    throw new Error("Cleanup incomplete: only the three protected workspaces may remain before identity finalization.");
+  }
+  if (localUsers.length !== 3 || localUsers.some((user) => !OWNER_REQUESTED_PROTECTED_EMAILS.has(user.email.trim().toLowerCase()))) {
+    throw new Error("Cleanup incomplete: unexpected local users remain. No Supabase identities were removed.");
+  }
+
+  const { admin } = await requireAuthCleanupClient([]);
+  const catalog: Array<{ id: string; email: string }> = [];
+  for (let page = 1; page <= 20; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error || !data) throw new Error("Cannot verify Supabase Auth identity inventory.");
+    catalog.push(...data.users.map((user) => ({ id: user.id, email: (user.email ?? "").trim().toLowerCase() })));
+    if (data.users.length < 1000) break;
+    if (page === 20) throw new Error("Auth inventory too large for the approved cleanup.");
+  }
+
+  const unexpected = catalog.filter((user) =>
+    !OWNER_REQUESTED_PROTECTED_EMAILS.has(user.email)
+    && !OWNER_CLEANUP_LEGACY_AUTH_EMAILS.has(user.email)
+  );
+  if (unexpected.length > 0) {
+    throw new Error("Unrecognized new Auth profiles exist. Cleanup stopped before deleting identities.");
+  }
+
+  let deleted = 0;
+  const failures: string[] = [];
+  for (const user of catalog) {
+    if (!OWNER_CLEANUP_LEGACY_AUTH_EMAILS.has(user.email)) continue;
+    try {
+      const { error } = await admin.auth.admin.deleteUser(user.id, false);
+      if (error) throw error;
+      deleted++;
+    } catch {
+      failures.push(`Supabase Auth deletion failed for ${user.email}.`);
+    }
+  }
+  return { deletedAuthUsers: deleted, warnings: failures, identityCleanupComplete: failures.length === 0 };
+}
