@@ -85,6 +85,15 @@ export function assertWorkspaceDeletionCoverage(actual: readonly string[]) {
   }
 }
 
+/** Server-configured immutable allowlist. Never purge production owner or customer workspaces here. */
+function assertWorkspaceNotProtected(workspaceId: string) {
+  const protectedIds = (process.env.MUNSHIOS_PROTECTED_WORKSPACE_IDS ?? "")
+    .split(",").map((id) => id.trim()).filter(Boolean);
+  if (protectedIds.includes(workspaceId)) {
+    throw new Error("Protected MunshiOS workspace cannot be permanently deleted.");
+  }
+}
+
 type ExclusiveMember = {
   userId: string;
   email: string;
@@ -139,6 +148,7 @@ async function requireAuthCleanupClient(members: ExclusiveMember[]) {
 
 export async function getWorkspaceDeletionPreview(workspaceId: string) {
   await assertPlatformMfaEnabled();
+  assertWorkspaceNotProtected(workspaceId);
   const workspace = await db.workspace.findUnique({ where: { id: workspaceId }, select: { id: true, name: true } });
   if (!workspace) throw new Error("Customer account no longer exists.");
   const [members, customerCount, productCount, invoiceCount, orderCount] = await Promise.all([
@@ -164,6 +174,7 @@ export async function deleteCustomerWorkspaceAccount(
   await assertPlatformMfaEnabled();
   if (destructivePhrase !== "DELETE PERMANENTLY") throw new Error("Enter DELETE PERMANENTLY to confirm.");
   if (!workspaceId || workspaceId.length > 128) throw new Error("Invalid customer account.");
+  assertWorkspaceNotProtected(workspaceId);
 
   const workspace = await db.workspace.findUnique({ where: { id: workspaceId }, select: { id: true, name: true } });
   if (!workspace || confirmation.trim() !== workspace.name) {
@@ -196,6 +207,7 @@ export async function deleteCustomerWorkspaceAccount(
       SELECT "id", "name" FROM "workspaces" WHERE "id"=${workspaceId} FOR UPDATE
     `;
     if (!found.length || found[0].name !== workspace.name) throw new Error("Customer account changed. Reconfirm deletion.");
+    assertWorkspaceNotProtected(workspaceId);
 
     const lockedMembers = await tx.$queryRaw<Array<{ userId: string; workspaceCount: number; externalInvitations: number }>>`
       SELECT u."id" AS "userId",
