@@ -56,12 +56,13 @@ describe("admin tenant purge transaction scope", () => {
     // The PostgreSQL CI owner is privileged and intentionally bypasses these
     // triggers. Test enforcement using a non-superuser application role.
     await db.$executeRawUnsafe(`
-      DO $
+      DO $purge_role$
       BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'munshios_purge_test_app') THEN
           CREATE ROLE munshios_purge_test_app NOLOGIN;
         END IF;
-      END $;
+      END;
+      $purge_role$;
     `);
     await db.$executeRawUnsafe('GRANT SELECT, DELETE ON TABLE "kitchen_tickets" TO munshios_purge_test_app');
 
