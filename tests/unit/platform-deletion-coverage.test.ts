@@ -39,5 +39,12 @@ describe("safe platform account deletion", () => {
     expect(precedes("restaurant_return_items", "restaurant_returns")).toBe(true);
     expect(precedes("restaurant_payments", "restaurant_orders")).toBe(true);
     expect(precedes("warehouse_stocks", "warehouses")).toBe(true);
+    expect(precedes("restaurant_whatsapp_messages", "restaurant_orders")).toBe(true);
+    expect(precedes("restaurant_returns", "restaurant_orders")).toBe(true);
+    expect(precedes("restaurant_orders", "restaurant_menu_items")).toBe(true);
+    expect(precedes("restaurant_menu_items", "restaurant_menu_categories")).toBe(true);
+    expect(precedes("restaurant_menu_items", "products")).toBe(true);
+    expect(precedes("sales_orders", "products")).toBe(true);
+    expect(precedes("purchase_orders", "products")).toBe(true);
   });
 });

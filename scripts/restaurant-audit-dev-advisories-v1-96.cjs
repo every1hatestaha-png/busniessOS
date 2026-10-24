@@ -2,17 +2,14 @@
 const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 
+// Only retain the two verified development-only advisories remaining after
+// Electron, fast-uri, Zod, body-parser, and undici upgrades. The full audit
+// continues to fail on any new or unexpected advisory.
 const expectedAdvisories = new Set([
-  "GHSA-vfj7-8cjw-p6xm",
   "GHSA-ch52-4w7c-c8xp",
-  // No upstream patch exists yet; this transitive dependency is Electron tooling only.
-  "GHSA-hp3w-g68c-fv3c",
-  // Electron 44.3.0 pointerLock frame-attribution advisory, with verified app-level deny-all mitigation.
-  // Upgrade to patched Electron 44.5.0 and remove this exception once lockfile is regenerated.
-  "GHSA-x562-297c-g43g",
-  // Reviewed Electron capture findings; existing desktop never enables these APIs.
-  "GHSA-3qxv-5xgr-q7w9",
-  "GHSA-h3v5-h239-pg29",
+  // Zod v3 is pulled exclusively by the development-only shadcn CLI, not the
+  // application; production Zod v4 is patched to >=4.6.6.
+  "GHSA-mrhx-c7xc-m3w5",
   // ip-address is a dev-only dependency; no application-supplied IPv6 string enters that parser.
   "GHSA-rxp7-6hxx-x8q5",
 ]);
@@ -28,6 +25,7 @@ const devOnlyPaths = [
   "node_modules/@ts-morph/common",
   "node_modules/ts-morph",
   "node_modules/shadcn",
+  "node_modules/shadcn/node_modules/zod",
   "node_modules/http-cache-semantics",
   "node_modules/sprintf-js",
   "node_modules/roarr",

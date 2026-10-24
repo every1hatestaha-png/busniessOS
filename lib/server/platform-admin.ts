@@ -35,18 +35,14 @@ export const WORKSPACE_PURGE_ORDER = [
   "ledger_entries",
   "outbound_gate_passes",
   "payment_allocations",
-  "goods_received_notes",
   "payments",
   "cash_bank_accounts",
   "accounts",
   "invoices",
   "production_runs",
   "boms",
-  "products",
   "recipes",
   "restaurant_inventory_consumptions",
-  "restaurant_menu_items",
-  "restaurant_menu_categories",
   "restaurant_order_sequences",
   "restaurant_refunds",
   "restaurant_return_inventory_movements",
@@ -55,9 +51,11 @@ export const WORKSPACE_PURGE_ORDER = [
   "restaurant_payments",
   "cash_shifts",
   "restaurant_returns",
-  "restaurant_orders",
-  "restaurant_tables",
   "restaurant_whatsapp_messages",
+  "restaurant_orders",
+  "restaurant_menu_items",
+  "restaurant_menu_categories",
+  "restaurant_tables",
   "sales_order_component_snapshots",
   "sales_orders",
   "customers",
@@ -65,7 +63,9 @@ export const WORKSPACE_PURGE_ORDER = [
   "service_quotes",
   "subscription_events",
   "supplier_returns",
+  "goods_received_notes",
   "purchase_orders",
+  "products",
   "suppliers",
   "warehouse_stocks",
   "warehouses",
@@ -85,6 +85,15 @@ export function assertWorkspaceDeletionCoverage(actual: readonly string[]) {
   }
 }
 
+/** Server-configured immutable allowlist. Never purge production owner or customer workspaces here. */
+function assertWorkspaceNotProtected(workspaceId: string) {
+  const protectedIds = (process.env.MUNSHIOS_PROTECTED_WORKSPACE_IDS ?? "")
+    .split(",").map((id) => id.trim()).filter(Boolean);
+  if (protectedIds.includes(workspaceId)) {
+    throw new Error("Protected MunshiOS workspace cannot be permanently deleted.");
+  }
+}
+
 type ExclusiveMember = {
   userId: string;
   email: string;
@@ -94,8 +103,16 @@ type ExclusiveMember = {
   externalInvitations: number;
 };
 
+const OWNER_REQUESTED_PROTECTED_EMAILS = new Set([
+  "625arshad@gmail.com",
+  "hafizahmadarshad3@gmail.com",
+  "every1hatestaha@gmail.com",
+]);
+
 function isProtectedMember(member: ExclusiveMember) {
-  return member.email.trim().toLowerCase() === process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL?.trim().toLowerCase()
+  const email = member.email.trim().toLowerCase();
+  return OWNER_REQUESTED_PROTECTED_EMAILS.has(email)
+    || email === process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL?.trim().toLowerCase()
     || Boolean(member.supabaseId && member.supabaseId === process.env.MUNSHIOS_PLATFORM_OWNER_SUPABASE_ID);
 }
 
@@ -139,6 +156,7 @@ async function requireAuthCleanupClient(members: ExclusiveMember[]) {
 
 export async function getWorkspaceDeletionPreview(workspaceId: string) {
   await assertPlatformMfaEnabled();
+  assertWorkspaceNotProtected(workspaceId);
   const workspace = await db.workspace.findUnique({ where: { id: workspaceId }, select: { id: true, name: true } });
   if (!workspace) throw new Error("Customer account no longer exists.");
   const [members, customerCount, productCount, invoiceCount, orderCount] = await Promise.all([
@@ -164,6 +182,7 @@ export async function deleteCustomerWorkspaceAccount(
   await assertPlatformMfaEnabled();
   if (destructivePhrase !== "DELETE PERMANENTLY") throw new Error("Enter DELETE PERMANENTLY to confirm.");
   if (!workspaceId || workspaceId.length > 128) throw new Error("Invalid customer account.");
+  assertWorkspaceNotProtected(workspaceId);
 
   const workspace = await db.workspace.findUnique({ where: { id: workspaceId }, select: { id: true, name: true } });
   if (!workspace || confirmation.trim() !== workspace.name) {
@@ -196,6 +215,7 @@ export async function deleteCustomerWorkspaceAccount(
       SELECT "id", "name" FROM "workspaces" WHERE "id"=${workspaceId} FOR UPDATE
     `;
     if (!found.length || found[0].name !== workspace.name) throw new Error("Customer account changed. Reconfirm deletion.");
+    assertWorkspaceNotProtected(workspaceId);
 
     const lockedMembers = await tx.$queryRaw<Array<{ userId: string; workspaceCount: number; externalInvitations: number }>>`
       SELECT u."id" AS "userId",
@@ -215,6 +235,14 @@ export async function deleteCustomerWorkspaceAccount(
       WHERE table_schema='public' AND column_name='workspaceId' ORDER BY table_name
     `;
     assertWorkspaceDeletionCoverage(currentTables.map((entry) => entry.table_name));
+
+    // A transaction-local purge context lets immutable evidence triggers permit
+    // physical cleanup ONLY for this exact workspace. The context is set after
+    // MFA, owner identity, confirmation, membership and schema checks.
+    // PostgreSQL clears it automatically on commit or rollback.
+    await tx.$queryRaw`
+      SELECT pg_catalog.set_config('munshios.purge_workspace_id', ${workspaceId}, true) AS scope
+    `;
 
     // Break self-referential RESTRICT relationships before bulk deletion.
     for (const table of ["payments", "general_ledger_entries", "restaurant_returns"]) {
