@@ -14,6 +14,12 @@ beforeAll(async () => {
   const user = await db.user.create({ data: { clerkId: `rc91-${run}`, email: `${run}@example.invalid` } }); userId = user.id;
   const workspace = await db.workspace.create({ data: { name: `RC91 access ${run}`, members: { create: { userId, role: "OWNER" } } } }); workspaceId = workspace.id;
   await db.$executeRaw`INSERT INTO workspace_modules ("workspaceId","moduleKey",enabled,config) VALUES (${workspaceId}::uuid,'restaurant',true,'{}'::jsonb)`;
+  await db.$executeRaw`
+    INSERT INTO workspace_subscriptions ("id","workspaceId","planId",status,"currentPeriodStart","currentPeriodEnd")
+    VALUES (${`sub_${randomUUID().replaceAll("-", "")}`},${workspaceId},
+      (SELECT "id" FROM "saas_plans" WHERE code='starter' LIMIT 1),
+      'ACTIVE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP+interval '30 days')
+  `;
   auth.requireWorkspace.mockResolvedValue({ workspaceId, role: "OWNER", user });
   const service = await import("@/lib/server/restaurant-workspace");
   const context = { workspaceId, userId, role: "OWNER" as const };

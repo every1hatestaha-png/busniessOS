@@ -9,7 +9,6 @@ import {
   deleteCustomerAccountAction,
   extendTrialAction,
   finalizeOwnerCleanupAction,
-  grantGraceAction,
   previewCustomerAccountDeletionAction,
   suspendSubscriptionAction,
 } from "@/app/platform/actions";
@@ -327,16 +326,12 @@ export function WorkspaceAccountManager({ workspaces }: { workspaces: ManagedWor
                     <label className="w-24 text-xs font-semibold text-slate-700">Days<input type="number" min="1" max="1095" name="days" defaultValue="30" className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-2 text-sm font-normal" /></label>
                     <button type="submit" className="h-10 rounded-lg bg-emerald-700 px-4 text-xs font-semibold text-white hover:bg-emerald-800">Activate</button>
                   </SecurePlatformForm>
-                  <SecurePlatformForm action={extendTrialAction} className="flex flex-wrap items-end gap-2 border-t border-slate-100 pt-4">
+                  {["c15e0dd4-9d61-407b-a4dc-5490e2247151", "4bc313cf-2869-4d87-8f1e-22a147f18d2d", "a9e7ed7d-d3c2-434a-992e-972fb088273a"].includes(current.id) && <SecurePlatformForm action={extendTrialAction} className="flex flex-wrap items-end gap-2 border-t border-slate-100 pt-4">
                     <input type="hidden" name="workspaceId" value={current.id} />
                     <label className="flex-1 text-xs font-semibold text-slate-700">Extend trial (days)<input type="number" min="1" max="365" name="days" defaultValue="7" className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
                     <button type="submit" className="h-10 rounded-lg border border-slate-300 bg-white px-4 text-xs font-semibold text-slate-800 hover:bg-slate-50">Extend</button>
-                  </SecurePlatformForm>
-                  <SecurePlatformForm action={grantGraceAction} className="flex flex-wrap items-end gap-2 border-t border-slate-100 pt-4">
-                    <input type="hidden" name="workspaceId" value={current.id} />
-                    <label className="flex-1 text-xs font-semibold text-slate-700">Grace period (days)<input type="number" min="1" max="90" name="days" defaultValue="7" className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
-                    <button type="submit" className="h-10 rounded-lg border border-amber-300 bg-amber-50 px-4 text-xs font-semibold text-amber-900 hover:bg-amber-100">Grant grace</button>
-                  </SecurePlatformForm>
+                  </SecurePlatformForm>}
+                  <p className="border-t border-slate-100 pt-4 text-xs text-slate-500">Free trial and grace-period issuance are disabled for paid customer accounts.</p>
                   <SecurePlatformForm action={suspendSubscriptionAction} className="flex flex-wrap items-end gap-2 border-t border-slate-100 pt-4">
                     <input type="hidden" name="workspaceId" value={current.id} />
                     <label className="flex-1 text-xs font-semibold text-slate-700">Reason for suspension<input type="text" name="reason" required maxLength={240} placeholder="Required reason" className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>

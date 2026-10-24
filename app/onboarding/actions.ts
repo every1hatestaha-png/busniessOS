@@ -12,6 +12,7 @@ import {
 } from "@/lib/saas/provisioning-selection";
 import { getCurrentUser } from "@/lib/server/auth";
 import { createInitialWorkspace } from "@/lib/server/onboarding";
+import { PaymentRequiredError } from "@/lib/saas/payment-first";
 import { db } from "@/lib/server/db";
 import { resolveVerticalDashboard } from "@/lib/verticals/registry";
 import { onboardingSchema } from "@/lib/validation/onboarding";
@@ -101,6 +102,7 @@ export async function createWorkspace(
     if (error && typeof error === "object" && "digest" in error && String((error as { digest?: unknown }).digest ?? "").startsWith("NEXT_REDIRECT")) {
       throw error;
     }
+    if (error instanceof PaymentRequiredError) return { error: error.message };
     return { error: "We could not create your workspace. Please try again." };
   }
 }

@@ -115,10 +115,10 @@ export default async function DashboardPage() {
 
       {composition.lead === "production" && modules.some((module) => module.moduleKey === "manufacturing" && module.enabled) && <ManufacturingOverview workspaceId={workspace.id} />}
 
-      {subscription.reason === "trial" && (
+      {subscription.reason === "active" && (
         <section className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0"><p className="text-xs font-semibold text-emerald-950">Your MunshiOS trial is active</p><p className="mt-0.5 text-[11px] text-emerald-800">{subscription.daysRemaining ?? 0} day{subscription.daysRemaining === 1 ? "" : "s"} remaining. Your business data stays saved if access expires.</p></div>
-          <Link href="/subscription" className="inline-flex h-8 shrink-0 items-center justify-center rounded-md border border-emerald-300 bg-white px-3 text-xs font-semibold text-emerald-800 hover:bg-emerald-100">View plan</Link>
+          <div className="min-w-0"><p className="text-xs font-semibold text-emerald-950">Your MunshiOS subscription is active</p><p className="mt-0.5 text-[11px] text-emerald-800">{subscription.daysRemaining ?? 0} day{subscription.daysRemaining === 1 ? "" : "s"} remaining. Your business data stays saved if access expires.</p></div>
+          <Link href="/subscription" className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-emerald-300 bg-white px-3 text-xs font-semibold text-emerald-800">Manage plan</Link>
         </section>
       )}
 

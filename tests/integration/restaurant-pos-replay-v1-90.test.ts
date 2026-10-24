@@ -6,6 +6,23 @@ vi.mock("@/lib/server/auth", () => auth);
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 let db: typeof import("@/lib/server/db")["db"];
 let workspaceId: string, menuItemId: string, userId: string;
+
+// This synthetic POS fixture represents a PAYING customer. The paid-only
+// entitlement guard must stay enabled; never bypass it in production code.
+async function activateFixtureSubscription(id: string) {
+  const subscriptionId = `sub_${randomUUID().replaceAll("-", "")}`;
+  await db.$executeRaw`
+    INSERT INTO "workspace_subscriptions"
+      ("id", "workspaceId", "planId", "status", "currentPeriodStart", "currentPeriodEnd")
+    VALUES (${subscriptionId}, ${id},
+      (SELECT "id" FROM "saas_plans" WHERE "code"='starter' LIMIT 1),
+      'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '30 days')
+    ON CONFLICT ("workspaceId") DO UPDATE
+      SET "status"='ACTIVE', "trialEndsAt"=NULL, "currentPeriodStart"=CURRENT_TIMESTAMP,
+        "currentPeriodEnd"=CURRENT_TIMESTAMP + INTERVAL '30 days'
+  `;
+}
+
 beforeAll(async () => {
   ({ db } = await import("@/lib/server/db"));
   const run = randomUUID();
@@ -13,6 +30,7 @@ beforeAll(async () => {
   userId = user.id;
   const workspace = await db.workspace.create({ data: { name: `Replay ${run}`, members: { create: { userId: user.id, role: "OWNER" } } } });
   workspaceId = workspace.id;
+  await activateFixtureSubscription(workspaceId);
   auth.requireWorkspace.mockResolvedValue({ workspaceId, role: "OWNER", user });
   await db.$executeRaw`INSERT INTO workspace_modules ("workspaceId", "moduleKey", enabled, config) VALUES (${workspaceId}::uuid, 'restaurant', true, '{}'::jsonb)`;
   const service = await import("@/lib/server/restaurant-workspace");
@@ -98,6 +116,7 @@ it("request identity is workspace scoped and cannot reuse a foreign menu ID", as
   const key = randomUUID();
   const original = await createPosOrderAction({ status: "idle", message: "" }, form(key));
   const other = await db.workspace.create({ data: { name: `Foreign replay ${key}`, members: { create: { userId, role: "OWNER" } } } });
+  await activateFixtureSubscription(other.id);
   await db.$executeRaw`INSERT INTO workspace_modules ("workspaceId", "moduleKey", enabled, config) VALUES (${other.id}::uuid, 'restaurant', true, '{}'::jsonb)`;
   const context = { workspaceId: other.id, userId, role: "OWNER" as const };
   const category = await service.createRestaurantMenuCategory(context, { name: "Foreign meals" });

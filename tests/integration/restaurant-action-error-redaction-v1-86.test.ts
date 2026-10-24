@@ -19,6 +19,12 @@ describe("Restaurant V1.86 server action error safety", () => {
       INSERT INTO "workspace_modules" ("workspaceId", "moduleKey", "enabled", "config", "updatedAt")
       VALUES (${workspace.id}::uuid, 'restaurant', true, '{}'::jsonb, now())
     `;
+    await db.$executeRaw`
+      INSERT INTO workspace_subscriptions ("id","workspaceId","planId",status,"currentPeriodStart","currentPeriodEnd")
+      VALUES (${`sub_${randomUUID().replaceAll("-", "")}`},${workspace.id},
+       (SELECT "id" FROM "saas_plans" WHERE code='starter' LIMIT 1),
+       'ACTIVE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP+interval '30 days')
+    `;
     session.requireWorkspace.mockResolvedValue({ workspaceId: workspace.id, role: "OWNER", user });
   });
   afterAll(async () => { if (db) await db.$disconnect(); });
