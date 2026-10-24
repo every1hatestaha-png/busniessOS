@@ -103,8 +103,16 @@ type ExclusiveMember = {
   externalInvitations: number;
 };
 
+const OWNER_REQUESTED_PROTECTED_EMAILS = new Set([
+  "625arshad@gmail.com",
+  "hafizahmadarshad3@gmail.com",
+  "every1hatestaha@gmail.com",
+]);
+
 function isProtectedMember(member: ExclusiveMember) {
-  return member.email.trim().toLowerCase() === process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL?.trim().toLowerCase()
+  const email = member.email.trim().toLowerCase();
+  return OWNER_REQUESTED_PROTECTED_EMAILS.has(email)
+    || email === process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL?.trim().toLowerCase()
     || Boolean(member.supabaseId && member.supabaseId === process.env.MUNSHIOS_PLATFORM_OWNER_SUPABASE_ID);
 }
 
