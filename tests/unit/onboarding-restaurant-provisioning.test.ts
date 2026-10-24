@@ -12,6 +12,7 @@ vi.mock("@/lib/server/tx-retry", () => ({ withSerializableRetry: async (fn: (tx:
 vi.mock("@/lib/server/audit", () => ({ writeAudit: mocks.audit }));
 import { createInitialWorkspace } from "@/lib/server/onboarding";
 import { resolveProvisioningModules } from "@/lib/saas/provisioning-selection";
+import { PaymentRequiredError } from "@/lib/saas/payment-first";
 
 const input = { businessName: "Synthetic Restaurant", ownerName: "Synthetic Owner", phone: "03001234567", email: "synthetic@example.invalid", address: "Synthetic Street", city: "Lahore", country: "Pakistan", currency: "PKR" as const, timezone: "Asia/Karachi", businessType: "OTHER" as const };
 const workspaceId = "7e327471-a3e9-4dd8-9f60-2edb3728aef6";
@@ -20,12 +21,14 @@ const moduleWrites = () => mocks.tx.$executeRaw.mock.calls.filter(c => c[0].join
 describe("Restaurant provisioning transaction contract", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mocks.tx.$executeRaw.mockResolvedValue(1);
     mocks.tx.workspace.create.mockResolvedValue({ id: workspaceId, vertical: "RESTAURANT" });
     mocks.tx.workspaceMember.findFirst.mockResolvedValue(null);
     mocks.tx.$queryRaw.mockImplementation(async (strings: TemplateStringsArray, ...values: unknown[]) => {
       const sql = strings.join("");
       if (sql.includes("FOR UPDATE")) return [{ id: values[0] }];
       if (sql.includes('SELECT "id" FROM "workspace_subscriptions"')) return [{ id: "subscription" }];
+      if (sql.includes('FROM "prepaid_workspace_approvals"')) return [{ id: "prepaid-test", planCode: "starter", billingCycle: "monthly" }];
       return [];
     });
   });
@@ -34,7 +37,8 @@ describe("Restaurant provisioning transaction contract", () => {
     expect(mocks.tx.workspace.create.mock.calls[0][0].data.vertical).toBe("RESTAURANT");
     expect(mocks.tx.workspaceMember.create).toHaveBeenCalledWith({ data: { workspaceId, userId: "owner-id", role: "OWNER" } });
     expect(moduleWrites().filter(c => c[3]).map(c => c[2])).toEqual(expect.arrayContaining(["inventory", "restaurant"]));
-    expect(mocks.tx.$executeRaw.mock.calls.some(c => c[0].join("").includes("'TRIALING'"))).toBe(true);
+    expect(mocks.tx.$executeRaw.mock.calls.some(c => c[0].join("").includes("'ACTIVE'"))).toBe(true);
+    expect(mocks.tx.$executeRaw.mock.calls.some(c => c[0].join("").includes('UPDATE "prepaid_workspace_approvals"'))).toBe(true);
     expect(mocks.audit.mock.calls[0][1]).toMatchObject({ workspaceId, actorId: "owner-id", action: "workspace.provisioned", metadata: { vertical: "RESTAURANT" } });
   });
   it("keeps the generic/trading default free of Restaurant selection", async () => {
@@ -53,6 +57,21 @@ describe("Restaurant provisioning transaction contract", () => {
     await createInitialWorkspace("different-owner-id", input, undefined, { provisioningRequestId: "test:other-user" });
     expect(mocks.tx.workspaceMember.findFirst).toHaveBeenCalledWith({ where: { userId: "different-owner-id" }, select: { workspaceId: true } });
     expect(mocks.tx.workspaceMember.create.mock.calls[0][0].data.userId).toBe("different-owner-id");
+  });
+  it("refuses unpaid workspace creation before any write", async () => {
+    mocks.tx.$queryRaw.mockImplementation(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      const sql = strings.join("");
+      if (sql.includes("FOR UPDATE") && sql.includes('FROM "users"')) return [{ id: values[0] }];
+      return [];
+    });
+    await expect(createInitialWorkspace("unpaid-user", input, undefined, { provisioningRequestId: "unpaid:request" })).rejects.toBeInstanceOf(PaymentRequiredError);
+    expect(mocks.tx.workspace.create).not.toHaveBeenCalled();
+    expect(mocks.tx.$executeRaw).not.toHaveBeenCalled();
+  });
+  it("rejects an approval that was already consumed by a competing request", async () => {
+    mocks.tx.$executeRaw.mockResolvedValue(0);
+    await expect(createInitialWorkspace("owner-id", input, undefined, { provisioningRequestId: "payment:already-used" })).rejects.toBeInstanceOf(PaymentRequiredError);
+    expect(mocks.audit).not.toHaveBeenCalled();
   });
   it("enforces modules in the canonical selection helper too", () => {
     expect(resolveProvisioningModules([], "restaurant")).toEqual(["inventory", "restaurant"]);
