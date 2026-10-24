@@ -143,7 +143,13 @@ async function requireAuthCleanupClient(members: ExclusiveMember[]) {
     if (!matched && member.supabaseId) {
       throw new Error("Account purge blocked: pinned Supabase identity was not found. Verify identity reconciliation first.");
     }
-    if (!matched && !member.clerkId?.startsWith("user_") && !member.supabaseId) {
+    // Deterministic old test fixtures live only in Neon. Their local-part is
+    // identical to the synthetic clerkId, and example.invalid cannot receive
+    // email. Never treat a normal customer or unrecognized fixture as synthetic.
+    const fixtureId = member.clerkId ?? "";
+    const isKnownSyntheticFixture = /^(?:gl|p1|phase2c|phase2d)-[a-z0-9-]+$/i.test(fixtureId)
+      && member.email.trim().toLowerCase() === `${fixtureId.toLowerCase()}@example.invalid`;
+    if (!matched && !member.clerkId?.startsWith("user_") && !member.supabaseId && !isKnownSyntheticFixture) {
       throw new Error("Account purge blocked: an unclassified customer identity needs manual verification.");
     }
     if (matched) userIds.add(matched);
