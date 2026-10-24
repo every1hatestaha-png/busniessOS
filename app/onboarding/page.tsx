@@ -25,8 +25,11 @@ export default async function OnboardingPage({
   const createAdditional = rawMode === "new";
 
   if (context && !createAdditional) redirect("/auth/post-login");
+  const pendingInvitations = createAdditional ? [] : await listPendingInvitationsForEmail(user.email);
   if (!(await hasVerifiedUnconsumedPayment(user.id))) {
     return (
+      <>
+      <PendingWorkspaceInvitations invitations={pendingInvitations} />
       <main className="grid min-h-dvh place-items-center bg-[#f7f8f6] px-5 py-12">
         <section className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-7 shadow-sm sm:p-10">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">MunshiOS · Paid onboarding</p>
@@ -40,9 +43,9 @@ export default async function OnboardingPage({
           <div className="mt-7 flex flex-wrap gap-3"><Link href="/pricing" className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700">View pricing</Link><Link href="/onboarding" className="rounded-xl bg-emerald-700 px-4 py-3 text-sm font-semibold text-white">Check payment status</Link></div>
         </section>
       </main>
+      </>
     );
   }
-  const pendingInvitations = createAdditional ? [] : await listPendingInvitationsForEmail(user.email);
   const rawBusiness = Array.isArray(params.business) ? params.business[0] : params.business;
   const builderBusiness = isBuilderBusinessType(rawBusiness) ? rawBusiness : null;
   const modules = sanitizeProvisioningModules(params.modules);
