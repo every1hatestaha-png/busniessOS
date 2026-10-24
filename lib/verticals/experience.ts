@@ -4,7 +4,7 @@ export type NavigationSection = { label: string; routes: readonly string[] };
 
 const overview = ["/dashboard"];
 const tradingOperations = ["/sales", "/gate-passes", "/purchases", "/goods-receipts", "/inventory", "/customers", "/suppliers", "/supplier-returns"];
-const finance = ["/khata", "/invoices", "/collections", "/receivables", "/accounting/cash-bank", "/accounting/expenses", "/accounting/notes", "/payables", "/reports"];
+const finance = ["/khata", "/invoices", "/collections", "/receivables", "/accounting/cash-bank", "/accounting/cheque-printing", "/accounting/expenses", "/accounting/notes", "/payables", "/reports"];
 const workspace = ["/ai", "/settings"];
 
 const navigation: Record<WorkspaceVertical, readonly NavigationSection[]> = {
