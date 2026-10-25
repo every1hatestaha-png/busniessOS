@@ -2,7 +2,7 @@
 -- Payment evidence is recorded before provisioning. No trial is created.
 -- Never use a screenshot, self-declared reference, or client-submitted status
 -- as payment verification; approvals are issued only by the MFA-verified owner.
-CREATE TABLE "prepaid_workspace_approvals" (
+CREATE TABLE IF NOT EXISTS "prepaid_workspace_approvals" (
   "id" TEXT NOT NULL PRIMARY KEY,
   "userId" TEXT REFERENCES "users"("id") ON DELETE SET NULL,
   "paymentReference" TEXT NOT NULL,
@@ -20,8 +20,8 @@ CREATE TABLE "prepaid_workspace_approvals" (
     "consumedWorkspaceId" IS NULL OR "consumedAt" IS NOT NULL
   )
 );
-CREATE UNIQUE INDEX "prepaid_workspace_payment_reference_unique"
+CREATE UNIQUE INDEX IF NOT EXISTS "prepaid_workspace_payment_reference_unique"
   ON "prepaid_workspace_approvals" (lower(btrim("paymentReference")));
-CREATE INDEX "prepaid_workspace_approvals_available_idx"
+CREATE INDEX IF NOT EXISTS "prepaid_workspace_approvals_available_idx"
   ON "prepaid_workspace_approvals" ("userId", "verifiedAt")
   WHERE "consumedWorkspaceId" IS NULL;
