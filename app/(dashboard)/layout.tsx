@@ -7,6 +7,7 @@ import { PrintShortcutRouter } from "@/components/documents/print-shortcut-route
 import { listCurrentUserWorkspaces, requireWorkspace } from "@/lib/server/auth";
 import { listWorkspaceModules } from "@/lib/server/industry-modules";
 import { getWorkspaceAccess } from "@/lib/server/subscriptions";
+import { getRestaurantActorStation } from "@/lib/server/restaurant-stations";
 import { resolveWorkspaceVertical } from "@/lib/verticals/registry";
 import { isPlatformOwner } from "@/lib/platform-access";
 import { getSupabaseAuthUser } from "@/lib/supabase/server";
@@ -16,7 +17,7 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { workspace, role } = await requireWorkspace();
+  const { workspace, role, user } = await requireWorkspace();
   const [workspaces, subscription, workspaceModules] = await Promise.all([
     listCurrentUserWorkspaces(),
     getWorkspaceAccess(workspace.id),
@@ -25,6 +26,9 @@ export default async function DashboardLayout({
   const enabledModules = workspaceModules.filter((module) => module.enabled).map((module) => module.moduleKey);
   const vertical = resolveWorkspaceVertical(workspace);
   const gatePassEnabled = outboundGatePassDraftFeatureEnabled(workspace.id);
+  const restaurantStation = vertical === "RESTAURANT"
+    ? await getRestaurantActorStation({ workspaceId: workspace.id, userId: user.id, role })
+    : null;
   const platformIdentity = await getSupabaseAuthUser();
   const platformOwner = isPlatformOwner(platformIdentity, process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL, process.env.MUNSHIOS_PLATFORM_OWNER_SUPABASE_ID);
 
@@ -32,10 +36,10 @@ export default async function DashboardLayout({
     <div className="flex min-h-dvh w-full min-w-0 bg-background text-foreground print:block print:min-h-0 print:bg-white">
       <PrintShortcutRouter />
       <div className="sticky top-0 hidden h-dvh shrink-0 print:hidden lg:block">
-        <Sidebar workspaceName={workspace.name} gatePassEnabled={gatePassEnabled} role={role} enabledModules={enabledModules} vertical={vertical} />
+        <Sidebar workspaceName={workspace.name} gatePassEnabled={gatePassEnabled} role={role} enabledModules={enabledModules} vertical={vertical} restaurantStation={restaurantStation} />
       </div>
       <div className="min-w-0 flex-1 print:block">
-        <TopNav workspaceName={workspace.name} workspaceId={workspace.id} gatePassEnabled={gatePassEnabled} workspaces={workspaces} role={role} enabledModules={enabledModules} vertical={vertical} platformOwner={platformOwner} />
+        <TopNav workspaceName={workspace.name} workspaceId={workspace.id} gatePassEnabled={gatePassEnabled} workspaces={workspaces} role={role} enabledModules={enabledModules} vertical={vertical} restaurantStation={restaurantStation} platformOwner={platformOwner} />
         {!subscription.allowed && (
           <div className="border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-950 print:hidden sm:px-5 lg:px-6">
             <div className="flex flex-wrap items-center justify-between gap-2">
