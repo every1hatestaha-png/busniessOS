@@ -54,6 +54,7 @@ const routes: SidebarRoute[] = [
   { href: "/suppliers", label: "Suppliers", icon: Truck },
   { href: "/supplier-returns", label: "Supplier Returns", icon: Truck, financial: true },
   { href: "/restaurant", label: "Overview", icon: UtensilsCrossed, module: "restaurant" },
+  { href: "/restaurant/manager", label: "Manager", icon: LayoutDashboard, financial: true, module: "restaurant" },
   { href: "/restaurant/pos", label: "POS", icon: ShoppingCart, module: "restaurant" },
   { href: "/restaurant/orders", label: "Orders", icon: ClipboardList, module: "restaurant" },
   { href: "/restaurant/kitchen", label: "Kitchen", icon: ChefHat, module: "restaurant" },
