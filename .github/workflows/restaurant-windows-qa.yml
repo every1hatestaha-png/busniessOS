@@ -41,6 +41,9 @@ jobs:
       - name: Run Electron security and bootstrap smoke tests
         run: npm run desktop:test
 
+      - name: Assert QA identity and staging isolation contracts
+        run: node --test tests/desktop/restaurant-qa-contract.test.cjs
+
       - name: Create isolated unsigned QA packaging metadata
         shell: pwsh
         run: |
