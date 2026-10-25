@@ -100,6 +100,10 @@ jobs:
             "Production release and Vercel deployment were NOT modified."
           ) | Set-Content -Path 'dist-restaurant-qa/QA-READ-ME.txt' -Encoding utf8
 
+      - name: Include operator acceptance checklist
+        shell: pwsh
+        run: Copy-Item -LiteralPath "docs/release/restaurant-windows-qa-acceptance.md" -Destination "dist-restaurant-qa/QA-ACCEPTANCE.md"
+
       - name: Upload short-lived internal QA installer artifact
         uses: actions/upload-artifact@v4
         with:
@@ -108,5 +112,6 @@ jobs:
             dist-restaurant-qa/*.exe
             dist-restaurant-qa/SHA256SUMS.txt
             dist-restaurant-qa/QA-READ-ME.txt
+            dist-restaurant-qa/QA-ACCEPTANCE.md
           if-no-files-found: error
           retention-days: 7
