@@ -5,6 +5,8 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
 import { listWorkspaceModules } from "@/lib/server/industry-modules";
+import { getRestaurantActorStation } from "@/lib/server/restaurant-stations";
+import { canUseRestaurantStation } from "@/lib/restaurant/station-policy";
 import { cn } from "@/lib/utils";
 
 const stations = [
@@ -27,7 +29,7 @@ const stations = [
 ] as const;
 
 export default async function RestaurantPage() {
-  const { workspaceId, workspace, role } = await requireWorkspace();
+  const { workspaceId, workspace, role, user } = await requireWorkspace();
   const modules = await listWorkspaceModules(workspaceId);
   if (!modules.some((module) => module.moduleKey === "restaurant" && module.enabled)) {
     return (
@@ -39,7 +41,8 @@ export default async function RestaurantPage() {
       </Card>
     );
   }
-  const canManage = role === "OWNER" || role === "ADMIN" || role === "MANAGER";
+  const assignedStation = await getRestaurantActorStation({ workspaceId, userId: user.id, role });
+  const canManage = canUseRestaurantStation(role, assignedStation, "MANAGER");
 
   return (
     <main className="mx-auto max-w-5xl space-y-6">
@@ -53,7 +56,8 @@ export default async function RestaurantPage() {
         </p>
       </header>
       <section aria-label="Restaurant stations" className="grid gap-4 md:grid-cols-2">
-        {stations.map((station) => {
+        {stations.filter((station) => canUseRestaurantStation(role, assignedStation,
+          station.href === "/restaurant/pos" ? "CASHIER" : "KITCHEN")).map((station) => {
           const Icon = station.icon;
           return (
             <Link key={station.href} href={station.href}
@@ -91,7 +95,11 @@ export default async function RestaurantPage() {
           </Link>
         )}
       </section>
-      {!canManage && <p className="text-xs text-slate-500">Financial dashboards and manager controls require an owner, admin or manager role.</p>}
+      {!canManage && <p className="text-xs text-slate-500">
+        Your station: {assignedStation === "CASHIER" ? "Cashier — orders and billing" :
+        assignedStation === "KITCHEN" ? "Kitchen — preparation only" :
+        "Unassigned. Ask your manager to grant Cashier or Kitchen access."}
+      </p>}
     </main>
   );
 }
