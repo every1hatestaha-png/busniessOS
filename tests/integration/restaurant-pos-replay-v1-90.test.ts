@@ -248,7 +248,7 @@ it("manager-ready table lookup includes an order after kitchen prepares it", asy
   expect(await listRestaurantReadyTableIds(workspaceId)).toContain(table.id);
 });
 
-it("manager today sales includes an old order completed today, not just orders created today", async () => {
+it("manager today sales recognizes completion only when cashier closes a kitchen-ready order", async () => {
   const { createPosOrderAction, transitionKitchenOrderAction, transitionRestaurantOrderAction } =
     await import("@/app/(dashboard)/restaurant/v1-actions");
   const { getRestaurantWorkspaceMetrics } = await import("@/lib/server/restaurant-workspace");
@@ -261,13 +261,12 @@ it("manager today sales includes an old order completed today, not just orders c
       AND "externalReference"=${`pos:${orderData.get("orderRequestId")}`}
   `;
   expect(order?.id).toBeTruthy();
-  // A restaurant can punch an order before midnight and complete it after.
-  // Only the order's final completion date belongs to daily sales reporting.
-  await db.$executeRaw`
-    UPDATE restaurant_orders
-    SET "createdAt"=CURRENT_TIMESTAMP - INTERVAL '2 days'
-    WHERE "id"=${order.id}::uuid AND "workspaceId"=${workspaceId}::uuid
-  `;
+  // Restaurant identity snapshots, including createdAt, are protected by an
+  // immutable database trigger. Never mutate the order's creation timestamp
+  // even for synthetic tests. Verify reporting using legitimate transitions.
+  const beforeCompletion = await getRestaurantWorkspaceMetrics(workspaceId);
+  expect(beforeCompletion.todaySales).toBeCloseTo(original.todaySales, 2);
+  expect(beforeCompletion.todayOrders).toBe(original.todayOrders + 1);
   const transition = new FormData();
   transition.set("formWorkspaceId", workspaceId);
   transition.set("orderId", order.id);
@@ -279,7 +278,7 @@ it("manager today sales includes an old order completed today, not just orders c
   expect((await transitionRestaurantOrderAction(transition)).status).toBe("success");
   const metrics = await getRestaurantWorkspaceMetrics(workspaceId);
   expect(metrics.todaySales).toBeCloseTo(original.todaySales + 100, 2);
-  expect(metrics.todayOrders).toBe(original.todayOrders);
+  expect(metrics.todayOrders).toBe(original.todayOrders + 1);
 });
 
 it("a repeated successful POS action produces one order, KOT and audit event", async () => {
