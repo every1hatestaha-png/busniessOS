@@ -19,6 +19,7 @@ import { listRestaurantPayments, type RestaurantPaymentRecord } from "@/lib/serv
 import { listRestaurantNetPaymentSummaries } from "@/lib/server/restaurant-payment-summary";
 import { listRestaurantOrders, type RestaurantOrderStatus } from "@/lib/server/restaurant-workspace";
 import { cn } from "@/lib/utils";
+import { CASHIER_QUEUE_LIMIT, cashierQueueLabel } from "@/lib/restaurant/cashier-queue";
 
 const columns: Array<{ status: RestaurantOrderStatus; label: string }> = [
   { status: "PENDING_REVIEW", label: "Pending review" },
@@ -38,13 +39,26 @@ type PaymentSummary = Awaited<ReturnType<typeof listRestaurantNetPaymentSummarie
 export default async function RestaurantOrdersPage() {
   const { workspaceId, role, workspace, user } = await requireWorkspace();
   await assertRestaurantStation({ workspaceId, role, userId: user.id }, "CASHIER");
-  const [active, recentClosed, completedOutstanding, cashAccounts] = await Promise.all([
-    listRestaurantOrders(workspaceId, 200, { statuses: ["PENDING_REVIEW", "CONFIRMED", "PREPARING", "READY"], oldestFirst: true }),
+  // Each stage must get its own FIFO slice. A 200-row shared query previously
+  // allowed old confirmed/review tickets to hide newer READY orders indefinitely.
+  // 4*60 + 30 recent + 200 outstanding = max 470 distinct order IDs,
+  // safely under the existing 500-order payments/summary query bound.
+  const [pendingReview, confirmed, preparing, ready, recentClosed, completedOutstanding, cashAccounts] = await Promise.all([
+    listRestaurantOrders(workspaceId, CASHIER_QUEUE_LIMIT, { statuses: ["PENDING_REVIEW"], oldestFirst: true }),
+    listRestaurantOrders(workspaceId, CASHIER_QUEUE_LIMIT, { statuses: ["CONFIRMED"], oldestFirst: true }),
+    listRestaurantOrders(workspaceId, CASHIER_QUEUE_LIMIT, { statuses: ["PREPARING"], oldestFirst: true }),
+    listRestaurantOrders(workspaceId, CASHIER_QUEUE_LIMIT, { statuses: ["READY"], oldestFirst: true }),
     listRestaurantOrders(workspaceId, 30, { statuses: ["COMPLETED", "CANCELLED"] }),
     listRestaurantOrders(workspaceId, 200, { statuses: ["COMPLETED"], oldestFirst: true, outstandingOnly: true }),
     getCashBankAccounts(workspaceId),
   ]);
-  const visibleOrderIds = [...new Set([...active, ...recentClosed, ...completedOutstanding].map(order => order.id))];
+  const activeByStatus = {
+    PENDING_REVIEW: pendingReview,
+    CONFIRMED: confirmed,
+    PREPARING: preparing,
+    READY: ready,
+  };
+  const visibleOrderIds = [...new Set([...pendingReview, ...confirmed, ...preparing, ...ready, ...recentClosed, ...completedOutstanding].map(order => order.id))];
   const [payments, paymentSummaries] = await Promise.all([
     listRestaurantPayments(workspaceId, visibleOrderIds),
     listRestaurantNetPaymentSummaries(workspaceId, visibleOrderIds),
@@ -75,18 +89,22 @@ export default async function RestaurantOrdersPage() {
       </section>
 
       <section className="grid gap-3 sm:grid-cols-4">
-        <StatusMetric label="Needs review" value={active.filter((order) => order.status === "PENDING_REVIEW").length} icon={MessageCircleMore} tone="amber" />
-        <StatusMetric label="Confirmed" value={active.filter((order) => order.status === "CONFIRMED").length} icon={Clock3} tone="blue" />
-        <StatusMetric label="Preparing" value={active.filter((order) => order.status === "PREPARING").length} icon={ChefHat} tone="amber" />
-        <StatusMetric label="Ready" value={active.filter((order) => order.status === "READY").length} icon={CheckCircle2} tone="emerald" />
+        <StatusMetric label="Needs review" value={cashierQueueLabel(pendingReview.length)} icon={MessageCircleMore} tone="amber" />
+        <StatusMetric label="Confirmed" value={cashierQueueLabel(confirmed.length)} icon={Clock3} tone="blue" />
+        <StatusMetric label="Preparing" value={cashierQueueLabel(preparing.length)} icon={ChefHat} tone="amber" />
+        <StatusMetric label="Ready" value={cashierQueueLabel(ready.length)} icon={CheckCircle2} tone="emerald" />
       </section>
 
       {payments.length === 500 ? <p className="text-sm text-amber-700">Showing the latest 500 payments for these orders. Open an order receipt for its complete payment history.</p> : null}
-      {active.length === 200 ? <p className="text-sm text-amber-700">Showing the oldest 200 active orders. Finish these to advance the queue.</p> : null}
+      {columns.filter((column) => activeByStatus[column.status].length === CASHIER_QUEUE_LIMIT).map((column) => (
+        <p key={column.status} className="text-sm text-amber-700">
+          {column.label} has at least {CASHIER_QUEUE_LIMIT} orders. Showing oldest first; finish or review them to reveal the backlog.
+        </p>
+      ))}
       <div className="grid gap-4 xl:grid-cols-4">
         {columns.map((column) => {
-          const matching = active.filter((order) => order.status === column.status);
-          return <section key={column.status} className="min-w-0 rounded-2xl border bg-slate-50/70 p-3"><div className="mb-3 flex items-center justify-between"><h2 className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">{column.label}</h2><span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold shadow-sm">{matching.length}</span></div><div className="space-y-3">{matching.length ? matching.map((order) => <OrderCard workspaceId={workspaceId} key={order.id} order={order} cashAccounts={cashAccounts} payments={paymentsByOrder.get(order.id) ?? []} paymentSummary={paymentSummaryByOrder.get(order.id)} canVoidPayments={canManageFinancialActions} />) : <div className="rounded-2xl border border-dashed bg-white p-8 text-center"><Sparkles className="mx-auto size-4 text-emerald-500" /><p className="mt-2 text-xs text-muted-foreground">Queue clear</p></div>}</div></section>;
+          const matching = activeByStatus[column.status];
+          return <section key={column.status} className="min-w-0 rounded-2xl border bg-slate-50/70 p-3"><div className="mb-3 flex items-center justify-between"><h2 className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">{column.label}</h2><span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold shadow-sm">{cashierQueueLabel(matching.length)}</span></div><div className="space-y-3">{matching.length ? matching.map((order) => <OrderCard workspaceId={workspaceId} key={order.id} order={order} cashAccounts={cashAccounts} payments={paymentsByOrder.get(order.id) ?? []} paymentSummary={paymentSummaryByOrder.get(order.id)} canVoidPayments={canManageFinancialActions} />) : <div className="rounded-2xl border border-dashed bg-white p-8 text-center"><Sparkles className="mx-auto size-4 text-emerald-500" /><p className="mt-2 text-xs text-muted-foreground">Queue clear</p></div>}</div></section>;
         })}
       </div>
 
@@ -160,7 +178,7 @@ function PaymentPanel({
 }
 
 
-function StatusMetric({ label, value, icon: Icon, tone }: { label: string; value: number; icon: typeof ChefHat; tone: "emerald" | "amber" | "blue" }) {
+function StatusMetric({ label, value, icon: Icon, tone }: { label: string; value: string; icon: typeof ChefHat; tone: "emerald" | "amber" | "blue" }) {
   const toneClass = tone === "emerald"
     ? "bg-emerald-100 text-emerald-700"
     : tone === "blue"
