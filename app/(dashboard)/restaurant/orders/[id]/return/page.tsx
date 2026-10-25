@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/business/page-header";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
+import { redirect } from "next/navigation";
 import { listRestaurantReturnReversalState } from "@/lib/server/restaurant-return-reversal-ui";
 import { getRestaurantReturnUiState } from "@/lib/server/restaurant-return-ui";
 import { cn } from "@/lib/utils";
@@ -17,6 +18,7 @@ export default async function RestaurantOrderReturnPage({ params }: { params: Pr
   const { id } = await params;
   const { workspaceId, role } = await requireWorkspace();
   const canReturn = role === "OWNER" || role === "ADMIN" || role === "MANAGER";
+  if (!canReturn) redirect("/restaurant");
   const [state, reversalState] = await Promise.all([
     getRestaurantReturnUiState(workspaceId, id),
     listRestaurantReturnReversalState(workspaceId, id),
