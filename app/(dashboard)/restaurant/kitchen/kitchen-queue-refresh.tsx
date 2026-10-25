@@ -17,11 +17,22 @@ export function KitchenQueueRefresh() {
 
   useEffect(() => {
     if (!enabled) return;
-    const interval = window.setInterval(() => {
+    const refreshIfVisible = () => {
       if (document.visibilityState !== "visible") return;
+      // Don't interrupt staff typing into a focused ticket form.
+      if (document.activeElement?.closest("form")) return;
       startTransition(() => router.refresh());
-    }, POLL_INTERVAL_MS);
-    return () => window.clearInterval(interval);
+    };
+    const interval = window.setInterval(refreshIfVisible, POLL_INTERVAL_MS);
+    // On tab re-entry, promptly catch up instead of waiting a full interval.
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") refreshIfVisible();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [enabled, router]);
 
   return (
