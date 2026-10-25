@@ -21,7 +21,8 @@ import { listRestaurantOrders, type RestaurantOrderStatus } from "@/lib/server/r
 import { cn } from "@/lib/utils";
 import { CASHIER_QUEUE_LIMIT, cashierQueueLabel } from "@/lib/restaurant/cashier-queue";
 
-const columns: Array<{ status: RestaurantOrderStatus; label: string }> = [
+type CashierStage = Extract<RestaurantOrderStatus, "PENDING_REVIEW" | "CONFIRMED" | "PREPARING" | "READY">;
+const columns: Array<{ status: CashierStage; label: string }> = [
   { status: "PENDING_REVIEW", label: "Pending review" },
   { status: "CONFIRMED", label: "Confirmed" },
   { status: "PREPARING", label: "Preparing" },
