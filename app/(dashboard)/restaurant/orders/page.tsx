@@ -1,4 +1,5 @@
 import { RestaurantMutationForm } from "@/app/(dashboard)/restaurant/mutation-form";
+import { CashierPaymentForm } from "@/app/(dashboard)/restaurant/orders/cashier-payment-form";
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { RestaurantStationAutoRefresh } from "@/components/restaurant/station-auto-refresh";
@@ -6,7 +7,6 @@ import { CheckCircle2, ChefHat, Clock3, MessageCircleMore, Plus, RotateCcw, Shop
 
 import {
   confirmRestaurantOrderAction,
-  recordRestaurantPaymentAction,
   transitionRestaurantOrderAction,
   voidRestaurantPaymentAction,
 } from "@/app/(dashboard)/restaurant/v1-actions";
@@ -144,7 +144,17 @@ function PaymentPanel({
   const retainedPaid = paymentSummary?.retainedPaid ?? payments.filter((payment) => !payment.voidedAt).reduce((sum, payment) => sum + payment.amount, 0);
   const outstanding = paymentSummary?.outstanding ?? 0;
   return <div className="space-y-3 border-t pt-3"><div className="flex items-center justify-between text-xs"><span className="text-muted-foreground">Payment: {paymentStatus}</span><span className="font-medium">Retained Rs {retainedPaid.toLocaleString()} · Due Rs {outstanding.toLocaleString()}</span></div>
-    {outstanding > 0 ? cashAccounts.length ? <RestaurantMutationForm action={recordRestaurantPaymentAction} workspaceId={workspaceId} className="grid gap-2 sm:grid-cols-2"><input type="hidden" name="orderId" value={orderId} /><input type="hidden" name="paymentRequestId" value={`rp:${randomUUID()}`} /><select name="cashBankAccountId" required className="h-8 rounded-md border bg-background px-2 text-xs">{cashAccounts.map((account) => <option key={account.cashBankAccountId} value={account.cashBankAccountId}>{account.name}</option>)}</select><select name="method" defaultValue="CASH" className="h-8 rounded-md border bg-background px-2 text-xs"><option value="CASH">Cash</option><option value="CREDIT_CARD">Card</option><option value="BANK_TRANSFER">Bank transfer</option><option value="JAZZCASH">JazzCash</option><option value="EASYPAISA">Easypaisa</option><option value="MOBILE_WALLET">Mobile wallet</option><option value="CHEQUE">Cheque</option><option value="OTHER">Other</option></select><input name="amount" type="number" min="0.01" max={outstanding} step="0.01" defaultValue={outstanding} required className="h-8 rounded-md border bg-background px-2 text-xs" /><input name="reference" maxLength={120} placeholder="Reference (optional)" className="h-8 rounded-md border bg-background px-2 text-xs" /><div className="sm:col-span-2 flex justify-end"><Button size="sm" type="submit">Record payment</Button></div></RestaurantMutationForm> : <p className="text-xs text-amber-700">Create an active cash or bank account before recording restaurant payments. <Link href="/accounting/cash-bank" className="font-semibold underline">Open Cash & Bank</Link></p> : null}
+    {outstanding > 0 ? cashAccounts.length ? <CashierPaymentForm
+      workspaceId={workspaceId}
+      orderId={orderId}
+      outstanding={outstanding}
+      paymentRequestId={`rp:${randomUUID()}`}
+      accounts={cashAccounts.map(account => ({
+        cashBankAccountId: account.cashBankAccountId,
+        name: account.name,
+        isBank: account.isBank,
+      }))}
+    /> : <p className="text-xs text-amber-700">Create an active cash or bank account before recording restaurant payments. <Link href="/accounting/cash-bank" className="font-semibold underline">Open Cash & Bank</Link></p> : null}
     {payments.length ? <div className="space-y-1.5">{payments.slice(0, 5).map((payment) => <div key={payment.id} className={payment.voidedAt ? "flex items-center justify-between rounded bg-muted/40 px-2 py-1.5 text-xs text-muted-foreground line-through" : "flex items-center justify-between rounded bg-muted/40 px-2 py-1.5 text-xs"}><span>{payment.method.replaceAll("_", " ")} · {payment.cashBankAccountName} · Rs {payment.amount.toLocaleString()}</span>{canVoidPayments && !payment.voidedAt ? <RestaurantMutationForm action={voidRestaurantPaymentAction} workspaceId={workspaceId} className="flex items-center gap-1"><input type="hidden" name="paymentId" value={payment.id} /><input name="reason" required minLength={3} maxLength={500} placeholder="Void reason" className="h-7 w-28 rounded border bg-background px-1.5 text-[11px]" /><Button type="submit" size="xs" variant="outline">Void</Button></RestaurantMutationForm> : payment.voidedAt ? <span>VOID</span> : null}</div>)}</div> : null}
   </div>;
 }
