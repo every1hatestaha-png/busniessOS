@@ -11,6 +11,20 @@ Status: NOT RELEASE CERTIFIED. This runbook is for internal QA of a single exact
 4. Note Windows version, installer file name, source SHA, QA user accounts by non-secret test identifier, and 80mm printer model.
 5. The QA installer is unsigned. Do not distribute it to customers. Do not use or alter the manufacturing production installer.
 
+## Launch with an explicitly approved staging origin
+
+The packaged QA app deliberately refuses the default production origin. Installation alone is not sufficient to log in. First obtain a reviewed HTTPS staging origin from the release operator, check that its backing database and authentication project are nonproduction, and start the installed QA executable from PowerShell with a process-scoped environment variable. Example:
+
+```powershell
+$env:BUSINESSOS_APP_ORIGIN = "https://REPLACE-WITH-APPROVED-STAGING-HOST"
+& "$env:LOCALAPPDATA\Programs\MunshiOS Restaurant QA\MunshiOS Restaurant QA.exe"
+Remove-Item Env:BUSINESSOS_APP_ORIGIN
+```
+
+The installed executable location may differ if the tester chose a custom installation directory. Use its real location. Do not run this example before replacing the placeholder with the verified staging HTTPS origin. The variable only selects the hosted service. It does not create a staging environment or grant access. Do not use production credentials or live customer tenants for these tests.
+
+Expected fail-closed checks: without BUSINESSOS_APP_ORIGIN the QA app must refuse startup; using the known production MunshiOS hostnames must also be rejected. Record the resulting user-visible behavior without sensitive log content. A successful launch against an arbitrary third-party HTTPS host is **not** evidence of a safe staging environment. An operator must verify the origin and backend before using it.
+
 ## Acceptance checklist
 
 Record PASS, FAIL, or BLOCKED for each step and attach redacted screenshots/logs.
