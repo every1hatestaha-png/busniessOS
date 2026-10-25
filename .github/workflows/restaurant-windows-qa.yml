@@ -44,6 +44,20 @@ jobs:
       - name: Assert QA identity and staging isolation contracts
         run: node --test tests/desktop/restaurant-qa-contract.test.cjs
 
+      - name: Test QA launcher without installing software
+        shell: pwsh
+        run: |
+          ./scripts/restaurant/launch-windows-qa.ps1 -StagingOrigin "https://isolated-qa-example.vercel.app" -ValidateOnly
+          foreach ($blocked in @("https://munshios.tech","https://business-os-khzr.vercel.app","http://isolated-qa-example.vercel.app","https://isolated-qa-example.vercel.app/path")) {
+            $rejected = $false
+            try {
+              ./scripts/restaurant/launch-windows-qa.ps1 -StagingOrigin $blocked -ValidateOnly
+            } catch {
+              $rejected = $true
+            }
+            if (-not $rejected) { throw "Launcher accepted prohibited origin" }
+          }
+
       - name: Create isolated unsigned QA packaging metadata
         shell: pwsh
         run: |
@@ -107,6 +121,10 @@ jobs:
         shell: pwsh
         run: Copy-Item -LiteralPath "docs/release/restaurant-windows-qa-acceptance.md" -Destination "dist-restaurant-qa/QA-ACCEPTANCE.md"
 
+      - name: Include reusable QA launcher
+        shell: pwsh
+        run: Copy-Item -LiteralPath "scripts/restaurant/launch-windows-qa.ps1" -Destination "dist-restaurant-qa/LAUNCH-RESTAURANT-QA.ps1"
+
       - name: Upload short-lived internal QA installer artifact
         uses: actions/upload-artifact@v4
         with:
@@ -116,5 +134,6 @@ jobs:
             dist-restaurant-qa/SHA256SUMS.txt
             dist-restaurant-qa/QA-READ-ME.txt
             dist-restaurant-qa/QA-ACCEPTANCE.md
+            dist-restaurant-qa/LAUNCH-RESTAURANT-QA.ps1
           if-no-files-found: error
           retention-days: 7
