@@ -63,13 +63,15 @@ export function CashierPaymentForm({
       if (result.status === "success") {
         // A successful receipt is immutable evidence. The next collection must
         // always have a different idempotency identity, even for partial payments.
+        // Reset first: form.reset() restores defaultValue for hidden fields.
+        // Assign the fresh id only after reset, or the old receipt id returns.
+        formRef.current?.reset();
         requestId.current = `rp:${crypto.randomUUID()}`;
         if (requestField.current) requestField.current.value = requestId.current;
         attemptedSignature.current = null;
         setSubmitted(false);
         setSafetyMessage("");
         setReceiptReady(true);
-        formRef.current?.reset();
       } else {
         setSafetyMessage("If a payment may have reached the server, check this order's receipt before retrying. An unchanged retry keeps the same request ID.");
       }
