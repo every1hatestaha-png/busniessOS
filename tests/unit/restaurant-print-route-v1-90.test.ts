@@ -10,7 +10,7 @@ vi.mock("@/components/documents/document-frame", () => ({ DocumentFrame: () => n
 vi.mock("@/components/invoices/print-button", () => ({ PrintButton: () => null }));
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.auth.mockResolvedValue({ workspaceId: "workspace-a", workspace: { name: "Synthetic" } });
+  mocks.auth.mockResolvedValue({ workspaceId: "workspace-a", role: "STAFF", user: { id: "synthetic-kitchen" }, workspace: { name: "Synthetic" } });
 });
 it("direct KOT URL cannot instruct fulfilment of an unapproved WhatsApp order", async () => {
   mocks.document.mockResolvedValue({ orderNumber: "R-PENDING", status: "PENDING_REVIEW" });
