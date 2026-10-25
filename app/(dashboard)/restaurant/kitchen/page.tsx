@@ -100,6 +100,11 @@ export default async function RestaurantKitchenPage() {
                             <li key={index} className="flex items-start justify-between gap-3 py-2.5">
                               <span className="min-w-0 text-sm font-medium text-slate-900">
                                 {line.itemName}
+                                {line.modifiers.length > 0 && (
+                                  <span className="mt-1 block text-xs font-normal text-slate-600">
+                                    Options: {line.modifiers.join(" · ")}
+                                  </span>
+                                )}
                                 {line.notes && <span className="mt-0.5 block text-xs font-normal text-amber-800">{line.notes}</span>}
                               </span>
                               <strong className="shrink-0 rounded-lg bg-white px-2 py-1 text-sm tabular-nums text-slate-900">× {line.quantity}</strong>
