@@ -15,6 +15,7 @@ import { WebAccountMenu } from "@/components/layout/web-account-menu";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { getWorkspaceBranding } from "@/lib/workspace-branding";
 import type { WorkspaceVertical } from "@/lib/verticals/registry";
+import type { RestaurantStation } from "@/lib/restaurant/station-policy";
 
 export function TopNav({
   workspaceName,
@@ -24,6 +25,7 @@ export function TopNav({
   role,
   enabledModules,
   vertical,
+  restaurantStation = null,
   platformOwner = false,
 }: {
   workspaceName: string;
@@ -33,6 +35,7 @@ export function TopNav({
   role: Role;
   enabledModules: string[];
   vertical: WorkspaceVertical;
+  restaurantStation?: RestaurantStation | null;
   platformOwner?: boolean;
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -61,7 +64,7 @@ export function TopNav({
             }}
           >
             <SheetTitle className="sr-only">Navigation menu</SheetTitle>
-            <Sidebar workspaceName={workspaceName} gatePassEnabled={gatePassEnabled} role={role} enabledModules={enabledModules} vertical={vertical} />
+            <Sidebar workspaceName={workspaceName} gatePassEnabled={gatePassEnabled} role={role} enabledModules={enabledModules} vertical={vertical} restaurantStation={restaurantStation} />
           </SheetContent>
         </Sheet>
 
@@ -87,7 +90,7 @@ export function TopNav({
         )}
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          {restaurantMode ? (
+          {restaurantMode && (role !== "STAFF" || restaurantStation === "CASHIER") ? (
             <Button
               className="hidden bg-emerald-600 hover:bg-emerald-500 sm:inline-flex"
               nativeButton={false}
