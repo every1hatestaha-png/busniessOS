@@ -21,7 +21,7 @@ import {
   listRestaurantTables,
   listWorkspaceModules,
 } from "@/lib/server/industry-modules";
-import { getRestaurantWorkspaceMetrics, listRestaurantOrders } from "@/lib/server/restaurant-workspace";
+import { getRestaurantWorkspaceMetrics, listRestaurantOrders, listRestaurantReadyTableIds } from "@/lib/server/restaurant-workspace";
 import { listRestaurantStationStaff } from "@/lib/server/restaurant-stations";
 import { cn } from "@/lib/utils";
 
@@ -38,7 +38,7 @@ export default async function RestaurantManagerPage() {
   // Each status gets its own bounded slice. One backed-up column must never
   // hide newly confirmed orders or make the Manager overview look empty.
   const managerQueueLimit = 15;
-  const [readiness, tables, metrics, newOrders, preparingOrders, readyOrders, staff] = await Promise.all([
+  const [readiness, tables, metrics, newOrders, preparingOrders, readyOrders, staff, readyTableIds] = await Promise.all([
     getRestaurantOverviewReadiness(workspaceId),
     listRestaurantTables(workspaceId),
     getRestaurantWorkspaceMetrics(workspaceId),
@@ -46,14 +46,13 @@ export default async function RestaurantManagerPage() {
     listRestaurantOrders(workspaceId, managerQueueLimit, { statuses: ["PREPARING"], oldestFirst: true }),
     listRestaurantOrders(workspaceId, managerQueueLimit, { statuses: ["READY"], oldestFirst: true }),
     listRestaurantStationStaff(workspaceId),
+    listRestaurantReadyTableIds(workspaceId),
   ]);
 
   const openShift = readiness.openShift;
   const canManage = role === "OWNER" || role === "ADMIN" || role === "MANAGER";
   const occupiedTables = tables.filter((table) => table.status === "OCCUPIED").length;
-  const readyTables = new Set(
-    readyOrders.filter((order) => order.tableName).map((order) => order.tableName),
-  );
+  const readyTables = new Set(readyTableIds);
   const liveByStatus = {
     CONFIRMED: newOrders,
     PREPARING: preparingOrders,
@@ -127,7 +126,7 @@ export default async function RestaurantManagerPage() {
             {tables.length ? (
               <div className="mt-4 grid grid-cols-4 gap-2 sm:grid-cols-6 xl:grid-cols-4">
                 {tables.slice(0, 24).map((table) => {
-                  const ready = readyTables.has(table.name);
+                  const ready = readyTables.has(table.id);
                   const occupied = table.status === "OCCUPIED";
                   return (
                     <div
