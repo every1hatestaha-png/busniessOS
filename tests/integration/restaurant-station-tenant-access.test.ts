@@ -44,6 +44,11 @@ beforeAll(async () => {
   });
   workspaceB = b.id;
   workspaces.push(b.id);
+  await db.$executeRaw`
+    INSERT INTO workspace_modules ("workspaceId","moduleKey",enabled,config)
+    VALUES (${workspaceA}::uuid,'restaurant',true,'{}'::jsonb),
+           (${workspaceB}::uuid,'restaurant',true,'{}'::jsonb)
+  `;
 });
 
 afterAll(async () => {
@@ -91,6 +96,17 @@ describe("Restaurant isolated STAFF station permissions (real PostgreSQL)", () =
       .rejects.toThrow();
     await setRestaurantStaffStation(actor, staffId, null);
     expect(await getRestaurantActorStation({ workspaceId: workspaceA, role: "STAFF", userId: staffId })).toBeNull();
+  });
+
+  it("refuses all station changes after the restaurant module is disabled", async () => {
+    const actor = { workspaceId: workspaceB, role: "OWNER", userId: ownerId };
+    await db.$executeRaw`UPDATE workspace_modules SET enabled=false WHERE "workspaceId"=${workspaceB}::uuid AND "moduleKey"='restaurant'`;
+    try {
+      await expect(setRestaurantStaffStation(actor, staffId, "CASHIER")).rejects.toThrow(/not enabled/);
+      expect(await getRestaurantActorStation({ workspaceId: workspaceB, role: "STAFF", userId: staffId })).toBeNull();
+    } finally {
+      await db.$executeRaw`UPDATE workspace_modules SET enabled=true WHERE "workspaceId"=${workspaceB}::uuid AND "moduleKey"='restaurant'`;
+    }
   });
 
   it("cannot assign an owner or outsider as a STAFF station", async () => {
