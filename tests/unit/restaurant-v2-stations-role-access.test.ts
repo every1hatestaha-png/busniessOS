@@ -13,6 +13,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
+vi.mock("@/components/restaurant/station-auto-refresh", () => ({
+  RestaurantStationAutoRefresh: () => null,
+}));
 vi.mock("@/lib/server/auth", () => ({
   requireWorkspace: async () => ({ workspaceId: "synthetic-restaurant", role: mocks.role, user: { id: "fixture-user" }, workspace: { name: "Synthetic Restaurant" } }),
 }));
