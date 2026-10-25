@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
 import { listRestaurantKitchenOrderLines, listRestaurantOrders } from "@/lib/server/restaurant-workspace";
+import { isRestaurantManager } from "@/lib/restaurant/station-policy";
+import { KITCHEN_TICKET_BATCH_LIMIT, kitchenVisibleCount } from "@/lib/restaurant/kitchen-queue";
 import { cn } from "@/lib/utils";
 
 const kitchenColumns = [
@@ -20,7 +22,14 @@ const kitchenColumns = [
 export default async function RestaurantKitchenPage() {
   const { workspaceId, workspace, role, user } = await requireWorkspace();
   await assertRestaurantStation({ workspaceId, role, userId: user.id }, "KITCHEN");
-  const orders = await listRestaurantOrders(workspaceId, 200, { statuses: ["CONFIRMED", "PREPARING", "READY"], oldestFirst: true });
+  // A single shared 200-order limit could starve NEW orders behind old READY
+  // tickets. Each station column owns a bounded FIFO slice independently.
+  const [newOrders, preparingOrders, readyOrders] = await Promise.all([
+    listRestaurantOrders(workspaceId, KITCHEN_TICKET_BATCH_LIMIT, { statuses: ["CONFIRMED"], oldestFirst: true }),
+    listRestaurantOrders(workspaceId, KITCHEN_TICKET_BATCH_LIMIT, { statuses: ["PREPARING"], oldestFirst: true }),
+    listRestaurantOrders(workspaceId, KITCHEN_TICKET_BATCH_LIMIT, { statuses: ["READY"], oldestFirst: true }),
+  ]);
+  const orders = [...newOrders, ...preparingOrders, ...readyOrders];
   const lines = await listRestaurantKitchenOrderLines(workspaceId, orders.map((order) => order.id));
   const linesByOrder = new Map<string, typeof lines>();
   for (const line of lines) {
@@ -30,10 +39,11 @@ export default async function RestaurantKitchenPage() {
   }
 
   const counts = {
-    CONFIRMED: orders.filter((order) => order.status === "CONFIRMED").length,
-    PREPARING: orders.filter((order) => order.status === "PREPARING").length,
-    READY: orders.filter((order) => order.status === "READY").length,
+    CONFIRMED: kitchenVisibleCount(newOrders.length),
+    PREPARING: kitchenVisibleCount(preparingOrders.length),
+    READY: kitchenVisibleCount(readyOrders.length),
   };
+  const restaurantTimezone = workspace.timezone || "Asia/Karachi";
 
   return (
     <div className="mx-auto max-w-[1560px] space-y-4">
@@ -45,7 +55,7 @@ export default async function RestaurantKitchenPage() {
         </div>
         <div className="flex flex-col items-start gap-2 sm:items-end">
           <KitchenQueueRefresh />
-          <Link href="/restaurant/orders" className="text-xs font-semibold text-emerald-700 hover:underline">Open order board</Link>
+          {isRestaurantManager(role) && <Link href="/restaurant/orders" className="text-xs font-semibold text-emerald-700 hover:underline">Open cashier order board</Link>}
         </div>
       </section>
 
@@ -55,7 +65,13 @@ export default async function RestaurantKitchenPage() {
         <KitchenMetric label="Ready" value={counts.READY} tone="emerald" />
       </section>
 
-      {orders.length === 200 ? <p className="text-sm text-amber-700">Showing the oldest 200 kitchen orders. Finish these to advance the queue.</p> : null}
+      {[["New", newOrders.length], ["Preparing", preparingOrders.length], ["Ready", readyOrders.length]]
+        .filter(([, count]) => count === KITCHEN_TICKET_BATCH_LIMIT)
+        .map(([label]) => (
+          <p key={label} className="text-sm text-amber-700">
+            {label} queue has at least {KITCHEN_TICKET_BATCH_LIMIT} tickets. Showing the oldest first; move tickets through the workflow to reveal the remaining backlog.
+          </p>
+        ))}
 
       <div className="grid gap-4 xl:grid-cols-3">
         {kitchenColumns.map((column) => {
@@ -92,7 +108,7 @@ export default async function RestaurantKitchenPage() {
                           </p>
                         </div>
                         <span className="rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">
-                          {new Intl.DateTimeFormat("en-PK", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Karachi" }).format(order.createdAt)}
+                          {new Intl.DateTimeFormat("en-PK", { hour: "numeric", minute: "2-digit", timeZone: restaurantTimezone }).format(order.createdAt)}
                         </span>
                       </div>
 
@@ -138,7 +154,7 @@ export default async function RestaurantKitchenPage() {
   );
 }
 
-function KitchenMetric({ label, value, tone }: { label: string; value: number; tone: "blue" | "amber" | "emerald" }) {
+function KitchenMetric({ label, value, tone }: { label: string; value: string; tone: "blue" | "amber" | "emerald" }) {
   const toneClass = tone === "amber" ? "bg-amber-100 text-amber-800" : tone === "blue" ? "bg-blue-100 text-blue-800" : "bg-emerald-100 text-emerald-800";
   return (
     <Card className="rounded-2xl border shadow-none">
