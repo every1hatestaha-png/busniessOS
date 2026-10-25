@@ -70,7 +70,7 @@ describe("Restaurant V2 station boundaries", () => {
     mocks.role = "MANAGER";
     const { default: Manager } = await import("@/app/(dashboard)/restaurant/manager/page");
     const html = renderToStaticMarkup(await Manager());
-    expect(html).toContain("Today's sales");
+    expect(html).toContain("Today&#x27;s sales");
     expect(html).toContain("12,500");
     expect(html).toContain("Saved WhatsApp reviews");
     expect(mocks.getMetrics).toHaveBeenCalledWith("synthetic-restaurant");
