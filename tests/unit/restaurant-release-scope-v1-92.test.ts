@@ -25,6 +25,7 @@ vi.mock("@/lib/server/industry-modules", () => ({
 }));
 vi.mock("@/lib/server/restaurant-workspace", () => ({
   getRestaurantWorkspaceMetrics: async () => ({ todaySales: 0, todayOrders: 0, liveOrders: 0, pendingWhatsapp: 0, readyOrders: 0 }),
+  listRestaurantReadyTableIds: async () => [],
   listRestaurantOrders: async () => [],
   listWhatsappRestaurantMessages: async () => [{ id: "saved-message", customerName: "Historical customer", body: "Saved meal request", receivedAt: new Date("2026-01-01T00:00:00Z"), restaurantOrderId: null }],
 }));
