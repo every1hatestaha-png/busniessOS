@@ -587,9 +587,9 @@ export async function listRestaurantKitchenOrderLines(workspaceId: string, order
   if (!orderIds.length) return [];
   if (orderIds.length > 250) throw new IndustryDomainError("INVALID_STATE", "Too many kitchen tickets requested.");
   const rows = await db.$queryRaw<Array<{
-    orderId: string; itemName: string; quantity: Prisma.Decimal; notes: string | null;
+    orderId: string; itemName: string; quantity: Prisma.Decimal; notes: string | null; modifiers: unknown;
   }>>`
-    SELECT roi."restaurantOrderId" AS "orderId", roi."itemName", roi."quantity", roi."notes"
+    SELECT roi."restaurantOrderId" AS "orderId", roi."itemName", roi."quantity", roi."notes", roi."modifiers"
     FROM "restaurant_order_items" roi
     INNER JOIN "restaurant_orders" ro ON ro."id" = roi."restaurantOrderId"
     WHERE ro."workspaceId" = ${workspaceId}::uuid
@@ -597,7 +597,15 @@ export async function listRestaurantKitchenOrderLines(workspaceId: string, order
       AND ro."status" IN ('CONFIRMED', 'PREPARING', 'READY')
     ORDER BY ro."createdAt" ASC, roi."createdAt" ASC, roi."id" ASC
   `;
-  return rows.map((row) => ({ ...row, quantity: Number(row.quantity) }));
+  return rows.map((row) => ({
+    ...row,
+    quantity: Number(row.quantity),
+    // JSONB order modifiers are untrusted: only render bounded, nonblank text.
+    modifiers: Array.isArray(row.modifiers)
+      ? row.modifiers.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+          .slice(0, 20).map((entry) => entry.slice(0, 120))
+      : [],
+  }));
 }
 
 export async function getRestaurantOrder(workspaceId: string, orderId: string) {
