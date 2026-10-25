@@ -1,0 +1,101 @@
+name: Restaurant Windows QA Installer
+
+on:
+  push:
+    branches:
+      - feat/restaurant-roles-kitchen-polling-v2-20261025
+    paths:
+      - ".github/workflows/restaurant-windows-qa.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  restaurant-windows-qa:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - name: Checkout exact Restaurant release candidate
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run Electron security and bootstrap smoke tests
+        run: npm run desktop:test
+
+      - name: Create isolated unsigned QA packaging metadata
+        shell: pwsh
+        run: |
+          $package = Get-Content package.json -Raw | ConvertFrom-Json
+          # This edit is in the disposable CI workspace, NOT the source repo.
+          # Distinct Electron name/product/appId gives QA separate userData,
+          # installed app and start menu identity. Pre-release version also
+          # disables the legacy production-only stable-version auto-updater.
+          $package.name = "munshios-restaurant-qa"
+          $package.version = "0.0.0-restaurantqa.$env:GITHUB_RUN_NUMBER"
+          $package.build.appId = "tech.munshios.restaurant.qa"
+          $package.build.productName = "MunshiOS Restaurant QA"
+          $package.build.directories.output = "dist-restaurant-qa"
+          $package.build.nsis.shortcutName = "MunshiOS Restaurant QA"
+          $package.build.nsis.uninstallDisplayName = "MunshiOS Restaurant QA"
+          $package.build.nsis.createDesktopShortcut = $false
+          $package.build.nsis.createStartMenuShortcut = $false
+          # Extra safety: no QA-built executable may claim production release metadata.
+          if ($package.build.productName -eq "MunshiOS" -or $package.build.appId -eq "com.businessos.desktop") {
+            throw "Refusing QA build using production application identity"
+          }
+          $package | ConvertTo-Json -Depth 40 | Set-Content -Path package.json -Encoding utf8
+
+      - name: Build QA-only Windows NSIS installer (not published)
+        shell: pwsh
+        run: npx electron-builder --win nsis --publish never
+
+      - name: Verify identity and create SHA-256 checksum
+        shell: pwsh
+        run: |
+          $package = Get-Content package.json -Raw | ConvertFrom-Json
+          if ($package.build.appId -ne "tech.munshios.restaurant.qa") {
+            throw "QA appId unexpectedly changed"
+          }
+          $installers = @(Get-ChildItem -Path dist-restaurant-qa -Filter '*.exe' -File)
+          if ($installers.Count -ne 1) {
+            throw "Expected exactly one Restaurant QA .exe installer, found $($installers.Count)"
+          }
+          $exe = $installers[0]
+          if ($exe.Name -notmatch 'Restaurant QA' -or $exe.Name -match '^MunshiOS Setup') {
+            throw "QA installer name is not distinctly labeled"
+          }
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $exe.FullName).Hash.ToLowerInvariant()
+          "$hash  $($exe.Name)" | Set-Content -Path 'dist-restaurant-qa/SHA256SUMS.txt' -Encoding ascii
+          @(
+            "RESTAURANT QA ONLY - NOT CODE SIGNED",
+            "DO NOT DISTRIBUTE TO CUSTOMERS",
+            "Source commit: $env:GITHUB_SHA",
+            "Windows runner: $env:RUNNER_OS",
+            "Installer: $($exe.Name)",
+            "SHA256: $hash",
+            "Requires working hosted MunshiOS service.",
+            "Real Clerk/Supabase staff login and thermal printer are NOT validated by this CI job.",
+            "Production release and Vercel deployment were NOT modified."
+          ) | Set-Content -Path 'dist-restaurant-qa/QA-READ-ME.txt' -Encoding utf8
+
+      - name: Upload short-lived internal QA installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: restaurant-windows-qa-${{ github.run_number }}
+          path: |
+            dist-restaurant-qa/*.exe
+            dist-restaurant-qa/SHA256SUMS.txt
+            dist-restaurant-qa/QA-READ-ME.txt
+          if-no-files-found: error
+          retention-days: 7
