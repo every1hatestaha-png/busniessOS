@@ -6,6 +6,7 @@ import { writeAudit } from "@/lib/server/audit";
 import { canTransitionKitchenTicket, type KitchenTicketStatus } from "@/lib/domain/industry-lifecycles";
 import { IndustryDomainError, requireWorkspaceModule, type IndustryContext } from "@/lib/server/industry-modules";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
+import { assertRestaurantStation } from "@/lib/server/restaurant-stations";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -15,6 +16,10 @@ export async function updateLegacyKitchenTicketStatusSafely(
   status: KitchenTicketStatus,
 ) {
   await requireWorkspaceModule(context.workspaceId, "restaurant");
+  // Guard at the domain boundary too; old clients may still submit legacy actions.
+  await assertRestaurantStation({
+    workspaceId: context.workspaceId, role: context.role, userId: context.userId ?? "",
+  }, status === "SERVED" || status === "CANCELLED" ? "MANAGER" : "KITCHEN");
   if (!UUID.test(ticketId)) throw new IndustryDomainError("INVALID_STATE", "Kitchen ticket is invalid.");
 
   return withSerializableRetry(async (tx) => {
