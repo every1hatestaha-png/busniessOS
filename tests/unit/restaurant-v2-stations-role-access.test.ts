@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   getMetrics: vi.fn(),
   listOrders: vi.fn(),
   listModules: vi.fn(),
+  listStaff: vi.fn(),
   redirect: vi.fn((path: string): never => { throw new Error(`redirect:${path}`); }),
 }));
 
@@ -21,6 +22,7 @@ vi.mock("@/lib/server/auth", () => ({
 }));
 vi.mock("@/lib/server/restaurant-stations", () => ({
   getRestaurantActorStation: async () => mocks.station,
+  listRestaurantStationStaff: mocks.listStaff,
 }));
 vi.mock("@/app/(dashboard)/restaurant/restaurant-controls", () => ({ RestaurantControls: () => null }));
 vi.mock("@/lib/server/industry-modules", () => ({
@@ -38,6 +40,7 @@ beforeEach(() => {
   mocks.role = "OWNER";
   mocks.station = "CASHIER";
   mocks.listModules.mockResolvedValue([{ moduleKey: "restaurant", enabled: true }]);
+  mocks.listStaff.mockResolvedValue([{ userId: "staff-a", email: "unassigned@example.invalid", station: null }]);
   mocks.listTables.mockResolvedValue([]);
   mocks.getOverviewReadiness.mockResolvedValue({ recipes: 0, activeRecipes: 0, openKitchenTickets: 0, openShift: null });
   mocks.getMetrics.mockResolvedValue({ todaySales: 12_500, todayOrders: 8, liveOrders: 2, readyOrders: 1, pendingWhatsapp: 0 });
@@ -92,5 +95,12 @@ describe("Restaurant V2 station boundaries", () => {
     expect(html).toContain("12,500");
     expect(html).toContain("Saved WhatsApp reviews");
     expect(mocks.getMetrics).toHaveBeenCalledWith("synthetic-restaurant");
+    expect(html).toContain("Staff station readiness");
+    expect(html).toContain("Unassigned");
+    expect(html).toContain("Assign or explicitly revoke");
+    for (const status of ["CONFIRMED", "PREPARING", "READY"]) {
+      expect(mocks.listOrders).toHaveBeenCalledWith("synthetic-restaurant", 15, { statuses: [status], oldestFirst: true });
+    }
+    expect(mocks.listOrders).toHaveBeenCalledTimes(3);
   });
 });
