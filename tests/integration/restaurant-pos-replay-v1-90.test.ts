@@ -91,6 +91,70 @@ it("cashier order with an item allergy note creates exactly one confirmed kitche
   });
 });
 
+it("cashier partial payment, exact retry and second collection reconcile the printed receipt", async () => {
+  const { createPosOrderAction, recordRestaurantPaymentAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
+  const { createCashBankAccount, getCashBankAccounts } = await import("@/lib/server/accounting");
+  const { listRestaurantPayments } = await import("@/lib/server/restaurant-integrity");
+  const { getRestaurantPrintDocument } = await import("@/lib/server/restaurant-print");
+
+  const actor = { workspaceId, userId, role: "OWNER" as const };
+  const created = await createCashBankAccount(actor, {
+    name: `Cashier replay settlement ${randomUUID()}`,
+    isBank: true, openingBalance: 0,
+    bankName: "Synthetic testing bank", accountTitle: "Cashier verification",
+    accountNumber: "000-123", notes: "",
+  });
+  const accountId = (await getCashBankAccounts(workspaceId))
+    .find(account => account.id === created.id)?.cashBankAccountId;
+  expect(accountId).toBeDefined();
+
+  const orderData = form();
+  const result = await createPosOrderAction({ status: "idle", message: "" }, orderData);
+  expect(result.status).toBe("success");
+  const [order] = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT "id" FROM "restaurant_orders"
+    WHERE "workspaceId"=${workspaceId}::uuid
+    AND "externalReference"=${`pos:${orderData.get("orderRequestId")}`}
+  `;
+  expect(order?.id).toBeTruthy();
+
+  function paymentForm(id: string, amount: number) {
+    const data = new FormData();
+    data.set("formWorkspaceId", workspaceId);
+    data.set("orderId", order.id);
+    data.set("cashBankAccountId", accountId!);
+    data.set("method", "BANK_TRANSFER");
+    data.set("amount", String(amount));
+    data.set("paymentRequestId", id);
+    data.set("reference", `bank-confirmation-${id}`);
+    return data;
+  }
+
+  const firstId = `rp:${randomUUID()}`;
+  const first = paymentForm(firstId, 40);
+  expect((await recordRestaurantPaymentAction(first)).status).toBe("success");
+  const partial = await getRestaurantPrintDocument(workspaceId, order.id);
+  expect(partial).toMatchObject({ retainedPaid: 40, outstanding: 60, paymentStatus: "PARTIALLY_PAID" });
+
+  expect((await recordRestaurantPaymentAction(first)).status).toBe("success");
+  expect((await listRestaurantPayments(workspaceId, order.id)).filter(x => !x.voidedAt)).toHaveLength(1);
+
+  const changed = paymentForm(firstId, 60);
+  expect((await recordRestaurantPaymentAction(changed)).status).toBe("error");
+  expect((await listRestaurantPayments(workspaceId, order.id)).filter(x => !x.voidedAt)).toHaveLength(1);
+
+  const second = paymentForm(`rp:${randomUUID()}`, 60);
+  expect((await recordRestaurantPaymentAction(second)).status).toBe("success");
+  const receipt = await getRestaurantPrintDocument(workspaceId, order.id);
+  expect(receipt).toMatchObject({
+    orderNumber: result.orderNumber,
+    retainedPaid: 100,
+    outstanding: 0,
+    paymentStatus: "PAID",
+  });
+  expect((await listRestaurantPayments(workspaceId, order.id)).filter(x => !x.voidedAt)).toHaveLength(2);
+});
+
 it("a repeated successful POS action produces one order, KOT and audit event", async () => {
   const { createPosOrderAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
   const data = form(); const before = await counts();
