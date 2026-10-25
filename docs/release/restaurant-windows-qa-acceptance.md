@@ -11,6 +11,16 @@ Status: NOT RELEASE CERTIFIED. This runbook is for internal QA of a single exact
 4. Note Windows version, installer file name, source SHA, QA user accounts by non-secret test identifier, and 80mm printer model.
 5. The QA installer is unsigned. Do not distribute it to customers. Do not use or alter the manufacturing production installer.
 
+## Reuse the installed QA application without reinstalling
+
+Download `LAUNCH-RESTAURANT-QA.ps1` from the Windows QA artifact. Once you have independently confirmed a dedicated nonproduction backend, use PowerShell:
+
+```powershell
+./LAUNCH-RESTAURANT-QA.ps1 -StagingOrigin "https://YOUR-REVIEWED-STAGING-ORIGIN"
+```
+
+If the installer was placed in a custom folder, pass `-ExecutablePath "C:\\Your\\Installed\\Folder\\MunshiOS Restaurant QA.exe"`. This launches the existing installation with a process-scoped origin. It does not reinstall, deploy, or update the desktop app. You must install a new build only when the application code changes and you want to test those changes. The CI workflow runs origin validation tests before creating the artifact.
+
 ## Launch with an explicitly approved staging origin
 
 The packaged QA app deliberately refuses the default production origin. Installation alone is not sufficient to log in. First obtain a reviewed HTTPS staging origin from the release operator, check that its backing database and authentication project are nonproduction, and start the installed QA executable from PowerShell with a process-scoped environment variable. Example:
