@@ -21,6 +21,9 @@ export function RestaurantStationAutoRefresh({
     if (!enabled) return;
     const timer = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
+      // Never interrupt checkout forms, open selectors, or keyboard workflows
+      // while staff are entering a payment or editing a ticket.
+      if (document.activeElement?.closest("form")) return;
       startTransition(() => router.refresh());
     }, Math.max(10, intervalSeconds) * 1000);
     return () => window.clearInterval(timer);
