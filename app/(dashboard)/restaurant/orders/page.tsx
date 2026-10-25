@@ -13,6 +13,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getCashBankAccounts } from "@/lib/server/accounting";
 import { requireWorkspace } from "@/lib/server/auth";
+import { assertRestaurantStation } from "@/lib/server/restaurant-stations";
 import { listRestaurantPayments, type RestaurantPaymentRecord } from "@/lib/server/restaurant-integrity";
 import { listRestaurantNetPaymentSummaries } from "@/lib/server/restaurant-payment-summary";
 import { listRestaurantOrders, type RestaurantOrderStatus } from "@/lib/server/restaurant-workspace";
@@ -26,8 +27,7 @@ const columns: Array<{ status: RestaurantOrderStatus; label: string }> = [
 ];
 
 function primaryNext(status: RestaurantOrderStatus): { label: string; next: RestaurantOrderStatus } | null {
-  if (status === "CONFIRMED") return { label: "Start preparing", next: "PREPARING" };
-  if (status === "PREPARING") return { label: "Mark ready", next: "READY" };
+  // The kitchen owns preparation status; cashier closes ready orders only.
   if (status === "READY") return { label: "Complete order", next: "COMPLETED" };
   return null;
 }
@@ -35,7 +35,8 @@ function primaryNext(status: RestaurantOrderStatus): { label: string; next: Rest
 type PaymentSummary = Awaited<ReturnType<typeof listRestaurantNetPaymentSummaries>>[number];
 
 export default async function RestaurantOrdersPage() {
-  const { workspaceId, role, workspace } = await requireWorkspace();
+  const { workspaceId, role, workspace, user } = await requireWorkspace();
+  await assertRestaurantStation({ workspaceId, role, userId: user.id }, "CASHIER");
   const [active, recentClosed, completedOutstanding, cashAccounts] = await Promise.all([
     listRestaurantOrders(workspaceId, 200, { statuses: ["PENDING_REVIEW", "CONFIRMED", "PREPARING", "READY"], oldestFirst: true }),
     listRestaurantOrders(workspaceId, 30, { statuses: ["COMPLETED", "CANCELLED"] }),
@@ -115,7 +116,7 @@ function OrderCard({
     <div className="flex flex-wrap gap-2">
       {order.status === "PENDING_REVIEW" ? <RestaurantMutationForm action={confirmRestaurantOrderAction} workspaceId={workspaceId}><input type="hidden" name="orderId" value={order.id} /><Button size="sm" className="rounded-lg bg-emerald-600 hover:bg-emerald-500" type="submit">Confirm order</Button></RestaurantMutationForm> : null}
       {next ? <RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}><input type="hidden" name="orderId" value={order.id} /><input type="hidden" name="nextStatus" value={next.next} /><Button size="sm" className="rounded-lg bg-emerald-600 hover:bg-emerald-500" type="submit">{next.label}</Button></RestaurantMutationForm> : null}
-      {!["COMPLETED", "CANCELLED"].includes(order.status) ? <RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}><input type="hidden" name="orderId" value={order.id} /><input type="hidden" name="nextStatus" value="CANCELLED" /><Button size="sm" className="rounded-lg" variant="outline" type="submit">Cancel</Button></RestaurantMutationForm> : null}
+      {canVoidPayments && !["COMPLETED", "CANCELLED"].includes(order.status) ? <RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}><input type="hidden" name="orderId" value={order.id} /><input type="hidden" name="nextStatus" value="CANCELLED" /><Button size="sm" className="rounded-lg" variant="outline" type="submit">Cancel</Button></RestaurantMutationForm> : null}
     </div>
     <PaymentPanel workspaceId={workspaceId} orderId={order.id} paymentStatus={order.paymentStatus} cashAccounts={cashAccounts} payments={payments} paymentSummary={paymentSummary} canVoidPayments={canVoidPayments} />
   </CardContent></Card>;
