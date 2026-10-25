@@ -33,8 +33,8 @@ describe("Restaurant launch scope in rendered customer pages", () => {
     expect(html).not.toMatch(/Safe intake boundary is ready|must be connected separately before live intake/);
   });
 
-  it("labels the dashboard entry as saved reviews without promising intake", async () => {
-    const { default: Page } = await import("@/app/(dashboard)/restaurant/page");
+  it("labels the manager dashboard entry as saved reviews without promising intake", async () => {
+    const { default: Page } = await import("@/app/(dashboard)/restaurant/manager/page");
     const html = renderToStaticMarkup(await Page());
     expect(html).toContain("Saved WhatsApp reviews");
     expect(html).not.toMatch(/WhatsApp intake|Pending intake and provider messages/);
