@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RestaurantStationAutoRefresh } from "@/components/restaurant/station-auto-refresh";
 import { redirect } from "next/navigation";
 import {
   AlertTriangle,
@@ -78,6 +79,7 @@ export default async function RestaurantManagerPage() {
         </div>
       </section>
 
+      <div className="flex justify-end"><RestaurantStationAutoRefresh label="Manager overview" intervalSeconds={30} /></div>
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Metric label="Today's sales" value={`Rs ${metrics.todaySales.toLocaleString()}`} detail={`${metrics.todayOrders} orders today`} tone="emerald" />
         <Metric label="Live orders" value={String(metrics.liveOrders)} detail={`${metrics.readyOrders} ready for service`} tone="amber" />
