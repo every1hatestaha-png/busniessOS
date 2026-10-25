@@ -85,7 +85,7 @@ export default async function RestaurantPage() {
             </p>
             <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-900">Manager dashboard</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Review today's sales, orders, occupied tables, cash-shift status and operational readiness.
+              Review today&apos;s sales, orders, occupied tables, cash-shift status and operational readiness.
             </p>
             <span className={cn(buttonVariants({ variant: "outline" }), "mt-5 pointer-events-none rounded-xl")}>Open management</span>
           </Link>
