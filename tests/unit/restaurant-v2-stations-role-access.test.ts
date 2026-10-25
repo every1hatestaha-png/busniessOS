@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   listOrders: vi.fn(),
   listModules: vi.fn(),
   listStaff: vi.fn(),
+  readyTableIds: vi.fn(),
   redirect: vi.fn((path: string): never => { throw new Error(`redirect:${path}`); }),
 }));
 
@@ -36,6 +37,7 @@ vi.mock("@/lib/server/industry-modules", () => ({
 }));
 vi.mock("@/lib/server/restaurant-workspace", () => ({
   getRestaurantWorkspaceMetrics: mocks.getMetrics,
+  listRestaurantReadyTableIds: mocks.readyTableIds,
   listRestaurantOrders: mocks.listOrders,
 }));
 
@@ -45,6 +47,7 @@ beforeEach(() => {
   mocks.station = "CASHIER";
   mocks.listModules.mockResolvedValue([{ moduleKey: "restaurant", enabled: true }]);
   mocks.listStaff.mockResolvedValue([{ userId: "staff-a", email: "unassigned@example.invalid", station: null }]);
+  mocks.readyTableIds.mockResolvedValue([]);
   mocks.listTables.mockResolvedValue([]);
   mocks.getOverviewReadiness.mockResolvedValue({ recipes: 0, activeRecipes: 0, openKitchenTickets: 0, openShift: null });
   mocks.getMetrics.mockResolvedValue({ todaySales: 12_500, todayOrders: 8, liveOrders: 2, readyOrders: 1, pendingWhatsapp: 0 });
@@ -132,5 +135,6 @@ describe("Restaurant V2 station boundaries", () => {
       expect(mocks.listOrders).toHaveBeenCalledWith("synthetic-restaurant", 15, { statuses: [status], oldestFirst: true });
     }
     expect(mocks.listOrders).toHaveBeenCalledTimes(3);
+    expect(mocks.readyTableIds).toHaveBeenCalledWith("synthetic-restaurant");
   });
 });
