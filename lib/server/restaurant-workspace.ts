@@ -579,6 +579,23 @@ export async function listRestaurantOrders(workspaceId: string, limit = 100, opt
 }
 
 /**
+ * Complete restaurant floor READY state, independent of sampled manager orders.
+ * A heavily backed-up kitchen must not cause the floor overview to hide tables
+ * whose READY orders happen to fall outside the visible order-card limit.
+ */
+export async function listRestaurantReadyTableIds(workspaceId: string): Promise<string[]> {
+  await requireWorkspaceModule(workspaceId, "restaurant");
+  const rows = await db.$queryRaw<Array<{ tableId: string }>>`
+    SELECT DISTINCT ro."restaurantTableId"::text AS "tableId"
+    FROM "restaurant_orders" ro
+    WHERE ro."workspaceId"=${workspaceId}::uuid
+      AND ro."status"='READY'
+      AND ro."restaurantTableId" IS NOT NULL
+  `;
+  return rows.map((row) => row.tableId);
+}
+
+/**
  * Tenant-scoped KOT line snapshots for exactly the orders displayed by the
  * kitchen page. Avoids one query per ticket and never exposes prices/costs.
  */
