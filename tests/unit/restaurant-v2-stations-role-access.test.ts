@@ -25,6 +25,10 @@ vi.mock("@/lib/server/restaurant-stations", () => ({
   listRestaurantStationStaff: mocks.listStaff,
 }));
 vi.mock("@/app/(dashboard)/restaurant/restaurant-controls", () => ({ RestaurantControls: () => null }));
+vi.mock("@/app/(dashboard)/restaurant/manager/staff/actions", () => ({ assignRestaurantStaffStationAction: vi.fn() }));
+vi.mock("@/app/(dashboard)/restaurant/mutation-form", () => ({
+  RestaurantMutationForm: ({ children }: { children: unknown }) => children,
+}));
 vi.mock("@/lib/server/industry-modules", () => ({
   listWorkspaceModules: mocks.listModules,
   getRestaurantOverviewReadiness: mocks.getOverviewReadiness,
@@ -85,6 +89,32 @@ describe("Restaurant V2 station boundaries", () => {
     expect(mocks.getOverviewReadiness).not.toHaveBeenCalled();
     expect(mocks.getMetrics).not.toHaveBeenCalled();
     expect(mocks.listOrders).not.toHaveBeenCalled();
+  });
+
+  it("rejects direct STAFF visits to the manager-only station assignment screen", async () => {
+    mocks.role = "STAFF";
+    const { default: Staff } = await import("@/app/(dashboard)/restaurant/manager/staff/page");
+    await expect(Staff()).rejects.toThrow("redirect:/restaurant");
+    expect(mocks.listStaff).not.toHaveBeenCalled();
+    expect(mocks.listModules).not.toHaveBeenCalled();
+  });
+
+  it("shows existing station assignments only to managers", async () => {
+    mocks.role = "MANAGER";
+    mocks.listStaff.mockResolvedValue([
+      { userId: "cash-a", email: "cashier@example.invalid", station: "CASHIER" },
+      { userId: "kitchen-a", email: "kitchen@example.invalid", station: "KITCHEN" },
+      { userId: "unassigned-a", email: "unassigned@example.invalid", station: null },
+    ]);
+    const { default: Staff } = await import("@/app/(dashboard)/restaurant/manager/staff/page");
+    const html = renderToStaticMarkup(await Staff());
+    expect(html).toContain("cashier@example.invalid");
+    expect(html).toContain("kitchen@example.invalid");
+    expect(html).toContain("unassigned@example.invalid");
+    expect(html).toContain("No access");
+    expect(html).toContain("Cashier");
+    expect(html).toContain("Kitchen");
+    expect(mocks.listStaff).toHaveBeenCalledWith("synthetic-restaurant");
   });
 
   it("renders server-approved manager metrics and saved-review labeling", async () => {
