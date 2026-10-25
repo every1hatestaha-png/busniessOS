@@ -8,8 +8,9 @@ const mock = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/server/auth", () => ({
-  requireWorkspace: async () => ({ workspaceId: "restaurant-fixture", role: "STAFF", workspace: { name: "Kitchen Fixture" } }),
+  requireWorkspace: async () => ({ workspaceId: "restaurant-fixture", role: "STAFF", user: { id: "kitchen-fixture" }, workspace: { name: "Kitchen Fixture" } }),
 }));
+vi.mock("@/lib/server/restaurant-stations", () => ({ assertRestaurantStation: vi.fn() }));
 vi.mock("@/lib/server/restaurant-workspace", () => ({
   listRestaurantOrders: mock.orders,
   listRestaurantKitchenOrderLines: mock.lines,
@@ -21,7 +22,7 @@ vi.mock("@/app/(dashboard)/restaurant/mutation-form", () => ({
   RestaurantMutationForm: ({ children }: { children: React.ReactNode }) => React.createElement("div", null, children),
 }));
 vi.mock("@/app/(dashboard)/restaurant/v1-actions", () => ({
-  transitionRestaurantOrderAction: vi.fn(),
+  transitionKitchenOrderAction: vi.fn(),
 }));
 
 beforeEach(() => {
@@ -47,6 +48,8 @@ describe("restaurant V2 kitchen ticket display", () => {
     expect(html).toContain("Extra cheese");
     expect(html).toContain("Thin crust");
     expect(html).toContain("No garlic");
+    expect(html).not.toContain("Serve order");
+    expect(html).not.toContain("Cancel");
     expect(html).toContain("Allergy: peanuts");
     expect(html).not.toContain("unitPrice");
     expect(html).not.toContain("Rs ");
