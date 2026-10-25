@@ -5,7 +5,10 @@ vi.mock("@/components/restaurant/station-auto-refresh", () => ({
   RestaurantStationAutoRefresh: () => null,
 }));
 vi.mock("@/lib/server/auth", () => ({ requireWorkspace: async () => ({ workspaceId: "saved-review-workspace", role: "OWNER", user: { id: "fixture-owner" }, workspace: { name: "Synthetic Restaurant" } }) }));
-vi.mock("@/lib/server/restaurant-stations", () => ({ assertRestaurantStation: vi.fn() }));
+vi.mock("@/lib/server/restaurant-stations", () => ({
+  assertRestaurantStation: vi.fn(),
+  listRestaurantStationStaff: async () => [],
+}));
 vi.mock("@/lib/server/products", () => ({ listProducts: async () => [] }));
 vi.mock("@/lib/server/sales", () => ({ listSales: async () => [] }));
 vi.mock("@/lib/server/accounting", () => ({ getCashBankAccounts: async () => [] }));
