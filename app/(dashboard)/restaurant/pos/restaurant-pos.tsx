@@ -38,12 +38,17 @@ export function RestaurantPos({
   const attemptedSignature = useRef<string | null>(null);
   const [retryWarning, setRetryWarning] = useState("");
   const [lastOrderNumber, setLastOrderNumber] = useState<string | null>(null);
+  const [hasAttempted, setHasAttempted] = useState(false);
+  const [fulfillmentType, setFulfillmentType] = useState("TAKEAWAY");
+  const [discountInput, setDiscountInput] = useState("0");
+  const [taxInput, setTaxInput] = useState("0");
   const [state, action, pending, onSubmit] = useRestaurantActionState(async (previous, form) => {
     const result = await createPosOrderAction(previous, form);
     if (result.status === "success") {
       setCart([]);
       requestId.current = null;
       attemptedSignature.current = null;
+      setHasAttempted(false);
       setRetryWarning("");
       setLastOrderNumber(result.orderNumber ?? null);
       if (requestField.current) requestField.current.value = "";
@@ -58,9 +63,6 @@ export function RestaurantPos({
   }, initialRestaurantV1ActionState);
 
   const [activeCategory, setActiveCategory] = useState(categories[0]?.id ?? "all");
-  const [fulfillmentType, setFulfillmentType] = useState("TAKEAWAY");
-  const [discountInput, setDiscountInput] = useState("0");
-  const [taxInput, setTaxInput] = useState("0");
 
   const visibleItems = items.filter((item) => {
     const categoryMatch = activeCategory === "all" || item.categoryId === activeCategory;
@@ -98,6 +100,7 @@ export function RestaurantPos({
     // silently reusing a prior request identity with a different basket.
     requestId.current = null;
     attemptedSignature.current = null;
+    setHasAttempted(false);
     if (requestField.current) requestField.current.value = "";
     setRetryWarning("");
   }
@@ -252,6 +255,7 @@ export function RestaurantPos({
             if (!event.defaultPrevented) {
               requestId.current ??= crypto.randomUUID();
               attemptedSignature.current ??= signature;
+              setHasAttempted(true);
               if (requestField.current) requestField.current.value = requestId.current;
               setRetryWarning("");
             }
@@ -322,7 +326,7 @@ export function RestaurantPos({
                 <p>{retryWarning}</p>
                 <div className="flex flex-wrap gap-2">
                   <Link href="/restaurant/orders" className="rounded-lg border border-amber-300 bg-white px-3 py-2 font-semibold">Check cashier orders</Link>
-                  {attemptedSignature.current !== null && (
+                  {hasAttempted && (
                     <Button type="button" size="sm" variant="outline" className="rounded-lg border-amber-300" onClick={startChangedOrderAttempt}>
                       Start changed order attempt
                     </Button>
