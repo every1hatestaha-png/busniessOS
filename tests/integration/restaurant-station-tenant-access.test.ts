@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { db } from "@/lib/server/db";
+import { createKitchenTicket } from "@/lib/server/industry-modules";
+import { updateLegacyKitchenTicketStatusSafely } from "@/lib/server/restaurant-legacy-kot";
 import {
   assertRestaurantStation,
   getRestaurantActorStation,
@@ -106,6 +108,24 @@ describe("Restaurant isolated STAFF station permissions (real PostgreSQL)", () =
       expect(await getRestaurantActorStation({ workspaceId: workspaceB, role: "STAFF", userId: staffId })).toBeNull();
     } finally {
       await db.$executeRaw`UPDATE workspace_modules SET enabled=true WHERE "workspaceId"=${workspaceB}::uuid AND "moduleKey"='restaurant'`;
+    }
+  });
+
+  it("blocks legacy kitchen-ticket creation by STAFF even when they are assigned to kitchen", async () => {
+    const actor = { workspaceId: workspaceA, role: "OWNER" as const, userId: ownerId };
+    await setRestaurantStaffStation(actor, staffId, "KITCHEN");
+    try {
+      await expect(createKitchenTicket({
+        workspaceId: workspaceA, role: "STAFF", userId: staffId,
+      }, { ticketNumber: `legacy-staff-${run}` })).rejects.toThrow(/Manager access/);
+      await expect(updateLegacyKitchenTicketStatusSafely({
+        workspaceId: workspaceA, role: "STAFF", userId: staffId,
+      }, "10000000-0000-4000-8000-000000000001", "SERVED")).rejects.toThrow(/Manager permission/);
+      await expect(updateLegacyKitchenTicketStatusSafely({
+        workspaceId: workspaceA, role: "STAFF", userId: staffId,
+      }, "10000000-0000-4000-8000-000000000001", "CANCELLED")).rejects.toThrow(/Manager permission/);
+    } finally {
+      await setRestaurantStaffStation(actor, staffId, null);
     }
   });
 
