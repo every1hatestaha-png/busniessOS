@@ -3,17 +3,17 @@ import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "FAQ | MunshiOS",
-  description: "Frequently asked questions about MunshiOS, trials, business data, modules, migration, support and subscriptions.",
+  description: "Frequently asked questions about MunshiOS, paid onboarding, business data, modules, migration, support and subscriptions.",
 };
 
 const faqs = [
   ["Is my company data private?", "Each company operates in its own workspace with separate users, permissions and business records."],
-  ["How long is the trial?", "New workspaces receive a 30-day trial before paid activation is required for normal transactional use."],
+  ["Is there a free trial?", "No. New customers must pay before a workspace can be created. Account registration alone does not activate the ERP."],
   ["Can I move data from Excel or another system?", "MunshiOS is designed to support structured migration for products, customers, suppliers, opening balances and supported records. The final migration flow depends on the source data."],
   ["Can I change modules later?", "Yes. MunshiOS uses configurable workspace modules so the setup can evolve as the business grows."],
-  ["What happens when my trial expires?", "Your data is retained, but normal transactional access is restricted until access is renewed, activated or restored."],
+  ["What happens if my subscription expires?", "Business data is retained, but normal transactions are restricted until renewal or verified activation."],
   ["How do I renew?", "Open the Subscription page, choose the plan and billing cycle you want, and send an activation request to the MunshiOS owner console."],
-  ["Is online payment live?", "The subscription system and activation workflow are live. Online payment is being connected to the same flow; no card is charged during the trial."],
+  ["Is online payment live?", "Not yet. New customers register and arrange the initial payment directly with MunshiOS. An MFA-verified administrator confirms the credited transaction before any business workspace can be created."],
   ["Does MunshiOS support Pakistani workflows?", "The product includes khata-style customer and supplier balances, credit days, opening balances, WHT, GRN workflows and PKR-first business flows."],
   ["Can posted financial records be deleted?", "Posted financial history is generally preserved and corrected through cancellation, void or reversal flows rather than destructive deletion."],
   ["Can I use MunshiOS on desktop?", "MunshiOS includes a Windows desktop client alongside the web experience. Desktop packaging and release hardening continue as part of the release process."],

@@ -6,6 +6,7 @@ import { Prisma, type BusinessType } from "@prisma/client";
 
 import { DEFAULT_MODULES_BY_BUSINESS, PROVISIONING_MODULE_KEYS, isBuilderBusinessType, resolveProvisioningModules, type ProvisioningModuleKey } from "@/lib/saas/provisioning-selection";
 import { writeAudit } from "@/lib/server/audit";
+import { MIN_INITIAL_PAYMENT_PKR, PaymentRequiredError } from "@/lib/saas/payment-first";
 import { withSerializableRetry } from "@/lib/server/tx-retry";
 import { onboardingSchema, type OnboardingInput } from "@/lib/validation/onboarding";
 import { initialVerticalForProvisioning } from "@/lib/verticals/registry";
@@ -65,17 +66,17 @@ function provisioningFingerprint(
   })).digest("hex");
 }
 
-async function ensureWorkspaceSubscriptionInTransaction(tx: Prisma.TransactionClient, workspaceId: string) {
+async function ensureWorkspaceSubscriptionInTransaction(tx: Prisma.TransactionClient, workspaceId: string, planCode: string) {
   const id = `sub_${randomUUID().replaceAll("-", "")}`;
   await tx.$executeRaw`
     INSERT INTO "workspace_subscriptions" (
-      "id", "workspaceId", "planId", "status", "trialStartedAt", "trialEndsAt"
+      "id", "workspaceId", "planId", "status", "currentPeriodStart", "currentPeriodEnd"
     )
     VALUES (
       ${id},
       ${workspaceId},
-      (SELECT "id" FROM "saas_plans" WHERE "code" = 'starter' LIMIT 1),
-      'TRIALING',
+      (SELECT "id" FROM "saas_plans" WHERE "code" = ${planCode} AND "isActive" = true LIMIT 1),
+      'ACTIVE',
       CURRENT_TIMESTAMP,
       CURRENT_TIMESTAMP + INTERVAL '30 days'
     )
@@ -225,6 +226,22 @@ export async function createInitialWorkspace(
       if (recentMatch) return recentMatch;
     }
 
+    // A pre-verified payment may fund exactly one workspace. This check happens
+    // in the same serializable transaction as provisioning and consumption.
+    const approvals = await tx.$queryRaw<Array<{ id: string; planCode: string; billingCycle: string }>>`
+      SELECT "id", "planCode", "billingCycle"
+      FROM "prepaid_workspace_approvals"
+      WHERE "userId" = ${userId}
+        AND "consumedWorkspaceId" IS NULL AND "consumedAt" IS NULL
+        AND "verifiedAmountPkr" >= ${MIN_INITIAL_PAYMENT_PKR}
+      ORDER BY "verifiedAt" ASC, "id" ASC
+      LIMIT 1 FOR UPDATE
+    `;
+    const approval = approvals[0];
+    if (!approval || approval.planCode !== "starter" || approval.billingCycle !== "monthly") {
+      throw new PaymentRequiredError();
+    }
+
     const workspace = await tx.workspace.create({
       data: {
         name: data.businessName,
@@ -243,7 +260,16 @@ export async function createInitialWorkspace(
 
     await tx.workspaceMember.create({ data: { workspaceId: workspace.id, userId, role: "OWNER" } });
     await tx.user.update({ where: { id: userId }, data: { firstName, lastName } });
-    await ensureWorkspaceSubscriptionInTransaction(tx, workspace.id);
+    await ensureWorkspaceSubscriptionInTransaction(tx, workspace.id, approval.planCode);
+    // Consumption and workspace ownership are atomic. A rejected or retried
+    // request never burns a credit or creates an unpaid workspace.
+    const consumed = await tx.$executeRaw`
+      UPDATE "prepaid_workspace_approvals"
+      SET "consumedWorkspaceId" = ${workspace.id}, "consumedAt" = CURRENT_TIMESTAMP
+      WHERE "id" = ${approval.id} AND "userId" = ${userId}
+        AND "consumedWorkspaceId" IS NULL AND "consumedAt" IS NULL
+    `;
+    if (consumed !== 1) throw new PaymentRequiredError();
     await ensureWorkspaceModulesInTransaction(tx, workspace.id, data.businessType, provisioning);
     await recordCheckoutPreferenceInTransaction(tx, workspace.id, userId, provisioning);
     await writeAudit(tx, {
@@ -261,6 +287,8 @@ export async function createInitialWorkspace(
         billing: provisioning?.billing ?? null,
         builderBusiness: provisioning?.builderBusiness ?? null,
         source: provisioning ? "get-your-munshi" : "onboarding",
+        prepaidApprovalId: approval.id,
+        paymentVerified: true,
       },
     });
 

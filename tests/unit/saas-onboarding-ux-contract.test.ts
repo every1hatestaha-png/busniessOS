@@ -21,10 +21,10 @@ describe("SaaS onboarding UX contracts", () => {
     expect(dashboard).toContain("Create your first sale");
   });
 
-  it("shows trial status and a direct plan-management path on the dashboard", () => {
+  it("shows subscription status and a direct plan-management path on the dashboard", () => {
     const dashboard = source("app/(dashboard)/dashboard/page.tsx");
     expect(dashboard).toContain("getWorkspaceAccess");
-    expect(dashboard).toContain("Your MunshiOS trial is active");
+    expect(dashboard).toContain("Your MunshiOS subscription is active");
     expect(dashboard).toContain('href="/subscription"');
   });
 
@@ -40,9 +40,12 @@ describe("SaaS onboarding UX contracts", () => {
     expect(form).toContain("Request activation");
   });
 
-  it("keeps the 30-day trial initialized server-side for every workspace", () => {
+  it("blocks unpaid workspace creation and never initializes a new trial", () => {
     const subscriptions = source("lib/server/subscriptions.ts");
-    expect(subscriptions).toContain("CURRENT_TIMESTAMP + INTERVAL '30 days'");
-    expect(subscriptions).toContain("'TRIALING'");
+    const onboarding = source("lib/server/onboarding.ts");
+    expect(subscriptions).toContain("'EXPIRED'");
+    expect(onboarding).toContain("PaymentRequiredError");
+    expect(onboarding).toContain('FROM "prepaid_workspace_approvals"');
+    expect(onboarding).toContain("'ACTIVE'");
   });
 });

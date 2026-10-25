@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -29,21 +29,22 @@ type ModuleKey =
   | "payroll"
   | "integrations";
 
-const BASE_PRICE = 2990;
+const MONTHLY_PRICE = 5_000;
+const IMPLEMENTATION_PRICE = 29_000;
+const INITIAL_PAYMENT = MONTHLY_PRICE + IMPLEMENTATION_PRICE;
 
 const modules: Array<{
   key: ModuleKey;
   name: string;
   description: string;
-  price: number;
 }> = [
-  { key: "inventory", name: "Inventory & Warehouse", description: "Stock, purchasing, receiving, returns and warehouse visibility.", price: 1500 },
-  { key: "wholesale", name: "Wholesale & Distribution", description: "GRN, credit sales, supplier flows, allocations and distribution workflows.", price: 2000 },
-  { key: "manufacturing", name: "Manufacturing", description: "Raw materials, BOMs, production, wastage and finished goods.", price: 6000 },
-  { key: "accounting", name: "Advanced Accounting", description: "GST, WHT, receivables, payables, journals and advanced financial reporting.", price: 1500 },
-  { key: "multiBranch", name: "Multi-Branch", description: "Separate branches with consolidated owner-level reporting.", price: 2500 },
-  { key: "payroll", name: "Payroll & HR", description: "Employees, payroll, attendance and staff records.", price: 1500 },
-  { key: "integrations", name: "Integrations", description: "Connect external services, online ordering or custom business tools.", price: 2000 },
+  { key: "inventory", name: "Inventory & Warehouse", description: "Stock, purchasing, receiving, returns and warehouse visibility." },
+  { key: "wholesale", name: "Wholesale & Distribution", description: "GRN, credit sales, supplier flows, allocations and distribution workflows." },
+  { key: "manufacturing", name: "Manufacturing", description: "Raw materials, BOMs, production, wastage and finished goods." },
+  { key: "accounting", name: "Advanced Accounting", description: "GST, WHT, receivables, payables, journals and advanced financial reporting." },
+  { key: "multiBranch", name: "Multi-Branch", description: "Separate branches with consolidated owner-level reporting." },
+  { key: "payroll", name: "Payroll & HR", description: "Employees, payroll, attendance and staff records." },
+  { key: "integrations", name: "Integrations", description: "Connect external services, online ordering or custom business tools." },
 ];
 
 const businessTypes: Array<{
@@ -64,13 +65,11 @@ export function MunshiBuilder() {
   const [step, setStep] = useState(1);
   const [businessType, setBusinessType] = useState<BusinessType | null>(null);
   const [selectedModules, setSelectedModules] = useState<ModuleKey[]>([]);
-  const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
-
-  const monthlyTotal = useMemo(() => {
-    return BASE_PRICE + modules.filter((module) => selectedModules.includes(module.key)).reduce((sum, module) => sum + module.price, 0);
-  }, [selectedModules]);
-
-  const payableNow = billing === "annual" ? monthlyTotal * 10 : monthlyTotal;
+  // Online annual and per-module pricing are not verified merchant offers.
+  // Only show the currently published price: implementation + first month.
+  const billing = "monthly" as const;
+  const monthlyTotal = MONTHLY_PRICE;
+  const payableNow = INITIAL_PAYMENT;
 
   function chooseBusiness(type: BusinessType, recommended: ModuleKey[]) {
     setBusinessType(type);
@@ -143,7 +142,7 @@ export function MunshiBuilder() {
                 <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-emerald-700 shadow-sm"><Building2 className="h-5 w-5" /></div>
                 <div>
                   <p className="font-semibold">Munshi Core</p>
-                  <p className="text-sm text-slate-600">Always included — Rs {BASE_PRICE.toLocaleString()}/month</p>
+                  <p className="text-sm text-slate-600">Always included — Rs {MONTHLY_PRICE.toLocaleString()}/month</p>
                 </div>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
@@ -169,7 +168,7 @@ export function MunshiBuilder() {
                       <p className="mt-1 text-sm leading-6 text-slate-500">{module.description}</p>
                     </div>
                     <div className="shrink-0 text-right">
-                      <p className="text-sm font-semibold">+ Rs {module.price.toLocaleString()}</p>
+                      <p className="text-sm font-semibold">Included</p>
                       <div className={`ml-auto mt-2 flex h-6 w-11 items-center rounded-full p-1 transition ${active ? "justify-end bg-emerald-600" : "justify-start bg-slate-200"}`}>
                         <span className="h-4 w-4 rounded-full bg-white shadow-sm" />
                       </div>
@@ -185,13 +184,13 @@ export function MunshiBuilder() {
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-400">Your Munshi</p>
               <h2 className="mt-2 text-xl font-semibold">{selectedBusiness.name}</h2>
               <div className="mt-6 space-y-3 border-y border-white/10 py-5 text-sm">
-                <div className="flex justify-between gap-4"><span className="text-slate-400">Munshi Core</span><span>Rs {BASE_PRICE.toLocaleString()}</span></div>
+                <div className="flex justify-between gap-4"><span className="text-slate-400">Munshi Core</span><span>Rs {MONTHLY_PRICE.toLocaleString()}/month</span></div>
                 {modules.filter((module) => selectedModules.includes(module.key)).map((module) => (
-                  <div key={module.key} className="flex justify-between gap-4"><span className="text-slate-400">{module.name}</span><span>Rs {module.price.toLocaleString()}</span></div>
+                  <div key={module.key} className="flex justify-between gap-4"><span className="text-slate-400">{module.name}</span><span>Included</span></div>
                 ))}
               </div>
               <div className="flex items-end justify-between gap-3 pt-5">
-                <span className="text-sm text-slate-400">Monthly total</span>
+                <span className="text-sm text-slate-400">Monthly fee</span>
                 <span className="text-2xl font-semibold">Rs {monthlyTotal.toLocaleString()}</span>
               </div>
               <button type="button" onClick={() => setStep(3)} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400">
@@ -209,30 +208,22 @@ export function MunshiBuilder() {
           </button>
           <p className="text-sm font-semibold text-emerald-700">Step 3 of 3</p>
           <h1 className="mt-3 text-4xl font-semibold tracking-tight">Your Munshi is ready.</h1>
-          <p className="mt-3 text-lg text-slate-600">Review your configuration and billing choice before creating your MunshiOS account.</p>
+          <p className="mt-3 text-lg text-slate-600">Review your setup and upfront payment before creating your MunshiOS account.</p>
 
           <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_330px]">
             <div className="space-y-5">
               <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <h2 className="font-semibold">Billing</h2>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <button type="button" onClick={() => setBilling("monthly")} className={`rounded-xl border p-4 text-left ${billing === "monthly" ? "border-emerald-500 bg-emerald-50" : "border-slate-200"}`}>
-                    <p className="font-semibold">Monthly</p>
-                    <p className="mt-1 text-sm text-slate-500">Rs {monthlyTotal.toLocaleString()} every month</p>
-                  </button>
-                  <button type="button" onClick={() => setBilling("annual")} className={`rounded-xl border p-4 text-left ${billing === "annual" ? "border-emerald-500 bg-emerald-50" : "border-slate-200"}`}>
-                    <div className="flex items-center justify-between gap-2"><p className="font-semibold">Annual</p><span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white">2 MONTHS FREE</span></div>
-                    <p className="mt-1 text-sm text-slate-500">Rs {(monthlyTotal * 10).toLocaleString()} per year</p>
-                  </button>
-                </div>
+                <h2 className="font-semibold">Payment terms</h2>
+                <p className="mt-3 text-sm leading-6 text-slate-600">PKR {IMPLEMENTATION_PRICE.toLocaleString("en-PK")} one-time implementation and PKR {MONTHLY_PRICE.toLocaleString("en-PK")} for the first month. No free trial or automatic checkout is offered at this time.</p>
+                <p className="mt-2 text-sm text-slate-600">Every additional workspace needs a separate verified initial payment.</p>
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                 <h2 className="font-semibold">What happens next?</h2>
                 <div className="mt-4 space-y-4 text-sm text-slate-600">
                   <div className="flex gap-3"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-800">1</span><p>Create your secure MunshiOS account.</p></div>
-                  <div className="flex gap-3"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-800">2</span><p>Your 30-day trial starts and your selected workspace is provisioned.</p></div>
-                  <div className="flex gap-3"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-800">3</span><p>When you are ready, request paid activation from Subscription; online checkout will use the same flow once enabled.</p></div>
+                  <div className="flex gap-3"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-800">2</span><p>Arrange the initial PKR 34,000 payment with MunshiOS.</p></div>
+                  <div className="flex gap-3"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-800">3</span><p>After the transaction is independently verified, complete setup to create your paid workspace.</p></div>
                 </div>
               </div>
             </div>
@@ -249,14 +240,14 @@ export function MunshiBuilder() {
                 ))}
               </div>
               <div className="pt-5">
-                <p className="text-xs text-slate-400">{billing === "annual" ? "Due yearly" : "Due monthly"}</p>
+                <p className="text-xs text-slate-400">Initial payment</p>
                 <p className="mt-1 text-3xl font-semibold">Rs {payableNow.toLocaleString()}</p>
-                {billing === "annual" && <p className="mt-1 text-xs text-emerald-400">You save Rs {(monthlyTotal * 2).toLocaleString()} yearly</p>}
+                <p className="mt-1 text-xs text-emerald-400">Includes implementation and the first month.</p>
               </div>
               <Link href={checkoutHref} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400">
-                Create account & continue <ArrowRight className="h-4 w-4" />
+                Create account to arrange payment <ArrowRight className="h-4 w-4" />
               </Link>
-              <p className="mt-3 text-center text-[11px] leading-5 text-slate-500">No card is charged during the 30-day trial. Paid activation currently uses the MunshiOS owner approval flow; online payment will be added to the same subscription workflow.</p>
+              <p className="mt-3 text-center text-[11px] leading-5 text-slate-500">No free trial. Register first, then arrange bank-verified payment with MunshiOS. An administrator must confirm the credited transaction before workspace setup.</p>
             </div>
           </div>
         </div>

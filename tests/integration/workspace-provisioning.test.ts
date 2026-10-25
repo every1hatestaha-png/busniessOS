@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
+import { Prisma } from "@prisma/client";
 
 import { PROVISIONING_MODULE_KEYS } from "@/lib/saas/provisioning-selection";
 import { db } from "@/lib/server/db";
@@ -10,6 +11,15 @@ import type { OnboardingInput } from "@/lib/validation/onboarding";
 const runId = randomUUID();
 const userIds: string[] = [];
 const workspaceIds: string[] = [];
+
+async function seedVerifiedPaidApproval(userId: string) {
+  await db.$executeRaw`
+    INSERT INTO "prepaid_workspace_approvals"
+      ("id", "userId", "paymentReference", "verifiedAmountPkr", "planCode", "billingCycle", "verifiedByUserId")
+    VALUES (${`prepaid_${randomUUID().replaceAll("-", "")}`}, ${userId},
+      ${`SYNTHETIC-${randomUUID()}`}, 34000, 'starter', 'monthly', ${userId})
+  `;
+}
 
 const input: OnboardingInput = {
   businessName: `Provisioning Test ${runId}`,
@@ -25,25 +35,37 @@ const input: OnboardingInput = {
 };
 
 describe("workspace provisioning transaction", () => {
-  it("provisions a new isolated Restaurant workspace with both modules and a trial", async () => {
+  it("provisions a paid isolated Restaurant workspace with both modules and no trial", async () => {
     const user = await db.user.create({ data: { clerkId: `restaurant-provisioning-${runId}`, email: `restaurant-provisioning-${runId}@example.invalid` } });
     userIds.push(user.id);
+    await seedVerifiedPaidApproval(user.id);
     const result = await createInitialWorkspace(user.id, { ...input, businessType: "OTHER" }, { modules: [], builderBusiness: "restaurant", billing: "monthly" }, { provisioningRequestId: `test:restaurant:${runId}` });
     workspaceIds.push(result.workspaceId);
     expect((await db.workspace.findUniqueOrThrow({ where: { id: result.workspaceId } })).vertical).toBe("RESTAURANT");
     expect(await db.workspaceMember.count({ where: { userId: user.id, workspaceId: result.workspaceId, role: "OWNER" } })).toBe(1);
     const modules = await db.$queryRaw<Array<{ moduleKey: string }>>`SELECT "moduleKey" FROM workspace_modules WHERE "workspaceId"=${result.workspaceId}::uuid AND enabled=true ORDER BY "moduleKey"`;
     expect(modules.map(m => m.moduleKey)).toEqual(["inventory", "restaurant"]);
-    const subscription = await db.$queryRaw<Array<{ status: string; trialEndsAt: Date }>>`SELECT status, "trialEndsAt" FROM workspace_subscriptions WHERE "workspaceId"=${result.workspaceId}`;
-    expect(subscription[0]?.status).toBe("TRIALING");
-    expect(subscription[0]?.trialEndsAt.getTime()).toBeGreaterThan(Date.now());
+    const subscription = await db.$queryRaw<Array<{ status: string; trialEndsAt: Date | null; currentPeriodEnd: Date | null }>>`SELECT status, "trialEndsAt", "currentPeriodEnd" FROM workspace_subscriptions WHERE "workspaceId"=${result.workspaceId}`;
+    expect(subscription[0]?.status).toBe("ACTIVE");
+    expect(subscription[0]?.trialEndsAt).toBeNull();
+    expect(subscription[0]?.currentPeriodEnd?.getTime()).toBeGreaterThan(Date.now());
     expect(await db.workspaceMember.count({ where: { workspaceId: result.workspaceId, userId: { not: user.id } } })).toBe(0);
     expect(await getRestaurantOverviewReadiness(result.workspaceId)).toEqual({ recipes: 0, activeRecipes: 0, openKitchenTickets: 0, openShift: null });
   });
   afterAll(async () => {
+    // Payment approvals retain their consumed timestamp even if disposable
+    // fixture workspaces are removed through the FK's ON DELETE SET NULL.
+    if (userIds.length) await db.$executeRaw`DELETE FROM "prepaid_workspace_approvals" WHERE "userId" IN (${Prisma.join(userIds)})`;
     if (workspaceIds.length) await db.workspace.deleteMany({ where: { id: { in: workspaceIds } } });
     if (userIds.length) await db.user.deleteMany({ where: { id: { in: userIds } } });
     await db.$disconnect();
+  });
+
+  it("refuses a new workspace without verified payment", async () => {
+    const user = await db.user.create({ data: { clerkId: `unpaid-provisioning-${runId}`, email: `unpaid-provisioning-${runId}@example.invalid` } });
+    userIds.push(user.id);
+    await expect(createInitialWorkspace(user.id, input, undefined, { provisioningRequestId: `unpaid:${runId}` })).rejects.toThrow(/Payment verification is required/);
+    expect(await db.workspaceMember.count({ where: { userId: user.id } })).toBe(0);
   });
 
   it("commits workspace, membership, subscription, modules and audit once for the same request", async () => {
@@ -51,6 +73,7 @@ describe("workspace provisioning transaction", () => {
       data: { clerkId: `provisioning-${runId}`, email: `provisioning-user-${runId}@example.invalid` },
     });
     userIds.push(user.id);
+    await seedVerifiedPaidApproval(user.id);
 
     const requestId = `test:${randomUUID()}`;
     const first = await createInitialWorkspace(user.id, input, undefined, {
@@ -88,6 +111,8 @@ describe("workspace provisioning transaction", () => {
       data: { clerkId: `provisioning-second-${runId}`, email: `provisioning-second-${runId}@example.invalid` },
     });
     userIds.push(user.id);
+    await seedVerifiedPaidApproval(user.id);
+    await seedVerifiedPaidApproval(user.id);
 
     const first = await createInitialWorkspace(user.id, input, undefined, {
       allowAdditional: true,

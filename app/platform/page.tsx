@@ -4,6 +4,7 @@ import { Activity, Building2, CircleDollarSign, Clock3, ShieldCheck, Users } fro
 
 import { AdminSignOut } from "@/components/admin/admin-signout";
 import { WorkspaceAccountManager } from "@/components/platform/workspace-account-manager";
+import { ManualPaymentApprovalForm } from "@/app/platform/manual-payment-approval-form";
 import { requirePlatformMfa } from "@/lib/server/platform-security";
 import { getPlatformDashboard } from "@/lib/server/subscriptions";
 
@@ -41,7 +42,7 @@ export default async function PlatformPage() {
     { label: "Customer accounts", value: metrics.total, icon: Building2 },
     { label: "Accessible", value: metrics.active, icon: Activity },
     { label: "Active paid", value: metrics.paid, icon: CircleDollarSign },
-    { label: "Free trials", value: metrics.trials, icon: Clock3 },
+    { label: "Legacy trial records", value: metrics.trials, icon: Clock3 },
     { label: "Suspended", value: metrics.suspended, icon: ShieldCheck },
     { label: "Expired", value: metrics.expired, icon: Clock3 },
     { label: "Unassigned", value: workspaces.filter((w) => w.status === "UNASSIGNED").length, icon: Building2 },
@@ -61,6 +62,7 @@ export default async function PlatformPage() {
           </div>
           <nav className="flex gap-1 overflow-x-auto px-3 pb-3 lg:block lg:space-y-1 lg:pb-0" aria-label="Platform administration">
             <Link href="#overview" className="block shrink-0 rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm font-semibold text-emerald-200">Overview</Link>
+            <Link href="#prepaid-onboarding" className="block shrink-0 rounded-xl px-4 py-3 text-sm text-slate-300 transition-colors hover:bg-white/10 hover:text-white">Paid onboarding</Link>
             <Link href="#customer-accounts" className="block shrink-0 rounded-xl px-4 py-3 text-sm text-slate-300 transition-colors hover:bg-white/10 hover:text-white">Customer accounts</Link>
             <Link href="/admin/security" className="block shrink-0 rounded-xl px-4 py-3 text-sm text-slate-300 transition-colors hover:bg-white/10 hover:text-white">Security & MFA</Link>
           </nav>
@@ -93,6 +95,7 @@ export default async function PlatformPage() {
                 ))}
               </div>
             </section>
+            <ManualPaymentApprovalForm />
             <WorkspaceAccountManager workspaces={accounts} />
             <p className="text-center text-xs text-slate-500">Permanent deletion requires confirmed owner identity, recent MFA and multiple explicit confirmations. Snapshots and external exports have separate retention.</p>
           </div>
