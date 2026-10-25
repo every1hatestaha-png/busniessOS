@@ -155,6 +155,72 @@ it("cashier partial payment, exact retry and second collection reconcile the pri
   expect((await listRestaurantPayments(workspaceId, order.id)).filter(x => !x.voidedAt)).toHaveLength(2);
 });
 
+it("cashier -> assigned kitchen staff -> cashier completes with no cross-station actions", async () => {
+  const {
+    createPosOrderAction,
+    transitionKitchenOrderAction,
+    transitionRestaurantOrderAction,
+    recordRestaurantPaymentAction,
+  } = await import("@/app/(dashboard)/restaurant/v1-actions");
+  const { setRestaurantStaffStation } = await import("@/lib/server/restaurant-stations");
+  const { listRestaurantOrders } = await import("@/lib/server/restaurant-workspace");
+
+  const orderData = form();
+  const created = await createPosOrderAction({ status: "idle", message: "" }, orderData);
+  expect(created.status).toBe("success");
+  const [order] = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM restaurant_orders WHERE "workspaceId"=${workspaceId}::uuid
+      AND "externalReference"=${`pos:${orderData.get("orderRequestId")}`}
+  `;
+  expect(order?.id).toBeTruthy();
+
+  const member = await db.user.create({
+    data: {
+      clerkId: `kitchen-handoff-${randomUUID()}`,
+      email: `kitchen-handoff-${randomUUID()}@example.invalid`,
+    },
+  });
+  await db.workspaceMember.create({
+    data: { workspaceId, userId: member.id, role: "STAFF" },
+  });
+  await setRestaurantStaffStation({ workspaceId, role: "OWNER", userId }, member.id, "KITCHEN");
+  auth.requireWorkspace.mockResolvedValue({ workspaceId, role: "STAFF", user: member });
+
+  function transitionData(nextStatus: string) {
+    const payload = new FormData();
+    payload.set("formWorkspaceId", workspaceId);
+    payload.set("orderId", order.id);
+    payload.set("nextStatus", nextStatus);
+    return payload;
+  }
+
+  try {
+    expect((await transitionKitchenOrderAction(transitionData("PREPARING"))).status).toBe("success");
+    expect((await listRestaurantOrders(workspaceId, 100, { statuses: ["PREPARING"] }))
+      .some(x => x.id === order.id)).toBe(true);
+    expect((await transitionKitchenOrderAction(transitionData("READY"))).status).toBe("success");
+    expect((await listRestaurantOrders(workspaceId, 100, { statuses: ["READY"] }))
+      .some(x => x.id === order.id)).toBe(true);
+
+    expect((await transitionKitchenOrderAction(transitionData("CANCELLED"))).status).toBe("error");
+    expect((await transitionRestaurantOrderAction(transitionData("COMPLETED"))).status).toBe("error");
+
+    const payment = new FormData();
+    payment.set("formWorkspaceId", workspaceId);
+    payment.set("orderId", order.id);
+    payment.set("amount", "100");
+    payment.set("method", "BANK_TRANSFER");
+    payment.set("cashBankAccountId", "no-account");
+    expect((await recordRestaurantPaymentAction(payment)).status).toBe("error");
+  } finally {
+    auth.requireWorkspace.mockResolvedValue({ workspaceId, role: "OWNER", user: { id: userId } });
+  }
+
+  expect((await transitionRestaurantOrderAction(transitionData("COMPLETED"))).status).toBe("success");
+  expect((await listRestaurantOrders(workspaceId, 100, { statuses: ["COMPLETED"] }))
+    .some(x => x.id === order.id)).toBe(true);
+});
+
 it("a repeated successful POS action produces one order, KOT and audit event", async () => {
   const { createPosOrderAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
   const data = form(); const before = await counts();
