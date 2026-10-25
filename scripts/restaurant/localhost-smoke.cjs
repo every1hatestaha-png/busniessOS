@@ -6,7 +6,19 @@ const path = require("node:path");
 const root = path.resolve(__dirname, "../..");
 const port = 33218;
 const origin = "http://localhost:" + port;
-const env = { ...process.env, NODE_ENV: "development", BUSINESSOS_DEV_PORT: String(port), BUSINESSOS_DEV_ORIGIN: origin };
+// Synthetic public configuration only. This probe exercises unauthenticated route guards,
+// never sends a credential, and must not rely on production or staging secrets.
+const env = {
+  ...process.env,
+  NODE_ENV: "development",
+  BUSINESSOS_DEV_PORT: String(port),
+  BUSINESSOS_DEV_ORIGIN: origin,
+  NEXT_PUBLIC_SUPABASE_URL: "https://localhost-smoke.invalid",
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_localhost_smoke_test",
+};
+delete env.DATABASE_URL;
+delete env.CLERK_SECRET_KEY;
+delete env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 const child = spawn(process.execPath, [require.resolve("next/dist/bin/next"), "dev", "--hostname", "localhost", "--port", String(port)], {
   cwd: root, env, stdio: ["ignore", "pipe", "pipe"], windowsHide: true
 });
