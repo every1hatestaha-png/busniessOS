@@ -42,6 +42,7 @@ jobs:
           # installed app and start menu identity. Pre-release version also
           # disables the legacy production-only stable-version auto-updater.
           $package.name = "munshios-restaurant-qa"
+          $package.productName = "MunshiOS Restaurant QA"
           $package.version = "0.0.0-restaurantqa.$env:GITHUB_RUN_NUMBER"
           $package.build.appId = "tech.munshios.restaurant.qa"
           $package.build.productName = "MunshiOS Restaurant QA"
@@ -51,7 +52,7 @@ jobs:
           $package.build.nsis.createDesktopShortcut = $false
           $package.build.nsis.createStartMenuShortcut = $false
           # Extra safety: no QA-built executable may claim production release metadata.
-          if ($package.build.productName -eq "MunshiOS" -or $package.build.appId -eq "com.businessos.desktop") {
+          if ($package.build.productName -eq "MunshiOS" -or $package.build.appId -eq "com.businessos.desktop" -or $package.productName -ne "MunshiOS Restaurant QA") {
             throw "Refusing QA build using production application identity"
           }
           $package | ConvertTo-Json -Depth 40 | Set-Content -Path package.json -Encoding utf8
