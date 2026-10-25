@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   AlertTriangle,
-  Banknote,
   ChefHat,
   Clock3,
   LayoutGrid,
@@ -13,7 +12,7 @@ import {
 } from "lucide-react";
 
 import { RestaurantControls } from "@/app/(dashboard)/restaurant/restaurant-controls";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
 import {
