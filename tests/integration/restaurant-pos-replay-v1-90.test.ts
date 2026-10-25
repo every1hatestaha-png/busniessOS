@@ -54,6 +54,43 @@ async function counts() {
   const tickets = await db.$queryRaw<Array<{ count: bigint }>>`SELECT COUNT(*) AS count FROM kitchen_tickets WHERE "workspaceId"=${workspaceId}::uuid`;
   return { orders: Number(orders[0].count), tickets: Number(tickets[0].count), audit: await db.auditLog.count({ where: { workspaceId, action: "restaurant.order.created" } }) };
 }
+it("cashier order with an item allergy note creates exactly one confirmed kitchen ticket", async () => {
+  const { createPosOrderAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
+  const { listRestaurantKitchenOrderLines, listRestaurantOrders } = await import("@/lib/server/restaurant-workspace");
+  const data = form();
+  data.set("itemsJson", JSON.stringify([{ menuItemId, quantity: 2, notes: "Peanut allergy; no onions" }]));
+  data.set("notes", "Table customer requires careful handling");
+  const before = await counts();
+  const result = await createPosOrderAction({ status: "idle", message: "" }, data);
+  expect(result).toMatchObject({ status: "success" });
+  expect(result.orderNumber).toMatch(/^R-\d{6}$/);
+  const orders = await db.$queryRaw<Array<{ id: string; status: string; orderNumber: string }>>`
+    SELECT "id","status","orderNumber" FROM "restaurant_orders"
+    WHERE "workspaceId"=${workspaceId}::uuid
+      AND "externalReference"=${`pos:${data.get("orderRequestId")}`}
+  `;
+  expect(orders).toHaveLength(1);
+  const order = orders[0];
+  expect(order.status).toBe("CONFIRMED");
+  expect(order.orderNumber).toBe(result.orderNumber);
+  const tickets = await db.$queryRaw<Array<{ restaurantOrderId: string; ticketNumber: string }>>`
+    SELECT "restaurantOrderId","ticketNumber" FROM "kitchen_tickets"
+    WHERE "workspaceId"=${workspaceId}::uuid AND "restaurantOrderId"=${order.id}::uuid
+  `;
+  expect(tickets).toEqual([{ restaurantOrderId: order.id, ticketNumber: `KOT-${order.orderNumber}` }]);
+  expect(await listRestaurantKitchenOrderLines(workspaceId, [order.id])).toEqual([
+    expect.objectContaining({ orderId: order.id, itemName: "Replay meal", quantity: 2,
+      notes: "Peanut allergy; no onions", modifiers: [] }),
+  ]);
+  expect((await listRestaurantOrders(workspaceId, 200, { statuses: ["CONFIRMED"] }))
+    .some((entry) => entry.id === order.id)).toBe(true);
+  const retry = await createPosOrderAction({ status: "idle", message: "" }, data);
+  expect(retry).toEqual(result);
+  expect(await counts()).toEqual({
+    orders: before.orders + 1, tickets: before.tickets + 1, audit: before.audit + 1,
+  });
+});
+
 it("a repeated successful POS action produces one order, KOT and audit event", async () => {
   const { createPosOrderAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
   const data = form(); const before = await counts();
