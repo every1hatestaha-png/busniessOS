@@ -2,11 +2,12 @@ import Link from "next/link";
 import { CheckCircle2, Clock3, CookingPot } from "lucide-react";
 
 import { RestaurantMutationForm } from "@/app/(dashboard)/restaurant/mutation-form";
+import { KitchenQueueRefresh } from "@/app/(dashboard)/restaurant/kitchen/kitchen-queue-refresh";
 import { transitionRestaurantOrderAction } from "@/app/(dashboard)/restaurant/v1-actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
-import { listRestaurantOrders } from "@/lib/server/restaurant-workspace";
+import { listRestaurantKitchenOrderLines, listRestaurantOrders } from "@/lib/server/restaurant-workspace";
 import { cn } from "@/lib/utils";
 
 const kitchenColumns = [
@@ -18,6 +19,13 @@ const kitchenColumns = [
 export default async function RestaurantKitchenPage() {
   const { workspaceId, workspace } = await requireWorkspace();
   const orders = await listRestaurantOrders(workspaceId, 200, { statuses: ["CONFIRMED", "PREPARING", "READY"], oldestFirst: true });
+  const lines = await listRestaurantKitchenOrderLines(workspaceId, orders.map((order) => order.id));
+  const linesByOrder = new Map<string, typeof lines>();
+  for (const line of lines) {
+    const existing = linesByOrder.get(line.orderId) ?? [];
+    existing.push(line);
+    linesByOrder.set(line.orderId, existing);
+  }
 
   const counts = {
     CONFIRMED: orders.filter((order) => order.status === "CONFIRMED").length,
@@ -31,9 +39,12 @@ export default async function RestaurantKitchenPage() {
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">Kitchen display</p>
           <h1 className="mt-1 text-xl font-semibold tracking-tight">{workspace.name} kitchen</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Live preparation queue for confirmed restaurant orders.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Kitchen tickets update every 12 seconds when this tab is visible, or manually on demand.</p>
         </div>
-        <Link href="/restaurant/orders" className="text-sm font-semibold text-emerald-700 hover:underline">Open order board</Link>
+        <div className="flex flex-col items-start gap-2 sm:items-end">
+          <KitchenQueueRefresh />
+          <Link href="/restaurant/orders" className="text-xs font-semibold text-emerald-700 hover:underline">Open order board</Link>
+        </div>
       </section>
 
       <section className="grid gap-3 sm:grid-cols-3">
@@ -83,6 +94,19 @@ export default async function RestaurantKitchenPage() {
                         </span>
                       </div>
 
+                      {linesByOrder.get(order.id)?.length ? (
+                        <ul aria-label={`Items for ${order.orderNumber}`} className="divide-y rounded-xl border border-slate-100 bg-slate-50/70 px-3">
+                          {linesByOrder.get(order.id)?.map((line, index) => (
+                            <li key={index} className="flex items-start justify-between gap-3 py-2.5">
+                              <span className="min-w-0 text-sm font-medium text-slate-900">
+                                {line.itemName}
+                                {line.notes && <span className="mt-0.5 block text-xs font-normal text-amber-800">{line.notes}</span>}
+                              </span>
+                              <strong className="shrink-0 rounded-lg bg-white px-2 py-1 text-sm tabular-nums text-slate-900">× {line.quantity}</strong>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : <p className="text-xs text-amber-800">No item lines found for this ticket.</p>}
                       {order.notes ? <p className="rounded-xl bg-amber-50 p-2.5 text-xs text-amber-900">{order.notes}</p> : null}
 
                       <div className="flex flex-wrap gap-2">
