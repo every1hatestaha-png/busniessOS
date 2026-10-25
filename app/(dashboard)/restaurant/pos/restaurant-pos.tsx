@@ -49,6 +49,8 @@ export function RestaurantPos({
       if (requestField.current) requestField.current.value = "";
       formRef.current?.reset();
       setFulfillmentType("TAKEAWAY");
+      setDiscountInput("0");
+      setTaxInput("0");
     } else if (result.status === "error") {
       setRetryWarning("If the order might have been accepted, check the Cashier Orders board before retrying. The same unchanged order can be safely retried.");
     }
@@ -57,6 +59,8 @@ export function RestaurantPos({
 
   const [activeCategory, setActiveCategory] = useState(categories[0]?.id ?? "all");
   const [fulfillmentType, setFulfillmentType] = useState("TAKEAWAY");
+  const [discountInput, setDiscountInput] = useState("0");
+  const [taxInput, setTaxInput] = useState("0");
 
   const visibleItems = items.filter((item) => {
     const categoryMatch = activeCategory === "all" || item.categoryId === activeCategory;
@@ -66,6 +70,12 @@ export function RestaurantPos({
 
   const subtotal = useMemo(() => cart.reduce((sum, line) => sum + line.price * line.quantity, 0), [cart]);
   const itemCount = useMemo(() => cart.reduce((sum, line) => sum + line.quantity, 0), [cart]);
+  const discount = Number(discountInput);
+  const tax = Number(taxInput);
+  const amountsValid = Number.isFinite(discount) && discount >= 0 && discount <= subtotal
+    && Number.isFinite(tax) && tax >= 0 && tax <= 1_000_000_000;
+  // Preview is informational. Server always reprices the menu and validates amounts.
+  const estimatedDue = amountsValid ? Math.max(0, Math.round((subtotal - discount + tax) * 100) / 100) : null;
 
   function add(item: MenuItem) {
     if (!item.isAvailable) return;
@@ -275,14 +285,29 @@ export function RestaurantPos({
 
             {canFinancialOverride ? (
               <div className="grid grid-cols-2 gap-2">
-                <label className="space-y-1 text-xs font-medium">Discount<Input name="discountAmount" type="number" min={0} step="0.01" defaultValue={0} className="rounded-xl" /></label>
-                <label className="space-y-1 text-xs font-medium">Tax<Input name="taxAmount" type="number" min={0} step="0.01" defaultValue={0} className="rounded-xl" /></label>
+                <label className="space-y-1 text-xs font-medium">Discount (manager)
+                  <Input name="discountAmount" type="number" min={0} max={subtotal} step="0.01" value={discountInput} onChange={event => setDiscountInput(event.target.value)} className="rounded-xl" />
+                </label>
+                <label className="space-y-1 text-xs font-medium">Tax (manager)
+                  <Input name="taxAmount" type="number" min={0} step="0.01" value={taxInput} onChange={event => setTaxInput(event.target.value)} className="rounded-xl" />
+                </label>
               </div>
             ) : null}
 
             <div className="rounded-xl bg-slate-50 p-3">
               <div className="flex items-center justify-between text-sm"><span className="text-muted-foreground">Subtotal</span><span className="font-semibold">Rs {subtotal.toLocaleString()}</span></div>
-              <p className="mt-1 text-[10px] text-muted-foreground">Server validates final prices and totals before creating the order.</p>
+              {canFinancialOverride && (
+                <>
+                  <div className="mt-2 flex justify-between text-xs text-slate-600"><span>Discount</span><span>− Rs {(Number.isFinite(discount) ? discount : 0).toLocaleString()}</span></div>
+                  <div className="mt-1 flex justify-between text-xs text-slate-600"><span>Tax</span><span>+ Rs {(Number.isFinite(tax) ? tax : 0).toLocaleString()}</span></div>
+                </>
+              )}
+              <div className="mt-2 flex justify-between border-t border-slate-200 pt-2 text-sm font-semibold">
+                <span>Estimated payable</span>
+                <span>{estimatedDue === null ? "Invalid amount" : `Rs ${estimatedDue.toLocaleString("en-PK", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</span>
+              </div>
+              {!amountsValid && <p role="alert" className="mt-2 text-xs text-red-700">Discount cannot exceed subtotal. Enter valid non-negative amounts.</p>}
+              <p className="mt-1 text-[10px] text-muted-foreground">Estimate only. Server validates final menu prices, tax, discount and totals before acceptance.</p>
             </div>
 
             {state.message ? <p role={state.status === "error" ? "alert" : "status"} className={state.status === "error" ? "text-xs text-destructive" : "text-xs font-medium text-emerald-700"}>{state.message}</p> : null}
@@ -306,7 +331,7 @@ export function RestaurantPos({
               </div>
             ) : null}
 
-            <Button type="submit" className="h-11 w-full rounded-xl bg-emerald-600 text-sm font-semibold hover:bg-emerald-500" disabled={pending || cart.length === 0}>
+            <Button type="submit" className="h-11 w-full rounded-xl bg-emerald-600 text-sm font-semibold hover:bg-emerald-500" disabled={pending || cart.length === 0 || !amountsValid}>
               {pending ? "Creating order..." : fulfillmentType === "DINE_IN" ? "Send to kitchen" : "Confirm order"}
             </Button>
           </fieldset>
