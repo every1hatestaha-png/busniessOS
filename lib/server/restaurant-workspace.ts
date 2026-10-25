@@ -676,7 +676,7 @@ export async function getRestaurantWorkspaceMetrics(workspaceId: string) {
   }>>`
     SELECT
       COALESCE(SUM("total") FILTER (
-        WHERE "status"='COMPLETED' AND "createdAt" >= (date_trunc('day', now() AT TIME ZONE ${timezone}) AT TIME ZONE ${timezone})
+        WHERE "status"='COMPLETED' AND "completedAt" >= (date_trunc('day', now() AT TIME ZONE ${timezone}) AT TIME ZONE ${timezone})
       ), 0) AS "todaySales",
       COUNT(*) FILTER (
         WHERE "createdAt" >= (date_trunc('day', now() AT TIME ZONE ${timezone}) AT TIME ZONE ${timezone})
