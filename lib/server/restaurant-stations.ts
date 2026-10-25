@@ -1,7 +1,7 @@
 import "server-only";
 
 import { db } from "@/lib/server/db";
-import { IndustryDomainError } from "@/lib/server/industry-modules";
+import { IndustryDomainError, requireWorkspaceModule } from "@/lib/server/industry-modules";
 import {
   canUseRestaurantStation,
   isRestaurantManager,
@@ -62,6 +62,9 @@ export async function setRestaurantStaffStation(
   actor: RestaurantActor, staffUserId: string, station: RestaurantStation | null,
 ) {
   await assertRestaurantStation(actor, "MANAGER");
+  // Server actions must still reject assignments if the restaurant module
+  // was disabled after the staff management page was initially opened.
+  await requireWorkspaceModule(actor.workspaceId, "restaurant");
   if (!staffUserId || staffUserId.length > 150) {
     throw new IndustryDomainError("INVALID_STATE", "Invalid staff user.");
   }
