@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   role: "OWNER" as "OWNER" | "ADMIN" | "MANAGER" | "STAFF",
+  station: "CASHIER" as "CASHIER" | "KITCHEN" | null,
   getOverviewReadiness: vi.fn(),
   listTables: vi.fn(),
   getMetrics: vi.fn(),
@@ -13,7 +14,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 vi.mock("@/lib/server/auth", () => ({
-  requireWorkspace: async () => ({ workspaceId: "synthetic-restaurant", role: mocks.role, workspace: { name: "Synthetic Restaurant" } }),
+  requireWorkspace: async () => ({ workspaceId: "synthetic-restaurant", role: mocks.role, user: { id: "fixture-user" }, workspace: { name: "Synthetic Restaurant" } }),
+}));
+vi.mock("@/lib/server/restaurant-stations", () => ({
+  getRestaurantActorStation: async () => mocks.station,
 }));
 vi.mock("@/app/(dashboard)/restaurant/restaurant-controls", () => ({ RestaurantControls: () => null }));
 vi.mock("@/lib/server/industry-modules", () => ({
@@ -29,6 +33,7 @@ vi.mock("@/lib/server/restaurant-workspace", () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.role = "OWNER";
+  mocks.station = "CASHIER";
   mocks.listModules.mockResolvedValue([{ moduleKey: "restaurant", enabled: true }]);
   mocks.listTables.mockResolvedValue([]);
   mocks.getOverviewReadiness.mockResolvedValue({ recipes: 0, activeRecipes: 0, openKitchenTickets: 0, openShift: null });
@@ -37,15 +42,25 @@ beforeEach(() => {
 });
 
 describe("Restaurant V2 station boundaries", () => {
-  it("offers staff cashier/kitchen stations without financial manager details", async () => {
+  it("offers cashier staff only the cashier station and no manager metrics", async () => {
     mocks.role = "STAFF";
     const { default: Stations } = await import("@/app/(dashboard)/restaurant/page");
     const html = renderToStaticMarkup(await Stations());
-    expect(html).toContain("Cashier");
-    expect(html).toContain("Kitchen");
+    expect(html).toContain('href="/restaurant/pos"');
+    expect(html).not.toContain('href="/restaurant/kitchen"');
     expect(html).not.toContain('href="/restaurant/manager"');
     expect(html).not.toContain("12,500");
     expect(mocks.getMetrics).not.toHaveBeenCalled();
+  });
+
+  it("offers kitchen staff only kitchen station", async () => {
+    mocks.role = "STAFF";
+    mocks.station = "KITCHEN";
+    const { default: Stations } = await import("@/app/(dashboard)/restaurant/page");
+    const html = renderToStaticMarkup(await Stations());
+    expect(html).toContain('href="/restaurant/kitchen"');
+    expect(html).not.toContain('href="/restaurant/pos"');
+    expect(html).not.toContain('href="/restaurant/manager"');
   });
 
   it("offers a manager station to an authorized owner", async () => {
