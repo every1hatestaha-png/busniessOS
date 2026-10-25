@@ -124,7 +124,7 @@ export default async function RestaurantKitchenPage() {
                             <Button type="submit" size="sm" className="rounded-lg bg-emerald-600 hover:bg-emerald-500">{column.action}</Button>
                           </RestaurantMutationForm>
                         )}
-                        {column.status === "READY" && <p className="text-xs font-medium text-emerald-800">Ready for cashier to serve or close.</p>
+                        {column.status === "READY" && <p className="text-xs font-medium text-emerald-800">Ready for cashier to serve or close.</p>}
                       </div>
                     </CardContent>
                   </Card>
