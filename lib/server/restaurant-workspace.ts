@@ -591,9 +591,7 @@ export async function listRestaurantKitchenOrderLines(workspaceId: string, order
   }>>`
     SELECT roi."restaurantOrderId" AS "orderId", roi."itemName", roi."quantity", roi."notes"
     FROM "restaurant_order_items" roi
-    INNER JOIN "restaurant_orders" ro
-      ON ro."id" = roi."restaurantOrderId"
-      AND ro."workspaceId" = roi."workspaceId"
+    INNER JOIN "restaurant_orders" ro ON ro."id" = roi."restaurantOrderId"
     WHERE ro."workspaceId" = ${workspaceId}::uuid
       AND ro."id" IN (${Prisma.join(orderIds.map((id) => Prisma.sql`${id}::uuid`))})
       AND ro."status" IN ('CONFIRMED', 'PREPARING', 'READY')
