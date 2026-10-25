@@ -248,6 +248,40 @@ it("manager-ready table lookup includes an order after kitchen prepares it", asy
   expect(await listRestaurantReadyTableIds(workspaceId)).toContain(table.id);
 });
 
+it("manager today sales includes an old order completed today, not just orders created today", async () => {
+  const { createPosOrderAction, transitionKitchenOrderAction, transitionRestaurantOrderAction } =
+    await import("@/app/(dashboard)/restaurant/v1-actions");
+  const { getRestaurantWorkspaceMetrics } = await import("@/lib/server/restaurant-workspace");
+  const original = await getRestaurantWorkspaceMetrics(workspaceId);
+  const orderData = form();
+  expect((await createPosOrderAction({ status: "idle", message: "" }, orderData)).status).toBe("success");
+  const [order] = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT "id" FROM restaurant_orders
+    WHERE "workspaceId"=${workspaceId}::uuid
+      AND "externalReference"=${`pos:${orderData.get("orderRequestId")}`}
+  `;
+  expect(order?.id).toBeTruthy();
+  // A restaurant can punch an order before midnight and complete it after.
+  // Only the order's final completion date belongs to daily sales reporting.
+  await db.$executeRaw`
+    UPDATE restaurant_orders
+    SET "createdAt"=CURRENT_TIMESTAMP - INTERVAL '2 days'
+    WHERE "id"=${order.id}::uuid AND "workspaceId"=${workspaceId}::uuid
+  `;
+  const transition = new FormData();
+  transition.set("formWorkspaceId", workspaceId);
+  transition.set("orderId", order.id);
+  transition.set("nextStatus", "PREPARING");
+  expect((await transitionKitchenOrderAction(transition)).status).toBe("success");
+  transition.set("nextStatus", "READY");
+  expect((await transitionKitchenOrderAction(transition)).status).toBe("success");
+  transition.set("nextStatus", "COMPLETED");
+  expect((await transitionRestaurantOrderAction(transition)).status).toBe("success");
+  const metrics = await getRestaurantWorkspaceMetrics(workspaceId);
+  expect(metrics.todaySales).toBeCloseTo(original.todaySales + 100, 2);
+  expect(metrics.todayOrders).toBe(original.todayOrders);
+});
+
 it("a repeated successful POS action produces one order, KOT and audit event", async () => {
   const { createPosOrderAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
   const data = form(); const before = await counts();
