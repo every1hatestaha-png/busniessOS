@@ -4,6 +4,7 @@ vi.stubGlobal("React", React);
 const mocks = vi.hoisted(() => ({ auth: vi.fn(), document: vi.fn(), notFound: vi.fn(() => { throw new Error("NOT_FOUND"); }) }));
 vi.mock("next/navigation", () => ({ notFound: mocks.notFound }));
 vi.mock("@/lib/server/auth", () => ({ requireWorkspace: mocks.auth }));
+vi.mock("@/lib/server/restaurant-stations", () => ({ assertRestaurantStation: vi.fn() }));
 vi.mock("@/lib/server/restaurant-print", () => ({ getRestaurantPrintDocument: mocks.document }));
 vi.mock("@/components/documents/document-frame", () => ({ DocumentFrame: () => null }));
 vi.mock("@/components/invoices/print-button", () => ({ PrintButton: () => null }));
