@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { RestaurantMutationForm } from "@/app/(dashboard)/restaurant/mutation-form";
 import { recordRestaurantPaymentAction } from "@/app/(dashboard)/restaurant/v1-actions";
 import { Button } from "@/components/ui/button";
+import { eligibleCashierSettlementAccounts } from "@/lib/restaurant/cashier-settlement";
 
 export type CashierSettlementAccount = {
   cashBankAccountId: string;
@@ -41,7 +42,7 @@ export function CashierPaymentForm({
     accounts.some(account => !account.isBank) ? "CASH" : "BANK_TRANSFER",
   );
   const eligibleAccounts = useMemo(
-    () => accounts.filter(account => account.isBank === (method !== "CASH")),
+    () => eligibleCashierSettlementAccounts(accounts, method),
     [accounts, method],
   );
 
