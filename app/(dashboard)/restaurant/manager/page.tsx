@@ -22,6 +22,7 @@ import {
   listWorkspaceModules,
 } from "@/lib/server/industry-modules";
 import { getRestaurantWorkspaceMetrics, listRestaurantOrders } from "@/lib/server/restaurant-workspace";
+import { listRestaurantStationStaff } from "@/lib/server/restaurant-stations";
 import { cn } from "@/lib/utils";
 
 export default async function RestaurantManagerPage() {
@@ -34,26 +35,34 @@ export default async function RestaurantManagerPage() {
     return <ModuleDisabled />;
   }
 
-  const [readiness, tables, metrics, liveOrders] = await Promise.all([
+  // Each status gets its own bounded slice. One backed-up column must never
+  // hide newly confirmed orders or make the Manager overview look empty.
+  const managerQueueLimit = 15;
+  const [readiness, tables, metrics, newOrders, preparingOrders, readyOrders, staff] = await Promise.all([
     getRestaurantOverviewReadiness(workspaceId),
     listRestaurantTables(workspaceId),
     getRestaurantWorkspaceMetrics(workspaceId),
-    listRestaurantOrders(workspaceId, 40, {
-      statuses: ["CONFIRMED", "PREPARING", "READY"],
-      oldestFirst: true,
-    }),
+    listRestaurantOrders(workspaceId, managerQueueLimit, { statuses: ["CONFIRMED"], oldestFirst: true }),
+    listRestaurantOrders(workspaceId, managerQueueLimit, { statuses: ["PREPARING"], oldestFirst: true }),
+    listRestaurantOrders(workspaceId, managerQueueLimit, { statuses: ["READY"], oldestFirst: true }),
+    listRestaurantStationStaff(workspaceId),
   ]);
 
   const openShift = readiness.openShift;
   const canManage = role === "OWNER" || role === "ADMIN" || role === "MANAGER";
   const occupiedTables = tables.filter((table) => table.status === "OCCUPIED").length;
   const readyTables = new Set(
-    liveOrders.filter((order) => order.status === "READY" && order.tableName).map((order) => order.tableName),
+    readyOrders.filter((order) => order.tableName).map((order) => order.tableName),
   );
   const liveByStatus = {
-    CONFIRMED: liveOrders.filter((order) => order.status === "CONFIRMED"),
-    PREPARING: liveOrders.filter((order) => order.status === "PREPARING"),
-    READY: liveOrders.filter((order) => order.status === "READY"),
+    CONFIRMED: newOrders,
+    PREPARING: preparingOrders,
+    READY: readyOrders,
+  };
+  const stationCoverage = {
+    CASHIER: staff.filter((member) => member.station === "CASHIER").length,
+    KITCHEN: staff.filter((member) => member.station === "KITCHEN").length,
+    UNASSIGNED: staff.filter((member) => !member.station).length,
   };
 
   return (
@@ -99,9 +108,9 @@ export default async function RestaurantManagerPage() {
               <Link href="/restaurant/orders" className="text-xs font-semibold text-emerald-700 hover:underline">View all orders</Link>
             </div>
             <div className="mt-4 grid gap-3 lg:grid-cols-3">
-              <OrderColumn title="New" orders={liveByStatus.CONFIRMED} tone="blue" />
-              <OrderColumn title="Preparing" orders={liveByStatus.PREPARING} tone="amber" />
-              <OrderColumn title="Ready" orders={liveByStatus.READY} tone="emerald" />
+              <OrderColumn title="New" orders={liveByStatus.CONFIRMED} tone="blue" cappedAt={managerQueueLimit} />
+              <OrderColumn title="Preparing" orders={liveByStatus.PREPARING} tone="amber" cappedAt={managerQueueLimit} />
+              <OrderColumn title="Ready" orders={liveByStatus.READY} tone="emerald" cappedAt={managerQueueLimit} />
             </div>
           </CardContent>
         </Card>
@@ -182,6 +191,26 @@ export default async function RestaurantManagerPage() {
         </Card>
       </section>
 
+      <Card className="rounded-2xl border shadow-none">
+        <CardContent className="flex flex-wrap items-center justify-between gap-4 p-4 sm:p-5">
+          <div>
+            <h2 className="text-base font-semibold">Staff station readiness</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Only assigned STAFF accounts can operate cashier or kitchen stations.</p>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
+              <span className="rounded-lg bg-blue-50 px-3 py-2 text-blue-800">Cashiers {stationCoverage.CASHIER}</span>
+              <span className="rounded-lg bg-amber-50 px-3 py-2 text-amber-800">Kitchen {stationCoverage.KITCHEN}</span>
+              <span className={cn("rounded-lg px-3 py-2", stationCoverage.UNASSIGNED ? "bg-red-50 text-red-800" : "bg-emerald-50 text-emerald-800")}>
+                Unassigned {stationCoverage.UNASSIGNED}
+              </span>
+            </div>
+            {stationCoverage.UNASSIGNED > 0 && <p className="mt-2 text-xs font-medium text-amber-900">
+              Assign or explicitly revoke station access before staff begin service.
+            </p>}
+          </div>
+          <Link href="/restaurant/manager/staff" className={cn(buttonVariants({ variant: "outline" }), "rounded-xl")}>Manage staff stations</Link>
+        </CardContent>
+      </Card>
+
       <RestaurantControls workspaceId={workspaceId} openShiftId={openShift?.id ?? null} canManageTables={canManage} />
     </div>
   );
@@ -200,11 +229,11 @@ function Metric({ label, value, detail, tone }: { label: string; value: string; 
   );
 }
 
-function OrderColumn({ title, orders, tone }: { title: string; orders: Awaited<ReturnType<typeof listRestaurantOrders>>; tone: "blue" | "amber" | "emerald" }) {
+function OrderColumn({ title, orders, tone, cappedAt }: { title: string; orders: Awaited<ReturnType<typeof listRestaurantOrders>>; tone: "blue" | "amber" | "emerald"; cappedAt: number }) {
   const badge = tone === "amber" ? "bg-amber-100 text-amber-800" : tone === "blue" ? "bg-blue-100 text-blue-800" : "bg-emerald-100 text-emerald-800";
   return (
     <div className="min-w-0 rounded-xl bg-slate-50/80 p-3">
-      <div className="mb-2 flex items-center justify-between"><p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{title}</p><span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", badge)}>{orders.length}</span></div>
+      <div className="mb-2 flex items-center justify-between"><p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{title}</p><span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", badge)}>{orders.length === cappedAt ? `${cappedAt}+` : orders.length}</span></div>
       <div className="space-y-2">
         {orders.slice(0, 3).map((order) => (
           <Link key={order.id} href="/restaurant/orders" className="block rounded-xl border bg-white p-3 transition hover:border-emerald-300">
