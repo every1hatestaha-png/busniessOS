@@ -80,7 +80,7 @@ export function RestaurantPos({
   function add(item: MenuItem) {
     if (!item.isAvailable) return;
     setLastOrderNumber(null);
-    setCart(current => addCashierItem(current, item));
+    setCart(current => addCashierItem(current, { menuItemId: item.id, name: item.name, price: item.price }));
   }
 
   function change(menuItemId: string, delta: number) {
