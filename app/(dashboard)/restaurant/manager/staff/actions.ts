@@ -21,6 +21,7 @@ export async function assignRestaurantStaffStationAction(formData: FormData) {
       workspaceId: actor.workspaceId, userId: actor.user.id, role: actor.role,
     }, String(formData.get("userId") ?? ""), raw === "NONE" ? null : raw as "CASHIER" | "KITCHEN");
     revalidatePath("/restaurant/manager/staff");
+    revalidatePath("/restaurant/manager");
     revalidatePath("/restaurant");
     return { status: "success" as const, message: "Staff station access updated." };
   } catch {
