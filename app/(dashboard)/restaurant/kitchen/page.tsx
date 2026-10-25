@@ -3,7 +3,8 @@ import { CheckCircle2, Clock3, CookingPot } from "lucide-react";
 
 import { RestaurantMutationForm } from "@/app/(dashboard)/restaurant/mutation-form";
 import { KitchenQueueRefresh } from "@/app/(dashboard)/restaurant/kitchen/kitchen-queue-refresh";
-import { transitionRestaurantOrderAction } from "@/app/(dashboard)/restaurant/v1-actions";
+import { transitionKitchenOrderAction } from "@/app/(dashboard)/restaurant/v1-actions";
+import { assertRestaurantStation } from "@/lib/server/restaurant-stations";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
@@ -13,11 +14,12 @@ import { cn } from "@/lib/utils";
 const kitchenColumns = [
   { status: "CONFIRMED", label: "New", icon: Clock3, next: "PREPARING", action: "Start preparing", tone: "blue" },
   { status: "PREPARING", label: "Preparing", icon: CookingPot, next: "READY", action: "Mark ready", tone: "amber" },
-  { status: "READY", label: "Ready", icon: CheckCircle2, next: "COMPLETED", action: "Serve order", tone: "emerald" },
+  { status: "READY", label: "Ready", icon: CheckCircle2, next: null, action: null, tone: "emerald" },
 ] as const;
 
 export default async function RestaurantKitchenPage() {
-  const { workspaceId, workspace } = await requireWorkspace();
+  const { workspaceId, workspace, role, user } = await requireWorkspace();
+  await assertRestaurantStation({ workspaceId, role, userId: user.id }, "KITCHEN");
   const orders = await listRestaurantOrders(workspaceId, 200, { statuses: ["CONFIRMED", "PREPARING", "READY"], oldestFirst: true });
   const lines = await listRestaurantKitchenOrderLines(workspaceId, orders.map((order) => order.id));
   const linesByOrder = new Map<string, typeof lines>();
@@ -115,16 +117,14 @@ export default async function RestaurantKitchenPage() {
                       {order.notes ? <p className="rounded-xl bg-amber-50 p-2.5 text-xs text-amber-900">{order.notes}</p> : null}
 
                       <div className="flex flex-wrap gap-2">
-                        <RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}>
-                          <input type="hidden" name="orderId" value={order.id} />
-                          <input type="hidden" name="nextStatus" value={column.next} />
-                          <Button type="submit" size="sm" className="rounded-lg bg-emerald-600 hover:bg-emerald-500">{column.action}</Button>
-                        </RestaurantMutationForm>
-                        <RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}>
-                          <input type="hidden" name="orderId" value={order.id} />
-                          <input type="hidden" name="nextStatus" value="CANCELLED" />
-                          <Button type="submit" size="sm" variant="outline" className="rounded-lg">Cancel</Button>
-                        </RestaurantMutationForm>
+                        {column.next && (
+                          <RestaurantMutationForm action={transitionKitchenOrderAction} workspaceId={workspaceId}>
+                            <input type="hidden" name="orderId" value={order.id} />
+                            <input type="hidden" name="nextStatus" value={column.next} />
+                            <Button type="submit" size="sm" className="rounded-lg bg-emerald-600 hover:bg-emerald-500">{column.action}</Button>
+                          </RestaurantMutationForm>
+                        )}
+                        {column.status === "READY" && <p className="text-xs font-medium text-emerald-800">Ready for cashier to serve or close.</p>
                       </div>
                     </CardContent>
                   </Card>
