@@ -424,6 +424,21 @@ function waitForServer(child, origin) {
 
 async function startLocalServer() {
   if (app.isPackaged) {
+    // A QA-branded installer must NEVER silently default to a customer/live
+    // MunshiOS origin. The tester must explicitly select a reviewed staging
+    // backend and use synthetic accounts, not live customers.
+    if (app.getName() === "MunshiOS Restaurant QA") {
+      const candidate = process.env.BUSINESSOS_APP_ORIGIN;
+      if (!candidate) {
+        throw new Error("Restaurant QA needs an explicit BUSINESSOS_APP_ORIGIN staging URL. Refusing the production default.");
+      }
+      const origin = validateHostedOrigin(candidate);
+      const host = new URL(origin).hostname.toLowerCase();
+      if (host === "munshios.tech" || host === "www.munshios.tech" ||
+          host === "business-os-khzr.vercel.app") {
+        throw new Error("Restaurant QA must not connect to the production MunshiOS domain.");
+      }
+    }
     await configureHostedRuntime();
     return;
   }
