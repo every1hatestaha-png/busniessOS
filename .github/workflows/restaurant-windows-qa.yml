@@ -42,7 +42,9 @@ jobs:
           # installed app and start menu identity. Pre-release version also
           # disables the legacy production-only stable-version auto-updater.
           $package.name = "munshios-restaurant-qa"
-          $package.productName = "MunshiOS Restaurant QA"
+          # ConvertFrom-Json yields PSCustomObject; add the root productName
+          # explicitly even when the source package does not declare it.
+          $package | Add-Member -NotePropertyName productName -NotePropertyValue "MunshiOS Restaurant QA" -Force
           $package.version = "0.0.0-restaurantqa.$env:GITHUB_RUN_NUMBER"
           $package.build.appId = "tech.munshios.restaurant.qa"
           $package.build.productName = "MunshiOS Restaurant QA"
