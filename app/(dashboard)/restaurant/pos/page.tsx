@@ -1,11 +1,13 @@
 import { PageHeader } from "@/components/business/page-header";
 import { requireWorkspace } from "@/lib/server/auth";
+import { assertRestaurantStation } from "@/lib/server/restaurant-stations";
 import { listRestaurantTables } from "@/lib/server/industry-modules";
 import { listRestaurantMenu } from "@/lib/server/restaurant-workspace";
 import { RestaurantPos } from "./restaurant-pos";
 
 export default async function RestaurantPosPage() {
-  const { workspaceId, role } = await requireWorkspace();
+  const { workspaceId, role, user } = await requireWorkspace();
+  await assertRestaurantStation({ workspaceId, role, userId: user.id }, "CASHIER");
   const [menu, tables] = await Promise.all([
     listRestaurantMenu(workspaceId),
     listRestaurantTables(workspaceId),
