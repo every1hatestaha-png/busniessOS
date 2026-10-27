@@ -2,12 +2,14 @@ import { ChefHat, PackageCheck, UtensilsCrossed } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
+import { redirect } from "next/navigation";
 import { listProducts } from "@/lib/server/products";
 import { listRestaurantMenu } from "@/lib/server/restaurant-workspace";
 import { RestaurantMenuManager } from "./restaurant-menu-manager";
 
 export default async function RestaurantMenuPage() {
   const { workspaceId, role, workspace } = await requireWorkspace();
+  if (!["OWNER", "ADMIN", "MANAGER"].includes(role)) redirect("/restaurant");
   const [menu, products] = await Promise.all([listRestaurantMenu(workspaceId), listProducts(workspaceId)]);
   const canManage = role === "OWNER" || role === "ADMIN" || role === "MANAGER";
   const availableItems = menu.items.filter((item) => item.isAvailable).length;

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { restaurantMutationFeedback, restaurantFormWorkspaceChanged } from "@/lib/server/restaurant-action-errors";
 import { requireWorkspace } from "@/lib/server/auth";
 import { assertRestaurantMutationAccess } from "@/lib/server/restaurant-mutation-access";
+import { assertRestaurantStation } from "@/lib/server/restaurant-stations";
 import { reverseRestaurantItemReturn } from "@/lib/server/restaurant-return-reversals";
 
 export async function reverseRestaurantReturnAction(formData: FormData) {
@@ -16,6 +17,7 @@ export async function reverseRestaurantReturnAction(formData: FormData) {
   if (restaurantFormWorkspaceChanged(formData, workspace.workspaceId)) return { status: "error" as const, message: "Your workspace changed. Refresh this page before submitting." };
   return restaurantMutationFeedback(async () => {
     await assertRestaurantMutationAccess(workspace.workspaceId);
+    await assertRestaurantStation({ workspaceId: workspace.workspaceId, role: workspace.role, userId: workspace.user.id }, "MANAGER");
   await reverseRestaurantItemReturn(
     { workspaceId: workspace.workspaceId, role: workspace.role, userId: workspace.user.id },
     returnId,

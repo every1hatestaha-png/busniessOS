@@ -2,28 +2,48 @@ import Link from "next/link";
 import { CheckCircle2, Clock3, CookingPot } from "lucide-react";
 
 import { RestaurantMutationForm } from "@/app/(dashboard)/restaurant/mutation-form";
-import { transitionRestaurantOrderAction } from "@/app/(dashboard)/restaurant/v1-actions";
+import { KitchenQueueRefresh } from "@/app/(dashboard)/restaurant/kitchen/kitchen-queue-refresh";
+import { transitionKitchenOrderAction } from "@/app/(dashboard)/restaurant/v1-actions";
+import { assertRestaurantStation } from "@/lib/server/restaurant-stations";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
-import { listRestaurantOrders } from "@/lib/server/restaurant-workspace";
+import { listRestaurantKitchenOrderLines, listRestaurantOrders } from "@/lib/server/restaurant-workspace";
+import { isRestaurantManager } from "@/lib/restaurant/station-policy";
+import { KITCHEN_TICKET_BATCH_LIMIT, kitchenVisibleCount } from "@/lib/restaurant/kitchen-queue";
 import { cn } from "@/lib/utils";
 
 const kitchenColumns = [
   { status: "CONFIRMED", label: "New", icon: Clock3, next: "PREPARING", action: "Start preparing", tone: "blue" },
   { status: "PREPARING", label: "Preparing", icon: CookingPot, next: "READY", action: "Mark ready", tone: "amber" },
-  { status: "READY", label: "Ready", icon: CheckCircle2, next: "COMPLETED", action: "Serve order", tone: "emerald" },
+  { status: "READY", label: "Ready", icon: CheckCircle2, next: null, action: null, tone: "emerald" },
 ] as const;
 
 export default async function RestaurantKitchenPage() {
-  const { workspaceId, workspace } = await requireWorkspace();
-  const orders = await listRestaurantOrders(workspaceId, 200, { statuses: ["CONFIRMED", "PREPARING", "READY"], oldestFirst: true });
+  const { workspaceId, workspace, role, user } = await requireWorkspace();
+  await assertRestaurantStation({ workspaceId, role, userId: user.id }, "KITCHEN");
+  // A single shared 200-order limit could starve NEW orders behind old READY
+  // tickets. Each station column owns a bounded FIFO slice independently.
+  const [newOrders, preparingOrders, readyOrders] = await Promise.all([
+    listRestaurantOrders(workspaceId, KITCHEN_TICKET_BATCH_LIMIT, { statuses: ["CONFIRMED"], oldestFirst: true }),
+    listRestaurantOrders(workspaceId, KITCHEN_TICKET_BATCH_LIMIT, { statuses: ["PREPARING"], oldestFirst: true }),
+    listRestaurantOrders(workspaceId, KITCHEN_TICKET_BATCH_LIMIT, { statuses: ["READY"], oldestFirst: true }),
+  ]);
+  const orders = [...newOrders, ...preparingOrders, ...readyOrders];
+  const lines = await listRestaurantKitchenOrderLines(workspaceId, orders.map((order) => order.id));
+  const linesByOrder = new Map<string, typeof lines>();
+  for (const line of lines) {
+    const existing = linesByOrder.get(line.orderId) ?? [];
+    existing.push(line);
+    linesByOrder.set(line.orderId, existing);
+  }
 
   const counts = {
-    CONFIRMED: orders.filter((order) => order.status === "CONFIRMED").length,
-    PREPARING: orders.filter((order) => order.status === "PREPARING").length,
-    READY: orders.filter((order) => order.status === "READY").length,
+    CONFIRMED: kitchenVisibleCount(newOrders.length),
+    PREPARING: kitchenVisibleCount(preparingOrders.length),
+    READY: kitchenVisibleCount(readyOrders.length),
   };
+  const restaurantTimezone = workspace.timezone || "Asia/Karachi";
 
   return (
     <div className="mx-auto max-w-[1560px] space-y-4">
@@ -31,9 +51,12 @@ export default async function RestaurantKitchenPage() {
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">Kitchen display</p>
           <h1 className="mt-1 text-xl font-semibold tracking-tight">{workspace.name} kitchen</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Live preparation queue for confirmed restaurant orders.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Kitchen tickets update every 12 seconds when this tab is visible, or manually on demand.</p>
         </div>
-        <Link href="/restaurant/orders" className="text-sm font-semibold text-emerald-700 hover:underline">Open order board</Link>
+        <div className="flex flex-col items-start gap-2 sm:items-end">
+          <KitchenQueueRefresh />
+          {isRestaurantManager(role) && <Link href="/restaurant/orders" className="text-xs font-semibold text-emerald-700 hover:underline">Open cashier order board</Link>}
+        </div>
       </section>
 
       <section className="grid gap-3 sm:grid-cols-3">
@@ -42,7 +65,13 @@ export default async function RestaurantKitchenPage() {
         <KitchenMetric label="Ready" value={counts.READY} tone="emerald" />
       </section>
 
-      {orders.length === 200 ? <p className="text-sm text-amber-700">Showing the oldest 200 kitchen orders. Finish these to advance the queue.</p> : null}
+      {[["New", newOrders.length], ["Preparing", preparingOrders.length], ["Ready", readyOrders.length]]
+        .filter(([, count]) => count === KITCHEN_TICKET_BATCH_LIMIT)
+        .map(([label]) => (
+          <p key={label} className="text-sm text-amber-700">
+            {label} queue has at least {KITCHEN_TICKET_BATCH_LIMIT} tickets. Showing the oldest first; move tickets through the workflow to reveal the remaining backlog.
+          </p>
+        ))}
 
       <div className="grid gap-4 xl:grid-cols-3">
         {kitchenColumns.map((column) => {
@@ -79,23 +108,39 @@ export default async function RestaurantKitchenPage() {
                           </p>
                         </div>
                         <span className="rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">
-                          {new Intl.DateTimeFormat("en-PK", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Karachi" }).format(order.createdAt)}
+                          {new Intl.DateTimeFormat("en-PK", { hour: "numeric", minute: "2-digit", timeZone: restaurantTimezone }).format(order.createdAt)}
                         </span>
                       </div>
 
+                      {linesByOrder.get(order.id)?.length ? (
+                        <ul aria-label={`Items for ${order.orderNumber}`} className="divide-y rounded-xl border border-slate-100 bg-slate-50/70 px-3">
+                          {linesByOrder.get(order.id)?.map((line, index) => (
+                            <li key={index} className="flex items-start justify-between gap-3 py-2.5">
+                              <span className="min-w-0 text-sm font-medium text-slate-900">
+                                {line.itemName}
+                                {line.modifiers.length > 0 && (
+                                  <span className="mt-1 block text-xs font-normal text-slate-600">
+                                    Options: {line.modifiers.join(" · ")}
+                                  </span>
+                                )}
+                                {line.notes && <span className="mt-0.5 block text-xs font-normal text-amber-800">{line.notes}</span>}
+                              </span>
+                              <strong className="shrink-0 rounded-lg bg-white px-2 py-1 text-sm tabular-nums text-slate-900">× {line.quantity}</strong>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : <p className="text-xs text-amber-800">No item lines found for this ticket.</p>}
                       {order.notes ? <p className="rounded-xl bg-amber-50 p-2.5 text-xs text-amber-900">{order.notes}</p> : null}
 
                       <div className="flex flex-wrap gap-2">
-                        <RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}>
-                          <input type="hidden" name="orderId" value={order.id} />
-                          <input type="hidden" name="nextStatus" value={column.next} />
-                          <Button type="submit" size="sm" className="rounded-lg bg-emerald-600 hover:bg-emerald-500">{column.action}</Button>
-                        </RestaurantMutationForm>
-                        <RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}>
-                          <input type="hidden" name="orderId" value={order.id} />
-                          <input type="hidden" name="nextStatus" value="CANCELLED" />
-                          <Button type="submit" size="sm" variant="outline" className="rounded-lg">Cancel</Button>
-                        </RestaurantMutationForm>
+                        {column.next && (
+                          <RestaurantMutationForm action={transitionKitchenOrderAction} workspaceId={workspaceId}>
+                            <input type="hidden" name="orderId" value={order.id} />
+                            <input type="hidden" name="nextStatus" value={column.next} />
+                            <Button type="submit" size="sm" className="rounded-lg bg-emerald-600 hover:bg-emerald-500">{column.action}</Button>
+                          </RestaurantMutationForm>
+                        )}
+                        {column.status === "READY" && <p className="text-xs font-medium text-emerald-800">Ready for cashier to serve or close.</p>}
                       </div>
                     </CardContent>
                   </Card>
@@ -109,7 +154,7 @@ export default async function RestaurantKitchenPage() {
   );
 }
 
-function KitchenMetric({ label, value, tone }: { label: string; value: number; tone: "blue" | "amber" | "emerald" }) {
+function KitchenMetric({ label, value, tone }: { label: string; value: string; tone: "blue" | "amber" | "emerald" }) {
   const toneClass = tone === "amber" ? "bg-amber-100 text-amber-800" : tone === "blue" ? "bg-blue-100 text-blue-800" : "bg-emerald-100 text-emerald-800";
   return (
     <Card className="rounded-2xl border shadow-none">

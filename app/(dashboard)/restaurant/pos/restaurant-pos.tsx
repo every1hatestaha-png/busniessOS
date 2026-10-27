@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { Minus, Plus, Search, ShoppingCart, Trash2, UtensilsCrossed } from "lucide-react";
 
 import { useRestaurantActionState } from "@/app/(dashboard)/restaurant/use-restaurant-action-state";
@@ -9,11 +10,12 @@ import { createPosOrderAction } from "@/app/(dashboard)/restaurant/v1-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { addCashierItem, cashierOrderLines, cashierSubmissionSignature, changeCashierItemQuantity, CASHIER_MAX_QUANTITY, type CashierCartLine } from "@/lib/restaurant/cashier-cart";
 
 type Category = { id: string; name: string; sortOrder: number; isActive: boolean };
 type MenuItem = { id: string; categoryId: string; categoryName: string; name: string; description: string | null; price: number; isAvailable: boolean };
 type Table = { id: string; name: string; status: string };
-type CartLine = { menuItemId: string; name: string; price: number; quantity: number };
+
 
 export function RestaurantPos({
   workspaceId,
@@ -28,22 +30,39 @@ export function RestaurantPos({
   tables: Table[];
   canFinancialOverride: boolean;
 }) {
-  const [cart, setCart] = useState<CartLine[]>([]);
+  const [cart, setCart] = useState<CashierCartLine[]>([]);
   const [query, setQuery] = useState("");
   const requestId = useRef<string | null>(null);
   const requestField = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const attemptedSignature = useRef<string | null>(null);
+  const [retryWarning, setRetryWarning] = useState("");
+  const [lastOrderNumber, setLastOrderNumber] = useState<string | null>(null);
+  const [hasAttempted, setHasAttempted] = useState(false);
+  const [fulfillmentType, setFulfillmentType] = useState("TAKEAWAY");
+  const [discountInput, setDiscountInput] = useState("0");
+  const [taxInput, setTaxInput] = useState("0");
   const [state, action, pending, onSubmit] = useRestaurantActionState(async (previous, form) => {
     const result = await createPosOrderAction(previous, form);
     if (result.status === "success") {
       setCart([]);
       requestId.current = null;
+      attemptedSignature.current = null;
+      setHasAttempted(false);
+      setRetryWarning("");
+      setLastOrderNumber(result.orderNumber ?? null);
       if (requestField.current) requestField.current.value = "";
+      formRef.current?.reset();
+      setFulfillmentType("TAKEAWAY");
+      setDiscountInput("0");
+      setTaxInput("0");
+    } else if (result.status === "error") {
+      setRetryWarning("If the order might have been accepted, check the Cashier Orders board before retrying. The same unchanged order can be safely retried.");
     }
     return result;
   }, initialRestaurantV1ActionState);
 
   const [activeCategory, setActiveCategory] = useState(categories[0]?.id ?? "all");
-  const [fulfillmentType, setFulfillmentType] = useState("TAKEAWAY");
 
   const visibleItems = items.filter((item) => {
     const categoryMatch = activeCategory === "all" || item.categoryId === activeCategory;
@@ -53,21 +72,37 @@ export function RestaurantPos({
 
   const subtotal = useMemo(() => cart.reduce((sum, line) => sum + line.price * line.quantity, 0), [cart]);
   const itemCount = useMemo(() => cart.reduce((sum, line) => sum + line.quantity, 0), [cart]);
+  const discount = Number(discountInput);
+  const tax = Number(taxInput);
+  const amountsValid = Number.isFinite(discount) && discount >= 0 && discount <= subtotal
+    && Number.isFinite(tax) && tax >= 0 && tax <= 1_000_000_000;
+  // Preview is informational. Server always reprices the menu and validates amounts.
+  const estimatedDue = amountsValid ? Math.max(0, Math.round((subtotal - discount + tax) * 100) / 100) : null;
 
   function add(item: MenuItem) {
     if (!item.isAvailable) return;
-    setCart((current) => {
-      const found = current.find((line) => line.menuItemId === item.id);
-      return found
-        ? current.map((line) => line.menuItemId === item.id ? { ...line, quantity: line.quantity + 1 } : line)
-        : [...current, { menuItemId: item.id, name: item.name, price: item.price, quantity: 1 }];
-    });
+    setLastOrderNumber(null);
+    setCart(current => addCashierItem(current, { menuItemId: item.id, name: item.name, price: item.price }));
   }
 
   function change(menuItemId: string, delta: number) {
-    setCart((current) => current
-      .map((line) => line.menuItemId === menuItemId ? { ...line, quantity: Math.max(0, line.quantity + delta) } : line)
-      .filter((line) => line.quantity > 0));
+    setLastOrderNumber(null);
+    setCart(current => changeCashierItemQuantity(current, menuItemId, delta));
+  }
+
+  function changeNotes(menuItemId: string, notes: string) {
+    setLastOrderNumber(null);
+    setCart(current => current.map(line => line.menuItemId === menuItemId ? { ...line, notes } : line));
+  }
+
+  function startChangedOrderAttempt() {
+    // Explicit operator acknowledgement prevents an uncertain network retry
+    // silently reusing a prior request identity with a different basket.
+    requestId.current = null;
+    attemptedSignature.current = null;
+    setHasAttempted(false);
+    if (requestField.current) requestField.current.value = "";
+    setRetryWarning("");
   }
 
   return (
@@ -178,15 +213,28 @@ export function RestaurantPos({
                   <p className="truncate text-sm font-semibold">{line.name}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">Rs {(line.price * line.quantity).toLocaleString()}</p>
                 </div>
-                <Button type="button" variant="ghost" size="icon" className="size-7 text-destructive" disabled={pending} onClick={() => setCart((current) => current.filter((item) => item.menuItemId !== line.menuItemId))}>
+                <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${line.name} from order`} className="size-7 text-destructive" disabled={pending} onClick={() => { setLastOrderNumber(null); setCart((current) => current.filter((item) => item.menuItemId !== line.menuItemId)); }}>
                   <Trash2 className="size-3.5" />
                 </Button>
               </div>
               <div className="mt-2 flex items-center gap-2">
-                <Button type="button" variant="outline" size="icon" className="size-7 rounded-lg" disabled={pending} onClick={() => change(line.menuItemId, -1)}><Minus className="size-3" /></Button>
+                <Button type="button" variant="outline" size="icon" aria-label={`Decrease ${line.name} quantity`} className="size-7 rounded-lg" disabled={pending} onClick={() => change(line.menuItemId, -1)}><Minus className="size-3" /></Button>
                 <span className="w-6 text-center text-sm font-semibold">{line.quantity}</span>
-                <Button type="button" variant="outline" size="icon" className="size-7 rounded-lg" disabled={pending} onClick={() => change(line.menuItemId, 1)}><Plus className="size-3" /></Button>
+                <Button type="button" variant="outline" size="icon" aria-label={`Increase ${line.name} quantity`} className="size-7 rounded-lg" disabled={pending || line.quantity >= CASHIER_MAX_QUANTITY} onClick={() => change(line.menuItemId, 1)}><Plus className="size-3" /></Button>
               </div>
+              <label className="mt-3 block space-y-1 text-[11px] font-medium text-slate-700">
+                Kitchen instructions for {line.name}
+                <textarea
+                  aria-label={`Kitchen instructions for ${line.name}`}
+                  value={line.notes}
+                  onChange={(event) => changeNotes(line.menuItemId, event.target.value)}
+                  maxLength={300}
+                  disabled={pending}
+                  rows={2}
+                  placeholder="E.g. no onions, allergy warning, less spicy"
+                  className="block min-h-12 w-full resize-y rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                />
+              </label>
             </div>
           )) : (
             <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">Your order is empty.</div>
@@ -194,12 +242,22 @@ export function RestaurantPos({
         </div>
 
         <form
+          ref={formRef}
           action={action}
           onSubmit={(event) => {
+            const signature = cashierSubmissionSignature(new FormData(event.currentTarget));
+            if (attemptedSignature.current && attemptedSignature.current !== signature) {
+              event.preventDefault();
+              setRetryWarning("This order changed after an attempted submission. Check Cashier Orders first, then select Start changed order attempt.");
+              return;
+            }
             onSubmit(event);
             if (!event.defaultPrevented) {
               requestId.current ??= crypto.randomUUID();
+              attemptedSignature.current ??= signature;
+              setHasAttempted(true);
               if (requestField.current) requestField.current.value = requestId.current;
+              setRetryWarning("");
             }
           }}
           aria-busy={pending}
@@ -208,7 +266,7 @@ export function RestaurantPos({
           <input ref={requestField} type="hidden" name="orderRequestId" />
           {workspaceId ? <input type="hidden" name="formWorkspaceId" value={workspaceId} /> : null}
           <fieldset disabled={pending} className="contents">
-            <input type="hidden" name="itemsJson" value={JSON.stringify(cart.map(({ menuItemId, quantity }) => ({ menuItemId, quantity })))} />
+            <input type="hidden" name="itemsJson" value={JSON.stringify(cart.length ? cashierOrderLines(cart) : [])} />
             <input type="hidden" name="fulfillmentType" value={fulfillmentType} />
 
             {fulfillmentType === "DINE_IN" ? (
@@ -231,19 +289,53 @@ export function RestaurantPos({
 
             {canFinancialOverride ? (
               <div className="grid grid-cols-2 gap-2">
-                <label className="space-y-1 text-xs font-medium">Discount<Input name="discountAmount" type="number" min={0} step="0.01" defaultValue={0} className="rounded-xl" /></label>
-                <label className="space-y-1 text-xs font-medium">Tax<Input name="taxAmount" type="number" min={0} step="0.01" defaultValue={0} className="rounded-xl" /></label>
+                <label className="space-y-1 text-xs font-medium">Discount (manager)
+                  <Input name="discountAmount" type="number" min={0} max={subtotal} step="0.01" value={discountInput} onChange={event => setDiscountInput(event.target.value)} className="rounded-xl" />
+                </label>
+                <label className="space-y-1 text-xs font-medium">Tax (manager)
+                  <Input name="taxAmount" type="number" min={0} step="0.01" value={taxInput} onChange={event => setTaxInput(event.target.value)} className="rounded-xl" />
+                </label>
               </div>
             ) : null}
 
             <div className="rounded-xl bg-slate-50 p-3">
               <div className="flex items-center justify-between text-sm"><span className="text-muted-foreground">Subtotal</span><span className="font-semibold">Rs {subtotal.toLocaleString()}</span></div>
-              <p className="mt-1 text-[10px] text-muted-foreground">Server validates final prices and totals before creating the order.</p>
+              {canFinancialOverride && (
+                <>
+                  <div className="mt-2 flex justify-between text-xs text-slate-600"><span>Discount</span><span>− Rs {(Number.isFinite(discount) ? discount : 0).toLocaleString()}</span></div>
+                  <div className="mt-1 flex justify-between text-xs text-slate-600"><span>Tax</span><span>+ Rs {(Number.isFinite(tax) ? tax : 0).toLocaleString()}</span></div>
+                </>
+              )}
+              <div className="mt-2 flex justify-between border-t border-slate-200 pt-2 text-sm font-semibold">
+                <span>Estimated payable</span>
+                <span>{estimatedDue === null ? "Invalid amount" : `Rs ${estimatedDue.toLocaleString("en-PK", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</span>
+              </div>
+              {!amountsValid && <p role="alert" className="mt-2 text-xs text-red-700">Discount cannot exceed subtotal. Enter valid non-negative amounts.</p>}
+              <p className="mt-1 text-[10px] text-muted-foreground">Estimate only. Server validates final menu prices, tax, discount and totals before acceptance.</p>
             </div>
 
             {state.message ? <p role={state.status === "error" ? "alert" : "status"} className={state.status === "error" ? "text-xs text-destructive" : "text-xs font-medium text-emerald-700"}>{state.message}</p> : null}
+            {lastOrderNumber ? (
+              <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-950">
+                Order <strong>{lastOrderNumber}</strong> created. Kitchen ticket has been queued.
+                <Link href="/restaurant/orders" className="mt-1 block font-semibold underline">View cashier orders & billing</Link>
+              </div>
+            ) : null}
+            {retryWarning ? (
+              <div role="alert" className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+                <p>{retryWarning}</p>
+                <div className="flex flex-wrap gap-2">
+                  <Link href="/restaurant/orders" className="rounded-lg border border-amber-300 bg-white px-3 py-2 font-semibold">Check cashier orders</Link>
+                  {hasAttempted && (
+                    <Button type="button" size="sm" variant="outline" className="rounded-lg border-amber-300" onClick={startChangedOrderAttempt}>
+                      Start changed order attempt
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ) : null}
 
-            <Button type="submit" className="h-11 w-full rounded-xl bg-emerald-600 text-sm font-semibold hover:bg-emerald-500" disabled={pending || cart.length === 0}>
+            <Button type="submit" className="h-11 w-full rounded-xl bg-emerald-600 text-sm font-semibold hover:bg-emerald-500" disabled={pending || cart.length === 0 || !amountsValid}>
               {pending ? "Creating order..." : fulfillmentType === "DINE_IN" ? "Send to kitchen" : "Confirm order"}
             </Button>
           </fieldset>

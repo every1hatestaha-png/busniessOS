@@ -33,6 +33,7 @@ import {
 import { cn } from "@/lib/utils";
 import { getWorkspaceBranding } from "@/lib/workspace-branding";
 import type { WorkspaceVertical } from "@/lib/verticals/registry";
+import type { RestaurantStation } from "@/lib/restaurant/station-policy";
 import { getVerticalNavigation } from "@/lib/verticals/experience";
 
 type SidebarRoute = {
@@ -54,6 +55,8 @@ const routes: SidebarRoute[] = [
   { href: "/suppliers", label: "Suppliers", icon: Truck },
   { href: "/supplier-returns", label: "Supplier Returns", icon: Truck, financial: true },
   { href: "/restaurant", label: "Overview", icon: UtensilsCrossed, module: "restaurant" },
+  { href: "/restaurant/manager", label: "Manager", icon: LayoutDashboard, financial: true, module: "restaurant" },
+  { href: "/restaurant/manager/staff", label: "Staff Stations", icon: Users, financial: true, module: "restaurant" },
   { href: "/restaurant/pos", label: "POS", icon: ShoppingCart, module: "restaurant" },
   { href: "/restaurant/orders", label: "Orders", icon: ClipboardList, module: "restaurant" },
   { href: "/restaurant/kitchen", label: "Kitchen", icon: ChefHat, module: "restaurant" },
@@ -82,12 +85,14 @@ export function Sidebar({
   role,
   enabledModules,
   vertical,
+  restaurantStation = null,
 }: {
   workspaceName: string;
   gatePassEnabled: boolean;
   role: Role;
   enabledModules: string[];
   vertical: WorkspaceVertical;
+  restaurantStation?: RestaurantStation | null;
 }) {
   const pathname = usePathname();
   const enabled = new Set(enabledModules);
@@ -126,6 +131,14 @@ export function Sidebar({
               .map((href) => routeByHref.get(href))
               .filter((route): route is SidebarRoute => Boolean(route))
               .filter((route) => {
+                if (restaurantMode && role === "STAFF") {
+                  const allowed = new Set([
+                    "/restaurant",
+                    ...(restaurantStation === "CASHIER" ? ["/restaurant/pos", "/restaurant/orders"] : []),
+                    ...(restaurantStation === "KITCHEN" ? ["/restaurant/kitchen"] : []),
+                  ]);
+                  if (!allowed.has(route.href)) return false;
+                }
                 if (route.href === "/gate-passes" && !gatePassEnabled) return false;
                 if (role === "STAFF" && route.financial) return false;
                 if (route.module && !enabled.has(route.module)) return false;

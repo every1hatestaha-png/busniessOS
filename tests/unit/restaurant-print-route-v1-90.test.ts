@@ -4,12 +4,13 @@ vi.stubGlobal("React", React);
 const mocks = vi.hoisted(() => ({ auth: vi.fn(), document: vi.fn(), notFound: vi.fn(() => { throw new Error("NOT_FOUND"); }) }));
 vi.mock("next/navigation", () => ({ notFound: mocks.notFound }));
 vi.mock("@/lib/server/auth", () => ({ requireWorkspace: mocks.auth }));
+vi.mock("@/lib/server/restaurant-stations", () => ({ assertRestaurantStation: vi.fn() }));
 vi.mock("@/lib/server/restaurant-print", () => ({ getRestaurantPrintDocument: mocks.document }));
 vi.mock("@/components/documents/document-frame", () => ({ DocumentFrame: () => null }));
 vi.mock("@/components/invoices/print-button", () => ({ PrintButton: () => null }));
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.auth.mockResolvedValue({ workspaceId: "workspace-a", workspace: { name: "Synthetic" } });
+  mocks.auth.mockResolvedValue({ workspaceId: "workspace-a", role: "STAFF", user: { id: "synthetic-kitchen" }, workspace: { name: "Synthetic" } });
 });
 it("direct KOT URL cannot instruct fulfilment of an unapproved WhatsApp order", async () => {
   mocks.document.mockResolvedValue({ orderNumber: "R-PENDING", status: "PENDING_REVIEW" });

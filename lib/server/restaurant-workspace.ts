@@ -578,6 +578,53 @@ export async function listRestaurantOrders(workspaceId: string, limit = 100, opt
   return rows.map((row) => ({ ...row, total: Number(row.total) }));
 }
 
+/**
+ * Complete restaurant floor READY state, independent of sampled manager orders.
+ * A heavily backed-up kitchen must not cause the floor overview to hide tables
+ * whose READY orders happen to fall outside the visible order-card limit.
+ */
+export async function listRestaurantReadyTableIds(workspaceId: string): Promise<string[]> {
+  await requireWorkspaceModule(workspaceId, "restaurant");
+  const rows = await db.$queryRaw<Array<{ tableId: string }>>`
+    SELECT DISTINCT ro."restaurantTableId"::text AS "tableId"
+    FROM "restaurant_orders" ro
+    WHERE ro."workspaceId"=${workspaceId}::uuid
+      AND ro."status"='READY'
+      AND ro."restaurantTableId" IS NOT NULL
+  `;
+  return rows.map((row) => row.tableId);
+}
+
+/**
+ * Tenant-scoped KOT line snapshots for exactly the orders displayed by the
+ * kitchen page. Avoids one query per ticket and never exposes prices/costs.
+ */
+export async function listRestaurantKitchenOrderLines(workspaceId: string, orderIds: readonly string[]) {
+  await requireWorkspaceModule(workspaceId, "restaurant");
+  if (!orderIds.length) return [];
+  if (orderIds.length > 250) throw new IndustryDomainError("INVALID_STATE", "Too many kitchen tickets requested.");
+  const rows = await db.$queryRaw<Array<{
+    orderId: string; itemName: string; quantity: Prisma.Decimal; notes: string | null; modifiers: unknown;
+  }>>`
+    SELECT roi."restaurantOrderId" AS "orderId", roi."itemName", roi."quantity", roi."notes", roi."modifiers"
+    FROM "restaurant_order_items" roi
+    INNER JOIN "restaurant_orders" ro ON ro."id" = roi."restaurantOrderId"
+    WHERE ro."workspaceId" = ${workspaceId}::uuid
+      AND ro."id" IN (${Prisma.join(orderIds.map((id) => Prisma.sql`${id}::uuid`))})
+      AND ro."status" IN ('CONFIRMED', 'PREPARING', 'READY')
+    ORDER BY ro."createdAt" ASC, roi."createdAt" ASC, roi."id" ASC
+  `;
+  return rows.map((row) => ({
+    ...row,
+    quantity: Number(row.quantity),
+    // JSONB order modifiers are untrusted: only render bounded, nonblank text.
+    modifiers: Array.isArray(row.modifiers)
+      ? row.modifiers.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+          .slice(0, 20).map((entry) => entry.slice(0, 120))
+      : [],
+  }));
+}
+
 export async function getRestaurantOrder(workspaceId: string, orderId: string) {
   await requireWorkspaceModule(workspaceId, "restaurant");
   assertUuid(orderId, "Restaurant order");
@@ -629,7 +676,7 @@ export async function getRestaurantWorkspaceMetrics(workspaceId: string) {
   }>>`
     SELECT
       COALESCE(SUM("total") FILTER (
-        WHERE "status"='COMPLETED' AND "createdAt" >= (date_trunc('day', now() AT TIME ZONE ${timezone}) AT TIME ZONE ${timezone})
+        WHERE "status"='COMPLETED' AND "completedAt" >= (date_trunc('day', now() AT TIME ZONE ${timezone}) AT TIME ZONE ${timezone})
       ), 0) AS "todaySales",
       COUNT(*) FILTER (
         WHERE "createdAt" >= (date_trunc('day', now() AT TIME ZONE ${timezone}) AT TIME ZONE ${timezone})

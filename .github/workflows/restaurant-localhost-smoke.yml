@@ -1,0 +1,29 @@
+name: Restaurant installer-free localhost smoke
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/(dashboard)/restaurant/**"
+      - "app/api/health/**"
+      - "desktop/**"
+      - "tests/desktop/**"
+      - "scripts/restaurant/localhost-smoke.cjs"
+      - ".github/workflows/restaurant-localhost-smoke.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-localhost:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Real localhost Next health and Restaurant route smoke, no installer
+        run: node scripts/restaurant/localhost-smoke.cjs
+      - name: Real Electron fixture-backed IPC and logout smoke, no installer
+        run: npm run desktop:test

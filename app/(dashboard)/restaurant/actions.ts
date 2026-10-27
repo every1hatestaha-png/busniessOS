@@ -6,6 +6,7 @@ import type { RestaurantActionState } from "./action-state";
 import { restaurantActionErrorMessage, restaurantFormWorkspaceChanged } from "@/lib/server/restaurant-action-errors";
 import { requireWorkspace } from "@/lib/server/auth";
 import { assertRestaurantMutationAccess } from "@/lib/server/restaurant-mutation-access";
+import { assertRestaurantStation } from "@/lib/server/restaurant-stations";
 import {
   closeRestaurantCashShiftFromLedger,
   openRestaurantCashShiftSafely,
@@ -181,6 +182,9 @@ export async function createKitchenTicketAction(
   if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
     await assertRestaurantMutationAccess(workspaceId);
+    // The legacy KOT creator is not part of the cashier -> kitchen flow:
+    // only management may create reconciliation/compatibility tickets.
+    await assertRestaurantStation({ workspaceId, role, userId: user.id }, "MANAGER");
     await createKitchenTicket(
       { workspaceId, role, userId: user.id },
       {
@@ -210,6 +214,10 @@ export async function updateKitchenTicketStatusAction(
   if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
     await assertRestaurantMutationAccess(workspaceId);
+    await assertRestaurantStation(
+      { workspaceId, role, userId: user.id },
+      status === "SERVED" || status === "CANCELLED" ? "MANAGER" : "KITCHEN",
+    );
     await updateLegacyKitchenTicketStatusSafely(
       { workspaceId, role, userId: user.id },
       ticketId,
