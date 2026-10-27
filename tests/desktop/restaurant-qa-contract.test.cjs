@@ -33,3 +33,20 @@ test("QA desktop refuses default and known production hosts", () => {
     'host === "business-os-khzr.vercel.app"'
   ]) assert.ok(main.includes(item), item);
 });
+
+const proxy = fs.readFileSync(path.join(root, "proxy.ts"), "utf8");
+const readiness = fs.readFileSync(path.join(root, "app/api/readiness/route.ts"), "utf8");
+const auth = fs.readFileSync(path.join(root, "lib/server/auth.ts"), "utf8");
+const nav = fs.readFileSync(path.join(root, "components/layout/top-nav.tsx"), "utf8");
+
+test("Restaurant QA Electron uses Supabase session only on a ready staging backend", () => {
+  assert.ok(main.includes('state.environment !== "staging"'));
+  assert.ok(main.includes('state.database !== "ready"'));
+  assert.ok(main.includes('const storedCredentialsReady = isRestaurantQaApp() ? false : await prepareStoredCredentials()'));
+  assert.ok(main.includes('const initialUrl = isRestaurantQaApp() ?'));
+  assert.ok(main.includes('requires a dedicated MunshiOS staging preview URL'));
+  assert.ok(proxy.includes('const stagingSupabaseDesktop = isElectron && process.env.MUNSHIOS_DEPLOYMENT_ENVIRONMENT === "staging"'));
+  assert.ok(auth.includes('process.env.MUNSHIOS_DEPLOYMENT_ENVIRONMENT !== "staging" ? "/desktop-auth" : "/sign-in"'));
+  assert.ok(nav.includes('useLegacyDesktopMenu ? <DesktopClerkAccountMenu /> : <WebAccountMenu />'));
+  assert.ok(readiness.includes('environment: process.env.MUNSHIOS_DEPLOYMENT_ENVIRONMENT === "staging"'));
+});

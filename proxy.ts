@@ -156,6 +156,8 @@ async function supabaseOnlyProxy(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
   const isElectron = (request.headers.get("user-agent") || "").includes("Electron");
+  // Only isolated staging Electron clients use cookie-based Supabase auth.
+  const stagingSupabaseDesktop = isElectron && process.env.MUNSHIOS_DEPLOYMENT_ENVIRONMENT === "staging";
 
   // Health and readiness must remain reachable even when auth configuration is
   // broken so operators receive an explicit 503 from the readiness handler
@@ -164,7 +166,7 @@ async function supabaseOnlyProxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (isElectron || path.startsWith("/desktop-auth")) {
+  if ((isElectron && !stagingSupabaseDesktop) || path.startsWith("/desktop-auth")) {
     if (publicAuthPath(path) || path.startsWith("/desktop-auth")) {
       return NextResponse.next();
     }
@@ -241,10 +243,10 @@ function needsLegacyClerk(request: NextRequest) {
   const hasLegacyAuthorization = Boolean(request.headers.get("authorization"));
 
   return (
-    isElectron ||
+    (isElectron && process.env.MUNSHIOS_DEPLOYMENT_ENVIRONMENT !== "staging") ||
     path.startsWith("/desktop-auth") ||
     path.startsWith("/__clerk/") ||
-    (isApiV1Request(path) && hasLegacyAuthorization)
+    (isApiV1Request(path) && hasLegacyAuthorization && process.env.MUNSHIOS_DEPLOYMENT_ENVIRONMENT !== "staging")
   );
 }
 

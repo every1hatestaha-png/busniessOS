@@ -211,7 +211,7 @@ export const getCurrentUser = cache(async () => {
   if (!user) {
     const requestHeaders = await headers();
     const isElectron = (requestHeaders.get("user-agent") || "").includes("Electron");
-    redirect(isElectron ? "/desktop-auth" : "/sign-in");
+    redirect(isElectron && process.env.MUNSHIOS_DEPLOYMENT_ENVIRONMENT !== "staging" ? "/desktop-auth" : "/sign-in");
   }
   return user;
 });

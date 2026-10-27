@@ -112,6 +112,10 @@ const APP_VERSION = app.getVersion();
 
 const DEFAULT_PRODUCTION_ORIGIN = "https://business-os-khzr.vercel.app";
 
+function isRestaurantQaApp() {
+  return app.isPackaged && app.getName() === "MunshiOS Restaurant QA";
+}
+
 let mainWindow = null;
 let splashWindow = null;
 let serverProcess = null;
@@ -281,6 +285,22 @@ function validateHostedOrigin(value) {
 
 async function configureHostedRuntime() {
   serverOrigin = validateHostedOrigin(process.env.BUSINESSOS_APP_ORIGIN || DEFAULT_PRODUCTION_ORIGIN);
+  if (isRestaurantQaApp()) {
+    // The QA package uses in-window Supabase cookies, never legacy Clerk OAuth.
+    const response = await fetch(`${serverOrigin}/api/readiness`, {
+      headers: { Accept: "application/json" },
+      redirect: "error",
+    });
+    if (!response.ok || new URL(response.url).origin !== serverOrigin) {
+      throw new Error("Restaurant QA staging readiness check failed.");
+    }
+    const state = await response.json();
+    if (state.ok !== true || state.database !== "ready" || state.auth !== "configured" || state.environment !== "staging") {
+      throw new Error("Restaurant QA requires a ready, staging-only Supabase backend.");
+    }
+    appendLog("INFO", "[restaurant-qa] Staging Supabase readiness verified");
+    return;
+  }
   const response = await fetch(`${serverOrigin}/api/desktop-config`, {
     headers: { Accept: "application/json" },
     redirect: "error",
@@ -437,6 +457,9 @@ async function startLocalServer() {
       if (host === "munshios.tech" || host === "www.munshios.tech" ||
           host === "business-os-khzr.vercel.app") {
         throw new Error("Restaurant QA must not connect to the production MunshiOS domain.");
+      }
+      if (!/^munshios-restaurant-staging(?:-[a-z0-9-]+)?-khzr\.vercel\.app$/.test(host)) {
+        throw new Error("Restaurant QA requires a dedicated MunshiOS staging preview URL.");
       }
     }
     await configureHostedRuntime();
@@ -783,6 +806,11 @@ function startOAuthCallbackListener(codeVerifier, state, mode) {
 }
 
 async function startDesktopOAuthFlow({ mode = "normal-login" } = {}) {
+  if (isRestaurantQaApp()) {
+    if (!mainWindow || mainWindow.isDestroyed()) return false;
+    await mainWindow.loadURL(`${serverOrigin}/sign-in`);
+    return true;
+  }
   if (desktopOAuthInProgress) {
     appendLog("WARN", "[debug] startDesktopOAuthFlow called while already in progress — ignoring");
     return false;
@@ -901,6 +929,9 @@ async function clearElectronAuthStorage() {
 }
 
 async function handleDesktopSignOut() {
+  if (isRestaurantQaApp()) {
+    throw new Error("Use the in-app Supabase sign-out to revoke the QA session.");
+  }
   if (desktopLogoutInProgress) {
     appendLog("INFO", "[D5][logout] logout request ignored while cleanup is already running");
     return false;
@@ -936,6 +967,9 @@ async function handleDesktopSignOut() {
 }
 
 async function handleDesktopSwitchAccount() {
+  if (isRestaurantQaApp()) {
+    throw new Error("Sign out through the Supabase account menu before switching QA accounts.");
+  }
   appendLog("INFO", "[SWITCH] account switch requested");
   appendLog("INFO", "[SWITCH] opening Clerk multi-session account chooser");
   return startDesktopOAuthFlow({ mode: "switch-account" });
@@ -980,7 +1014,15 @@ function setupBearerTokenInjection() {
 }
 
 function registerDesktopAuthIpc() {
-  ipcMain.on("desktop-auth:start", () => { void startDesktopOAuthFlow(); });
+  ipcMain.on("desktop-auth:start", (event) => {
+    if (isRestaurantQaApp()) {
+      if (event.sender !== mainWindow?.webContents) return;
+      let origin;
+      try { origin = new URL(event.senderFrame?.url || "").origin; } catch { return; }
+      if (origin !== serverOrigin) return;
+    }
+    void startDesktopOAuthFlow();
+  });
   ipcMain.handle("desktop-auth:signout", async (event) => {
     if (event.sender !== mainWindow?.webContents || event.senderFrame?.url && new URL(event.senderFrame.url).origin !== serverOrigin) {
       throw new Error("Logout is only available to the BusinessOS main window");
@@ -1351,8 +1393,9 @@ function createMainWindow() {
     logWindowInventory("after main closed");
   });
 
-  appendLog("INFO", `[D4][windows] main loading initial URL=${serverOrigin}/`);
-  void mainWindow.loadURL(`${serverOrigin}/`);
+  const initialUrl = isRestaurantQaApp() ? `${serverOrigin}/sign-in` : `${serverOrigin}/`;
+  appendLog("INFO", `[D4][windows] main loading initial URL=${initialUrl}`);
+  void mainWindow.loadURL(initialUrl);
 }
 
 // ---------------------------------------------------------------------------
@@ -1390,7 +1433,7 @@ if (!hasSingleInstanceLock) {
       appendLog("INFO", "STAGE: MunshiOS service ready");
 
       appendLog("INFO", "STAGE: loading desktop credentials...");
-      const storedCredentialsReady = await prepareStoredCredentials();
+      const storedCredentialsReady = isRestaurantQaApp() ? false : await prepareStoredCredentials();
       appendLog("INFO", `[D4][auth] stored credentials ready=${storedCredentialsReady ? "YES" : "NO"}`);
 
       appendLog("INFO", "STAGE: setting permission handler...");

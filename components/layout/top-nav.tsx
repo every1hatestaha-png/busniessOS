@@ -27,6 +27,7 @@ export function TopNav({
   vertical,
   restaurantStation = null,
   platformOwner = false,
+  preferWebAccountMenu = false,
 }: {
   workspaceName: string;
   workspaceId: string;
@@ -37,6 +38,7 @@ export function TopNav({
   vertical: WorkspaceVertical;
   restaurantStation?: RestaurantStation | null;
   platformOwner?: boolean;
+  preferWebAccountMenu?: boolean;
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
@@ -47,6 +49,7 @@ export function TopNav({
     () => Boolean(window.businessOSDesktop?.signOut && window.businessOSDesktop.switchAccount),
     () => false,
   );
+  const useLegacyDesktopMenu = isDesktop && !preferWebAccountMenu;
 
   return (
     <header className="sticky top-0 z-40 flex min-h-16 flex-wrap items-center border-b bg-white/95 px-4 backdrop-blur print:hidden sm:px-6">
@@ -111,7 +114,7 @@ export function TopNav({
             {mobileSearchOpen ? <X /> : <Search />}
           </Button>
           {!isDesktop && platformOwner ? <Link href="/admin/dashboard" className="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50">Admin portal</Link> : null}
-          {isDesktop ? <DesktopClerkAccountMenu /> : <WebAccountMenu />}
+          {useLegacyDesktopMenu ? <DesktopClerkAccountMenu /> : <WebAccountMenu />}
         </div>
       </div>
 
