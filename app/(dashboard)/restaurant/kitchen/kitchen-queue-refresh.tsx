@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Pause, Play, RefreshCw } from "lucide-react";
 
-const POLL_INTERVAL_MS = 12_000;
+const POLL_INTERVAL_MS = 5_000;
 
 /**
  * Poll server-rendered kitchen data without introducing a new API, websocket,
