@@ -7,12 +7,9 @@ const mocks=vi.hoisted(()=>({
  listModules:vi.fn(),
  listTables:vi.fn(),
  listReadyIds:vi.fn(),
- listCandidates:vi.fn(),
 }));
 vi.mock("next/navigation",()=>({redirect:mocks.redirect}));
 vi.mock("@/components/restaurant/station-auto-refresh",()=>({RestaurantStationAutoRefresh:()=>null}));
-vi.mock("@/components/restaurant/manager-table-transfer",()=>({RestaurantTableTransfer:()=>null}));
-vi.mock("@/lib/server/restaurant-table-transfer",()=>({listRestaurantTableTransferCandidates:mocks.listCandidates}));
 vi.mock("@/lib/server/auth",()=>({requireWorkspace:async()=>({
  workspaceId:"synthetic-restaurant",role:mocks.role,workspace:{name:"Sample Restaurant"}
 })}));
@@ -33,7 +30,6 @@ beforeEach(()=>{
   {id:"c",name:"Table 03",capacity:6,area:"Terrace",status:"AVAILABLE"},
  ]);
  mocks.listReadyIds.mockResolvedValue(["a"]);
- mocks.listCandidates.mockResolvedValue([]);
 });
 describe("Restaurant manager floor monitoring",()=>{
  it("renders every table grouped by area with ready status",async()=>{
@@ -43,7 +39,6 @@ describe("Restaurant manager floor monitoring",()=>{
   expect(html).toContain("Ready to serve");expect(html).toContain("Terrace");expect(html).toContain("Main");
   expect(html).toContain("12 configured seats");
   expect(mocks.listReadyIds).toHaveBeenCalledWith("synthetic-restaurant");
-  expect(mocks.listCandidates).toHaveBeenCalledWith("synthetic-restaurant");
  });
  it("never fetches table status or ready orders for staff",async()=>{
   mocks.role="STAFF";
@@ -52,6 +47,5 @@ describe("Restaurant manager floor monitoring",()=>{
   expect(mocks.listModules).not.toHaveBeenCalled();
   expect(mocks.listTables).not.toHaveBeenCalled();
   expect(mocks.listReadyIds).not.toHaveBeenCalled();
-  expect(mocks.listCandidates).not.toHaveBeenCalled();
  });
 });

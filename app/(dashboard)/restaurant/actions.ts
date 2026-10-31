@@ -12,7 +12,6 @@ import {
   openRestaurantCashShiftSafely,
 } from "@/lib/server/restaurant-cash-shifts";
 import { updateLegacyKitchenTicketStatusSafely } from "@/lib/server/restaurant-legacy-kot";
-import { transferRestaurantDineInTable } from "@/lib/server/restaurant-table-transfer";
 import { correctRestaurantKitchenInstructions } from "@/lib/server/restaurant-instruction-corrections";
 import {
   createKitchenTicket,
@@ -229,40 +228,6 @@ export async function updateKitchenTicketStatusAction(
     return { status: "success", message: `Legacy kitchen ticket moved to ${status.toLowerCase()} without posting inventory.` };
   } catch (error) {
     return fail(messageFor(error, "We could not update this kitchen ticket."));
-  }
-}
-
-/** A table move never changes financial postings, order totals or inventory. */
-export async function transferRestaurantTableAction(
-  _previous: RestaurantActionState,
-  formData: FormData,
-): Promise<RestaurantActionState> {
-  const orderId = String(formData.get("orderId") ?? "").trim();
-  const targetTableId = String(formData.get("destinationTableId") ?? "").trim();
-  const reason = String(formData.get("reason") ?? "").trim();
-  const { workspaceId, role, user } = await requireWorkspace();
-  if (restaurantFormWorkspaceChanged(formData, workspaceId)) {
-    return fail("Your workspace changed. Refresh the floor screen before transferring.");
-  }
-  try {
-    await assertRestaurantMutationAccess(workspaceId);
-    await assertRestaurantStation({ workspaceId, role, userId: user.id }, "MANAGER");
-    const result = await transferRestaurantDineInTable(
-      { workspaceId, role, userId: user.id },
-      orderId, targetTableId, reason,
-    );
-    revalidatePath("/restaurant/manager/floor");
-    revalidatePath("/restaurant/manager");
-    revalidatePath("/restaurant/kitchen");
-    revalidatePath("/restaurant/orders");
-    return {
-      status: "success",
-      message: result.moved
-        ? `${result.orderNumber} moved to ${result.destination}. Kitchen and cashier tickets have been updated.`
-        : "Order is already at the selected table. No changes were made.",
-    };
-  } catch (error) {
-    return fail(messageFor(error, "Table transfer could not be completed. Refresh floor availability and try again."));
   }
 }
 
