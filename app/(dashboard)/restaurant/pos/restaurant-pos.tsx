@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Minus, Plus, Search, ShoppingCart, Trash2, UtensilsCrossed } from "lucide-react";
+import { Clock3, Flame, Minus, Plus, Search, ShoppingCart, Trash2, UtensilsCrossed } from "lucide-react";
 
 import { useRestaurantActionState } from "@/app/(dashboard)/restaurant/use-restaurant-action-state";
 import { initialRestaurantV1ActionState } from "@/app/(dashboard)/restaurant/v1-action-state";
@@ -32,6 +32,10 @@ export function RestaurantPos({
 }) {
   const [cart, setCart] = useState<CashierCartLine[]>([]);
   const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const [selectedTableId, setSelectedTableId] = useState("");
+  const [rushNote, setRushNote] = useState(false);
+  const [orderNote, setOrderNote] = useState("");
   const requestId = useRef<string | null>(null);
   const requestField = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -54,6 +58,9 @@ export function RestaurantPos({
       if (requestField.current) requestField.current.value = "";
       formRef.current?.reset();
       setFulfillmentType("TAKEAWAY");
+      setSelectedTableId("");
+      setRushNote(false);
+      setOrderNote("");
       setDiscountInput("0");
       setTaxInput("0");
     } else if (result.status === "error") {
@@ -63,6 +70,17 @@ export function RestaurantPos({
   }, initialRestaurantV1ActionState);
 
   const [activeCategory, setActiveCategory] = useState(categories[0]?.id ?? "all");
+
+  useEffect(() => {
+    const openSearch = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", openSearch);
+    return () => window.removeEventListener("keydown", openSearch);
+  }, []);
 
   const visibleItems = items.filter((item) => {
     const categoryMatch = activeCategory === "all" || item.categoryId === activeCategory;
@@ -95,6 +113,16 @@ export function RestaurantPos({
     setCart(current => current.map(line => line.menuItemId === menuItemId ? { ...line, notes } : line));
   }
 
+  function appendInstruction(menuItemId: string, instruction: string) {
+    setLastOrderNumber(null);
+    setCart(current => current.map(line => {
+      if (line.menuItemId !== menuItemId) return line;
+      const parts = line.notes.split(",").map(value => value.trim()).filter(Boolean);
+      if (!parts.includes(instruction)) parts.push(instruction);
+      return { ...line, notes: parts.join(", ").slice(0, 300) };
+    }));
+  }
+
   function startChangedOrderAttempt() {
     // Explicit operator acknowledgement prevents an uncertain network retry
     // silently reusing a prior request identity with a different basket.
@@ -106,16 +134,17 @@ export function RestaurantPos({
   }
 
   return (
-    <div className="grid min-h-[calc(100dvh-9rem)] gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
-      <section className="min-w-0 space-y-4 rounded-2xl border bg-white p-4 shadow-none sm:p-5">
+    <div className="grid min-h-[calc(100dvh-9rem)] gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <section className="min-w-0 space-y-5 rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_16px_55px_-40px_rgba(15,23,42,0.28)] sm:p-6">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">Menu</p>
-            <h2 className="mt-1 text-lg font-semibold tracking-tight">Add items fast</h2>
+            <h2 className="mt-1 text-2xl font-semibold tracking-[-0.035em]">Build an order</h2>
+            <p className="mt-1 text-xs text-slate-500">Choose a category or search. Tap a dish to add it to the ticket.</p>
           </div>
           <div className="relative w-full lg:max-w-sm">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <Input value={query} onChange={(event) => setQuery(event.target.value)} className="h-10 rounded-xl bg-slate-50 pl-9" placeholder="Search menu items…" />
+            <Input ref={searchRef} value={query} onChange={(event) => setQuery(event.target.value)} className="h-12 rounded-2xl bg-slate-50 pl-9 focus-visible:ring-2 focus-visible:ring-emerald-500" placeholder="Search menu items (Ctrl K)…" aria-label="Search restaurant menu" />
           </div>
         </div>
 
@@ -153,7 +182,7 @@ export function RestaurantPos({
                 type="button"
                 disabled={pending || !item.isAvailable}
                 onClick={() => add(item)}
-                className="group min-h-36 rounded-2xl border bg-white p-3 text-left transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                className="group min-h-36 rounded-[22px] border border-slate-200 bg-white p-3 text-left transition-[border-color,box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-[0_12px_35px_-20px_rgba(15,23,42,0.3)] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 motion-reduce:transform-none disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <div className="grid h-16 place-items-center rounded-xl bg-[linear-gradient(135deg,#eef7f2,#f7faf8)] text-emerald-700">
                   <UtensilsCrossed className="size-5" />
@@ -176,7 +205,7 @@ export function RestaurantPos({
         )}
       </section>
 
-      <aside className="h-fit rounded-2xl border bg-white p-4 shadow-sm xl:sticky xl:top-5 sm:p-5">
+      <aside className="h-fit rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_16px_55px_-40px_rgba(15,23,42,0.3)] xl:sticky xl:top-5 sm:p-6">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2"><ShoppingCart className="size-4 text-emerald-600" /><h2 className="font-semibold">Current order</h2></div>
@@ -235,6 +264,15 @@ export function RestaurantPos({
                   className="block min-h-12 w-full resize-y rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 />
               </label>
+              <div className="mt-2 flex flex-wrap gap-1.5" aria-label={`Quick instructions for ${line.name}`}>
+                {["No onions", "Less spicy", "Extra spicy", "No ice", "Allergy alert"].map(instruction => (
+                  <button key={instruction} type="button" disabled={pending || line.notes.includes(instruction)}
+                    onClick={() => appendInstruction(line.menuItemId, instruction)}
+                    className="rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-slate-700 transition-colors hover:border-emerald-300 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:opacity-40">
+                    + {instruction}
+                  </button>
+                ))}
+              </div>
             </div>
           )) : (
             <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">Your order is empty.</div>
@@ -272,10 +310,20 @@ export function RestaurantPos({
             {fulfillmentType === "DINE_IN" ? (
               <label className="block space-y-1.5 text-xs font-medium">
                 Table
-                <select name="restaurantTableId" required className="h-10 w-full rounded-xl border bg-background px-3 text-sm">
-                  <option value="">Choose table</option>
+                <select name="restaurantTableId" required value={selectedTableId} onChange={event => setSelectedTableId(event.target.value)}
+                  className="h-11 w-full rounded-xl border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
+                  <option value="">Choose a table</option>
                   {tables.map((table) => <option key={table.id} value={table.id}>{table.name} · {table.status}</option>)}
                 </select>
+                {tables.length ? <div className="mt-2 grid grid-cols-3 gap-2" aria-label="Quick table selection">
+                  {tables.map(table => <button key={table.id} type="button" onClick={() => setSelectedTableId(table.id)}
+                    aria-pressed={selectedTableId === table.id} disabled={pending}
+                    className={cn("min-h-12 rounded-xl border px-2 py-2 text-left text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500",
+                      selectedTableId === table.id ? "border-emerald-600 bg-emerald-50 text-emerald-900" : "border-slate-200 bg-white hover:bg-slate-50")}>
+                    <span className="block truncate">{table.name}</span><span className="mt-0.5 block text-[10px] font-normal text-slate-500">{table.status.toLowerCase()}</span>
+                  </button>)}
+                </div> : <p className="mt-1 text-xs text-amber-700">No dining tables configured. Ask your manager to add tables.</p>}
+              
               </label>
             ) : null}
 
@@ -285,7 +333,17 @@ export function RestaurantPos({
             </div>
 
             {fulfillmentType === "DELIVERY" ? <Input name="deliveryAddress" placeholder="Delivery address" maxLength={500} required className="rounded-xl" /> : null}
-            <Input name="notes" placeholder="Kitchen / order note" maxLength={500} className="rounded-xl" />
+            <label className="block space-y-1.5 text-xs font-medium text-slate-700">Order-wide kitchen note
+              <Input name="notes" value={rushNote ? `RUSH: ${orderNote}` : orderNote} onChange={event => setOrderNote(event.target.value.replace(/^RUSH:\s*/, "").slice(0, 490))}
+                placeholder="Preparation instructions for the whole order" maxLength={500} className="h-11 rounded-xl" />
+            </label>
+            <button type="button" aria-pressed={rushNote} onClick={() => setRushNote(current => !current)} disabled={pending}
+              className={cn("flex min-h-11 w-full items-center gap-2 rounded-xl border px-3 text-left text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500",
+                rushNote ? "border-amber-300 bg-amber-50 text-amber-900" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50")}>
+              <Flame className="size-4" aria-hidden="true" />
+              Rush preparation note {rushNote ? "on" : "off"}
+              <Clock3 className="ml-auto size-4 opacity-50" aria-hidden="true" />
+            </button>
 
             {canFinancialOverride ? (
               <div className="grid grid-cols-2 gap-2">
