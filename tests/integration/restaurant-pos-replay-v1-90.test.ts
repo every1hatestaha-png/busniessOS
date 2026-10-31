@@ -91,6 +91,42 @@ it("cashier order with an item allergy note creates exactly one confirmed kitche
   });
 });
 
+it("rejects oversized kitchen options without silently creating a partial order", async () => {
+  const { createPosOrderAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
+  const before = await counts();
+  const data = form();
+  data.set("itemsJson", JSON.stringify([{
+    menuItemId, quantity: 1,
+    modifiers: Array.from({ length: 21 }, (_, i) => `Option ${i + 1}`),
+  }]));
+  const result = await createPosOrderAction({ status: "idle", message: "" }, data);
+  expect(result.status).toBe("error");
+  expect(result.message).toContain("at most 20 options");
+  expect(await counts()).toEqual(before);
+});
+
+it("preserves every accepted modifier through the kitchen snapshot and retry", async () => {
+  const { createPosOrderAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
+  const { listRestaurantKitchenOrderLines } = await import("@/lib/server/restaurant-workspace");
+  const before = await counts();
+  const data = form();
+  const modifiers = Array.from({ length: 20 }, (_, i) => `Option ${i + 1}`);
+  data.set("itemsJson", JSON.stringify([{ menuItemId, quantity: 1, modifiers }]));
+  const first = await createPosOrderAction({ status: "idle", message: "" }, data);
+  expect(first.status).toBe("success");
+  const second = await createPosOrderAction({ status: "idle", message: "" }, data);
+  expect(second).toEqual(first);
+  const [order] = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT "id" FROM "restaurant_orders" WHERE "workspaceId"=${workspaceId}::uuid
+      AND "externalReference"=${`pos:${data.get("orderRequestId")}`}
+  `;
+  const lines = await listRestaurantKitchenOrderLines(workspaceId, [order.id]);
+  expect(lines[0]?.modifiers).toEqual(modifiers);
+  expect(await counts()).toEqual({
+    orders: before.orders + 1, tickets: before.tickets + 1, audit: before.audit + 1,
+  });
+});
+
 it("cashier partial payment, exact retry and second collection reconcile the printed receipt", async () => {
   const { createPosOrderAction, recordRestaurantPaymentAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
   const { createCashBankAccount, getCashBankAccounts } = await import("@/lib/server/accounting");
