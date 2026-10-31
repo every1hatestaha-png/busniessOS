@@ -127,6 +127,34 @@ it("preserves every accepted modifier through the kitchen snapshot and retry", a
   });
 });
 
+it("manager kitchen performance query uses real prepared ticket timestamps in PostgreSQL", async () => {
+  const { createPosOrderAction, transitionKitchenOrderAction } =
+    await import("@/app/(dashboard)/restaurant/v1-actions");
+  const { getRestaurantKitchenPerformance } =
+    await import("@/lib/server/restaurant-kitchen-performance");
+  const data = form();
+  expect((await createPosOrderAction({ status: "idle", message: "" }, data)).status).toBe("success");
+  const [order] = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT "id" FROM "restaurant_orders"
+    WHERE "workspaceId"=${workspaceId}::uuid
+      AND "externalReference"=${`pos:${data.get("orderRequestId")}`}
+  `;
+  expect(order?.id).toBeTruthy();
+  const transition = new FormData();
+  transition.set("formWorkspaceId", workspaceId);
+  transition.set("orderId", order.id);
+  transition.set("nextStatus", "PREPARING");
+  expect((await transitionKitchenOrderAction(transition)).status).toBe("success");
+  transition.set("nextStatus", "READY");
+  expect((await transitionKitchenOrderAction(transition)).status).toBe("success");
+  const result = await getRestaurantKitchenPerformance(workspaceId, 7);
+  expect(result.prepared).toBeGreaterThanOrEqual(1);
+  expect(result.meanMinutes).not.toBeNull();
+  expect(result.p90Minutes).not.toBeNull();
+  expect(result.ready).toBeGreaterThanOrEqual(1);
+  expect(result.byDay.length).toBeGreaterThan(0);
+});
+
 it("cashier partial payment, exact retry and second collection reconcile the printed receipt", async () => {
   const { createPosOrderAction, recordRestaurantPaymentAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
   const { createCashBankAccount, getCashBankAccounts } = await import("@/lib/server/accounting");
