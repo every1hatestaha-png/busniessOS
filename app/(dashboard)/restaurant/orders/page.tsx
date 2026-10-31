@@ -82,7 +82,7 @@ export default async function RestaurantOrdersPage() {
           <p className="mt-1 text-sm text-muted-foreground">POS orders and saved staff reviews, from preparation to completion.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <RestaurantStationAutoRefresh label="Cashier orders" intervalSeconds={12} />
+          <RestaurantStationAutoRefresh label="Order Taking" intervalSeconds={5} />
           <Link href="/restaurant/pos" className={cn(buttonVariants(), "rounded-xl bg-emerald-600 hover:bg-emerald-500")}><Plus className="size-4" />New POS order</Link>
           {canManageFinancialActions && <Link href="/restaurant/kitchen" className={cn(buttonVariants({ variant: "outline" }), "rounded-xl")}><ChefHat className="size-4" />Kitchen</Link>}
           <Link href="/restaurant/whatsapp" className={cn(buttonVariants({ variant: "outline" }), "rounded-xl")}><MessageCircleMore className="size-4" />Saved WhatsApp reviews</Link>
