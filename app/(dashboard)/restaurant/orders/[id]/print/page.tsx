@@ -27,7 +27,7 @@ export default async function RestaurantPrintPage({ params, searchParams }: {
     return <>
       <div className="mb-4 flex gap-2 print:hidden"><PrintButton /><PrintButton label="Print 80mm" format="thermal" /></div>
       <div data-restaurant-print><DocumentFrame workspace={{ name: workspace.name }} title="Kitchen order ticket" number={ticket.orderNumber}>
-        <RestaurantKitchenPrintBody document={ticket} reprint={options.copy === "1"} />
+        <RestaurantKitchenPrintBody document={ticket} timezone={workspace.timezone || "Asia/Karachi"} reprint={options.copy === "1"} />
       </DocumentFrame></div>
     </>;
   }
