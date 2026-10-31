@@ -5,12 +5,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mock = vi.hoisted(() => ({
   orders: vi.fn(),
   lines: vi.fn(),
+  instructionUpdates: vi.fn(),
 }));
 
 vi.mock("@/lib/server/auth", () => ({
   requireWorkspace: async () => ({ workspaceId: "restaurant-fixture", role: "STAFF", user: { id: "kitchen-fixture" }, workspace: { name: "Kitchen Fixture" } }),
 }));
 vi.mock("@/lib/server/restaurant-stations", () => ({ assertRestaurantStation: vi.fn() }));
+vi.mock("@/lib/server/restaurant-kitchen-instruction-alerts", () => ({
+  listKitchenInstructionUpdateTimes: mock.instructionUpdates,
+}));
 vi.mock("@/lib/server/restaurant-workspace", () => ({
   listRestaurantOrders: mock.orders,
   listRestaurantKitchenOrderLines: mock.lines,
@@ -35,6 +39,7 @@ beforeEach(() => {
       createdAt: new Date("2026-10-25T09:00:00Z"), notes: "Allergy: peanuts",
     }];
   });
+  mock.instructionUpdates.mockResolvedValue(new Map());
   mock.lines.mockResolvedValue([{
     orderId: "order-a", itemName: "Chicken pizza", quantity: 2,
     notes: "No garlic", modifiers: ["Extra cheese", "Thin crust"],
@@ -66,6 +71,19 @@ describe("restaurant V2 kitchen ticket display", () => {
     expect(html).not.toContain("Open cashier order board");
   });
 
+
+  it("makes manager-corrected kitchen instructions visible without prices", async () => {
+    mock.instructionUpdates.mockResolvedValue(new Map([[
+      "order-a", new Date("2026-10-25T09:04:00Z"),
+    ]]));
+    const { default: Kitchen } = await import("@/app/(dashboard)/restaurant/kitchen/page");
+    const html = renderToStaticMarkup(await Kitchen());
+    expect(html).toContain("Kitchen instructions updated");
+    expect(html).toContain("Manager correction");
+    expect(html).toContain("Allergy: peanuts");
+    expect(html).not.toContain("Rs ");
+    expect(mock.instructionUpdates).toHaveBeenCalledWith("restaurant-fixture", ["order-a"]);
+  });
 
   it("never starves new confirmed orders behind a full ready-ticket backlog", async () => {
     const ready = Array.from({ length: 75 }, (_, i) => ({
