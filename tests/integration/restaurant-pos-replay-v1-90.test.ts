@@ -91,6 +91,27 @@ it("cashier order with an item allergy note creates exactly one confirmed kitche
   });
 });
 
+it("Kitchen query returns operational order fields without financial or customer data", async () => {
+  const { createPosOrderAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
+  const { listKitchenOrders } = await import("@/lib/server/restaurant-kitchen-orders");
+  const data = form();
+  const created = await createPosOrderAction({ status: "idle", message: "" }, data);
+  expect(created.status).toBe("success");
+  const queue = await listKitchenOrders(workspaceId, "CONFIRMED");
+  const matched = queue.find(order => order.orderNumber === created.orderNumber);
+  expect(matched).toBeDefined();
+  expect(matched).toMatchObject({
+    orderNumber: created.orderNumber,
+    fulfillmentType: "TAKEAWAY",
+    status: "CONFIRMED",
+  });
+  expect(matched).not.toHaveProperty("total");
+  expect(matched).not.toHaveProperty("customerPhone");
+  expect(matched).not.toHaveProperty("customerName");
+  expect(matched).not.toHaveProperty("paymentStatus");
+  expect(matched).not.toHaveProperty("deliveryAddress");
+});
+
 it("rejects oversized kitchen options without silently creating a partial order", async () => {
   const { createPosOrderAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
   const before = await counts();
