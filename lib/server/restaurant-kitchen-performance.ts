@@ -68,8 +68,8 @@ export async function getRestaurantKitchenPerformance(workspaceId: string, days:
       AND kt."startedAt" IS NOT NULL
       AND kt."readyAt" >= kt."startedAt"
       AND kt."status" IN ('READY','SERVED')
-    GROUP BY (kt."readyAt" AT TIME ZONE ${timezone})::date
-    ORDER BY "day" DESC
+    GROUP BY 1
+    ORDER BY 1 DESC
     LIMIT 30
   `;
 
