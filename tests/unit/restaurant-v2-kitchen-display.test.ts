@@ -41,7 +41,7 @@ beforeEach(() => {
   });
   mock.instructionUpdates.mockResolvedValue(new Map());
   mock.lines.mockResolvedValue([{
-    orderId: "order-a", itemName: "Chicken pizza", quantity: 2,
+    orderId: "order-a", itemName: "Chicken pizza", categoryName: "Main course", quantity: 2,
     notes: "No garlic", modifiers: ["Extra cheese", "Thin crust"],
   }]);
 });
@@ -52,6 +52,7 @@ describe("restaurant V2 kitchen ticket display", () => {
     const html = renderToStaticMarkup(await Kitchen());
     expect(html).toContain("R-000041");
     expect(html).toContain("Chicken pizza");
+    expect(html).toContain("Main course");
     expect(html).toContain("× 2");
     expect(html).toContain("Extra cheese");
     expect(html).toContain("Thin crust");
