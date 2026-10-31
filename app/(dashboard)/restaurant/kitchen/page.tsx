@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CheckCircle2, Clock3, CookingPot } from "lucide-react";
+import { CheckCircle2, Clock3, CookingPot, Flame } from "lucide-react";
 
 import { RestaurantMutationForm } from "@/app/(dashboard)/restaurant/mutation-form";
 import { KitchenQueueRefresh } from "@/app/(dashboard)/restaurant/kitchen/kitchen-queue-refresh";
@@ -46,16 +46,16 @@ export default async function RestaurantKitchenPage() {
   const restaurantTimezone = workspace.timezone || "Asia/Karachi";
 
   return (
-    <div className="mx-auto max-w-[1560px] space-y-4">
-      <section className="flex flex-col gap-3 rounded-2xl border bg-white p-4 shadow-none sm:flex-row sm:items-center sm:justify-between sm:p-5">
+    <div className="mx-auto max-w-[1560px] space-y-5">
+      <section className="flex flex-col gap-4 rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_16px_50px_-40px_rgba(15,23,42,0.3)] sm:flex-row sm:items-center sm:justify-between sm:p-7">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">Kitchen display</p>
-          <h1 className="mt-1 text-xl font-semibold tracking-tight">{workspace.name} kitchen</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Kitchen tickets update every 5 seconds when this tab is visible, or manually on demand.</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-[-0.04em]">{workspace.name} Kitchen</h1>
+          <p className="mt-2 text-sm text-muted-foreground">Live preparation queue. Tickets refresh every 5 seconds while visible. No payment or sales information.</p>
         </div>
         <div className="flex flex-col items-start gap-2 sm:items-end">
           <KitchenQueueRefresh />
-          {isRestaurantManager(role) && <Link href="/restaurant/orders" className="text-xs font-semibold text-emerald-700 hover:underline">Open cashier order board</Link>}
+          {isRestaurantManager(role) && <Link href="/restaurant" className="text-xs font-semibold text-emerald-700 hover:underline">Switch station</Link>}
         </div>
       </section>
 
@@ -84,7 +84,7 @@ export default async function RestaurantKitchenPage() {
               : "bg-emerald-50 text-emerald-800";
 
           return (
-            <section key={column.status} className="min-w-0 rounded-2xl border bg-slate-50/70 p-3 sm:p-4">
+            <section key={column.status} className="min-w-0 rounded-[26px] border border-slate-200 bg-slate-50/80 p-3 sm:p-4">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <span className={cn("grid size-8 place-items-center rounded-xl", headTone)}><Icon className="size-4" /></span>
@@ -98,11 +98,12 @@ export default async function RestaurantKitchenPage() {
 
               <div className="space-y-3">
                 {matching.length ? matching.map((order) => (
-                  <Card key={order.id} className={cn("rounded-2xl border bg-white shadow-none", column.status === "READY" && "border-emerald-300")}>
+                  <Card key={order.id} className={cn("rounded-[22px] border bg-white shadow-[0_9px_25px_-20px_rgba(15,23,42,0.32)]", column.status === "READY" && "border-emerald-300", order.notes?.trim().toUpperCase().startsWith("RUSH:") && "border-l-4 border-l-amber-500")}>
                     <CardContent className="space-y-3 p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <Link href={`/restaurant/orders/${order.id}/print?kind=kot`} className="text-sm font-semibold underline underline-offset-4">{order.orderNumber}</Link>
+                          <Link href={`/restaurant/orders/${order.id}/print?kind=kot`} className="text-base font-semibold tracking-tight text-slate-950 underline decoration-slate-300 underline-offset-4 hover:decoration-emerald-600">{order.orderNumber}</Link>
+                          {order.notes?.trim().toUpperCase().startsWith("RUSH:") && <span className="mt-2 flex w-fit items-center gap-1 rounded-lg bg-amber-100 px-2 py-1 text-[11px] font-bold text-amber-900"><Flame className="size-3" /> Rush requested</span>}
                           <p className="mt-1 text-[11px] font-medium text-muted-foreground">
                             {order.fulfillmentType.replaceAll("_", " ")}{order.tableName ? ` · ${order.tableName}` : ""}
                           </p>
@@ -137,7 +138,7 @@ export default async function RestaurantKitchenPage() {
                           <RestaurantMutationForm action={transitionKitchenOrderAction} workspaceId={workspaceId}>
                             <input type="hidden" name="orderId" value={order.id} />
                             <input type="hidden" name="nextStatus" value={column.next} />
-                            <Button type="submit" size="sm" className="rounded-lg bg-emerald-600 hover:bg-emerald-500">{column.action}</Button>
+                            <Button type="submit" size="sm" className="min-h-11 w-full rounded-xl bg-emerald-600 font-semibold hover:bg-emerald-500 sm:w-auto">{column.action}</Button>
                           </RestaurantMutationForm>
                         )}
                         {column.status === "READY" && <p className="text-xs font-medium text-emerald-800">Ready for cashier to serve or close.</p>}
@@ -157,7 +158,7 @@ export default async function RestaurantKitchenPage() {
 function KitchenMetric({ label, value, tone }: { label: string; value: string; tone: "blue" | "amber" | "emerald" }) {
   const toneClass = tone === "amber" ? "bg-amber-100 text-amber-800" : tone === "blue" ? "bg-blue-100 text-blue-800" : "bg-emerald-100 text-emerald-800";
   return (
-    <Card className="rounded-2xl border shadow-none">
+    <Card className="rounded-[22px] border border-slate-200 bg-white shadow-sm">
       <CardContent className="flex items-center justify-between p-4">
         <div><p className="text-xs font-medium text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p></div>
         <span className={cn("rounded-xl px-3 py-2 text-xs font-semibold", toneClass)}>Live</span>
