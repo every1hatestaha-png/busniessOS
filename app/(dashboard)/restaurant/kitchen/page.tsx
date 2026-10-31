@@ -140,6 +140,7 @@ export default async function RestaurantKitchenPage() {
                             <li key={index} className="flex items-start justify-between gap-3 py-2.5">
                               <span className="min-w-0 text-sm font-medium text-slate-900">
                                 {line.itemName}
+                                {line.categoryName ? <span className="mt-1 block w-fit rounded-md bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">{line.categoryName}</span> : null}
                                 {line.modifiers.length > 0 && (
                                   <span className="mt-1 block text-xs font-normal text-slate-600">
                                     Options: {line.modifiers.join(" · ")}
