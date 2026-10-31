@@ -7,7 +7,6 @@ import {
   Clock3,
   LayoutGrid,
   Package,
-  ShoppingCart,
   Sparkles,
   UtensilsCrossed,
 } from "lucide-react";
@@ -76,14 +75,9 @@ export default async function RestaurantManagerPage() {
           <p className="mt-1 text-sm text-slate-300">Owner and manager view · sales, service and readiness. Access is restricted server-side.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href="/restaurant" className={cn(buttonVariants({ variant: "outline" }), "border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white")}>All stations</Link>
+          <Link href="/restaurant" className={cn(buttonVariants({ variant: "outline" }), "border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white")}>Switch station</Link>
           <Link href="/restaurant/manager/staff" className={cn(buttonVariants({ variant: "outline" }), "border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white")}>Staff permissions</Link>
-          <Link href="/restaurant/kitchen" className={cn(buttonVariants({ variant: "outline" }), "border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white")}>
-            <ChefHat className="size-4" /> Kitchen
-          </Link>
-          <Link href="/restaurant/pos" className={cn(buttonVariants(), "bg-emerald-500 text-slate-950 hover:bg-emerald-400")}>
-            <ShoppingCart className="size-4" /> Open POS
-          </Link>
+
         </div>
       </section>
 
