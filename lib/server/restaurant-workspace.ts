@@ -675,17 +675,27 @@ export async function getRestaurantWorkspaceMetrics(workspaceId: string) {
     todaySales: Prisma.Decimal; todayOrders: number; liveOrders: number; pendingWhatsapp: number; readyOrders: number;
   }>>`
     SELECT
-      COALESCE(SUM("total") FILTER (
-        WHERE "status"='COMPLETED' AND "completedAt" >= (date_trunc('day', now() AT TIME ZONE ${timezone}) AT TIME ZONE ${timezone})
+      -- Restaurant returns (including compensating reversals) reduce a
+      -- completed order's net sales. Summing the original total overstated
+      -- revenue after a refund/return, even though receipts were correct.
+      COALESCE(SUM(GREATEST(
+        ro."total" - COALESCE((
+          SELECT SUM(rr."total")
+          FROM "restaurant_returns" rr
+          WHERE rr."workspaceId"=ro."workspaceId"
+            AND rr."restaurantOrderId"=ro."id"
+        ), 0), 0
+      )) FILTER (
+        WHERE ro."status"='COMPLETED' AND ro."completedAt" >= (date_trunc('day', now() AT TIME ZONE ${timezone}) AT TIME ZONE ${timezone})
       ), 0) AS "todaySales",
       COUNT(*) FILTER (
-        WHERE "createdAt" >= (date_trunc('day', now() AT TIME ZONE ${timezone}) AT TIME ZONE ${timezone})
+        WHERE ro."createdAt" >= (date_trunc('day', now() AT TIME ZONE ${timezone}) AT TIME ZONE ${timezone})
       )::int AS "todayOrders",
-      COUNT(*) FILTER (WHERE "status" IN ('CONFIRMED','PREPARING','READY'))::int AS "liveOrders",
-      COUNT(*) FILTER (WHERE "source"='WHATSAPP' AND "status"='PENDING_REVIEW')::int AS "pendingWhatsapp",
-      COUNT(*) FILTER (WHERE "status"='READY')::int AS "readyOrders"
-    FROM "restaurant_orders"
-    WHERE "workspaceId"=${workspaceId}::uuid
+      COUNT(*) FILTER (WHERE ro."status" IN ('CONFIRMED','PREPARING','READY'))::int AS "liveOrders",
+      COUNT(*) FILTER (WHERE ro."source"='WHATSAPP' AND ro."status"='PENDING_REVIEW')::int AS "pendingWhatsapp",
+      COUNT(*) FILTER (WHERE ro."status"='READY')::int AS "readyOrders"
+    FROM "restaurant_orders" ro
+    WHERE ro."workspaceId"=${workspaceId}::uuid
   `;
   const row = rows[0] ?? { todaySales: new Prisma.Decimal(0), todayOrders: 0, liveOrders: 0, pendingWhatsapp: 0, readyOrders: 0 };
   return { ...row, todaySales: Number(row.todaySales) };
