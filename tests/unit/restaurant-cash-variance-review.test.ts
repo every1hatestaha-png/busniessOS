@@ -22,7 +22,7 @@ const shiftId="22222222-2222-4222-8222-222222222222";
 const manager={workspaceId,userId,role:"MANAGER" as const};
 
 beforeEach(()=>{
- vi.clearAllMocks();m.status="CLOSED";m.variance=new Prisma.Decimal(100);m.closedAt=new Date("2026-11-01T10:00:00Z");
+ vi.clearAllMocks();m.status="CLOSED";m.variance=100;m.closedAt=new Date("2026-11-01T10:00:00Z");
  m.find.mockResolvedValue(null);m.findReviews.mockResolvedValue([]);
  m.module.mockResolvedValue(undefined);m.audit.mockResolvedValue(undefined);
  m.query.mockImplementation(async()=>[{
@@ -43,7 +43,7 @@ describe("Manager-only cash variance review",()=>{
   m.status="OPEN";
   await expect(reviewRestaurantCashVariance(manager,shiftId,"Count error explanation"))
     .rejects.toThrow("only be reviewed after shift close");
-  m.status="CLOSED";m.variance=new Prisma.Decimal(0);
+  m.status="CLOSED";m.variance=0;
   await expect(reviewRestaurantCashVariance(manager,shiftId,"Count error explanation"))
     .rejects.toThrow("no reportable variance");
  });
