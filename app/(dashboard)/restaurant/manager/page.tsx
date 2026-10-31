@@ -78,6 +78,7 @@ export default async function RestaurantManagerPage() {
           <Link href="/restaurant" className={cn(buttonVariants({ variant: "outline" }), "border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white")}>Switch station</Link>
           <Link href="/restaurant/manager/staff" className={cn(buttonVariants({ variant: "outline" }), "border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white")}>Staff permissions</Link>
           <Link href="/restaurant/manager/shifts" className={cn(buttonVariants({ variant: "outline" }), "border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white")}>Cash reconciliation</Link>
+          <Link href="/restaurant/manager/insights" className={cn(buttonVariants({ variant: "outline" }), "border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white")}>Insights</Link>
 
         </div>
       </section>
