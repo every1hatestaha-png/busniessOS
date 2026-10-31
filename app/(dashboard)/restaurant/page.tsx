@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ChefHat, ChevronRight, LayoutDashboard, ShoppingCart, UtensilsCrossed, Users } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -53,6 +54,10 @@ export default async function RestaurantPage() {
   }
 
   const assignedStation = await getRestaurantActorStation({ workspaceId, userId: user.id, role });
+  // A STAFF account has no station choice. Send it directly to its authorized
+  // operational screen. The route and actions still enforce permission.
+  if (role === "STAFF" && assignedStation === "CASHIER") redirect("/restaurant/pos");
+  if (role === "STAFF" && assignedStation === "KITCHEN") redirect("/restaurant/kitchen");
   const visibleStations = stations.filter((station) => canUseRestaurantStation(role, assignedStation, station.operation));
   const isManager = canUseRestaurantStation(role, assignedStation, "MANAGER");
 
