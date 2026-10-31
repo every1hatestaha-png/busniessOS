@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
 import { listRestaurantKitchenOrderLines, listRestaurantOrders } from "@/lib/server/restaurant-workspace";
+import { listKitchenInstructionUpdateTimes } from "@/lib/server/restaurant-kitchen-instruction-alerts";
 import { isRestaurantManager } from "@/lib/restaurant/station-policy";
 import { KITCHEN_TICKET_BATCH_LIMIT, kitchenVisibleCount } from "@/lib/restaurant/kitchen-queue";
 import { kitchenDelayedCount, kitchenTicketAge } from "@/lib/restaurant/ticket-age";
@@ -31,7 +32,10 @@ export default async function RestaurantKitchenPage() {
     listRestaurantOrders(workspaceId, KITCHEN_TICKET_BATCH_LIMIT, { statuses: ["READY"], oldestFirst: true }),
   ]);
   const orders = [...newOrders, ...preparingOrders, ...readyOrders];
-  const lines = await listRestaurantKitchenOrderLines(workspaceId, orders.map((order) => order.id));
+  const [lines, updatedInstructionTimes] = await Promise.all([
+    listRestaurantKitchenOrderLines(workspaceId, orders.map((order) => order.id)),
+    listKitchenInstructionUpdateTimes(workspaceId, orders.map((order) => order.id)),
+  ]);
   const linesByOrder = new Map<string, typeof lines>();
   for (const line of lines) {
     const existing = linesByOrder.get(line.orderId) ?? [];
@@ -148,7 +152,18 @@ export default async function RestaurantKitchenPage() {
                           ))}
                         </ul>
                       ) : <p className="text-xs text-amber-800">No item lines found for this ticket.</p>}
-                      {order.notes ? <p className="rounded-xl bg-amber-50 p-2.5 text-xs text-amber-900">{order.notes}</p> : null}
+                      {updatedInstructionTimes.has(order.id) ? (
+                        <div role="status" className="rounded-xl border-2 border-amber-400 bg-amber-50 px-3 py-2.5">
+                          <p className="text-xs font-bold uppercase tracking-wide text-amber-950">Kitchen instructions updated</p>
+                          <p className="mt-1 text-xs text-amber-900">
+                            Manager correction at {new Intl.DateTimeFormat("en-PK", {
+                              hour: "numeric", minute: "2-digit", timeZone: restaurantTimezone,
+                            }).format(updatedInstructionTimes.get(order.id)!)}.
+                            Check the current instructions before continuing.
+                          </p>
+                        </div>
+                      ) : null}
+                      {order.notes ? <p className="rounded-xl bg-amber-50 p-2.5 text-xs font-medium text-amber-900">{order.notes}</p> : null}
 
                       <div className="flex flex-wrap gap-2">
                         {column.next && (
