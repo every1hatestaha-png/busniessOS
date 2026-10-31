@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const m=vi.hoisted(()=>({
   find:vi.fn(),findReviews:vi.fn(),query:vi.fn(),audit:vi.fn(),module:vi.fn(),
-  transaction:vi.fn(),status:"CLOSED",variance:new Prisma.Decimal(100),closedAt:new Date("2026-11-01T10:00:00Z"),
+  transaction:vi.fn(),status:"CLOSED",variance:100,closedAt:new Date("2026-11-01T10:00:00Z"),
 }));
 vi.mock("@/lib/server/db",()=>({db:{auditLog:{findMany:m.findReviews}}}));
 vi.mock("@/lib/server/industry-modules",()=>({
