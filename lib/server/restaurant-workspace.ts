@@ -7,6 +7,7 @@ import { writeAudit } from "@/lib/server/audit";
 import { db } from "@/lib/server/db";
 import { IndustryDomainError, requireWorkspaceModule, type IndustryContext } from "@/lib/server/industry-modules";
 import { releaseRestaurantTableIfSettled } from "@/lib/server/restaurant-table-settlement";
+import { validateRestaurantModifiers } from "@/lib/restaurant/order-modifier-validation";
 
 export type RestaurantOrderSource = "POS" | "WHATSAPP" | "MANUAL";
 export type RestaurantFulfillmentType = "DINE_IN" | "TAKEAWAY" | "DELIVERY";
@@ -114,11 +115,13 @@ async function priceLines(tx: Prisma.TransactionClient, workspaceId: string, lin
       throw new IndustryDomainError("INVALID_STATE", "Menu item quantity must be positive.");
     }
     const notes = cleanOptional(line.notes, 300);
-    const modifiers = Array.isArray(line.modifiers)
-      ? line.modifiers.map((modifier) => modifier.trim()).filter(Boolean).slice(0, 20)
-      : [];
-    if (modifiers.some((modifier) => modifier.length > 80)) {
-      throw new IndustryDomainError("INVALID_STATE", "Order modifiers must be 80 characters or fewer.");
+    let modifiers: string[];
+    try {
+      modifiers = validateRestaurantModifiers(line.modifiers);
+    } catch (error) {
+      throw new IndustryDomainError(
+        "INVALID_STATE", error instanceof Error ? error.message : "Menu options are invalid.",
+      );
     }
 
     const rows = await tx.$queryRaw<Array<{ id: string; name: string; price: Prisma.Decimal; isActive: boolean; isAvailable: boolean }>>`
