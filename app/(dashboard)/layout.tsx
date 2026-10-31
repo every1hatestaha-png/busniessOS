@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { headers } from "next/headers";
+import { notFound } from "next/navigation";
+import { canOpenRestaurantStaffPage } from "@/lib/restaurant/station-access";
 
 import { Sidebar } from "@/components/layout/sidebar";
 import { outboundGatePassDraftFeatureEnabled } from "@/lib/server/outbound-gate-pass-feature";
@@ -18,17 +21,26 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const { workspace, role, user } = await requireWorkspace();
+  const vertical = resolveWorkspaceVertical(workspace);
+  const restaurantStation = vertical === "RESTAURANT"
+    ? await getRestaurantActorStation({ workspaceId: workspace.id, userId: user.id, role })
+    : null;
+
+  // The station sidebar is only visual. Reject prohibited RESTAURANT STAFF
+  // page requests server-side before loading generic ERP or finance records.
+  // The path is overwritten by proxy.ts from request.nextUrl.pathname.
+  if (vertical === "RESTAURANT" && role === "STAFF") {
+    const trustedPath = (await headers()).get("x-munshios-internal-path");
+    if (!canOpenRestaurantStaffPage(trustedPath, restaurantStation)) notFound();
+  }
+
   const [workspaces, subscription, workspaceModules] = await Promise.all([
     listCurrentUserWorkspaces(),
     getWorkspaceAccess(workspace.id),
     listWorkspaceModules(workspace.id),
   ]);
   const enabledModules = workspaceModules.filter((module) => module.enabled).map((module) => module.moduleKey);
-  const vertical = resolveWorkspaceVertical(workspace);
   const gatePassEnabled = outboundGatePassDraftFeatureEnabled(workspace.id);
-  const restaurantStation = vertical === "RESTAURANT"
-    ? await getRestaurantActorStation({ workspaceId: workspace.id, userId: user.id, role })
-    : null;
   const platformIdentity = await getSupabaseAuthUser();
   const platformOwner = isPlatformOwner(platformIdentity, process.env.MUNSHIOS_PLATFORM_OWNER_EMAIL, process.env.MUNSHIOS_PLATFORM_OWNER_SUPABASE_ID);
 
