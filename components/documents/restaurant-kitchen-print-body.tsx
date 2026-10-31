@@ -1,12 +1,13 @@
 import type { RestaurantKitchenPrintDocument } from "@/lib/server/restaurant-kitchen-print";
 
 /** Never accept a financial receipt object as a Kitchen document. */
-export function RestaurantKitchenPrintBody({ document: doc, reprint = false }: {
+export function RestaurantKitchenPrintBody({ document: doc, timezone, reprint = false }: {
   document: RestaurantKitchenPrintDocument;
+  timezone: string;
   reprint?: boolean;
 }) {
   const date = new Intl.DateTimeFormat("en-PK", {
-    dateStyle: "medium", timeStyle: "short",
+    dateStyle: "medium", timeStyle: "short", timeZone: timezone,
   }).format(doc.createdAt);
   return <div className="space-y-4 text-sm">
     <section data-document-section className="mt-4 space-y-1">
