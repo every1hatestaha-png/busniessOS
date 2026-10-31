@@ -616,11 +616,16 @@ export async function listRestaurantKitchenOrderLines(workspaceId: string, order
   if (!orderIds.length) return [];
   if (orderIds.length > 250) throw new IndustryDomainError("INVALID_STATE", "Too many kitchen tickets requested.");
   const rows = await db.$queryRaw<Array<{
-    orderId: string; itemName: string; quantity: Prisma.Decimal; notes: string | null; modifiers: unknown;
+    orderId: string; itemName: string; quantity: Prisma.Decimal; notes: string | null; modifiers: unknown; categoryName: string | null;
   }>>`
-    SELECT roi."restaurantOrderId" AS "orderId", roi."itemName", roi."quantity", roi."notes", roi."modifiers"
+    SELECT roi."restaurantOrderId" AS "orderId", roi."itemName", roi."quantity",
+           roi."notes", roi."modifiers", rmc."name" AS "categoryName"
     FROM "restaurant_order_items" roi
     INNER JOIN "restaurant_orders" ro ON ro."id" = roi."restaurantOrderId"
+    LEFT JOIN "restaurant_menu_items" rmi
+      ON rmi."id"=roi."menuItemId" AND rmi."workspaceId"=ro."workspaceId"
+    LEFT JOIN "restaurant_menu_categories" rmc
+      ON rmc."id"=rmi."categoryId" AND rmc."workspaceId"=ro."workspaceId"
     WHERE ro."workspaceId" = ${workspaceId}::uuid
       AND ro."id" IN (${Prisma.join(orderIds.map((id) => Prisma.sql`${id}::uuid`))})
       AND ro."status" IN ('CONFIRMED', 'PREPARING', 'READY')
