@@ -10,8 +10,6 @@ const expectedAdvisories = new Set([
   // Zod v3 is pulled exclusively by the development-only shadcn CLI, not the
   // application; production Zod v4 is patched to >=4.6.6.
   "GHSA-mrhx-c7xc-m3w5",
-  // ip-address is a dev-only dependency; no application-supplied IPv6 string enters that parser.
-  "GHSA-rxp7-6hxx-x8q5",
 ]);
 
 const devOnlyPaths = [
