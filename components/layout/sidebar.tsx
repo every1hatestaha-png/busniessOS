@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils";
 import { getWorkspaceBranding } from "@/lib/workspace-branding";
 import type { WorkspaceVertical } from "@/lib/verticals/registry";
 import type { RestaurantStation } from "@/lib/restaurant/station-policy";
+import { restaurantNavigationPaths, restaurantWorkspaceView } from "@/lib/restaurant/station-navigation";
 import { getVerticalNavigation } from "@/lib/verticals/experience";
 
 type SidebarRoute = {
@@ -54,10 +55,10 @@ const routes: SidebarRoute[] = [
   { href: "/customers", label: "Customers", icon: Users },
   { href: "/suppliers", label: "Suppliers", icon: Truck },
   { href: "/supplier-returns", label: "Supplier Returns", icon: Truck, financial: true },
-  { href: "/restaurant", label: "Overview", icon: UtensilsCrossed, module: "restaurant" },
+  { href: "/restaurant", label: "Choose Station", icon: UtensilsCrossed, module: "restaurant" },
   { href: "/restaurant/manager", label: "Manager", icon: LayoutDashboard, financial: true, module: "restaurant" },
   { href: "/restaurant/manager/staff", label: "Staff Stations", icon: Users, financial: true, module: "restaurant" },
-  { href: "/restaurant/pos", label: "POS", icon: ShoppingCart, module: "restaurant" },
+  { href: "/restaurant/pos", label: "Order Taking", icon: ShoppingCart, module: "restaurant" },
   { href: "/restaurant/orders", label: "Orders", icon: ClipboardList, module: "restaurant" },
   { href: "/restaurant/kitchen", label: "Kitchen", icon: ChefHat, module: "restaurant" },
   { href: "/restaurant/menu", label: "Menu", icon: BookOpen, module: "restaurant" },
@@ -98,6 +99,8 @@ export function Sidebar({
   const enabled = new Set(enabledModules);
   const branding = getWorkspaceBranding(workspaceName);
   const restaurantMode = vertical === "RESTAURANT";
+  const restaurantView = restaurantMode ? restaurantWorkspaceView(pathname ?? "/restaurant") : null;
+  const stationPaths = restaurantMode ? restaurantNavigationPaths(pathname ?? "/restaurant", role, restaurantStation) : null;
 
   return (
     <aside className={cn(
@@ -120,7 +123,7 @@ export function Sidebar({
         <div className="min-w-0 leading-tight">
           <p className="text-base font-semibold tracking-[-0.02em] text-white">MunshiOS</p>
           <p className="mt-0.5 truncate text-[11px] text-slate-400" title={workspaceName}>{workspaceName}</p>
-          {restaurantMode ? <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-400">Restaurant workspace</p> : null}
+          {restaurantMode ? <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-400">{restaurantView === "MANAGER" ? "Manager station" : restaurantView === "ORDER_TAKING" ? "Order Taking station" : restaurantView === "KITCHEN" ? "Kitchen station" : "Restaurant stations"}</p> : null}
         </div>
       </div>
 
@@ -131,14 +134,7 @@ export function Sidebar({
               .map((href) => routeByHref.get(href))
               .filter((route): route is SidebarRoute => Boolean(route))
               .filter((route) => {
-                if (restaurantMode && role === "STAFF") {
-                  const allowed = new Set([
-                    "/restaurant",
-                    ...(restaurantStation === "CASHIER" ? ["/restaurant/pos", "/restaurant/orders"] : []),
-                    ...(restaurantStation === "KITCHEN" ? ["/restaurant/kitchen"] : []),
-                  ]);
-                  if (!allowed.has(route.href)) return false;
-                }
+                if (stationPaths && !stationPaths.has(route.href)) return false;
                 if (route.href === "/gate-passes" && !gatePassEnabled) return false;
                 if (role === "STAFF" && route.financial) return false;
                 if (route.module && !enabled.has(route.module)) return false;
