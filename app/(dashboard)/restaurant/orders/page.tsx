@@ -21,7 +21,7 @@ import { listRestaurantOrders, type RestaurantOrderStatus } from "@/lib/server/r
 import { cn } from "@/lib/utils";
 import { formatRestaurantOrderTime } from "@/lib/restaurant/timezone-format";
 import { CashierMissingPaymentAccount } from "@/components/restaurant/cashier-missing-payment-account";
-import { listRestaurantReadyAtByOrderIds, readyForServiceLabel } from "@/lib/server/restaurant-ready-handoff";
+import { listRestaurantReadyAtByOrderIds, readyForServiceLabel, sortReadyOrderQueue } from "@/lib/server/restaurant-ready-handoff";
 import { CASHIER_QUEUE_LIMIT, cashierQueueLabel } from "@/lib/restaurant/cashier-queue";
 
 type CashierStage = Extract<RestaurantOrderStatus, "PENDING_REVIEW" | "CONFIRMED" | "PREPARING" | "READY">;
@@ -71,6 +71,7 @@ export default async function RestaurantOrdersPage() {
     listRestaurantReadyAtByOrderIds(workspaceId, ready.map(order => order.id)),
   ]);
   const handoffNow = new Date();
+  activeByStatus.READY = sortReadyOrderQueue(ready, readyTimes);
   const paymentsByOrder = new Map<string, RestaurantPaymentRecord[]>();
   for (const payment of payments) {
     const group = paymentsByOrder.get(payment.restaurantOrderId) ?? [];

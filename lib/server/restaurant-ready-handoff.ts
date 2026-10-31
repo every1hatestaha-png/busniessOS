@@ -50,3 +50,22 @@ export function readyForServiceLabel(readyAt: Date | undefined, now: Date): {
     delayed: minutes >= 10,
   };
 }
+
+/**
+ * Prioritize orders by when Kitchen actually marked them READY. An absent
+ * timestamp goes last, never creating a fictional delay or jumping the queue.
+ * This sorts the bounded on-screen batch only; no database status changes.
+ */
+export function sortReadyOrderQueue<T extends { id: string; createdAt: Date }>(
+  orders: readonly T[], readyTimes: ReadonlyMap<string, Date>,
+): T[] {
+  return [...orders].sort((a, b) => {
+    const aAt = readyTimes.get(a.id)?.getTime();
+    const bAt = readyTimes.get(b.id)?.getTime();
+    const aValid = aAt !== undefined && Number.isFinite(aAt);
+    const bValid = bAt !== undefined && Number.isFinite(bAt);
+    if (aValid !== bValid) return aValid ? -1 : 1;
+    if (aValid && bValid && aAt !== bAt) return (aAt as number) - (bAt as number);
+    return a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id);
+  });
+}

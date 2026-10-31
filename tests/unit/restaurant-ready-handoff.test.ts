@@ -43,6 +43,22 @@ describe("Price-free, tenant-scoped Kitchen to Cashier handoff", () => {
     expect(mocks.query).not.toHaveBeenCalled();
   });
 
+  it("prioritizes actual Kitchen ready timestamp without mutating the original order list", async () => {
+    const { sortReadyOrderQueue } = await import("@/lib/server/restaurant-ready-handoff");
+    const orders = [
+      { id: "old-order", createdAt: new Date("2026-11-01T08:00:00Z") },
+      { id: "new-order", createdAt: new Date("2026-11-01T09:00:00Z") },
+      { id: "no-kot-time", createdAt: new Date("2026-11-01T07:00:00Z") },
+    ];
+    const times = new Map([
+      ["old-order", new Date("2026-11-01T10:00:00Z")],
+      ["new-order", new Date("2026-11-01T09:30:00Z")],
+    ]);
+    expect(sortReadyOrderQueue(orders, times).map(o => o.id))
+      .toEqual(["new-order", "old-order", "no-kot-time"]);
+    expect(orders[0].id).toBe("old-order");
+  });
+
   it("flags actual service delays, never guesses missing kitchen times", async () => {
     const { readyForServiceLabel } = await import("@/lib/server/restaurant-ready-handoff");
     const now = new Date("2026-11-01T10:20:00Z");
