@@ -82,7 +82,7 @@ export default async function RestaurantManagerInsightsPage({
         empty="No completed menu item sales during this period." />
 
       <p className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs leading-6 text-slate-600">
-        Sales use each order's completion date in the restaurant's local timezone. Returns recorded later are reflected against those orders.
+        Sales use each order&apos;s completion date in the restaurant&apos;s local timezone. Returns recorded later are reflected against those orders.
         Payment method totals use payment collection dates and exclude voids, but are not adjusted for refunds.
         The figures have different accounting boundaries, so do not add the payment totals to sales or treat the item ranking as profit.
       </p>
