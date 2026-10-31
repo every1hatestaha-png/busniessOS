@@ -19,9 +19,15 @@ vi.mock("@/app/(dashboard)/restaurant/restaurant-lifecycle-controls", () => ({ R
 vi.mock("@/app/(dashboard)/restaurant/v1-actions", () => ({ confirmRestaurantOrderAction: vi.fn(), recordRestaurantPaymentAction: vi.fn(), transitionRestaurantOrderAction: vi.fn(), voidRestaurantPaymentAction: vi.fn() }));
 vi.mock("@/lib/server/industry-modules", () => ({
   listWorkspaceModules: async () => [{ moduleKey: "restaurant", enabled: true }],
+  requireWorkspaceModule: async () => undefined,
   getIndustryHealth: async () => ({ restaurant: { tables: 0, recipes: 0, openKitchenTickets: 0 } }),
   getRestaurantOverviewReadiness: async () => ({ recipes: 0, activeRecipes: 0, openKitchenTickets: 0, openShift: null }),
   listCashShifts: async () => [], listKitchenTickets: async () => [], listRestaurantRecipes: async () => [], listRestaurantTables: async () => [],
+}));
+vi.mock("@/lib/server/restaurant-ready-handoff", () => ({
+  listRestaurantReadyAtByOrderIds: async () => new Map(),
+  sortReadyOrderQueue: (orders: unknown[]) => orders,
+  readyForServiceLabel: () => ({ label: "Ready, time unavailable", delayed: false }),
 }));
 vi.mock("@/lib/server/restaurant-workspace", () => ({
   getRestaurantWorkspaceMetrics: async () => ({ todaySales: 0, todayOrders: 0, liveOrders: 0, pendingWhatsapp: 0, readyOrders: 0 }),
