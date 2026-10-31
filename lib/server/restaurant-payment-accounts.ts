@@ -1,10 +1,10 @@
 import "server-only";
 
 import { db } from "@/lib/server/db";
-import { ensureDefaultAccounts } from "@/lib/server/accounting";
 import { requireWorkspaceModule } from "@/lib/server/industry-modules";
 
 /**
+ * Read-only: do not initialize ledger/accounts as a side effect of a cashier GET.
  * Cashier station uses only an account selector. Never query or serialize
  * the private ledger balance, bank account number, account holder or notes.
  * The payment mutation still checks the real account kind, workspace,
@@ -12,7 +12,6 @@ import { requireWorkspaceModule } from "@/lib/server/industry-modules";
  */
 export async function listRestaurantCollectionAccountChoices(workspaceId: string) {
   await requireWorkspaceModule(workspaceId, "restaurant");
-  await ensureDefaultAccounts(workspaceId);
   const accounts = await db.cashBankAccount.findMany({
     where: { workspaceId, isActive: true },
     select: { id: true, name: true, isBank: true },

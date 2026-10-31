@@ -17,7 +17,7 @@ describe("Restaurant cashier cannot fetch financial account secrets", () => {
     const result = await listRestaurantCollectionAccountChoices("synthetic-restaurant");
     expect(result).toEqual([{ cashBankAccountId: "acct-a", name: "Cash Drawer", isBank: false }]);
     expect(mocks.module).toHaveBeenCalledWith("synthetic-restaurant", "restaurant");
-    expect(mocks.initialize).toHaveBeenCalledWith("synthetic-restaurant");
+    expect(mocks.initialize).not.toHaveBeenCalled();
     expect(mocks.accounts).toHaveBeenCalledWith({
       where: { workspaceId: "synthetic-restaurant", isActive: true },
       select: { id: true, name: true, isBank: true },
