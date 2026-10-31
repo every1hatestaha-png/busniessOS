@@ -11,6 +11,7 @@ import { requireWorkspace } from "@/lib/server/auth";
 import { listRestaurantKitchenOrderLines, listRestaurantOrders } from "@/lib/server/restaurant-workspace";
 import { isRestaurantManager } from "@/lib/restaurant/station-policy";
 import { KITCHEN_TICKET_BATCH_LIMIT, kitchenVisibleCount } from "@/lib/restaurant/kitchen-queue";
+import { kitchenDelayedCount, kitchenTicketAge } from "@/lib/restaurant/ticket-age";
 import { cn } from "@/lib/utils";
 
 const kitchenColumns = [
@@ -44,6 +45,8 @@ export default async function RestaurantKitchenPage() {
     READY: kitchenVisibleCount(readyOrders.length),
   };
   const restaurantTimezone = workspace.timezone || "Asia/Karachi";
+  const queueCheckedAt = new Date();
+  const delayedCount = kitchenDelayedCount([...newOrders, ...preparingOrders], queueCheckedAt);
 
   return (
     <div className="mx-auto max-w-[1560px] space-y-5">
@@ -59,10 +62,15 @@ export default async function RestaurantKitchenPage() {
         </div>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-3">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <KitchenMetric label="New" value={counts.CONFIRMED} tone="blue" />
         <KitchenMetric label="Preparing" value={counts.PREPARING} tone="amber" />
         <KitchenMetric label="Ready" value={counts.READY} tone="emerald" />
+        <div className="rounded-[22px] border border-amber-200 bg-amber-50 p-4" role="status">
+          <p className="text-xs font-medium text-amber-900">20+ min old, still in progress</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums text-amber-950">{delayedCount}</p>
+          <p className="mt-2 text-[11px] leading-5 text-amber-800">Within the displayed queue only. Age starts when the order was placed.</p>
+        </div>
       </section>
 
       {[["New", newOrders.length], ["Preparing", preparingOrders.length], ["Ready", readyOrders.length]]
@@ -108,9 +116,18 @@ export default async function RestaurantKitchenPage() {
                             {order.fulfillmentType.replaceAll("_", " ")}{order.tableName ? ` · ${order.tableName}` : ""}
                           </p>
                         </div>
-                        <span className="rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">
-                          {new Intl.DateTimeFormat("en-PK", { hour: "numeric", minute: "2-digit", timeZone: restaurantTimezone }).format(order.createdAt)}
-                        </span>
+                        <div className="flex shrink-0 flex-col items-end gap-2">
+                          <span className="rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">
+                            {new Intl.DateTimeFormat("en-PK", { hour: "numeric", minute: "2-digit", timeZone: restaurantTimezone }).format(order.createdAt)}
+                          </span>
+                          {(() => {
+                            const age = kitchenTicketAge(order.createdAt, queueCheckedAt);
+                            return <span aria-label={age.label} className={cn(
+                              "rounded-full px-2.5 py-1 text-[11px] font-semibold tabular-nums",
+                              age.tone === "delayed" ? "bg-red-100 text-red-900" : age.tone === "watch" ? "bg-amber-100 text-amber-900" : "bg-emerald-50 text-emerald-800",
+                            )}>{age.label}</span>;
+                          })()}
+                        </div>
                       </div>
 
                       {linesByOrder.get(order.id)?.length ? (
