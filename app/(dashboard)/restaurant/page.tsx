@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { Banknote, ChefHat, ChevronRight, LayoutDashboard, ShoppingCart, UtensilsCrossed } from "lucide-react";
+import { ChefHat, ChevronRight, LayoutDashboard, ShoppingCart, UtensilsCrossed, Users } from "lucide-react";
 
-import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
 import { listWorkspaceModules } from "@/lib/server/industry-modules";
@@ -11,20 +10,31 @@ import { cn } from "@/lib/utils";
 
 const stations = [
   {
-    href: "/restaurant/pos",
-    title: "Cashier",
-    eyebrow: "Orders & billing",
-    description: "Take dine-in, takeaway and delivery orders with the existing secure POS.",
-    icon: ShoppingCart,
-    className: "bg-emerald-50 text-emerald-700",
+    operation: "MANAGER",
+    href: "/restaurant/manager",
+    title: "Manager",
+    eyebrow: "Operations & staff",
+    description: "Review all orders, sales, tables, cash shifts and staff assignments. Manager-only controls live here.",
+    icon: LayoutDashboard,
+    background: "bg-blue-50 text-blue-700",
   },
   {
+    operation: "CASHIER",
+    href: "/restaurant/pos",
+    title: "Order Taking",
+    eyebrow: "Counter & service",
+    description: "Take dine-in, takeaway and delivery orders. Send each confirmed order straight to the shared kitchen queue.",
+    icon: ShoppingCart,
+    background: "bg-emerald-50 text-emerald-700",
+  },
+  {
+    operation: "KITCHEN",
     href: "/restaurant/kitchen",
     title: "Kitchen",
-    eyebrow: "Live preparation queue",
-    description: "Follow confirmed orders, prepare tickets, then mark dishes ready for service.",
+    eyebrow: "Live order preparation",
+    description: "See item quantities and cooking notes. Move orders from New to Preparing to Ready for service.",
     icon: ChefHat,
-    className: "bg-amber-50 text-amber-700",
+    background: "bg-amber-50 text-amber-700",
   },
 ] as const;
 
@@ -41,65 +51,60 @@ export default async function RestaurantPage() {
       </Card>
     );
   }
+
   const assignedStation = await getRestaurantActorStation({ workspaceId, userId: user.id, role });
-  const canManage = canUseRestaurantStation(role, assignedStation, "MANAGER");
+  const visibleStations = stations.filter((station) => canUseRestaurantStation(role, assignedStation, station.operation));
+  const isManager = canUseRestaurantStation(role, assignedStation, "MANAGER");
 
   return (
-    <main className="mx-auto max-w-5xl space-y-6">
+    <main className="mx-auto max-w-6xl space-y-6">
       <header className="rounded-3xl border border-slate-800 bg-[linear-gradient(125deg,#061c20,#0c4137)] p-6 text-white shadow-sm sm:p-8">
         <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.15em] text-emerald-200">
-          <UtensilsCrossed className="size-4" aria-hidden="true" /> Restaurant workspace
+          <UtensilsCrossed className="size-4" aria-hidden="true" /> {workspace.name}
         </p>
-        <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">{workspace.name}</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-emerald-50/80">
-          Choose your station. Order entry, kitchen operations, and financial management stay on separate screens.
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight">Choose your station</h1>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-emerald-50/85">
+          One restaurant, three separate work screens. Your account opens only the stations your manager has authorized.
         </p>
       </header>
-      <section aria-label="Restaurant stations" className="grid gap-4 md:grid-cols-2">
-        {stations.filter((station) => canUseRestaurantStation(role, assignedStation,
-          station.href === "/restaurant/pos" ? "CASHIER" : "KITCHEN")).map((station) => {
+
+      <section aria-label="Restaurant station selection" className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {visibleStations.map((station) => {
           const Icon = station.icon;
           return (
-            <Link key={station.href} href={station.href}
-              className="group rounded-3xl border border-slate-200 bg-white p-6 shadow-sm outline-none transition-colors hover:border-emerald-300 focus-visible:ring-2 focus-visible:ring-emerald-600">
+            <Link
+              key={station.href}
+              href={station.href}
+              className="group flex min-h-[260px] flex-col rounded-3xl border border-slate-200 bg-white p-6 shadow-sm outline-none transition-colors hover:border-emerald-300 focus-visible:ring-2 focus-visible:ring-emerald-600"
+            >
               <div className="flex items-start justify-between">
-                <span className={cn("grid size-12 place-items-center rounded-2xl", station.className)}>
+                <span className={cn("grid size-12 place-items-center rounded-2xl", station.background)}>
                   <Icon className="size-6" aria-hidden="true" />
                 </span>
                 <ChevronRight className="size-5 text-slate-400 transition-transform group-hover:translate-x-1" aria-hidden="true" />
               </div>
-              <p className="mt-7 text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700">{station.eyebrow}</p>
+              <p className="mt-6 text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700">{station.eyebrow}</p>
               <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-900">{station.title}</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">{station.description}</p>
-              <span className={cn(buttonVariants({ variant: "outline" }), "mt-6 pointer-events-none rounded-xl")}>Open station</span>
+              <p className="mt-2 flex-1 text-sm leading-6 text-slate-600">{station.description}</p>
+              <span className="mt-6 text-sm font-semibold text-emerald-700 group-hover:text-emerald-800">Open {station.title}</span>
             </Link>
           );
         })}
-        {canManage && (
-          <Link href="/restaurant/manager"
-            className="group rounded-3xl border border-slate-200 bg-white p-6 shadow-sm outline-none transition-colors hover:border-emerald-300 focus-visible:ring-2 focus-visible:ring-emerald-600 md:col-span-2">
-            <div className="flex items-start justify-between">
-              <span className="grid size-12 place-items-center rounded-2xl bg-blue-50 text-blue-700">
-                <LayoutDashboard className="size-6" aria-hidden="true" />
-              </span>
-              <ChevronRight className="size-5 text-slate-400 transition-transform group-hover:translate-x-1" aria-hidden="true" />
-            </div>
-            <p className="mt-5 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-blue-700">
-              <Banknote className="size-3.5" aria-hidden="true" /> Owners & managers only
-            </p>
-            <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-900">Manager dashboard</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Review today&apos;s sales, orders, occupied tables, cash-shift status and operational readiness.
-            </p>
-            <span className={cn(buttonVariants({ variant: "outline" }), "mt-5 pointer-events-none rounded-xl")}>Open management</span>
-          </Link>
-        )}
       </section>
-      {!canManage && <p className="text-xs text-slate-500">
-        Your station: {assignedStation === "CASHIER" ? "Cashier — orders and billing" :
-        assignedStation === "KITCHEN" ? "Kitchen — preparation only" :
-        "Unassigned. Ask your manager to grant Cashier or Kitchen access."}
-      </p>}
+
+      {isManager ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+          <Users className="size-5 shrink-0 text-slate-500" aria-hidden="true" />
+          <p className="flex-1">Set up two separate staff logins in this same restaurant, one for Order Taking and one for Kitchen.</p>
+          <Link href="/restaurant/manager/staff" className="font-semibold text-emerald-700 underline underline-offset-4">Staff permissions</Link>
+        </div>
+      ) : visibleStations.length === 0 ? (
+        <p role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
+          Your account has not been assigned a station. Ask the restaurant manager to grant Order Taking or Kitchen access.
+        </p>
+      ) : (
+        <p className="text-xs text-slate-500">Your staff login has access only to its assigned station.</p>
+      )}
     </main>
   );
 }
