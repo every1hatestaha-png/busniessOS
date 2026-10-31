@@ -58,11 +58,8 @@ describe("Restaurant V2 station boundaries", () => {
   it("offers cashier staff only the cashier station and no manager metrics", async () => {
     mocks.role = "STAFF";
     const { default: Stations } = await import("@/app/(dashboard)/restaurant/page");
-    const html = renderToStaticMarkup(await Stations());
-    expect(html).toContain('href="/restaurant/pos"');
-    expect(html).not.toContain('href="/restaurant/kitchen"');
-    expect(html).not.toContain('href="/restaurant/manager"');
-    expect(html).not.toContain("12,500");
+    await expect(Stations()).rejects.toThrow("redirect:/restaurant/pos");
+    expect(mocks.redirect).toHaveBeenCalledWith("/restaurant/pos");
     expect(mocks.getMetrics).not.toHaveBeenCalled();
   });
 
@@ -70,17 +67,16 @@ describe("Restaurant V2 station boundaries", () => {
     mocks.role = "STAFF";
     mocks.station = "KITCHEN";
     const { default: Stations } = await import("@/app/(dashboard)/restaurant/page");
-    const html = renderToStaticMarkup(await Stations());
-    expect(html).toContain('href="/restaurant/kitchen"');
-    expect(html).not.toContain('href="/restaurant/pos"');
-    expect(html).not.toContain('href="/restaurant/manager"');
+    await expect(Stations()).rejects.toThrow("redirect:/restaurant/kitchen");
+    expect(mocks.redirect).toHaveBeenCalledWith("/restaurant/kitchen");
+    expect(mocks.getMetrics).not.toHaveBeenCalled();
   });
 
   it("offers a manager station to an authorized owner", async () => {
     const { default: Stations } = await import("@/app/(dashboard)/restaurant/page");
     const html = renderToStaticMarkup(await Stations());
     expect(html).toContain('href="/restaurant/manager"');
-    expect(html).toContain("Cashier");
+    expect(html).toContain("Order Taking");
     expect(html).toContain("Kitchen");
     expect(mocks.getMetrics).not.toHaveBeenCalled();
   });
@@ -115,7 +111,7 @@ describe("Restaurant V2 station boundaries", () => {
     expect(html).toContain("kitchen@example.invalid");
     expect(html).toContain("unassigned@example.invalid");
     expect(html).toContain("No access");
-    expect(html).toContain("Cashier");
+    expect(html).toContain("Order Taking");
     expect(html).toContain("Kitchen");
     expect(mocks.listStaff).toHaveBeenCalledWith("synthetic-restaurant");
   });
