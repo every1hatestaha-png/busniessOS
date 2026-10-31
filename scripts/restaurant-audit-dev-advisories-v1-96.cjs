@@ -2,15 +2,11 @@
 const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 
-// Only retain the two verified development-only advisories remaining after
-// Electron, fast-uri, Zod, body-parser, and undici upgrades. The full audit
-// continues to fail on any new or unexpected advisory.
-const expectedAdvisories = new Set([
-  "GHSA-ch52-4w7c-c8xp",
-  // Zod v3 is pulled exclusively by the development-only shadcn CLI, not the
-  // application; production Zod v4 is patched to >=4.6.6.
-  "GHSA-mrhx-c7xc-m3w5",
-]);
+// No active security advisory is accepted by default. Legacy exceptions
+// have been removed as their package graphs were upgraded or eliminated.
+// A remaining dev-only issue needs explicit owner approval before any
+// time-bound risk acceptance can be written here.
+const expectedAdvisories = new Set([]);
 
 const devOnlyPaths = [
   "node_modules/electron",
