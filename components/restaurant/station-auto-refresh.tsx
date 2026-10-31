@@ -19,14 +19,22 @@ export function RestaurantStationAutoRefresh({
 
   useEffect(() => {
     if (!enabled) return;
-    const timer = window.setInterval(() => {
+    const refreshVisible = () => {
       if (document.visibilityState !== "visible") return;
       // Never interrupt checkout forms, open selectors, or keyboard workflows
       // while staff are entering a payment or editing a ticket.
       if (document.activeElement?.closest("form")) return;
       startTransition(() => router.refresh());
-    }, Math.max(10, intervalSeconds) * 1000);
-    return () => window.clearInterval(timer);
+    };
+    const timer = window.setInterval(refreshVisible, Math.max(5, intervalSeconds) * 1000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") refreshVisible();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [enabled, intervalSeconds, router]);
 
   return (
