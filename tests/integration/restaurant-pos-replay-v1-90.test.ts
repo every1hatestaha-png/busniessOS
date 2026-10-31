@@ -218,6 +218,11 @@ it("manager kitchen performance query uses real prepared ticket timestamps in Po
   expect(result.p90Minutes).not.toBeNull();
   expect(result.ready).toBeGreaterThanOrEqual(1);
   expect(result.byDay.length).toBeGreaterThan(0);
+  // The same persisted Kitchen READY event must drive the Cashier service timer.
+  const { listRestaurantReadyAtByOrderIds } = await import("@/lib/server/restaurant-ready-handoff");
+  const readyTimes = await listRestaurantReadyAtByOrderIds(workspaceId, [order.id]);
+  expect(readyTimes.get(order.id)).toBeInstanceOf(Date);
+  expect(readyTimes.get(order.id)!.getTime()).toBeGreaterThan(0);
 });
 
 it("cashier partial payment, exact retry and second collection reconcile the printed receipt", async () => {
