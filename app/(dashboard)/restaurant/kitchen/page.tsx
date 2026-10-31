@@ -8,7 +8,8 @@ import { assertRestaurantStation } from "@/lib/server/restaurant-stations";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
-import { listRestaurantKitchenOrderLines, listRestaurantOrders } from "@/lib/server/restaurant-workspace";
+import { listRestaurantKitchenOrderLines } from "@/lib/server/restaurant-workspace";
+import { listKitchenOrders } from "@/lib/server/restaurant-kitchen-orders";
 import { listKitchenInstructionUpdateTimes } from "@/lib/server/restaurant-kitchen-instruction-alerts";
 import { isRestaurantManager } from "@/lib/restaurant/station-policy";
 import { KITCHEN_TICKET_BATCH_LIMIT, kitchenVisibleCount } from "@/lib/restaurant/kitchen-queue";
@@ -24,12 +25,12 @@ const kitchenColumns = [
 export default async function RestaurantKitchenPage() {
   const { workspaceId, workspace, role, user } = await requireWorkspace();
   await assertRestaurantStation({ workspaceId, role, userId: user.id }, "KITCHEN");
-  // A single shared 200-order limit could starve NEW orders behind old READY
-  // tickets. Each station column owns a bounded FIFO slice independently.
+  // Dedicated price-free Kitchen read model. Each status has an independent
+  // bounded FIFO slice so old READY work cannot hide new tickets.
   const [newOrders, preparingOrders, readyOrders] = await Promise.all([
-    listRestaurantOrders(workspaceId, KITCHEN_TICKET_BATCH_LIMIT, { statuses: ["CONFIRMED"], oldestFirst: true }),
-    listRestaurantOrders(workspaceId, KITCHEN_TICKET_BATCH_LIMIT, { statuses: ["PREPARING"], oldestFirst: true }),
-    listRestaurantOrders(workspaceId, KITCHEN_TICKET_BATCH_LIMIT, { statuses: ["READY"], oldestFirst: true }),
+    listKitchenOrders(workspaceId, "CONFIRMED", KITCHEN_TICKET_BATCH_LIMIT),
+    listKitchenOrders(workspaceId, "PREPARING", KITCHEN_TICKET_BATCH_LIMIT),
+    listKitchenOrders(workspaceId, "READY", KITCHEN_TICKET_BATCH_LIMIT),
   ]);
   const orders = [...newOrders, ...preparingOrders, ...readyOrders];
   const [lines, updatedInstructionTimes] = await Promise.all([

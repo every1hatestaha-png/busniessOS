@@ -16,9 +16,9 @@ vi.mock("@/lib/server/restaurant-kitchen-instruction-alerts", () => ({
   listKitchenInstructionUpdateTimes: mock.instructionUpdates,
 }));
 vi.mock("@/lib/server/restaurant-workspace", () => ({
-  listRestaurantOrders: mock.orders,
   listRestaurantKitchenOrderLines: mock.lines,
 }));
+vi.mock("@/lib/server/restaurant-kitchen-orders", () => ({ listKitchenOrders: mock.orders }));
 vi.mock("@/app/(dashboard)/restaurant/kitchen/kitchen-queue-refresh", () => ({
   KitchenQueueRefresh: () => null,
 }));
@@ -31,8 +31,8 @@ vi.mock("@/app/(dashboard)/restaurant/v1-actions", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mock.orders.mockImplementation(async (_workspaceId: string, _limit: number, options: { statuses: string[] }) => {
-    if (options.statuses[0] !== "CONFIRMED") return [];
+  mock.orders.mockImplementation(async (_workspaceId: string, stage: string) => {
+    if (stage !== "CONFIRMED") return [];
     return [{
       id: "order-a", orderNumber: "R-000041", fulfillmentType: "DINE_IN",
       tableName: "Table 2", status: "CONFIRMED",
@@ -64,9 +64,7 @@ describe("restaurant V2 kitchen ticket display", () => {
     expect(html).not.toContain("Rs ");
     expect(mock.lines).toHaveBeenCalledWith("restaurant-fixture", ["order-a"]);
     for (const status of ["CONFIRMED", "PREPARING", "READY"]) {
-      expect(mock.orders).toHaveBeenCalledWith("restaurant-fixture", 75, {
-        statuses: [status], oldestFirst: true,
-      });
+      expect(mock.orders).toHaveBeenCalledWith("restaurant-fixture", status, 75);
     }
     expect(mock.orders).toHaveBeenCalledTimes(3);
     expect(html).not.toContain("Open cashier order board");
@@ -92,11 +90,11 @@ describe("restaurant V2 kitchen ticket display", () => {
       tableName: null, status: "READY", createdAt: new Date("2026-10-25T08:00:00Z"),
       notes: null,
     }));
-    mock.orders.mockImplementation(async (_wid: string, _limit: number, options: { statuses: string[] }) =>
-      options.statuses[0] === "CONFIRMED" ? [{
+    mock.orders.mockImplementation(async (_wid: string, stage: string) =>
+      stage === "CONFIRMED" ? [{
         id: "new-order", orderNumber: "R-NEW-001", fulfillmentType: "TAKEAWAY", tableName: null,
         status: "CONFIRMED", createdAt: new Date("2026-10-25T09:00:00Z"), notes: null,
-      }] : options.statuses[0] === "READY" ? ready : []);
+      }] : stage === "READY" ? ready : []);
     mock.lines.mockResolvedValue([]);
     const { default: Kitchen } = await import("@/app/(dashboard)/restaurant/kitchen/page");
     const html = renderToStaticMarkup(await Kitchen());
