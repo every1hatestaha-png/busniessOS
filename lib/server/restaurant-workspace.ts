@@ -325,6 +325,15 @@ export async function createPosRestaurantOrder(context: IndustryContext, input: 
   if (hasFinancialOverride && !managerRoles.has(context.role)) {
     throw new IndustryDomainError("PERMISSION_DENIED", "Manager approval is required for POS financial overrides");
   }
+  // Request hashes must include every accepted kitchen option. Never hash only
+  // the first 20 values while the database rejects or loses the rest.
+  let normalizedOptions: string[][];
+  try {
+    normalizedOptions = input.items.map(line => validateRestaurantModifiers(line.modifiers));
+  } catch (error) {
+    throw new IndustryDomainError("INVALID_STATE",
+      error instanceof Error ? error.message : "Menu options are invalid.");
+  }
   const requestId = input.idempotencyKey?.trim().toLowerCase();
   if (requestId) assertUuid(requestId, "Order request");
   const requestHash = requestId ? createHash("sha256").update(JSON.stringify({
@@ -337,10 +346,10 @@ export async function createPosRestaurantOrder(context: IndustryContext, input: 
     notes: input.notes?.trim() || null,
     discountAmount: input.discountAmount ?? 0,
     taxAmount: input.taxAmount ?? 0,
-    items: input.items.map(line => ({
+    items: input.items.map((line, index) => ({
       menuItemId: line.menuItemId.toLowerCase(), quantity: line.quantity,
       notes: line.notes?.trim() || null,
-      modifiers: line.modifiers?.map(value => value.trim()).filter(Boolean).slice(0, 20) ?? [],
+      modifiers: normalizedOptions[index],
     })),
   })).digest("hex") : null;
   return db.$transaction(async (tx) => {

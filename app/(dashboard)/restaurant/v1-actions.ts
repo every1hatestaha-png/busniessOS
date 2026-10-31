@@ -128,6 +128,14 @@ export async function setMenuItemAvailabilityAction(formData: FormData) {
 
 type RawCartLine = { menuItemId?: unknown; quantity?: unknown; notes?: unknown; modifiers?: unknown };
 
+function parseCartModifiers(value: unknown): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.some(item => typeof item !== "string")) {
+    throw new Error("Menu options must contain text only.");
+  }
+  return value;
+}
+
 function parseCart(formData: FormData): RestaurantOrderLineInput[] {
   let raw: RawCartLine[];
   try {
@@ -141,7 +149,7 @@ function parseCart(formData: FormData): RestaurantOrderLineInput[] {
     menuItemId: String(line.menuItemId ?? "").trim(),
     quantity: Number(line.quantity ?? 0),
     notes: typeof line.notes === "string" ? line.notes : undefined,
-    modifiers: Array.isArray(line.modifiers) ? line.modifiers.map(String) : undefined,
+    modifiers: parseCartModifiers(line.modifiers),
   }));
 }
 
