@@ -112,6 +112,50 @@ it("Kitchen query returns operational order fields without financial or customer
   expect(matched).not.toHaveProperty("deliveryAddress");
 });
 
+it("Kitchen print projection excludes customer and finance even when receipt has totals", async () => {
+  const { createPosOrderAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
+  const { getRestaurantKitchenPrintDocument } =
+    await import("@/lib/server/restaurant-kitchen-print");
+  const { getRestaurantPrintDocument } =
+    await import("@/lib/server/restaurant-print");
+  const data = form();
+  data.set("customerName", "Synthetic QA Guest");
+  data.set("notes", "No nuts, kitchen please confirm");
+  data.set("itemsJson", JSON.stringify([{
+    menuItemId, quantity: 2, notes: "Allergy: peanuts",
+    modifiers: ["No nuts", "Less spicy"],
+  }]));
+  const created = await createPosOrderAction({ status: "idle", message: "" }, data);
+  expect(created.status).toBe("success");
+  const [order] = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT "id" FROM "restaurant_orders"
+    WHERE "workspaceId"=${workspaceId}::uuid
+      AND "externalReference"=${`pos:${data.get("orderRequestId")}`}
+  `;
+  expect(order?.id).toBeTruthy();
+  const [kot, receipt] = await Promise.all([
+    getRestaurantKitchenPrintDocument(workspaceId, order.id),
+    getRestaurantPrintDocument(workspaceId, order.id),
+  ]);
+  expect(kot).toMatchObject({
+    orderNumber: created.orderNumber, status: "CONFIRMED",
+    notes: "No nuts, kitchen please confirm",
+  });
+  expect(kot?.items[0]).toMatchObject({
+    quantity: 2, notes: "Allergy: peanuts",
+    modifiers: ["No nuts", "Less spicy"],
+  });
+  expect(kot).not.toHaveProperty("customerName");
+  expect(kot).not.toHaveProperty("total");
+  expect(kot).not.toHaveProperty("paymentStatus");
+  expect(kot?.items[0]).not.toHaveProperty("unitPrice");
+  expect(kot?.items[0]).not.toHaveProperty("lineTotal");
+  expect(receipt).toMatchObject({
+    orderNumber: created.orderNumber,
+    customerName: "Synthetic QA Guest", total: 200,
+  });
+});
+
 it("rejects oversized kitchen options without silently creating a partial order", async () => {
   const { createPosOrderAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
   const before = await counts();
