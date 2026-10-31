@@ -41,6 +41,10 @@ describe("Kitchen performance is actual tenant-scoped KOT evidence", () => {
     expect(sql).toContain('kt."readyAt"');
     expect(sql).toContain('kt."startedAt"');
     expect(sql).toContain('ro."workspaceId"=kt."workspaceId"');
+    // The daily aggregate must group by its exact selected local-day expression.
+    // Grouping by ::date while selecting ::date::text raises PostgreSQL 42803.
+    expect(sql).toContain("GROUP BY 1");
+    expect(sql).toContain("ORDER BY 1 DESC");
     expect(sql).not.toContain("restaurant_payments");
     expect(sql).not.toContain("general_ledger_entries");
   });
