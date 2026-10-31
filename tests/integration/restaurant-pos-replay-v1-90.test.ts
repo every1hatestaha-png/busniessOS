@@ -225,6 +225,51 @@ it("manager kitchen performance query uses real prepared ticket timestamps in Po
   expect(readyTimes.get(order.id)!.getTime()).toBeGreaterThan(0);
 });
 
+it("cashier READY selection prioritizes the first Kitchen-ready order, not the earliest created", async () => {
+  const { createPosOrderAction, transitionKitchenOrderAction } =
+    await import("@/app/(dashboard)/restaurant/v1-actions");
+  const { listRestaurantOrders } = await import("@/lib/server/restaurant-workspace");
+  const olderForm = form();
+  const newerForm = form();
+  expect((await createPosOrderAction({ status: "idle", message: "" }, olderForm)).status).toBe("success");
+  expect((await createPosOrderAction({ status: "idle", message: "" }, newerForm)).status).toBe("success");
+
+  const ids = await db.$queryRaw<Array<{ id: string; externalReference: string }>>`
+    SELECT "id","externalReference" FROM "restaurant_orders"
+    WHERE "workspaceId"=${workspaceId}::uuid
+      AND "externalReference" IN (${`pos:${olderForm.get("orderRequestId")}`}, ${`pos:${newerForm.get("orderRequestId")}`})
+  `;
+  const olderId = ids.find(row => row.externalReference === `pos:${olderForm.get("orderRequestId")}`)?.id;
+  const newerId = ids.find(row => row.externalReference === `pos:${newerForm.get("orderRequestId")}`)?.id;
+  expect(olderId).toBeTruthy();
+  expect(newerId).toBeTruthy();
+
+  // B is created after A but finishes in the Kitchen first.
+  // Do not rewrite protected creation timestamps or immutable KOT identity.
+  for (const orderId of [newerId!, olderId!]) {
+    const transition = new FormData();
+    transition.set("formWorkspaceId", workspaceId);
+    transition.set("orderId", orderId);
+    transition.set("nextStatus", "PREPARING");
+    expect((await transitionKitchenOrderAction(transition)).status).toBe("success");
+    transition.set("nextStatus", "READY");
+    expect((await transitionKitchenOrderAction(transition)).status).toBe("success");
+  }
+
+  const byCreation = await listRestaurantOrders(workspaceId, 60, {
+    statuses: ["READY"], oldestFirst: true,
+  });
+  const byHandoff = await listRestaurantOrders(workspaceId, 60, {
+    statuses: ["READY"], readyHandoffFirst: true,
+  });
+  const creationIds = byCreation.map(order => order.id);
+  const handoffIds = byHandoff.map(order => order.id);
+  expect(creationIds.indexOf(olderId!)).toBeLessThan(creationIds.indexOf(newerId!));
+  expect(handoffIds.indexOf(newerId!)).toBeGreaterThanOrEqual(0);
+  expect(handoffIds.indexOf(olderId!)).toBeGreaterThanOrEqual(0);
+  expect(handoffIds.indexOf(newerId!)).toBeLessThan(handoffIds.indexOf(olderId!));
+});
+
 it("cashier partial payment, exact retry and second collection reconcile the printed receipt", async () => {
   const { createPosOrderAction, recordRestaurantPaymentAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
   const { createCashBankAccount, getCashBankAccounts } = await import("@/lib/server/accounting");
