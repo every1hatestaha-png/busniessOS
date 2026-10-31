@@ -74,8 +74,12 @@ describe("Cashier board queue starvation protection", () => {
       expect(mocks.listOrders).toHaveBeenCalledWith("cashier-fixture", CASHIER_QUEUE_LIMIT,
         { statuses: [status], oldestFirst: true });
     }
-    expect(mocks.listOrders).toHaveBeenCalledWith("cashier-fixture", 200,
+    // A staff cashier only gets a bounded outstanding settlement queue, not
+    // the manager's full historical financial list.
+    expect(mocks.listOrders).toHaveBeenCalledWith("cashier-fixture", 40,
       { statuses: ["COMPLETED"], oldestFirst: true, outstandingOnly: true });
+    expect(mocks.listOrders).not.toHaveBeenCalledWith("cashier-fixture", 30,
+      { statuses: ["COMPLETED", "CANCELLED"] });
     const requested = mocks.listPayments.mock.calls[0][1] as string[];
     expect(requested).toHaveLength(CASHIER_QUEUE_LIMIT + 1);
     expect(requested).toContain("READY-FROM-KITCHEN");
