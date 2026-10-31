@@ -9,6 +9,7 @@ import { recordRestaurantPaymentAction } from "@/app/(dashboard)/restaurant/v1-a
 import { Button } from "@/components/ui/button";
 import { eligibleCashierSettlementAccounts } from "@/lib/restaurant/cashier-settlement";
 import { cashierPaymentSignature } from "@/lib/restaurant/cashier-payment-retry";
+import { suggestedCashierShare } from "@/lib/restaurant/cashier-split-helper";
 
 export type CashierSettlementAccount = {
   cashBankAccountId: string;
@@ -52,6 +53,7 @@ export function CashierPaymentForm({
   const requestField = useRef<HTMLInputElement>(null);
   const attemptedSignature = useRef<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
   const eligibleAccounts = useMemo(
     () => eligibleCashierSettlementAccounts(accounts, method),
     [accounts, method],
@@ -138,10 +140,28 @@ export function CashierPaymentForm({
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold text-slate-700">
           Amount (PKR)
-          <input name="amount" type="number" min="0.01" max={outstanding} step="0.01"
+          <input ref={amountRef} name="amount" type="number" min="0.01" max={outstanding} step="0.01"
             defaultValue={outstanding} required
-            className="min-h-11 rounded-lg border border-slate-200 bg-white px-2 text-sm font-normal" />
+            className="min-h-11 rounded-lg border border-slate-200 bg-white px-2 text-sm font-normal focus-visible:ring-2 focus-visible:ring-emerald-600" />
         </label>
+        <div className="space-y-2 sm:col-span-2">
+          <p className="text-xs font-semibold text-slate-700">Quick split amount</p>
+          <div className="flex flex-wrap gap-2" aria-label="Suggested partial payment amounts">
+            {([1,2,3,4] as const).map(portions => (
+              <button key={portions} type="button" disabled={pending || outstanding <= 0}
+                onClick={() => {
+                  if (amountRef.current) amountRef.current.value = suggestedCashierShare(outstanding, portions).toFixed(2);
+                }}
+                className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition-colors hover:border-emerald-300 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 active:scale-[0.98] motion-reduce:transform-none">
+                {portions === 1 ? "Full remaining" : `1 / ${portions} share`}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] leading-5 text-slate-500">
+            Sets the amount only. Collect each customer payment separately with its own verified receipt.
+            Item-by-item or seat-assigned bill splitting is not enabled.
+          </p>
+        </div>
         <label className="flex flex-col gap-1 text-xs font-semibold text-slate-700">
           Transaction reference (optional)
           <input name="reference" maxLength={120} placeholder="Receipt or bank reference"
