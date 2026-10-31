@@ -1,0 +1,54 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({ query: vi.fn(), module: vi.fn() }));
+vi.mock("@/lib/server/db", () => ({ db: { $queryRaw: mocks.query } }));
+vi.mock("@/lib/server/industry-modules", () => ({
+  IndustryDomainError: class IndustryDomainError extends Error {
+    constructor(readonly code: string, message: string) { super(message); }
+  },
+  requireWorkspaceModule: mocks.module,
+}));
+const orderId = "22222222-2222-4222-8222-222222222222";
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.module.mockResolvedValue(undefined);
+  mocks.query.mockResolvedValue([{ orderId, readyAt: new Date("2026-11-01T10:00:00Z") }]);
+});
+
+describe("Price-free, tenant-scoped Kitchen to Cashier handoff", () => {
+  it("queries only actual READY ticket evidence within one workspace", async () => {
+    const { listRestaurantReadyAtByOrderIds } = await import("@/lib/server/restaurant-ready-handoff");
+    const result = await listRestaurantReadyAtByOrderIds("synthetic-tenant", [orderId, orderId]);
+    expect(result.get(orderId)?.toISOString()).toBe("2026-11-01T10:00:00.000Z");
+    expect(mocks.module).toHaveBeenCalledWith("synthetic-tenant", "restaurant");
+    expect(mocks.query).toHaveBeenCalledTimes(1);
+    const sql = Array.from(mocks.query.mock.calls[0][0] as TemplateStringsArray).join(" ");
+    expect(sql).toContain('ro."workspaceId"=');
+    expect(sql).toContain('kt."workspaceId"=ro."workspaceId"');
+    expect(sql).toContain('kt."readyAt"');
+    expect(sql).not.toContain('"total"');
+    expect(sql).not.toContain('"customerPhone"');
+    expect(sql).not.toContain('"customerName"');
+    expect(sql).not.toContain('"paymentStatus"');
+  });
+
+  it("refuses unbounded or malformed handoff selections", async () => {
+    const { listRestaurantReadyAtByOrderIds } = await import("@/lib/server/restaurant-ready-handoff");
+    await expect(listRestaurantReadyAtByOrderIds("synthetic-tenant", ["not-valid"]))
+      .rejects.toThrow("selection is invalid");
+    const ids = Array.from({ length: 61 }, (_, i) =>
+      `22222222-2222-4222-8222-${String(i).padStart(12, "0")}`);
+    await expect(listRestaurantReadyAtByOrderIds("synthetic-tenant", ids))
+      .rejects.toThrow("selection is invalid");
+    expect(mocks.query).not.toHaveBeenCalled();
+  });
+
+  it("flags actual service delays, never guesses missing kitchen times", async () => {
+    const { readyForServiceLabel } = await import("@/lib/server/restaurant-ready-handoff");
+    const now = new Date("2026-11-01T10:20:00Z");
+    expect(readyForServiceLabel(undefined, now)).toEqual({ label: "Ready, time unavailable", delayed: false });
+    expect(readyForServiceLabel(new Date("2026-11-01T10:20:00Z"), now)).toEqual({ label: "Ready just now", delayed: false });
+    expect(readyForServiceLabel(new Date("2026-11-01T10:11:00Z"), now)).toEqual({ label: "Ready for 9 min", delayed: false });
+    expect(readyForServiceLabel(new Date("2026-11-01T10:10:00Z"), now)).toEqual({ label: "Ready for 10 min", delayed: true });
+  });
+});

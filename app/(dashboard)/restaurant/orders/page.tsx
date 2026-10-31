@@ -21,6 +21,7 @@ import { listRestaurantOrders, type RestaurantOrderStatus } from "@/lib/server/r
 import { cn } from "@/lib/utils";
 import { formatRestaurantOrderTime } from "@/lib/restaurant/timezone-format";
 import { CashierMissingPaymentAccount } from "@/components/restaurant/cashier-missing-payment-account";
+import { listRestaurantReadyAtByOrderIds, readyForServiceLabel } from "@/lib/server/restaurant-ready-handoff";
 import { CASHIER_QUEUE_LIMIT, cashierQueueLabel } from "@/lib/restaurant/cashier-queue";
 
 type CashierStage = Extract<RestaurantOrderStatus, "PENDING_REVIEW" | "CONFIRMED" | "PREPARING" | "READY">;
@@ -64,10 +65,12 @@ export default async function RestaurantOrdersPage() {
     READY: ready,
   };
   const visibleOrderIds = [...new Set([...pendingReview, ...confirmed, ...preparing, ...ready, ...recentClosed, ...completedOutstanding].map(order => order.id))];
-  const [payments, paymentSummaries] = await Promise.all([
+  const [payments, paymentSummaries, readyTimes] = await Promise.all([
     listRestaurantPayments(workspaceId, visibleOrderIds),
     listRestaurantNetPaymentSummaries(workspaceId, visibleOrderIds),
+    listRestaurantReadyAtByOrderIds(workspaceId, ready.map(order => order.id)),
   ]);
+  const handoffNow = new Date();
   const paymentsByOrder = new Map<string, RestaurantPaymentRecord[]>();
   for (const payment of payments) {
     const group = paymentsByOrder.get(payment.restaurantOrderId) ?? [];
@@ -107,7 +110,7 @@ export default async function RestaurantOrdersPage() {
       <div className="grid gap-4 xl:grid-cols-4">
         {columns.map((column) => {
           const matching = activeByStatus[column.status];
-          return <section key={column.status} className="min-w-0 rounded-2xl border bg-slate-50/70 p-3"><div className="mb-3 flex items-center justify-between"><h2 className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">{column.label}</h2><span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold shadow-sm">{cashierQueueLabel(matching.length)}</span></div><div className="space-y-3">{matching.length ? matching.map((order) => <OrderCard workspaceId={workspaceId} key={order.id} order={order} cashAccounts={cashAccounts} payments={paymentsByOrder.get(order.id) ?? []} paymentSummary={paymentSummaryByOrder.get(order.id)} canVoidPayments={canManageFinancialActions} timezone={workspace.timezone} />) : <div className="rounded-2xl border border-dashed bg-white p-8 text-center"><Sparkles className="mx-auto size-4 text-emerald-500" /><p className="mt-2 text-xs text-muted-foreground">Queue clear</p></div>}</div></section>;
+          return <section key={column.status} className="min-w-0 rounded-2xl border bg-slate-50/70 p-3"><div className="mb-3 flex items-center justify-between"><h2 className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">{column.label}</h2><span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold shadow-sm">{cashierQueueLabel(matching.length)}</span></div><div className="space-y-3">{matching.length ? matching.map((order) => <OrderCard workspaceId={workspaceId} key={order.id} order={order} cashAccounts={cashAccounts} payments={paymentsByOrder.get(order.id) ?? []} paymentSummary={paymentSummaryByOrder.get(order.id)} canVoidPayments={canManageFinancialActions} timezone={workspace.timezone} readyAt={readyTimes.get(order.id)} now={handoffNow} />) : <div className="rounded-2xl border border-dashed bg-white p-8 text-center"><Sparkles className="mx-auto size-4 text-emerald-500" /><p className="mt-2 text-xs text-muted-foreground">Queue clear</p></div>}</div></section>;
         })}
       </div>
 
@@ -127,6 +130,8 @@ function OrderCard({
   paymentSummary,
   canVoidPayments,
   timezone,
+  readyAt,
+  now,
 }: {
   workspaceId: string;
   order: Awaited<ReturnType<typeof listRestaurantOrders>>[number];
@@ -135,9 +140,13 @@ function OrderCard({
   paymentSummary?: PaymentSummary;
   canVoidPayments: boolean;
   timezone?: string | null;
+  readyAt?: Date;
+  now: Date;
 }) {
   const next = primaryNext(order.status);
+  const handoff = order.status === "READY" ? readyForServiceLabel(readyAt, now) : null;
   return <Card className={order.source === "WHATSAPP" ? "rounded-2xl border-emerald-300 bg-white shadow-none" : "rounded-2xl bg-white shadow-none"}><CardContent className="space-y-3 p-4"><div className="flex items-start justify-between gap-2"><div><div className="flex items-center gap-1.5">{order.source === "WHATSAPP" ? <MessageCircleMore className="size-4 text-emerald-600" /> : <ShoppingBag className="size-4 text-muted-foreground" />}<Link href={`/restaurant/orders/${order.id}/print`} className="font-semibold underline">{order.orderNumber}</Link></div><p className="mt-1 text-xs text-muted-foreground">{order.source} · {order.fulfillmentType.replaceAll("_", " ")}{order.tableName ? ` · ${order.tableName}` : ""}</p></div><p className="font-semibold">Rs {(paymentSummary?.adjustedDue ?? order.total).toLocaleString()}</p></div><div className="text-xs text-muted-foreground"><p>{order.customerName || "Walk-in customer"}{order.customerPhone ? ` · ${order.customerPhone}` : ""}</p><p>{formatRestaurantOrderTime(order.createdAt, timezone)}</p>{order.notes ? <p className="mt-1 rounded bg-muted/50 p-2">{order.notes}</p> : null}</div>
+    {handoff ? <div role="status" className={cn("rounded-xl border px-3 py-2 text-xs font-semibold", handoff.delayed ? "border-amber-300 bg-amber-50 text-amber-950" : "border-emerald-200 bg-emerald-50 text-emerald-900")}>{handoff.delayed ? "Service delay. " : ""}{handoff.label}</div> : null}
     <div className="flex flex-wrap gap-2">
       {order.status === "PENDING_REVIEW" ? <RestaurantMutationForm action={confirmRestaurantOrderAction} workspaceId={workspaceId}><input type="hidden" name="orderId" value={order.id} /><Button size="sm" className="rounded-lg bg-emerald-600 hover:bg-emerald-500" type="submit">Confirm order</Button></RestaurantMutationForm> : null}
       {next ? <RestaurantMutationForm action={transitionRestaurantOrderAction} workspaceId={workspaceId}><input type="hidden" name="orderId" value={order.id} /><input type="hidden" name="nextStatus" value={next.next} /><Button size="sm" className="rounded-lg bg-emerald-600 hover:bg-emerald-500" type="submit">{next.label}</Button></RestaurantMutationForm> : null}

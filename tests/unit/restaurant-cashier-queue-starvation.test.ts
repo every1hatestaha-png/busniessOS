@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   listPayments: vi.fn(),
   listSummaries: vi.fn(),
   listAccounts: vi.fn(),
+  readyTimes: vi.fn(),
 }));
 
 vi.mock("@/lib/server/auth", () => ({
@@ -24,6 +25,10 @@ vi.mock("@/lib/server/restaurant-payment-summary", () => ({
   listRestaurantNetPaymentSummaries: mocks.listSummaries,
 }));
 vi.mock("@/lib/server/restaurant-payment-accounts", () => ({ listRestaurantCollectionAccountChoices: mocks.listAccounts }));
+vi.mock("@/lib/server/restaurant-ready-handoff", () => ({
+  listRestaurantReadyAtByOrderIds: mocks.readyTimes,
+  readyForServiceLabel: (readyAt: Date | undefined) => readyAt ? { label: "Ready for 12 min", delayed: true } : { label: "Ready, time unavailable", delayed: false },
+}));
 vi.mock("@/components/restaurant/station-auto-refresh", () => ({
   RestaurantStationAutoRefresh: () => null,
 }));
@@ -50,6 +55,7 @@ function order(id: string, status: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.listAccounts.mockResolvedValue([]);
+  mocks.readyTimes.mockResolvedValue(new Map([["READY-FROM-KITCHEN", new Date("2026-10-25T09:00:00Z")]]));
   mocks.listPayments.mockResolvedValue([]);
   mocks.listSummaries.mockResolvedValue([]);
   mocks.listOrders.mockImplementation(async (_workspaceId: string, _limit: number, options: { statuses: string[] }) => {
@@ -66,6 +72,9 @@ describe("Cashier board queue starvation protection", () => {
     const { default: CashierOrders } = await import("@/app/(dashboard)/restaurant/orders/page");
     const html = renderToStaticMarkup(await CashierOrders());
     expect(html).toContain("READY-FROM-KITCHEN");
+    expect(html).toContain("Ready for 12 min");
+    expect(html).toContain("Service delay.");
+    expect(mocks.readyTimes).toHaveBeenCalledWith("cashier-fixture", ["READY-FROM-KITCHEN"]);
     expect(html).toContain("Complete order");
     expect(html).toContain("CONFIRMED-0");
     expect(html).toContain("60+");
