@@ -40,6 +40,8 @@ type PaymentSummary = Awaited<ReturnType<typeof listRestaurantNetPaymentSummarie
 export default async function RestaurantOrdersPage() {
   const { workspaceId, role, workspace, user } = await requireWorkspace();
   await assertRestaurantStation({ workspaceId, role, userId: user.id }, "CASHIER");
+  const canManageFinancialActions = role === "OWNER" || role === "ADMIN" || role === "MANAGER";
+  const outstandingLimit = canManageFinancialActions ? 200 : 40;
   // Each stage must get its own FIFO slice. A 200-row shared query previously
   // allowed old confirmed/review tickets to hide newer READY orders indefinitely.
   // 4*60 + 30 recent + 200 outstanding = max 470 distinct order IDs,
@@ -49,8 +51,8 @@ export default async function RestaurantOrdersPage() {
     listRestaurantOrders(workspaceId, CASHIER_QUEUE_LIMIT, { statuses: ["CONFIRMED"], oldestFirst: true }),
     listRestaurantOrders(workspaceId, CASHIER_QUEUE_LIMIT, { statuses: ["PREPARING"], oldestFirst: true }),
     listRestaurantOrders(workspaceId, CASHIER_QUEUE_LIMIT, { statuses: ["READY"], oldestFirst: true }),
-    listRestaurantOrders(workspaceId, 30, { statuses: ["COMPLETED", "CANCELLED"] }),
-    listRestaurantOrders(workspaceId, 200, { statuses: ["COMPLETED"], oldestFirst: true, outstandingOnly: true }),
+    canManageFinancialActions ? listRestaurantOrders(workspaceId, 30, { statuses: ["COMPLETED", "CANCELLED"] }) : Promise.resolve([]),
+    listRestaurantOrders(workspaceId, outstandingLimit, { statuses: ["COMPLETED"], oldestFirst: true, outstandingOnly: true }),
     getCashBankAccounts(workspaceId),
   ]);
   const activeByStatus = {
@@ -64,7 +66,6 @@ export default async function RestaurantOrdersPage() {
     listRestaurantPayments(workspaceId, visibleOrderIds),
     listRestaurantNetPaymentSummaries(workspaceId, visibleOrderIds),
   ]);
-  const canManageFinancialActions = role === "OWNER" || role === "ADMIN" || role === "MANAGER";
   const paymentsByOrder = new Map<string, RestaurantPaymentRecord[]>();
   for (const payment of payments) {
     const group = paymentsByOrder.get(payment.restaurantOrderId) ?? [];
@@ -84,8 +85,7 @@ export default async function RestaurantOrdersPage() {
         <div className="flex flex-wrap items-center gap-2">
           <RestaurantStationAutoRefresh label="Order Taking" intervalSeconds={5} />
           <Link href="/restaurant/pos" className={cn(buttonVariants(), "rounded-xl bg-emerald-600 hover:bg-emerald-500")}><Plus className="size-4" />New POS order</Link>
-          {canManageFinancialActions && <Link href="/restaurant/kitchen" className={cn(buttonVariants({ variant: "outline" }), "rounded-xl")}><ChefHat className="size-4" />Kitchen</Link>}
-          <Link href="/restaurant/whatsapp" className={cn(buttonVariants({ variant: "outline" }), "rounded-xl")}><MessageCircleMore className="size-4" />Saved WhatsApp reviews</Link>
+          {canManageFinancialActions && <Link href="/restaurant/whatsapp" className={cn(buttonVariants({ variant: "outline" }), "rounded-xl")}><MessageCircleMore className="size-4" />Saved WhatsApp reviews</Link>}
         </div>
       </section>
 
@@ -109,10 +109,10 @@ export default async function RestaurantOrdersPage() {
         })}
       </div>
 
-      {completedOutstanding.length === 200 ? <p className="text-sm text-amber-700">Showing the oldest 200 completed orders awaiting payment. Collect these to advance the queue.</p> : null}
+      {completedOutstanding.length === outstandingLimit ? <p className="text-sm text-amber-700">Showing the oldest { outstandingLimit} completed orders awaiting payment. Collect these to advance the queue.</p> : null}
       {completedOutstanding.length ? <Card className="rounded-lg border-amber-200 shadow-sm"><CardContent className="space-y-4 p-5"><div><h2 className="font-semibold">Completed orders awaiting payment</h2><p className="text-xs text-muted-foreground">Net due already reflects posted item returns.</p></div><div className="grid gap-3 lg:grid-cols-2">{completedOutstanding.map((order) => <div key={order.id} className="rounded-lg border p-4"><div className="mb-3 flex justify-between gap-3"><div><Link href={`/restaurant/orders/${order.id}/print`} className="font-semibold underline">{order.orderNumber}</Link><p className="text-xs text-muted-foreground">{order.customerName || order.customerPhone || "Walk-in customer"}</p></div><p className="font-semibold">Net Rs {(paymentSummaryByOrder.get(order.id)?.adjustedDue ?? order.total).toLocaleString()}</p></div><PaymentPanel workspaceId={workspaceId} orderId={order.id} paymentStatus={order.paymentStatus} cashAccounts={cashAccounts} payments={paymentsByOrder.get(order.id) ?? []} paymentSummary={paymentSummaryByOrder.get(order.id)} canVoidPayments={canManageFinancialActions} /></div>)}</div></CardContent></Card> : null}
 
-      <Card className="rounded-lg shadow-sm"><CardContent className="p-0"><div className="border-b px-5 py-4"><h2 className="font-semibold">Recent completed & cancelled</h2><p className="text-xs text-muted-foreground">Latest terminal orders kept for operational and financial history.</p></div>{recentClosed.length ? <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-muted/40 text-left text-xs text-muted-foreground"><tr><th className="px-4 py-3">Order</th><th className="px-4 py-3">Source</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Net total</th><th className="px-4 py-3">Payment</th><th className="px-4 py-3">Status</th>{canManageFinancialActions ? <th className="px-4 py-3">Action</th> : null}</tr></thead><tbody className="divide-y">{recentClosed.map((order) => <tr key={order.id}><td className="px-4 py-3 font-medium"><Link href={`/restaurant/orders/${order.id}/print?copy=1`} className="underline">{order.orderNumber}</Link></td><td className="px-4 py-3">{order.source}</td><td className="px-4 py-3 text-muted-foreground">{order.fulfillmentType.replaceAll("_", " ")}</td><td className="px-4 py-3 text-muted-foreground">{order.customerName || order.customerPhone || "Walk-in"}</td><td className="px-4 py-3 font-medium">Rs {(paymentSummaryByOrder.get(order.id)?.adjustedDue ?? order.total).toLocaleString()}</td><td className="px-4 py-3">{order.paymentStatus}</td><td className="px-4 py-3">{order.status}</td>{canManageFinancialActions ? <td className="px-4 py-3">{order.status === "COMPLETED" ? <Link href={`/restaurant/orders/${order.id}/return`} className={cn(buttonVariants({ variant: "outline", size: "sm" }))}><RotateCcw className="mr-1 size-3.5" />Return items</Link> : null}</td> : null}</tr>)}</tbody></table></div> : <div className="p-6 text-sm text-muted-foreground">No completed or cancelled restaurant orders yet.</div>}</CardContent></Card>
+      {canManageFinancialActions && <Card className="rounded-lg shadow-sm"><CardContent className="p-0"><div className="border-b px-5 py-4"><h2 className="font-semibold">Recent completed & cancelled</h2><p className="text-xs text-muted-foreground">Latest terminal orders kept for operational and financial history.</p></div>{recentClosed.length ? <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-muted/40 text-left text-xs text-muted-foreground"><tr><th className="px-4 py-3">Order</th><th className="px-4 py-3">Source</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Net total</th><th className="px-4 py-3">Payment</th><th className="px-4 py-3">Status</th>{canManageFinancialActions ? <th className="px-4 py-3">Action</th> : null}</tr></thead><tbody className="divide-y">{recentClosed.map((order) => <tr key={order.id}><td className="px-4 py-3 font-medium"><Link href={`/restaurant/orders/${order.id}/print?copy=1`} className="underline">{order.orderNumber}</Link></td><td className="px-4 py-3">{order.source}</td><td className="px-4 py-3 text-muted-foreground">{order.fulfillmentType.replaceAll("_", " ")}</td><td className="px-4 py-3 text-muted-foreground">{order.customerName || order.customerPhone || "Walk-in"}</td><td className="px-4 py-3 font-medium">Rs {(paymentSummaryByOrder.get(order.id)?.adjustedDue ?? order.total).toLocaleString()}</td><td className="px-4 py-3">{order.paymentStatus}</td><td className="px-4 py-3">{order.status}</td>{canManageFinancialActions ? <td className="px-4 py-3">{order.status === "COMPLETED" ? <Link href={`/restaurant/orders/${order.id}/return`} className={cn(buttonVariants({ variant: "outline", size: "sm" }))}><RotateCcw className="mr-1 size-3.5" />Return items</Link> : null}</td> : null}</tr>)}</tbody></table></div> : <div className="p-6 text-sm text-muted-foreground">No completed or cancelled restaurant orders yet.</div>}</CardContent></Card>}
     </div>
   );
 }
