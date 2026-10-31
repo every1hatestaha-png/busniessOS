@@ -2,6 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft, CheckCircle2, LayoutGrid, Users, Utensils } from "lucide-react";
 import { RestaurantStationAutoRefresh } from "@/components/restaurant/station-auto-refresh";
+import { RestaurantTableTransfer } from "@/components/restaurant/manager-table-transfer";
+import { listRestaurantTableTransferCandidates } from "@/lib/server/restaurant-table-transfer";
 import { requireWorkspace } from "@/lib/server/auth";
 import { listRestaurantTables, listWorkspaceModules } from "@/lib/server/industry-modules";
 import { listRestaurantReadyTableIds } from "@/lib/server/restaurant-workspace";
@@ -14,8 +16,10 @@ export default async function RestaurantFloorPage() {
   const modules = await listWorkspaceModules(workspaceId);
   if (!modules.some(m => m.moduleKey === "restaurant" && m.enabled)) redirect("/restaurant");
 
-  const [tables, readyIds] = await Promise.all([
-    listRestaurantTables(workspaceId), listRestaurantReadyTableIds(workspaceId),
+  const [tables, readyIds, activeOrders] = await Promise.all([
+    listRestaurantTables(workspaceId),
+    listRestaurantReadyTableIds(workspaceId),
+    listRestaurantTableTransferCandidates(workspaceId),
   ]);
   const ready = new Set(readyIds);
   const occupied = tables.filter(table => table.status === "OCCUPIED").length;
@@ -51,6 +55,12 @@ export default async function RestaurantFloorPage() {
         <FloorStat title="Occupied" value={String(occupied)} detail={tables.length ? `${Math.round(occupied/tables.length*100)}% floor utilization` : "No tables"} />
         <FloorStat title="Ready for service" value={String(readyCount)} detail="At least one READY dine-in order" />
       </section>
+
+      <RestaurantTableTransfer workspaceId={workspaceId}
+        activeOrders={activeOrders}
+        availableTables={tables.filter(table => table.status === "AVAILABLE")}
+        truncated={activeOrders.length === 100}
+      />
 
       {tables.length === 0 ? (
         <section className="rounded-[26px] border border-dashed border-slate-300 bg-white p-10 text-center">
@@ -95,8 +105,8 @@ export default async function RestaurantFloorPage() {
       )}
 
       <p className="text-xs leading-5 text-slate-500">
-        Floor monitoring only. This screen does not change table reservations, switch diners or release unpaid tables.
-        Occupancy remains controlled by the existing order and financial settlement rules.
+        Table transfers only change the table assigned to one active dine-in order, with an audit reason.
+        Occupancy and settlement remain controlled by the existing financial rules. Table reservations and merging are separate workflows.
       </p>
     </main>
   );
