@@ -566,6 +566,8 @@ export async function listRestaurantOrders(workspaceId: string, limit = 100, opt
   source?: RestaurantOrderSource;
   oldestFirst?: boolean;
   outstandingOnly?: boolean;
+  /** Only READY: order by actual Kitchen READY time before applying LIMIT. */
+  readyHandoffFirst?: boolean;
 }) {
   await requireWorkspaceModule(workspaceId, "restaurant");
   const safeLimit = Math.max(1, Math.min(Math.trunc(limit), 250));
@@ -573,6 +575,23 @@ export async function listRestaurantOrders(workspaceId: string, limit = 100, opt
   const sourceFilter = options?.source ? Prisma.sql`AND ro."source"=${options.source}` : Prisma.empty;
   const outstandingFilter = options?.outstandingOnly ? Prisma.sql`AND restaurant_order_net_outstanding(ro."id", ro."workspaceId") > 0` : Prisma.empty;
   const direction = options?.oldestFirst ? Prisma.sql`ASC` : Prisma.sql`DESC`;
+  if (options?.readyHandoffFirst && (
+    options.statuses?.length !== 1 || options.statuses[0] !== "READY"
+  )) {
+    throw new IndustryDomainError("INVALID_STATE", "Kitchen handoff ordering requires only READY orders.");
+  }
+  // Select the longest-waiting Kitchen-ready tickets BEFORE the 60-row limit.
+  // Absence of a ready timestamp sorts last; tenant scope remains on both tables.
+  const orderBy = options?.readyHandoffFirst
+    ? Prisma.sql`COALESCE((
+        SELECT MAX(kt."readyAt")
+        FROM "kitchen_tickets" kt
+        WHERE kt."restaurantOrderId"=ro."id"
+          AND kt."workspaceId"=ro."workspaceId"
+          AND kt."status" IN ('READY','SERVED')
+          AND kt."readyAt" IS NOT NULL
+      ), 'infinity'::timestamptz) ASC, ro."createdAt" ASC, ro."id" ASC`
+    : Prisma.sql`ro."createdAt" ${direction}, ro."id" ${direction}`;
   const rows = await db.$queryRaw<Array<{
     id: string; orderNumber: string; source: RestaurantOrderSource; fulfillmentType: RestaurantFulfillmentType;
     status: RestaurantOrderStatus; paymentStatus: RestaurantPaymentStatus; customerName: string | null; customerPhone: string | null;
@@ -584,7 +603,7 @@ export async function listRestaurantOrders(workspaceId: string, limit = 100, opt
     LEFT JOIN "restaurant_tables" rt ON rt."id"=ro."restaurantTableId" AND rt."workspaceId"=ro."workspaceId"
     WHERE ro."workspaceId"=${workspaceId}::uuid
       ${statusFilter} ${sourceFilter} ${outstandingFilter}
-    ORDER BY ro."createdAt" ${direction}, ro."id" ${direction}
+    ORDER BY ${orderBy}
     LIMIT ${safeLimit}
   `;
   return rows.map((row) => ({ ...row, total: Number(row.total) }));

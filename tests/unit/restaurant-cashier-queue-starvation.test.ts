@@ -28,6 +28,7 @@ vi.mock("@/lib/server/restaurant-payment-accounts", () => ({ listRestaurantColle
 vi.mock("@/lib/server/restaurant-ready-handoff", () => ({
   listRestaurantReadyAtByOrderIds: mocks.readyTimes,
   readyForServiceLabel: (readyAt: Date | undefined) => readyAt ? { label: "Ready for 12 min", delayed: true } : { label: "Ready, time unavailable", delayed: false },
+  sortReadyOrderQueue: (orders: unknown[]) => orders,
 }));
 vi.mock("@/components/restaurant/station-auto-refresh", () => ({
   RestaurantStationAutoRefresh: () => null,
@@ -79,10 +80,12 @@ describe("Cashier board queue starvation protection", () => {
     expect(html).toContain("CONFIRMED-0");
     expect(html).toContain("60+");
     expect(html).toContain("Showing oldest first");
-    for (const status of ["PENDING_REVIEW", "CONFIRMED", "PREPARING", "READY"]) {
+    for (const status of ["PENDING_REVIEW", "CONFIRMED", "PREPARING"]) {
       expect(mocks.listOrders).toHaveBeenCalledWith("cashier-fixture", CASHIER_QUEUE_LIMIT,
         { statuses: [status], oldestFirst: true });
     }
+    expect(mocks.listOrders).toHaveBeenCalledWith("cashier-fixture", CASHIER_QUEUE_LIMIT,
+      { statuses: ["READY"], readyHandoffFirst: true });
     // A staff cashier only gets a bounded outstanding settlement queue, not
     // the manager's full historical financial list.
     expect(mocks.listOrders).toHaveBeenCalledWith("cashier-fixture", 40,

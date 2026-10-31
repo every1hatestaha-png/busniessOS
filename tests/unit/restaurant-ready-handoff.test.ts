@@ -43,6 +43,29 @@ describe("Price-free, tenant-scoped Kitchen to Cashier handoff", () => {
     expect(mocks.query).not.toHaveBeenCalled();
   });
 
+
+  it("applies kitchen-ready fairness in SQL before the queue limit", async () => {
+    const { Prisma } = await import("@prisma/client");
+    const { listRestaurantOrders } = await import("@/lib/server/restaurant-workspace");
+    mocks.query.mockResolvedValueOnce([]);
+    await listRestaurantOrders("synthetic-tenant", 60, {
+      statuses: ["READY"], readyHandoffFirst: true,
+    });
+    const call = mocks.query.mock.calls.at(-1)!;
+    const sql = Prisma.sql(call[0], ...call.slice(1)).text;
+    expect(sql).toContain('MAX(kt."readyAt")');
+    expect(sql).toContain('kt."workspaceId"=ro."workspaceId"');
+    expect(sql).toContain('kt."restaurantOrderId"=ro."id"');
+    expect(sql).toContain("'infinity'::timestamptz");
+    expect(sql.indexOf('MAX(kt."readyAt")')).toBeLessThan(sql.indexOf("LIMIT"));
+    expect(sql).toContain('ro."workspaceId"=');
+    mocks.query.mockClear();
+    await expect(listRestaurantOrders("synthetic-tenant", 60, {
+      statuses: ["CONFIRMED"], readyHandoffFirst: true,
+    })).rejects.toThrow("requires only READY orders");
+    expect(mocks.query).not.toHaveBeenCalled();
+  });
+
   it("prioritizes actual Kitchen ready timestamp without mutating the original order list", async () => {
     const { sortReadyOrderQueue } = await import("@/lib/server/restaurant-ready-handoff");
     const orders = [

@@ -53,7 +53,7 @@ export default async function RestaurantOrdersPage() {
     listRestaurantOrders(workspaceId, CASHIER_QUEUE_LIMIT, { statuses: ["PENDING_REVIEW"], oldestFirst: true }),
     listRestaurantOrders(workspaceId, CASHIER_QUEUE_LIMIT, { statuses: ["CONFIRMED"], oldestFirst: true }),
     listRestaurantOrders(workspaceId, CASHIER_QUEUE_LIMIT, { statuses: ["PREPARING"], oldestFirst: true }),
-    listRestaurantOrders(workspaceId, CASHIER_QUEUE_LIMIT, { statuses: ["READY"], oldestFirst: true }),
+    listRestaurantOrders(workspaceId, CASHIER_QUEUE_LIMIT, { statuses: ["READY"], readyHandoffFirst: true }),
     canManageFinancialActions ? listRestaurantOrders(workspaceId, 30, { statuses: ["COMPLETED", "CANCELLED"] }) : Promise.resolve([]),
     listRestaurantOrders(workspaceId, outstandingLimit, { statuses: ["COMPLETED"], oldestFirst: true, outstandingOnly: true }),
     listRestaurantCollectionAccountChoices(workspaceId),
@@ -105,7 +105,7 @@ export default async function RestaurantOrdersPage() {
       {payments.length === 500 ? <p className="text-sm text-amber-700">Showing the latest 500 payments for these orders. Open an order receipt for its complete payment history.</p> : null}
       {columns.filter((column) => activeByStatus[column.status].length === CASHIER_QUEUE_LIMIT).map((column) => (
         <p key={column.status} className="text-sm text-amber-700">
-          {column.label} has at least {CASHIER_QUEUE_LIMIT} orders. Showing oldest first; finish or review them to reveal the backlog.
+          {column.label} has at least {CASHIER_QUEUE_LIMIT} orders. {column.status === "READY" ? "Showing oldest Kitchen-ready tickets first, with missing timestamps last." : "Showing oldest first; finish or review them to reveal the backlog."}
         </p>
       ))}
       <div className="grid gap-4 xl:grid-cols-4">
