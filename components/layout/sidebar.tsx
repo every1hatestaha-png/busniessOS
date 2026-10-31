@@ -62,6 +62,7 @@ const routes: SidebarRoute[] = [
   { href: "/restaurant/manager/insights", label: "Restaurant Insights", icon: ChartNoAxesCombined, financial: true, module: "restaurant" },
   { href: "/restaurant/manager/floor", label: "Table Floor", icon: LayoutDashboard, financial: true, module: "restaurant" },
   { href: "/restaurant/manager/instructions", label: "Kitchen Corrections", icon: ClipboardList, financial: true, module: "restaurant" },
+  { href: "/restaurant/manager/kitchen-performance", label: "Kitchen Performance", icon: ChefHat, financial: true, module: "restaurant" },
   { href: "/restaurant/pos", label: "Order Taking", icon: ShoppingCart, module: "restaurant" },
   { href: "/restaurant/orders", label: "Orders", icon: ClipboardList, module: "restaurant" },
   { href: "/restaurant/kitchen", label: "Kitchen", icon: ChefHat, module: "restaurant" },
