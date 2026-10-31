@@ -24,8 +24,16 @@ function redirectWithCookies(url: URL, authResponse: NextResponse) {
   return copyResponseCookies(authResponse, NextResponse.redirect(url));
 }
 
+function trustedPageHeaders(request: NextRequest) {
+  // Rebuild this from the actual URL on every request. Never trust an
+  // x-munshios-internal-path header supplied by a client.
+  const forwarded = new Headers(request.headers);
+  forwarded.set("x-munshios-internal-path", request.nextUrl.pathname);
+  return forwarded;
+}
+
 async function getSupabaseSessionState(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  let response = NextResponse.next({ request: { headers: trustedPageHeaders(request) } });
   const { url, publishableKey } = getSupabasePublicConfig();
 
   const supabase = createServerClient(url, publishableKey, {
@@ -38,7 +46,7 @@ async function getSupabaseSessionState(request: NextRequest) {
           request.cookies.set(name, value);
         }
 
-        response = NextResponse.next({ request });
+        response = NextResponse.next({ request: { headers: trustedPageHeaders(request) } });
         for (const { name, value, options } of cookiesToSet) {
           response.cookies.set(name, value, options);
         }
@@ -211,7 +219,7 @@ const clerkProxy = clerkMiddleware(
     if (isElectron) {
       if (!authHeader) return NextResponse.redirect(new URL("/desktop-auth", request.url));
       await auth.protect({ token: ["session_token", "oauth_token"] });
-      return NextResponse.next();
+      return NextResponse.next({ request: { headers: trustedPageHeaders(request) } });
     }
 
     if (isApiV1Request(path)) {
