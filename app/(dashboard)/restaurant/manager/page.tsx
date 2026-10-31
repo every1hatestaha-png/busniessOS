@@ -64,15 +64,15 @@ export default async function RestaurantManagerPage() {
   };
 
   return (
-    <div className="mx-auto max-w-[1480px] space-y-5">
-      <section className="flex flex-col gap-4 rounded-3xl border bg-[linear-gradient(135deg,#071821_0%,#0a2526_58%,#0a3d30_100%)] p-5 text-white shadow-sm sm:p-6 lg:flex-row lg:items-center lg:justify-between">
+    <div className="mx-auto max-w-[1480px] space-y-6">
+      <section className="flex flex-col gap-5 rounded-[30px] border border-emerald-900/15 bg-[linear-gradient(135deg,#071821_0%,#0a2526_58%,#0a3d30_100%)] p-6 text-white shadow-[0_24px_55px_-35px_rgba(3,32,25,0.65)] sm:p-8 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-300">
             <Sparkles className="size-3.5" />
             Manager station
           </div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-[-0.03em] sm:text-3xl">{workspace.name}</h1>
-          <p className="mt-1 text-sm text-slate-300">Owner and manager view · sales, service and readiness. Access is restricted server-side.</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-[-0.045em] sm:text-4xl">{workspace.name}</h1>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">Restaurant operations, team access, sales and service readiness. Visible to managers only.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link href="/restaurant" className={cn(buttonVariants({ variant: "outline" }), "border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white")}>Switch station</Link>
@@ -81,7 +81,7 @@ export default async function RestaurantManagerPage() {
         </div>
       </section>
 
-      <div className="flex justify-end"><RestaurantStationAutoRefresh label="Manager overview" intervalSeconds={30} /></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs font-medium text-slate-500">Private management overview. Staff stations do not show this financial dashboard.</p><RestaurantStationAutoRefresh label="Manager overview" intervalSeconds={30} /></div>
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Metric label="Today's sales" value={`Rs ${metrics.todaySales.toLocaleString()}`} detail={`${metrics.todayOrders} orders today`} tone="emerald" />
         <Metric label="Live orders" value={String(metrics.liveOrders)} detail={`${metrics.readyOrders} ready for service`} tone="amber" />
@@ -212,11 +212,11 @@ export default async function RestaurantManagerPage() {
 function Metric({ label, value, detail, tone }: { label: string; value: string; detail: string; tone: "emerald" | "amber" | "blue" | "red" }) {
   const dot = tone === "amber" ? "bg-amber-500" : tone === "blue" ? "bg-blue-500" : tone === "red" ? "bg-red-500" : "bg-emerald-500";
   return (
-    <Card className="rounded-2xl border shadow-none">
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between gap-3"><p className="text-xs font-medium text-muted-foreground">{label}</p><span className={cn("size-2.5 rounded-full", dot)} /></div>
-        <p className="mt-3 text-2xl font-semibold tracking-tight tabular-nums">{value}</p>
-        <p className="mt-1 text-[11px] text-muted-foreground">{detail}</p>
+    <Card className="rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_30px_-25px_rgba(15,23,42,0.35)]">
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between gap-3"><p className="text-xs font-medium text-slate-500">{label}</p><span className={cn("size-2.5 rounded-full", dot)} /></div>
+        <p className="mt-4 text-3xl font-semibold tracking-[-0.045em] tabular-nums text-slate-950">{value}</p>
+        <p className="mt-1 text-[11px] leading-5 text-slate-500">{detail}</p>
       </CardContent>
     </Card>
   );
