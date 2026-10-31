@@ -13,6 +13,7 @@ import {
 } from "@/lib/server/restaurant-cash-shifts";
 import { updateLegacyKitchenTicketStatusSafely } from "@/lib/server/restaurant-legacy-kot";
 import { transferRestaurantDineInTable } from "@/lib/server/restaurant-table-transfer";
+import { correctRestaurantKitchenInstructions } from "@/lib/server/restaurant-instruction-corrections";
 import {
   createKitchenTicket,
   createRecipe,
@@ -262,5 +263,38 @@ export async function transferRestaurantTableAction(
     };
   } catch (error) {
     return fail(messageFor(error, "Table transfer could not be completed. Refresh floor availability and try again."));
+  }
+}
+
+/** Manager-only instruction correction. It never changes order quantities or totals. */
+export async function correctRestaurantInstructionsAction(
+  _previous: RestaurantActionState,
+  formData: FormData,
+): Promise<RestaurantActionState> {
+  const orderId = String(formData.get("orderId") ?? "").trim();
+  const expectedNotes = String(formData.get("expectedNotes") ?? "");
+  const newNotes = String(formData.get("newNotes") ?? "");
+  const reason = String(formData.get("reason") ?? "");
+  const { workspaceId, role, user } = await requireWorkspace();
+  if (restaurantFormWorkspaceChanged(formData, workspaceId)) {
+    return fail("Workspace changed. Refresh before changing a kitchen instruction.");
+  }
+  try {
+    await assertRestaurantMutationAccess(workspaceId);
+    await assertRestaurantStation({ workspaceId, role, userId: user.id }, "MANAGER");
+    const result = await correctRestaurantKitchenInstructions(
+      { workspaceId, role, userId: user.id }, orderId, expectedNotes, newNotes, reason,
+    );
+    revalidatePath("/restaurant/kitchen");
+    revalidatePath("/restaurant/manager");
+    revalidatePath("/restaurant/manager/instructions");
+    return {
+      status: "success",
+      message: result.updated
+        ? `${result.orderNumber} kitchen instructions updated. The visible Kitchen queue will refresh.`
+        : "The instructions are unchanged.",
+    };
+  } catch (error) {
+    return fail(messageFor(error, "Could not update kitchen instructions. Refresh the order and retry."));
   }
 }
