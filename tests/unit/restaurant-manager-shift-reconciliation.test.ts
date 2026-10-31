@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   role: "OWNER" as "OWNER" | "MANAGER" | "STAFF",
   listCashShifts: vi.fn(),
   listModules: vi.fn(),
+  listReviews: vi.fn(),
   redirect: vi.fn((path: string): never => { throw new Error(`redirect:${path}`); }),
 }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
@@ -15,6 +16,8 @@ vi.mock("@/lib/server/auth", () => ({
     workspace: { name: "Synthetic Restaurant", timezone: "Asia/Karachi" },
   }),
 }));
+vi.mock("@/app/(dashboard)/restaurant/mutation-form", () => ({ RestaurantMutationForm: () => null }));
+vi.mock("@/lib/server/restaurant-shift-review", () => ({ listRestaurantCashVarianceReviews: mocks.listReviews }));
 vi.mock("@/lib/server/industry-modules", () => ({
   listWorkspaceModules: mocks.listModules,
   listCashShifts: mocks.listCashShifts,
@@ -24,6 +27,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.role = "OWNER";
   mocks.listModules.mockResolvedValue([{ moduleKey: "restaurant", enabled: true }]);
+  mocks.listReviews.mockResolvedValue(new Set());
   mocks.listCashShifts.mockResolvedValue([
     {
       id: "shift-a", status: "CLOSED", openingCash: 1000, expectedCash: 1400,
@@ -48,6 +52,7 @@ describe("Manager-only cash reconciliation", () => {
     expect(html).toContain("Rs 1,400.00");
     expect(html).toContain("Rs -100.00");
     expect(mocks.listCashShifts).toHaveBeenCalledWith("synthetic-restaurant");
+    expect(mocks.listReviews).toHaveBeenCalledWith("synthetic-restaurant", ["shift-a"]);
   });
 
   it("denies staff before reading financial history", async () => {
@@ -55,6 +60,7 @@ describe("Manager-only cash reconciliation", () => {
     const { default: Page } = await import("@/app/(dashboard)/restaurant/manager/shifts/page");
     await expect(Page()).rejects.toThrow("redirect:/restaurant");
     expect(mocks.listCashShifts).not.toHaveBeenCalled();
+    expect(mocks.listReviews).not.toHaveBeenCalled();
     expect(mocks.listModules).not.toHaveBeenCalled();
   });
 });

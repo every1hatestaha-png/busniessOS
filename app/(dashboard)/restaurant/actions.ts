@@ -13,6 +13,7 @@ import {
 } from "@/lib/server/restaurant-cash-shifts";
 import { updateLegacyKitchenTicketStatusSafely } from "@/lib/server/restaurant-legacy-kot";
 import { correctRestaurantKitchenInstructions } from "@/lib/server/restaurant-instruction-corrections";
+import { reviewRestaurantCashVariance } from "@/lib/server/restaurant-shift-review";
 import {
   createKitchenTicket,
   createRecipe,
@@ -261,5 +262,31 @@ export async function correctRestaurantInstructionsAction(
     };
   } catch (error) {
     return fail(messageFor(error, "Could not update kitchen instructions. Refresh the order and retry."));
+  }
+}
+
+/** Acknowledgement appends an audit record. It cannot modify ledger cash. */
+export async function reviewRestaurantCashVarianceAction(formData: FormData): Promise<RestaurantActionState> {
+  const shiftId = String(formData.get("shiftId") ?? "").trim();
+  const explanation = String(formData.get("explanation") ?? "").trim();
+  const { workspaceId, role, user } = await requireWorkspace();
+  if (restaurantFormWorkspaceChanged(formData, workspaceId)) {
+    return fail("Workspace changed. Refresh the shift report before reviewing.");
+  }
+  try {
+    await assertRestaurantMutationAccess(workspaceId);
+    await assertRestaurantStation({ workspaceId, role, userId: user.id }, "MANAGER");
+    const result = await reviewRestaurantCashVariance(
+      { workspaceId, role, userId: user.id }, shiftId, explanation,
+    );
+    revalidatePath("/restaurant/manager/shifts");
+    return {
+      status: "success",
+      message: result.reviewed
+        ? "Cash variance review recorded in the manager audit trail."
+        : "This shift already has a manager review. No duplicate record was created.",
+    };
+  } catch (error) {
+    return fail(messageFor(error, "Could not record this shift review. Refresh the report and retry."));
   }
 }

@@ -1,5 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { reviewRestaurantCashVarianceAction } from "@/app/(dashboard)/restaurant/actions";
+import { RestaurantMutationForm } from "@/app/(dashboard)/restaurant/mutation-form";
+import { Button } from "@/components/ui/button";
+import { listRestaurantCashVarianceReviews } from "@/lib/server/restaurant-shift-review";
 import { ArrowLeft, Banknote, CheckCircle2, ClipboardCheck, TriangleAlert } from "lucide-react";
 
 import { requireWorkspace } from "@/lib/server/auth";
@@ -19,6 +23,8 @@ export default async function RestaurantShiftReconciliationPage() {
   const shifts = await listCashShifts(workspaceId);
   const closed = shifts.filter(shift => shift.status === "CLOSED" && shift.variance !== null);
   const variances = closed.filter(shift => Math.abs(shift.variance ?? 0) >= 0.01);
+  const reviewed = await listRestaurantCashVarianceReviews(workspaceId, variances.map(shift => shift.id));
+  const pendingReviews = variances.filter(shift => !reviewed.has(shift.id)).length;
   const open = shifts.filter(shift => shift.status === "OPEN");
   const cashVariance = closed.reduce((sum, shift) => sum + (shift.variance ?? 0), 0);
   const timezone = workspace.timezone || "Asia/Karachi";
@@ -43,14 +49,14 @@ export default async function RestaurantShiftReconciliationPage() {
       <section aria-label="Recent shift reconciliation summary" className="grid gap-3 sm:grid-cols-3">
         <Summary icon={Banknote} title="Open shifts" value={String(open.length)} note="Among the latest 30 shifts" />
         <Summary icon={ClipboardCheck} title="Closed shifts" value={String(closed.length)} note="Recent counted closes" />
-        <Summary icon={TriangleAlert} title="Shifts with a difference" value={String(variances.length)} note={`Combined net variance: ${money(cashVariance)}`} attention={variances.length > 0} />
+        <Summary icon={TriangleAlert} title="Unreviewed cash differences" value={String(pendingReviews)} note={`${variances.length} differences recorded. Combined variance ${money(cashVariance)}`} attention={pendingReviews > 0} />
       </section>
 
       <section className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm" aria-labelledby="shift-history-title">
         <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-100 p-5 sm:p-6">
           <div>
             <h2 id="shift-history-title" className="text-lg font-semibold text-slate-950">Recent shifts</h2>
-            <p className="mt-1 text-xs text-slate-500">Every closed shift retains its ledger variance and immutable audit event.</p>
+            <p className="mt-1 text-xs text-slate-500">Closing figures are preserved. Reviewing a difference adds a manager audit event without changing the ledger.</p>
           </div>
           <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700">{shifts.length} shown</span>
         </div>
@@ -58,7 +64,7 @@ export default async function RestaurantShiftReconciliationPage() {
           <div className="p-10 text-center text-sm text-slate-500">No cash shifts recorded for this restaurant.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[840px] border-collapse text-left text-sm">
+            <table className="w-full min-w-[1040px] border-collapse text-left text-sm">
               <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
                   <th scope="col" className="px-5 py-4">Opened</th>
@@ -67,6 +73,7 @@ export default async function RestaurantShiftReconciliationPage() {
                   <th scope="col" className="px-4 py-4 text-right">Expected</th>
                   <th scope="col" className="px-4 py-4 text-right">Counted</th>
                   <th scope="col" className="px-5 py-4 text-right">Variance</th>
+                  <th scope="col" className="px-5 py-4">Manager review</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -93,6 +100,27 @@ export default async function RestaurantShiftReconciliationPage() {
                           </span>
                           <span className="text-[10px] font-medium">{label}</span>
                         </span>
+                      </td>
+                      <td className="min-w-[250px] px-5 py-4">
+                        {!nonzero ? (
+                          <span className="text-xs text-slate-500">No review needed</span>
+                        ) : reviewed.has(shift.id) ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-800">
+                            <CheckCircle2 className="size-4" aria-hidden="true" /> Reviewed
+                          </span>
+                        ) : (
+                          <RestaurantMutationForm action={reviewRestaurantCashVarianceAction} workspaceId={workspaceId}
+                            className="flex min-w-[220px] flex-col gap-2">
+                            <input type="hidden" name="shiftId" value={shift.id} />
+                            <input name="explanation" required minLength={10} maxLength={500}
+                              placeholder="Explain the shortage or overage"
+                              aria-label={`Review reason for shift ${shift.id}`}
+                              className="min-h-10 rounded-xl border border-slate-200 px-3 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" />
+                            <Button type="submit" size="sm" className="min-h-10 rounded-xl bg-emerald-700 hover:bg-emerald-800">
+                              Record review
+                            </Button>
+                          </RestaurantMutationForm>
+                        )}
                       </td>
                     </tr>
                   );
