@@ -21,14 +21,15 @@ export default async function RestaurantStaffStationsPage() {
         <Link href="/restaurant/manager" className="text-sm font-semibold text-emerald-700 hover:underline">Back to manager</Link>
         <h1 className="mt-3 text-2xl font-semibold tracking-tight">Staff stations</h1>
         <p className="mt-2 text-sm leading-6 text-slate-600">
-          Assign each staff member to either Cashier or Kitchen. Unassigned staff cannot operate either station.
-          Owners, admins and managers can supervise both.
+          Use three accounts in this one restaurant: your owner or manager account, an Order Taking account, and a Kitchen account.
+          Invite the two workers with the STAFF role in Settings. Once they accept, assign their station below.
+          An unassigned staff account cannot operate either station.
         </p>
       </header>
       <section aria-label="Restaurant staff assignments" className="space-y-3">
         {!staff.length && (
           <p className="rounded-2xl border bg-white p-5 text-sm text-slate-600">
-            No staff members yet. Invite staff through workspace settings, then return here to assign their station.
+            No staff members yet. <Link href="/settings" className="font-semibold text-emerald-700 underline underline-offset-4">Invite two STAFF accounts in Settings</Link>, one for Order Taking and one for Kitchen. Have them accept their invitations, then return here to assign station access.
           </p>
         )}
         {staff.map((person) => (
@@ -42,7 +43,7 @@ export default async function RestaurantStaffStationsPage() {
                 <select name="station" defaultValue={person.station ?? "NONE"}
                   className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm">
                   <option value="NONE">No access</option>
-                  <option value="CASHIER">Cashier — orders and billing</option>
+                  <option value="CASHIER">Order Taking — orders and billing</option>
                   <option value="KITCHEN">Kitchen — preparation only</option>
                 </select>
               </label>
