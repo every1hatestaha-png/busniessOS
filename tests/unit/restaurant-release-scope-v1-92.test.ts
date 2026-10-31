@@ -11,7 +11,7 @@ vi.mock("@/lib/server/restaurant-stations", () => ({
 }));
 vi.mock("@/lib/server/products", () => ({ listProducts: async () => [] }));
 vi.mock("@/lib/server/sales", () => ({ listSales: async () => [] }));
-vi.mock("@/lib/server/accounting", () => ({ getCashBankAccounts: async () => [] }));
+vi.mock("@/lib/server/restaurant-payment-accounts", () => ({ listRestaurantCollectionAccountChoices: async () => [] }));
 vi.mock("@/lib/server/restaurant-integrity", () => ({ listRestaurantPayments: async () => [] }));
 vi.mock("@/lib/server/restaurant-payment-summary", () => ({ listRestaurantNetPaymentSummaries: async () => [] }));
 vi.mock("@/app/(dashboard)/restaurant/restaurant-controls", () => ({ RestaurantControls: () => null }));

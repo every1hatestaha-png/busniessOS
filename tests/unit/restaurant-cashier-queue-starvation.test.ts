@@ -23,7 +23,7 @@ vi.mock("@/lib/server/restaurant-integrity", () => ({ listRestaurantPayments: mo
 vi.mock("@/lib/server/restaurant-payment-summary", () => ({
   listRestaurantNetPaymentSummaries: mocks.listSummaries,
 }));
-vi.mock("@/lib/server/accounting", () => ({ getCashBankAccounts: mocks.listAccounts }));
+vi.mock("@/lib/server/restaurant-payment-accounts", () => ({ listRestaurantCollectionAccountChoices: mocks.listAccounts }));
 vi.mock("@/components/restaurant/station-auto-refresh", () => ({
   RestaurantStationAutoRefresh: () => null,
 }));

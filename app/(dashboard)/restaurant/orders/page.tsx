@@ -12,7 +12,7 @@ import {
 } from "@/app/(dashboard)/restaurant/v1-actions";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { getCashBankAccounts } from "@/lib/server/accounting";
+import { listRestaurantCollectionAccountChoices } from "@/lib/server/restaurant-payment-accounts";
 import { requireWorkspace } from "@/lib/server/auth";
 import { assertRestaurantStation } from "@/lib/server/restaurant-stations";
 import { listRestaurantPayments, type RestaurantPaymentRecord } from "@/lib/server/restaurant-integrity";
@@ -53,7 +53,7 @@ export default async function RestaurantOrdersPage() {
     listRestaurantOrders(workspaceId, CASHIER_QUEUE_LIMIT, { statuses: ["READY"], oldestFirst: true }),
     canManageFinancialActions ? listRestaurantOrders(workspaceId, 30, { statuses: ["COMPLETED", "CANCELLED"] }) : Promise.resolve([]),
     listRestaurantOrders(workspaceId, outstandingLimit, { statuses: ["COMPLETED"], oldestFirst: true, outstandingOnly: true }),
-    getCashBankAccounts(workspaceId),
+    listRestaurantCollectionAccountChoices(workspaceId),
   ]);
   const activeByStatus = {
     PENDING_REVIEW: pendingReview,
@@ -127,7 +127,7 @@ function OrderCard({
 }: {
   workspaceId: string;
   order: Awaited<ReturnType<typeof listRestaurantOrders>>[number];
-  cashAccounts: Awaited<ReturnType<typeof getCashBankAccounts>>;
+  cashAccounts: Awaited<ReturnType<typeof listRestaurantCollectionAccountChoices>>;
   payments: RestaurantPaymentRecord[];
   paymentSummary?: PaymentSummary;
   canVoidPayments: boolean;
@@ -155,7 +155,7 @@ function PaymentPanel({
   workspaceId: string;
   orderId: string;
   paymentStatus: string;
-  cashAccounts: Awaited<ReturnType<typeof getCashBankAccounts>>;
+  cashAccounts: Awaited<ReturnType<typeof listRestaurantCollectionAccountChoices>>;
   payments: RestaurantPaymentRecord[];
   paymentSummary?: PaymentSummary;
   canVoidPayments: boolean;
