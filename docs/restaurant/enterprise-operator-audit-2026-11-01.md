@@ -22,7 +22,7 @@ This is a functioning operational beta with a legitimate tenant-aware ERP founda
 2. POS to kitchen to ready to cashier completion to partial/split payment to receipt, tested simultaneously in two browsers. Include network loss, double-clicks, retries, status races, permissions revoked mid-session and tenant-crossing IDs. There is no successful authenticated multi-device sign-off yet.
 3. Clear all required CI gates. Five prior regressions followed changed station routing labels/limits; tests were updated to assert intended behavior, not to drop permission coverage. New exact-SHA CI must pass.
 4. Investigate GHSA-rmxm-3fg6-px4f (@hono/node-server): upstream security advisory published 2026-10-28, fixed release v2.1.3. Trace the transitive dependency and affected use of serveStatic. Upgrade safely with lockfile regeneration and test, do NOT add a silent audit exception.
-5. Cash shift closeout must reconcile expected vs counted cash with manager signoff and immutable variance/audit, including refunds, canceled orders, payment reversals and shift ownership. Existing open/close controls alone are insufficient proof.
+5. Existing cash shift closeout already uses ledger-backed expected vs physically counted cash, stores variance and writes an audit event. The new manager-only Shift Reconciliation screen surfaces this last-30 history. Remaining acceptance: verify refunds, payment reversals, cancellations and concurrency against counted cash, and introduce a separate manager acknowledgment/sign-off process for unexplained differences. Do not conflate existing settlement with verified sign-off.
 6. Print a physical 80mm KOT and customer receipt on actual kitchen/cashier hardware. Confirm duplicate reprints visibly marked and test paper loss/printer offline.
 
 ### P1: Restaurant service operations
@@ -47,6 +47,7 @@ This is a functioning operational beta with a legitimate tenant-aware ERP founda
 - Restored cashiers' bounded pending-settlement tests and explicit exclusion of historical completion rows. All active stage reads remain independent.
 - Added ticket age and delayed count to Kitchen with deterministic tests. Age is measured from order creation, not inferred from cooking-start time.
 - Corrected Manager's todaySales SQL to subtract restaurant item returns and compensating reversals for completed orders on the restaurant-local current day, protecting against gross-revenue overstatement; added SQL-shape regression.
+- Added manager-only /restaurant/manager/shifts with last-30 shift variance history. This reuses the existing ledger-close and immutable audit design without adding a second financial truth or modifying billing and settlement.
 - Verified isolated QA aggregated completed orders: gross PKR 8,900, net after returns PKR 8,500 (76 completed orders across entire QA DB, NOT the particular user's workspace). This is historical QA evidence, not a production sales report.
 
 ## Launch acceptance
