@@ -29,6 +29,7 @@ const management = [
   "/restaurant",
   "/restaurant/manager",
   "/restaurant/manager/staff",
+  "/restaurant/manager/shifts",
   "/restaurant/menu",
   "/restaurant/whatsapp",
   "/inventory",
