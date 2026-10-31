@@ -51,7 +51,7 @@ export default async function RestaurantKitchenPage() {
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">Kitchen display</p>
           <h1 className="mt-1 text-xl font-semibold tracking-tight">{workspace.name} kitchen</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Kitchen tickets update every 12 seconds when this tab is visible, or manually on demand.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Kitchen tickets update every 5 seconds when this tab is visible, or manually on demand.</p>
         </div>
         <div className="flex flex-col items-start gap-2 sm:items-end">
           <KitchenQueueRefresh />
