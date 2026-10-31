@@ -60,6 +60,7 @@ const routes: SidebarRoute[] = [
   { href: "/restaurant/manager/staff", label: "Staff Stations", icon: Users, financial: true, module: "restaurant" },
   { href: "/restaurant/manager/shifts", label: "Shift Reconciliation", icon: Landmark, financial: true, module: "restaurant" },
   { href: "/restaurant/manager/insights", label: "Restaurant Insights", icon: ChartNoAxesCombined, financial: true, module: "restaurant" },
+  { href: "/restaurant/manager/floor", label: "Table Floor", icon: LayoutDashboard, financial: true, module: "restaurant" },
   { href: "/restaurant/pos", label: "Order Taking", icon: ShoppingCart, module: "restaurant" },
   { href: "/restaurant/orders", label: "Orders", icon: ClipboardList, module: "restaurant" },
   { href: "/restaurant/kitchen", label: "Kitchen", icon: ChefHat, module: "restaurant" },
