@@ -15,6 +15,7 @@ import { isRestaurantManager } from "@/lib/restaurant/station-policy";
 import { KITCHEN_TICKET_BATCH_LIMIT, kitchenVisibleCount } from "@/lib/restaurant/kitchen-queue";
 import { kitchenDelayedCount, kitchenTicketAge } from "@/lib/restaurant/ticket-age";
 import { cn } from "@/lib/utils";
+import { formatRestaurantKitchenClock } from "@/lib/restaurant/timezone-format";
 
 const kitchenColumns = [
   { status: "CONFIRMED", label: "New", icon: Clock3, next: "PREPARING", action: "Start preparing", tone: "blue" },
@@ -103,10 +104,10 @@ export default async function RestaurantKitchenPage() {
                   <span className={cn("grid size-8 place-items-center rounded-xl", headTone)}><Icon className="size-4" /></span>
                   <div>
                     <h2 className="text-sm font-semibold">{column.label}</h2>
-                    <p className="text-[11px] text-muted-foreground">{matching.length} order{matching.length === 1 ? "" : "s"}</p>
+                    <p className="text-[11px] text-muted-foreground">{kitchenVisibleCount(matching.length)} order{matching.length === 1 ? "" : "s"}</p>
                   </div>
                 </div>
-                <span className={cn("rounded-full px-2.5 py-1 text-xs font-semibold", headTone)}>{matching.length}</span>
+                <span className={cn("rounded-full px-2.5 py-1 text-xs font-semibold", headTone)}>{kitchenVisibleCount(matching.length)}</span>
               </div>
 
               <div className="space-y-3">
@@ -123,7 +124,7 @@ export default async function RestaurantKitchenPage() {
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-2">
                           <span className="rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">
-                            {new Intl.DateTimeFormat("en-PK", { hour: "numeric", minute: "2-digit", timeZone: restaurantTimezone }).format(order.createdAt)}
+                            {formatRestaurantKitchenClock(order.createdAt, restaurantTimezone)}
                           </span>
                           {(() => {
                             const age = kitchenTicketAge(order.createdAt, queueCheckedAt);
@@ -158,9 +159,7 @@ export default async function RestaurantKitchenPage() {
                         <div role="status" className="rounded-xl border-2 border-amber-400 bg-amber-50 px-3 py-2.5">
                           <p className="text-xs font-bold uppercase tracking-wide text-amber-950">Kitchen instructions updated</p>
                           <p className="mt-1 text-xs text-amber-900">
-                            Manager correction at {new Intl.DateTimeFormat("en-PK", {
-                              hour: "numeric", minute: "2-digit", timeZone: restaurantTimezone,
-                            }).format(updatedInstructionTimes.get(order.id)!)}.
+                            Manager correction at {formatRestaurantKitchenClock(updatedInstructionTimes.get(order.id)!, restaurantTimezone)}.
                             Check the current instructions before continuing.
                           </p>
                         </div>

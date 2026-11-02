@@ -6,10 +6,11 @@ const mock = vi.hoisted(() => ({
   orders: vi.fn(),
   lines: vi.fn(),
   instructionUpdates: vi.fn(),
+  timezone: "Asia/Karachi",
 }));
 
 vi.mock("@/lib/server/auth", () => ({
-  requireWorkspace: async () => ({ workspaceId: "restaurant-fixture", role: "STAFF", user: { id: "kitchen-fixture" }, workspace: { name: "Kitchen Fixture" } }),
+  requireWorkspace: async () => ({ workspaceId: "restaurant-fixture", role: "STAFF", user: { id: "kitchen-fixture" }, workspace: { name: "Kitchen Fixture", timezone: mock.timezone } }),
 }));
 vi.mock("@/lib/server/restaurant-stations", () => ({ assertRestaurantStation: vi.fn() }));
 vi.mock("@/lib/server/restaurant-kitchen-instruction-alerts", () => ({
@@ -31,6 +32,7 @@ vi.mock("@/app/(dashboard)/restaurant/v1-actions", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mock.timezone = "Asia/Karachi";
   mock.orders.mockImplementation(async (_workspaceId: string, stage: string) => {
     if (stage !== "CONFIRMED") return [];
     return [{
@@ -84,6 +86,20 @@ describe("restaurant V2 kitchen ticket display", () => {
     expect(mock.instructionUpdates).toHaveBeenCalledWith("restaurant-fixture", ["order-a"]);
   });
 
+  it("renders ticket and manager correction times when a legacy timezone is invalid", async () => {
+    mock.timezone = "Invalid/Legacy_Zone";
+    mock.instructionUpdates.mockResolvedValue(new Map([[
+      "order-a", new Date("2026-10-25T09:04:00Z"),
+    ]]));
+    const { default: Kitchen } = await import("@/app/(dashboard)/restaurant/kitchen/page");
+    const html = renderToStaticMarkup(await Kitchen());
+    expect(html).toContain("R-000041");
+    expect(html).toContain("Kitchen instructions updated");
+    expect(html).toContain("2:00 pm");
+    expect(html).toContain("2:04 pm");
+    expect(html).not.toContain("Rs ");
+  });
+
   it("never starves new confirmed orders behind a full ready-ticket backlog", async () => {
     const ready = Array.from({ length: 75 }, (_, i) => ({
       id: `ready-${i}`, orderNumber: `R-READY-${i}`, fulfillmentType: "TAKEAWAY",
@@ -101,6 +117,7 @@ describe("restaurant V2 kitchen ticket display", () => {
     expect(html).toContain("R-NEW-001");
     expect(html).toContain("R-READY-0");
     expect(html).toContain("75+");
+    expect(html).toContain("75+ orders");
     expect(html).toContain("Showing the oldest first");
     expect(mock.lines).toHaveBeenCalledWith("restaurant-fixture",
       expect.arrayContaining(["new-order", "ready-0"]));
