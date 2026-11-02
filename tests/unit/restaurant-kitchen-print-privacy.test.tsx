@@ -81,6 +81,25 @@ describe("Kitchen KOT privacy boundary", () => {
     }, "KITCHEN");
   });
 
+  it("prints a price-free Kitchen ticket despite an invalid legacy workspace timezone", async () => {
+    mocks.require.mockResolvedValue({
+      workspaceId: "synthetic-restaurant",
+      workspace: { name: "Private Restaurant", timezone: "Invalid/Legacy_Zone", ntn: "SECRET-NTN" },
+      role: "STAFF", user: { id: "kitchen-employee" },
+    });
+    const Page = (await import("@/app/(dashboard)/restaurant/orders/[id]/print/page")).default;
+    const html = renderToStaticMarkup(await Page({
+      params: Promise.resolve({ id: orderId }),
+      searchParams: Promise.resolve({ kind: "kot" }),
+    }));
+    expect(html).toContain("KITCHEN COPY");
+    expect(html).toContain("Order placed:");
+    expect(html).toContain("7:00 pm");
+    expect(html).not.toContain("SECRET-NTN");
+    expect(html).not.toContain("Rs ");
+    expect(mocks.receipt).not.toHaveBeenCalled();
+  });
+
   it("requires CASHIER station for normal receipts and does not load KOT", async () => {
     const Page = (await import("@/app/(dashboard)/restaurant/orders/[id]/print/page")).default;
     const element = await Page({
