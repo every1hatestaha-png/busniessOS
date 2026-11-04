@@ -10,6 +10,7 @@ import { requireWorkspace } from "@/lib/server/auth";
 import { listWorkspaceModules, listCashShifts } from "@/lib/server/industry-modules";
 import { isRestaurantManager } from "@/lib/restaurant/station-policy";
 import { cn } from "@/lib/utils";
+import { formatRestaurantOrderTime } from "@/lib/restaurant/timezone-format";
 
 const money = (value: number) => `Rs ${value.toLocaleString("en-PK", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -27,9 +28,8 @@ export default async function RestaurantShiftReconciliationPage() {
   const pendingReviews = variances.filter(shift => !reviewed.has(shift.id)).length;
   const open = shifts.filter(shift => shift.status === "OPEN");
   const cashVariance = closed.reduce((sum, shift) => sum + (shift.variance ?? 0), 0);
-  const timezone = workspace.timezone || "Asia/Karachi";
   const date = (value: Date | null) => value
-    ? new Intl.DateTimeFormat("en-PK", { dateStyle: "medium", timeStyle: "short", timeZone: timezone }).format(value)
+    ? formatRestaurantOrderTime(value, workspace.timezone)
     : "Open";
 
   return (

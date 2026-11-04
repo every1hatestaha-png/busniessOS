@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   role: "OWNER" as "OWNER" | "MANAGER" | "STAFF",
+  timezone: "Asia/Karachi",
   listCashShifts: vi.fn(),
   listModules: vi.fn(),
   listReviews: vi.fn(),
@@ -13,7 +14,7 @@ vi.mock("@/lib/server/auth", () => ({
   requireWorkspace: async () => ({
     workspaceId: "synthetic-restaurant",
     role: mocks.role,
-    workspace: { name: "Synthetic Restaurant", timezone: "Asia/Karachi" },
+    workspace: { name: "Synthetic Restaurant", timezone: mocks.timezone },
   }),
 }));
 vi.mock("@/app/(dashboard)/restaurant/mutation-form", () => ({ RestaurantMutationForm: () => null }));
@@ -26,6 +27,7 @@ vi.mock("@/lib/server/industry-modules", () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.role = "OWNER";
+  mocks.timezone = "Asia/Karachi";
   mocks.listModules.mockResolvedValue([{ moduleKey: "restaurant", enabled: true }]);
   mocks.listReviews.mockResolvedValue(new Set());
   mocks.listCashShifts.mockResolvedValue([
@@ -53,6 +55,16 @@ describe("Manager-only cash reconciliation", () => {
     expect(html).toContain("Rs -100.00");
     expect(mocks.listCashShifts).toHaveBeenCalledWith("synthetic-restaurant");
     expect(mocks.listReviews).toHaveBeenCalledWith("synthetic-restaurant", ["shift-a"]);
+  });
+
+  it("renders manager shift history with the safe fallback for an invalid legacy timezone", async () => {
+    mocks.timezone = "Invalid/Legacy_Zone";
+    const { default: Page } = await import("@/app/(dashboard)/restaurant/manager/shifts/page");
+    const invalidTimezoneHtml = renderToStaticMarkup(await Page());
+    mocks.timezone = "Asia/Karachi";
+    const fallbackHtml = renderToStaticMarkup(await Page());
+    expect(invalidTimezoneHtml).toEqual(fallbackHtml);
+    expect(invalidTimezoneHtml).toContain("Cash shift reconciliation");
   });
 
   it("denies staff before reading financial history", async () => {
