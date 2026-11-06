@@ -91,6 +91,35 @@ it("cashier order with an item allergy note creates exactly one confirmed kitche
   });
 });
 
+it("rejects forged table IDs on takeaway and delivery without occupying tables or creating orders", async () => {
+  const { createPosOrderAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
+  const before = await counts();
+
+  for (const fulfillmentType of ["TAKEAWAY", "DELIVERY"] as const) {
+    const tableId = randomUUID();
+    await db.$executeRaw`
+      INSERT INTO "restaurant_tables" ("id", "workspaceId", "name", "capacity", "status")
+      VALUES (${tableId}::uuid, ${workspaceId}::uuid, ${`Non-dine-in ${fulfillmentType} ${tableId.slice(0, 8)}`}, 4, 'AVAILABLE')
+    `;
+
+    const data = form();
+    data.set("fulfillmentType", fulfillmentType);
+    data.set("restaurantTableId", tableId);
+    if (fulfillmentType === "DELIVERY") data.set("deliveryAddress", "Synthetic QA delivery address");
+
+    const result = await createPosOrderAction({ status: "idle", message: "" }, data);
+    expect(result.status).toBe("error");
+
+    const tables = await db.$queryRaw<Array<{ status: string }>>`
+      SELECT "status" FROM "restaurant_tables"
+      WHERE "id"=${tableId}::uuid AND "workspaceId"=${workspaceId}::uuid
+    `;
+    expect(tables).toEqual([{ status: "AVAILABLE" }]);
+  }
+
+  expect(await counts()).toEqual(before);
+});
+
 it("Kitchen query returns operational order fields without financial or customer data", async () => {
   const { createPosOrderAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
   const { listKitchenOrders } = await import("@/lib/server/restaurant-kitchen-orders");

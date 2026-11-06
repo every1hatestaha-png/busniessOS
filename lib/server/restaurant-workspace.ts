@@ -155,6 +155,9 @@ async function insertRestaurantOrder(
   if (input.fulfillmentType === "DINE_IN" && !input.restaurantTableId) {
     throw new IndustryDomainError("INVALID_STATE", "Dine-in orders require a restaurant table.");
   }
+  if (input.fulfillmentType !== "DINE_IN" && input.restaurantTableId) {
+    throw new IndustryDomainError("INVALID_STATE", "Only dine-in orders can reserve a restaurant table.");
+  }
   if (input.fulfillmentType === "DELIVERY" && !input.deliveryAddress?.trim()) {
     throw new IndustryDomainError("INVALID_STATE", "Delivery orders require an address.");
   }
