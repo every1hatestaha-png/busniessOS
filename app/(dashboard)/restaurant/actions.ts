@@ -70,6 +70,9 @@ export async function openCashShiftAction(
   if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
     await assertRestaurantMutationAccess(workspaceId);
+    // Kitchen staff must never open or close cash drawers through a forged
+    // server-action request. Managers and assigned Cashiers may manage shifts.
+    await assertRestaurantStation({ workspaceId, role, userId: user.id }, "CASHIER");
     await openRestaurantCashShiftSafely({ workspaceId, role, userId: user.id }, openingCash, notes || undefined);
     revalidatePath("/restaurant");
     return { status: "success", message: "Cash shift opened." };
@@ -96,6 +99,9 @@ export async function closeCashShiftAction(
   if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
     await assertRestaurantMutationAccess(workspaceId);
+    // Keep shift ownership semantics, but require the Cashier station before
+    // any ledger-backed closeout can be attempted.
+    await assertRestaurantStation({ workspaceId, role, userId: user.id }, "CASHIER");
     const result = await closeRestaurantCashShiftFromLedger(
       { workspaceId, role, userId: user.id },
       shiftId,
