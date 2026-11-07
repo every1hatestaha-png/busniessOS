@@ -69,7 +69,7 @@ describe("Restaurant cash-shift server actions respect station isolation", () =>
   afterAll(async () => {
     if (!db) return;
     await db.$executeRaw`DELETE FROM "cash_shifts" WHERE "workspaceId"=${workspaceId}::uuid`;
-    await db.$executeRaw`DELETE FROM "restaurant_staff_stations" WHERE "workspaceId"=${workspaceId}::uuid`;
+    await db.$executeRaw`DELETE FROM "restaurant_staff_stations" WHERE "workspaceId"=${workspaceId}`;
     await db.$executeRaw`DELETE FROM "workspace_modules" WHERE "workspaceId"=${workspaceId}::uuid`;
     await db.auditLog.deleteMany({ where: { workspaceId } });
     await db.workspace.delete({ where: { id: workspaceId } });
