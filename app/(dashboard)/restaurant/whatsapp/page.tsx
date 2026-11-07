@@ -3,10 +3,12 @@ import { Clock3, MessageCircleMore, ShieldCheck, ShoppingBag, Sparkles } from "l
 
 import { Card, CardContent } from "@/components/ui/card";
 import { requireWorkspace } from "@/lib/server/auth";
+import { assertRestaurantStation } from "@/lib/server/restaurant-stations";
 import { listRestaurantOrders, listWhatsappRestaurantMessages } from "@/lib/server/restaurant-workspace";
 
 export default async function RestaurantWhatsappPage() {
-  const { workspaceId, workspace } = await requireWorkspace();
+  const { workspaceId, workspace, role, user } = await requireWorkspace();
+  await assertRestaurantStation({ workspaceId, role, userId: user.id }, "CASHIER");
   const [messages, orders] = await Promise.all([
     listWhatsappRestaurantMessages(workspaceId, 100),
     listRestaurantOrders(workspaceId, 200, { statuses: ["PENDING_REVIEW"], source: "WHATSAPP", oldestFirst: true }),

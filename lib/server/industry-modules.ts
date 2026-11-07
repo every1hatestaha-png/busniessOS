@@ -205,6 +205,7 @@ export async function createRecipe(context: IndustryContext, input: { finishedPr
 }
 
 export async function createKitchenTicket(context: IndustryContext, input: { ticketNumber: string; salesOrderId?: string; restaurantTableId?: string; notes?: string }) {
+  assertManager(context);
   await requireWorkspaceModule(context.workspaceId, "restaurant");
   const ticketNumber = input.ticketNumber.trim();
   if (!ticketNumber) throw new IndustryDomainError("INVALID_STATE", "Ticket number is required.");

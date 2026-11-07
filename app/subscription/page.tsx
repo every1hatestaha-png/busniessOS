@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ArrowLeft, CalendarDays, CheckCircle2, ShieldCheck } from "lucide-react";
 
 import { getCurrentWorkspace } from "@/lib/server/auth";
@@ -31,6 +32,9 @@ export default async function SubscriptionPage() {
       </main>
     );
   }
+
+  // A restaurant employee may not inspect the owner's billing plan or renewal data.
+  if (context.vertical === "RESTAURANT" && context.role === "STAFF") redirect("/restaurant");
 
   const access = await getWorkspaceAccess(context.workspaceId);
   const endDate = access.reason === "trial"

@@ -2,7 +2,8 @@ import "server-only";
 
 import { cache } from "react";
 import { auth, clerkClient } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { canOpenRestaurantStaffPage } from "@/lib/restaurant/station-access";
 import { cookies, headers } from "next/headers";
 
 import { db } from "@/lib/server/db";
@@ -211,7 +212,7 @@ export const getCurrentUser = cache(async () => {
   if (!user) {
     const requestHeaders = await headers();
     const isElectron = (requestHeaders.get("user-agent") || "").includes("Electron");
-    redirect(isElectron ? "/desktop-auth" : "/sign-in");
+    redirect(isElectron && process.env.MUNSHIOS_DEPLOYMENT_ENVIRONMENT !== "staging" ? "/desktop-auth" : "/sign-in");
   }
   return user;
 });
@@ -262,5 +263,24 @@ export async function listCurrentUserWorkspaces() {
 export async function requireWorkspace() {
   const context = await getCurrentWorkspace();
   if (!context) redirect("/onboarding");
+
+  // Fail closed on *every* protected page/action, not only the dashboard
+  // layout (App Router can reuse that layout between client navigations).
+  // A caller-provided request header cannot spoof the path because proxy.ts
+  // always overwrites it with the real request URL.
+  if (context.vertical === "RESTAURANT" && context.role === "STAFF") {
+    const path = (await headers()).get("x-munshios-internal-path");
+    const stations = await db.$queryRaw<Array<{ station: "CASHIER" | "KITCHEN" }>>`
+      SELECT rss."station" FROM "restaurant_staff_stations" rss
+      INNER JOIN "workspace_members" wm
+        ON wm."workspaceId"=rss."workspaceId" AND wm."userId"=rss."userId"
+      WHERE rss."workspaceId"=${context.workspaceId}
+        AND rss."userId"=${context.user.id}
+        AND wm."role"='STAFF'
+      LIMIT 1
+    `;
+    if (!canOpenRestaurantStaffPage(path, stations[0]?.station ?? null)) notFound();
+  }
+
   return context;
 }

@@ -62,6 +62,26 @@ describe("password login, verification and logout event contracts", () => {
     expect(mocks.verify).not.toHaveBeenCalled();
     expect(mocks.updates).toContain(message === "Email not confirmed" ? "Your email has not been verified yet." : "Email or password is incorrect.");
   });
+  it("recovers from a rejected sign-in network request instead of keeping the button busy", async () => {
+    mocks.login.mockRejectedValue(new Error("synthetic network rejection"));
+    await submit(render(SignInPage, { 0: email, 1: password }));
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    expect(mocks.updates).toContain("Could not contact the sign-in service. Check your connection and try again.");
+    expect(mocks.updates).toContain(false);
+  });
+  it("explains isolated staging credentials without suggesting a production password reset", async () => {
+    vi.stubGlobal("window", { location: {
+      href: "https://munshios-restaurant-staging-fhy7qysh9-khzr.vercel.app/sign-in",
+      origin: "https://munshios-restaurant-staging-fhy7qysh9-khzr.vercel.app",
+      hostname: "munshios-restaurant-staging-fhy7qysh9-khzr.vercel.app",
+      assign: mocks.navigate,
+    } });
+    mocks.login.mockResolvedValue({ error: { message: "Invalid login credentials", code: "invalid_credentials", status: 400 } });
+    await submit(render(SignInPage, { 0: email, 1: password }));
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    expect(mocks.updates).toContain("This is a separate Restaurant test environment. Sign in with a staging test account, not your production MunshiOS account.");
+    expect(mocks.updates).not.toContain("Email or password is incorrect.");
+  });
   it("retains the same password across normal logout and later login", async () => {
     await submit(render(SignInPage, { 0: email, 1: password }));
     await find(render(WebAccountMenu, {}), "button")!.props.onClick!();

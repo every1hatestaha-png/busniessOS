@@ -90,6 +90,11 @@ export async function requireApiContext(permission?: Permission): Promise<ApiCon
   }
 
   const vertical = resolveWorkspaceVertical(membership.workspace);
+  // V1 ERP routes are not station APIs. Restaurant STAFF must use the
+  // dedicated server-validated cashier and kitchen flows instead.
+  if (vertical === "RESTAURANT" && membership.role === "STAFF") {
+    throw new ApiError(403, "STATION_ONLY", "This account can only access its assigned restaurant station.");
+  }
   if (!isAvailableVertical(vertical)) {
     throw new ApiError(403, "VERTICAL_UNAVAILABLE", "This workspace experience is not available yet.");
   }
