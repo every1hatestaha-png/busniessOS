@@ -12,7 +12,7 @@ describe("Restaurant server page access is fail closed", () => {
       "/dashboard", "/sales", "/reports", "/inventory", "/accounting/cash-bank",
       "/settings", "/restaurant/manager", "/restaurant/manager/staff", "/restaurant/menu",
       "/restaurant/kitchen", "/restaurant/whatsapp", `/restaurant/orders/${id}/return`,
-      // Legacy global search uses requireWorkspace and must stay outside staff station paths.
+      // Generic API paths are never valid restaurant staff station pages.
       "/api/search",
     ]) expect(canOpenRestaurantStaffPage(path, "CASHIER")).toBe(false);
   });
