@@ -66,9 +66,9 @@ describe("global search API authorization", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ results: [] });
-    expect(dbMock.customer.findMany).toHaveBeenCalledOnce();
+    expect(dbMock.customer.findMany).not.toHaveBeenCalled();
     expect(dbMock.product.findMany).toHaveBeenCalledOnce();
     expect(dbMock.salesOrder.findMany).toHaveBeenCalledOnce();
-    expect(dbMock.invoice.findMany).toHaveBeenCalledOnce();
+    expect(dbMock.invoice.findMany).not.toHaveBeenCalled();
   });
 });
