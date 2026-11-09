@@ -12,6 +12,8 @@ describe("Restaurant server page access is fail closed", () => {
       "/dashboard", "/sales", "/reports", "/inventory", "/accounting/cash-bank",
       "/settings", "/restaurant/manager", "/restaurant/manager/staff", "/restaurant/menu",
       "/restaurant/kitchen", "/restaurant/whatsapp", `/restaurant/orders/${id}/return`,
+      // Generic search and AI endpoints use requireWorkspace rather than the V1 API context.
+      "/api/search", "/api/ai/chat",
     ]) expect(canOpenRestaurantStaffPage(path, "CASHIER")).toBe(false);
   });
 
@@ -23,12 +25,13 @@ describe("Restaurant server page access is fail closed", () => {
     for (const path of [
       "/restaurant/pos", "/restaurant/orders", "/restaurant/manager", "/restaurant/menu",
       "/dashboard", "/sales", "/reports", "/inventory", "/settings", "/accounting/cash-bank",
+      "/api/search", "/api/ai/chat",
     ]) expect(canOpenRestaurantStaffPage(path, "KITCHEN")).toBe(false);
   });
 
   it("blocks unassigned staff and missing or forged path values", () => {
     expect(canOpenRestaurantStaffPage("/restaurant", null)).toBe(true);
-    for (const path of [null, "", "/", "/restaurant/pos", "/restaurant/kitchen", "/reports", "//restaurant", "/restaurant?mode=pos"]) {
+    for (const path of [null, "", "/", "/restaurant/pos", "/restaurant/kitchen", "/reports", "/api/search", "/api/ai/chat", "//restaurant", "/restaurant?mode=pos"]) {
       expect(canOpenRestaurantStaffPage(path, null)).toBe(false);
     }
     expect(canOpenRestaurantStaffPage(null, "CASHIER")).toBe(false);
