@@ -25,11 +25,20 @@ export async function GET(request: NextRequest) {
         { companyName: { contains: term, mode: "insensitive" as const } },
       ],
     };
+    const types = getSearchTypes(vertical);
     const [customers, products, sales, invoices] = await Promise.all([
-      db.customer.findMany({ where: { workspaceId, OR: [{ name: { contains: term, mode: "insensitive" } }, { companyName: { contains: term, mode: "insensitive" } }, { phone: { contains: term } }] }, take: 5, orderBy: { updatedAt: "desc" }, select: { id: true, name: true, companyName: true, phone: true } }),
-      db.product.findMany({ where: { workspaceId, OR: [{ name: { contains: term, mode: "insensitive" } }, { sku: { contains: term, mode: "insensitive" } }] }, take: 5, orderBy: { updatedAt: "desc" }, select: { id: true, name: true, sku: true, stockQuantity: true } }),
-      db.salesOrder.findMany({ where: { workspaceId, OR: [{ orderNumber: { contains: term, mode: "insensitive" } }, { customer: { is: customerNameMatch } }] }, take: 5, orderBy: { updatedAt: "desc" }, select: { id: true, orderNumber: true, total: true, customer: { select: { companyName: true, name: true } } } }),
-      db.invoice.findMany({ where: { workspaceId, OR: [{ invoiceNumber: { contains: term, mode: "insensitive" } }, { customer: { is: customerNameMatch } }] }, take: 5, orderBy: { updatedAt: "desc" }, select: { id: true, invoiceNumber: true, amount: true, customer: { select: { companyName: true, name: true } } } }),
+      types.includes("Customer")
+        ? db.customer.findMany({ where: { workspaceId, OR: [{ name: { contains: term, mode: "insensitive" } }, { companyName: { contains: term, mode: "insensitive" } }, { phone: { contains: term } }] }, take: 5, orderBy: { updatedAt: "desc" }, select: { id: true, name: true, companyName: true, phone: true } })
+        : [],
+      types.includes("Product")
+        ? db.product.findMany({ where: { workspaceId, OR: [{ name: { contains: term, mode: "insensitive" } }, { sku: { contains: term, mode: "insensitive" } }] }, take: 5, orderBy: { updatedAt: "desc" }, select: { id: true, name: true, sku: true, stockQuantity: true } })
+        : [],
+      types.includes("Order")
+        ? db.salesOrder.findMany({ where: { workspaceId, OR: [{ orderNumber: { contains: term, mode: "insensitive" } }, { customer: { is: customerNameMatch } }] }, take: 5, orderBy: { updatedAt: "desc" }, select: { id: true, orderNumber: true, total: true, customer: { select: { companyName: true, name: true } } } })
+        : [],
+      types.includes("Invoice")
+        ? db.invoice.findMany({ where: { workspaceId, OR: [{ invoiceNumber: { contains: term, mode: "insensitive" } }, { customer: { is: customerNameMatch } }] }, take: 5, orderBy: { updatedAt: "desc" }, select: { id: true, invoiceNumber: true, amount: true, customer: { select: { companyName: true, name: true } } } })
+        : [],
     ]);
     const results: SearchResult[] = [
       ...customers.map((x) => ({ id: x.id, type: "Customer" as const, title: x.companyName ?? x.name, detail: `${x.name} · ${x.phone ?? "No phone"}`, href: `/customers/${x.id}` })),
@@ -37,7 +46,6 @@ export async function GET(request: NextRequest) {
       ...sales.map((x) => ({ id: x.id, type: "Order" as const, title: x.orderNumber, detail: `${x.customer.companyName ?? x.customer.name} · Rs ${Number(x.total).toLocaleString("en-PK")}`, href: `/sales/${x.id}` })),
       ...invoices.map((x) => ({ id: x.id, type: "Invoice" as const, title: x.invoiceNumber, detail: `${x.customer.companyName ?? x.customer.name} · Rs ${Number(x.amount).toLocaleString("en-PK")}`, href: `/invoices/${x.id}` })),
     ];
-    const types = getSearchTypes(vertical);
     return NextResponse.json({ results: results.filter((result) => types.includes(result.type)).sort((a, b) => types.indexOf(a.type) - types.indexOf(b.type)).slice(0, 12) }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return apiError(error);
