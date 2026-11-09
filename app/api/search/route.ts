@@ -6,34 +6,40 @@ export async function GET(request: NextRequest) {
   // Defer server-only modules until request execution so Vercel can collect
   // route metadata in preview environments that intentionally do not expose
   // production database credentials.
-  const [{ requireWorkspace }, { db }] = await Promise.all([
-    import("@/lib/server/auth"),
+  const [{ requireApiContext, apiError }, { db }] = await Promise.all([
+    import("@/lib/server/api"),
     import("@/lib/server/db"),
   ]);
 
-  const { workspaceId, vertical } = await requireWorkspace();
-  const q = request.nextUrl.searchParams.get("q")?.trim() ?? "";
-  if (q.length < 2) return NextResponse.json({ results: [] satisfies SearchResult[] }, { headers: { "Cache-Control": "private, no-store" } });
+  try {
+    // Search is an API surface, not a station page. Use the same explicit
+    // role and tenant boundary as the other V1 endpoints.
+    const { workspaceId, vertical } = await requireApiContext("business.read");
+    const q = request.nextUrl.searchParams.get("q")?.trim() ?? "";
+    if (q.length < 2) return NextResponse.json({ results: [] satisfies SearchResult[] }, { headers: { "Cache-Control": "private, no-store" } });
 
-  const term = q.slice(0, 80);
-  const customerNameMatch = {
-    OR: [
-      { name: { contains: term, mode: "insensitive" as const } },
-      { companyName: { contains: term, mode: "insensitive" as const } },
-    ],
-  };
-  const [customers, products, sales, invoices] = await Promise.all([
-    db.customer.findMany({ where: { workspaceId, OR: [{ name: { contains: term, mode: "insensitive" } }, { companyName: { contains: term, mode: "insensitive" } }, { phone: { contains: term } }] }, take: 5, orderBy: { updatedAt: "desc" }, select: { id: true, name: true, companyName: true, phone: true } }),
-    db.product.findMany({ where: { workspaceId, OR: [{ name: { contains: term, mode: "insensitive" } }, { sku: { contains: term, mode: "insensitive" } }] }, take: 5, orderBy: { updatedAt: "desc" }, select: { id: true, name: true, sku: true, stockQuantity: true } }),
-    db.salesOrder.findMany({ where: { workspaceId, OR: [{ orderNumber: { contains: term, mode: "insensitive" } }, { customer: { is: customerNameMatch } }] }, take: 5, orderBy: { updatedAt: "desc" }, select: { id: true, orderNumber: true, total: true, customer: { select: { companyName: true, name: true } } } }),
-    db.invoice.findMany({ where: { workspaceId, OR: [{ invoiceNumber: { contains: term, mode: "insensitive" } }, { customer: { is: customerNameMatch } }] }, take: 5, orderBy: { updatedAt: "desc" }, select: { id: true, invoiceNumber: true, amount: true, customer: { select: { companyName: true, name: true } } } }),
-  ]);
-  const results: SearchResult[] = [
-    ...customers.map((x) => ({ id: x.id, type: "Customer" as const, title: x.companyName ?? x.name, detail: `${x.name} · ${x.phone ?? "No phone"}`, href: `/customers/${x.id}` })),
-    ...products.map((x) => ({ id: x.id, type: "Product" as const, title: x.name, detail: `${x.sku ?? "No SKU"} · ${x.stockQuantity} in stock`, href: `/inventory/${x.id}` })),
-    ...sales.map((x) => ({ id: x.id, type: "Order" as const, title: x.orderNumber, detail: `${x.customer.companyName ?? x.customer.name} · Rs ${Number(x.total).toLocaleString("en-PK")}`, href: `/sales/${x.id}` })),
-    ...invoices.map((x) => ({ id: x.id, type: "Invoice" as const, title: x.invoiceNumber, detail: `${x.customer.companyName ?? x.customer.name} · Rs ${Number(x.amount).toLocaleString("en-PK")}`, href: `/invoices/${x.id}` })),
-  ];
-  const types = getSearchTypes(vertical);
-  return NextResponse.json({ results: results.filter((result) => types.includes(result.type)).sort((a, b) => types.indexOf(a.type) - types.indexOf(b.type)).slice(0, 12) }, { headers: { "Cache-Control": "private, no-store" } });
+    const term = q.slice(0, 80);
+    const customerNameMatch = {
+      OR: [
+        { name: { contains: term, mode: "insensitive" as const } },
+        { companyName: { contains: term, mode: "insensitive" as const } },
+      ],
+    };
+    const [customers, products, sales, invoices] = await Promise.all([
+      db.customer.findMany({ where: { workspaceId, OR: [{ name: { contains: term, mode: "insensitive" } }, { companyName: { contains: term, mode: "insensitive" } }, { phone: { contains: term } }] }, take: 5, orderBy: { updatedAt: "desc" }, select: { id: true, name: true, companyName: true, phone: true } }),
+      db.product.findMany({ where: { workspaceId, OR: [{ name: { contains: term, mode: "insensitive" } }, { sku: { contains: term, mode: "insensitive" } }] }, take: 5, orderBy: { updatedAt: "desc" }, select: { id: true, name: true, sku: true, stockQuantity: true } }),
+      db.salesOrder.findMany({ where: { workspaceId, OR: [{ orderNumber: { contains: term, mode: "insensitive" } }, { customer: { is: customerNameMatch } }] }, take: 5, orderBy: { updatedAt: "desc" }, select: { id: true, orderNumber: true, total: true, customer: { select: { companyName: true, name: true } } } }),
+      db.invoice.findMany({ where: { workspaceId, OR: [{ invoiceNumber: { contains: term, mode: "insensitive" } }, { customer: { is: customerNameMatch } }] }, take: 5, orderBy: { updatedAt: "desc" }, select: { id: true, invoiceNumber: true, amount: true, customer: { select: { companyName: true, name: true } } } }),
+    ]);
+    const results: SearchResult[] = [
+      ...customers.map((x) => ({ id: x.id, type: "Customer" as const, title: x.companyName ?? x.name, detail: `${x.name} · ${x.phone ?? "No phone"}`, href: `/customers/${x.id}` })),
+      ...products.map((x) => ({ id: x.id, type: "Product" as const, title: x.name, detail: `${x.sku ?? "No SKU"} · ${x.stockQuantity} in stock`, href: `/inventory/${x.id}` })),
+      ...sales.map((x) => ({ id: x.id, type: "Order" as const, title: x.orderNumber, detail: `${x.customer.companyName ?? x.customer.name} · Rs ${Number(x.total).toLocaleString("en-PK")}`, href: `/sales/${x.id}` })),
+      ...invoices.map((x) => ({ id: x.id, type: "Invoice" as const, title: x.invoiceNumber, detail: `${x.customer.companyName ?? x.customer.name} · Rs ${Number(x.amount).toLocaleString("en-PK")}`, href: `/invoices/${x.id}` })),
+    ];
+    const types = getSearchTypes(vertical);
+    return NextResponse.json({ results: results.filter((result) => types.includes(result.type)).sort((a, b) => types.indexOf(a.type) - types.indexOf(b.type)).slice(0, 12) }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) {
+    return apiError(error);
+  }
 }
