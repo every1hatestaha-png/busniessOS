@@ -25,3 +25,12 @@ export function canOpenRestaurantStaffPage(
   }
   return false;
 }
+
+/**
+ * Restaurant STAFF operate one assigned station in the active workspace.
+ * Keep workspace switching and business creation out of that station UI,
+ * and avoid exposing other workspace names through client navigation props.
+ */
+export function shouldShowWorkspaceSwitcher(vertical: string, role: string): boolean {
+  return vertical !== "RESTAURANT" || role !== "STAFF";
+}

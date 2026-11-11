@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { canOpenRestaurantStaffPage } from "@/lib/restaurant/station-access";
+import { canOpenRestaurantStaffPage, shouldShowWorkspaceSwitcher } from "@/lib/restaurant/station-access";
 
 import { Sidebar } from "@/components/layout/sidebar";
 import { outboundGatePassDraftFeatureEnabled } from "@/lib/server/outbound-gate-pass-feature";
@@ -34,8 +34,14 @@ export default async function DashboardLayout({
     if (!canOpenRestaurantStaffPage(trustedPath, restaurantStation)) notFound();
   }
 
+  // Restaurant station accounts stay inside their assigned workspace UI.
+  // Do not query or serialize other workspace names into a STAFF station page.
+  const showWorkspaceSwitcher = shouldShowWorkspaceSwitcher(vertical, role);
+  const workspacesPromise = showWorkspaceSwitcher
+    ? listCurrentUserWorkspaces()
+    : Promise.resolve([] as Awaited<ReturnType<typeof listCurrentUserWorkspaces>>);
   const [workspaces, subscription, workspaceModules] = await Promise.all([
-    listCurrentUserWorkspaces(),
+    workspacesPromise,
     getWorkspaceAccess(workspace.id),
     listWorkspaceModules(workspace.id),
   ]);

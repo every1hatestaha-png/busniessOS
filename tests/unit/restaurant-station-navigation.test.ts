@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { restaurantNavigationPaths, restaurantWorkspaceView } from "@/lib/restaurant/station-navigation";
+import { shouldShowWorkspaceSwitcher } from "@/lib/restaurant/station-access";
 
 describe("Restaurant workspace stations stay separate under the same workspace", () => {
   it("has one landing station chooser after restaurant login", () => {
@@ -43,5 +44,14 @@ describe("Restaurant workspace stations stay separate under the same workspace",
     expect(restaurantWorkspaceView("/restaurant/manager/staff")).toBe("MANAGER");
     expect(restaurantWorkspaceView("/restaurant/menu")).toBe("MANAGER");
     expect(restaurantWorkspaceView("/restaurant/whatsapp")).toBe("MANAGER");
+  });
+});
+
+describe("Restaurant staff workspace privacy", () => {
+  it("does not expose workspace switching or business creation to station staff", () => {
+    expect(shouldShowWorkspaceSwitcher("RESTAURANT", "STAFF")).toBe(false);
+    expect(shouldShowWorkspaceSwitcher("RESTAURANT", "OWNER")).toBe(true);
+    expect(shouldShowWorkspaceSwitcher("RESTAURANT", "MANAGER")).toBe(true);
+    expect(shouldShowWorkspaceSwitcher("TRADING", "STAFF")).toBe(true);
   });
 });

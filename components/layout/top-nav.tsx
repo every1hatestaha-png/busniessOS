@@ -18,6 +18,7 @@ import { getWorkspaceBranding } from "@/lib/workspace-branding";
 import type { WorkspaceVertical } from "@/lib/verticals/registry";
 import type { RestaurantStation } from "@/lib/restaurant/station-policy";
 import { restaurantWorkspaceView } from "@/lib/restaurant/station-navigation";
+import { shouldShowWorkspaceSwitcher } from "@/lib/restaurant/station-access";
 
 export function TopNav({
   workspaceName,
@@ -102,7 +103,7 @@ export function TopNav({
               Switch station
             </Link>
           ) : null}
-          <WorkspaceSwitcher activeId={workspaceId} workspaces={workspaces} />
+          {shouldShowWorkspaceSwitcher(vertical, role) ? <WorkspaceSwitcher activeId={workspaceId} workspaces={workspaces} /> : null}
           <Button
             variant="ghost"
             size="icon"
