@@ -31,7 +31,7 @@ const navigation: Record<WorkspaceVertical, readonly NavigationSection[]> = {
     { label: "Workspace", routes: workspace },
   ],
   RESTAURANT: [
-    { label: "Restaurant", routes: ["/restaurant", "/restaurant/pos", "/restaurant/orders", "/restaurant/kitchen", "/restaurant/menu", "/restaurant/whatsapp"] },
+    { label: "Restaurant", routes: ["/restaurant", "/restaurant/manager", "/restaurant/manager/staff", "/restaurant/pos", "/restaurant/orders", "/restaurant/kitchen", "/restaurant/menu", "/restaurant/whatsapp"] },
     { label: "Stock & purchasing", routes: ["/inventory", "/purchases", "/goods-receipts", "/suppliers", "/supplier-returns"] },
     { label: "Finance", routes: ["/accounting/cash-bank", "/accounting/expenses", "/reports"] },
     { label: "Workspace", routes: ["/settings"] },

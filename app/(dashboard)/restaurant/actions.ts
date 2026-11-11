@@ -6,11 +6,14 @@ import type { RestaurantActionState } from "./action-state";
 import { restaurantActionErrorMessage, restaurantFormWorkspaceChanged } from "@/lib/server/restaurant-action-errors";
 import { requireWorkspace } from "@/lib/server/auth";
 import { assertRestaurantMutationAccess } from "@/lib/server/restaurant-mutation-access";
+import { assertRestaurantStation } from "@/lib/server/restaurant-stations";
 import {
   closeRestaurantCashShiftFromLedger,
   openRestaurantCashShiftSafely,
 } from "@/lib/server/restaurant-cash-shifts";
 import { updateLegacyKitchenTicketStatusSafely } from "@/lib/server/restaurant-legacy-kot";
+import { correctRestaurantKitchenInstructions } from "@/lib/server/restaurant-instruction-corrections";
+import { reviewRestaurantCashVariance } from "@/lib/server/restaurant-shift-review";
 import {
   createKitchenTicket,
   createRecipe,
@@ -67,6 +70,9 @@ export async function openCashShiftAction(
   if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
     await assertRestaurantMutationAccess(workspaceId);
+    // Kitchen staff must never open or close cash drawers through a forged
+    // server-action request. Managers and assigned Cashiers may manage shifts.
+    await assertRestaurantStation({ workspaceId, role, userId: user.id }, "CASHIER");
     await openRestaurantCashShiftSafely({ workspaceId, role, userId: user.id }, openingCash, notes || undefined);
     revalidatePath("/restaurant");
     return { status: "success", message: "Cash shift opened." };
@@ -93,6 +99,9 @@ export async function closeCashShiftAction(
   if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
     await assertRestaurantMutationAccess(workspaceId);
+    // Keep shift ownership semantics, but require the Cashier station before
+    // any ledger-backed closeout can be attempted.
+    await assertRestaurantStation({ workspaceId, role, userId: user.id }, "CASHIER");
     const result = await closeRestaurantCashShiftFromLedger(
       { workspaceId, role, userId: user.id },
       shiftId,
@@ -181,6 +190,9 @@ export async function createKitchenTicketAction(
   if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
     await assertRestaurantMutationAccess(workspaceId);
+    // The legacy KOT creator is not part of the cashier -> kitchen flow:
+    // only management may create reconciliation/compatibility tickets.
+    await assertRestaurantStation({ workspaceId, role, userId: user.id }, "MANAGER");
     await createKitchenTicket(
       { workspaceId, role, userId: user.id },
       {
@@ -210,6 +222,10 @@ export async function updateKitchenTicketStatusAction(
   if (restaurantFormWorkspaceChanged(formData, workspaceId)) return fail("Your workspace changed. Refresh this page before submitting.");
   try {
     await assertRestaurantMutationAccess(workspaceId);
+    await assertRestaurantStation(
+      { workspaceId, role, userId: user.id },
+      status === "SERVED" || status === "CANCELLED" ? "MANAGER" : "KITCHEN",
+    );
     await updateLegacyKitchenTicketStatusSafely(
       { workspaceId, role, userId: user.id },
       ticketId,
@@ -219,5 +235,64 @@ export async function updateKitchenTicketStatusAction(
     return { status: "success", message: `Legacy kitchen ticket moved to ${status.toLowerCase()} without posting inventory.` };
   } catch (error) {
     return fail(messageFor(error, "We could not update this kitchen ticket."));
+  }
+}
+
+/** Manager-only instruction correction. It never changes order quantities or totals. */
+export async function correctRestaurantInstructionsAction(
+  _previous: RestaurantActionState,
+  formData: FormData,
+): Promise<RestaurantActionState> {
+  const orderId = String(formData.get("orderId") ?? "").trim();
+  const expectedNotes = String(formData.get("expectedNotes") ?? "");
+  const newNotes = String(formData.get("newNotes") ?? "");
+  const reason = String(formData.get("reason") ?? "");
+  const { workspaceId, role, user } = await requireWorkspace();
+  if (restaurantFormWorkspaceChanged(formData, workspaceId)) {
+    return fail("Workspace changed. Refresh before changing a kitchen instruction.");
+  }
+  try {
+    await assertRestaurantMutationAccess(workspaceId);
+    await assertRestaurantStation({ workspaceId, role, userId: user.id }, "MANAGER");
+    const result = await correctRestaurantKitchenInstructions(
+      { workspaceId, role, userId: user.id }, orderId, expectedNotes, newNotes, reason,
+    );
+    revalidatePath("/restaurant/kitchen");
+    revalidatePath("/restaurant/manager");
+    revalidatePath("/restaurant/manager/instructions");
+    return {
+      status: "success",
+      message: result.updated
+        ? `${result.orderNumber} kitchen instructions updated. The visible Kitchen queue will refresh.`
+        : "The instructions are unchanged.",
+    };
+  } catch (error) {
+    return fail(messageFor(error, "Could not update kitchen instructions. Refresh the order and retry."));
+  }
+}
+
+/** Acknowledgement appends an audit record. It cannot modify ledger cash. */
+export async function reviewRestaurantCashVarianceAction(formData: FormData): Promise<RestaurantActionState> {
+  const shiftId = String(formData.get("shiftId") ?? "").trim();
+  const explanation = String(formData.get("explanation") ?? "").trim();
+  const { workspaceId, role, user } = await requireWorkspace();
+  if (restaurantFormWorkspaceChanged(formData, workspaceId)) {
+    return fail("Workspace changed. Refresh the shift report before reviewing.");
+  }
+  try {
+    await assertRestaurantMutationAccess(workspaceId);
+    await assertRestaurantStation({ workspaceId, role, userId: user.id }, "MANAGER");
+    const result = await reviewRestaurantCashVariance(
+      { workspaceId, role, userId: user.id }, shiftId, explanation,
+    );
+    revalidatePath("/restaurant/manager/shifts");
+    return {
+      status: "success",
+      message: result.reviewed
+        ? "Cash variance review recorded in the manager audit trail."
+        : "This shift already has a manager review. No duplicate record was created.",
+    };
+  } catch (error) {
+    return fail(messageFor(error, "Could not record this shift review. Refresh the report and retry."));
   }
 }

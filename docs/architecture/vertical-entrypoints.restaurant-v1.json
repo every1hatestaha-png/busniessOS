@@ -10,6 +10,26 @@
     "scope": "dashboard layout plus entry point"
   },
   {
+    "file": "app/(dashboard)/restaurant/manager/page.tsx",
+    "symbol": null,
+    "url": "/restaurant/manager",
+    "kind": "PAGE",
+    "category": "RESTAURANT",
+    "methods": [],
+    "boundary": "requireWorkspace plus manager role guard before financial reads",
+    "scope": "restaurant manager dashboard with cash and sales metrics"
+  },
+  {
+    "file": "app/(dashboard)/restaurant/manager/staff/page.tsx",
+    "symbol": null,
+    "url": "/restaurant/manager/staff",
+    "kind": "PAGE",
+    "category": "RESTAURANT",
+    "methods": [],
+    "boundary": "requireWorkspace; manager role verified before staff access list",
+    "scope": "manager-verified staff station assignments"
+  },
+  {
     "file": "app/(dashboard)/restaurant/menu/page.tsx",
     "symbol": null,
     "url": "/restaurant/menu",

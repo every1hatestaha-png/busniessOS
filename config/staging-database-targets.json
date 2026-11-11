@@ -3,6 +3,8 @@
   "database": "neondb",
   "hosts": [
     "ep-fragrant-heart-b578tydw.c-7.us-east-2.aws.neon.tech",
-    "ep-fragrant-heart-b578tydw-pooler.c-7.us-east-2.aws.neon.tech"
+    "ep-fragrant-heart-b578tydw-pooler.c-7.us-east-2.aws.neon.tech",
+    "ep-rough-moon-b5s6262o.c-7.us-east-2.aws.neon.tech",
+    "ep-rough-moon-b5s6262o-pooler.c-7.us-east-2.aws.neon.tech"
   ]
 }

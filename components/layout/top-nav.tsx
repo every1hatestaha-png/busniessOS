@@ -2,9 +2,10 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
 import type { Role } from "@prisma/client";
-import { Menu, Search, ShoppingCart, X } from "lucide-react";
+import { Menu, Search, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -15,6 +16,9 @@ import { WebAccountMenu } from "@/components/layout/web-account-menu";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { getWorkspaceBranding } from "@/lib/workspace-branding";
 import type { WorkspaceVertical } from "@/lib/verticals/registry";
+import type { RestaurantStation } from "@/lib/restaurant/station-policy";
+import { restaurantWorkspaceView } from "@/lib/restaurant/station-navigation";
+import { shouldShowWorkspaceSwitcher } from "@/lib/restaurant/station-access";
 
 export function TopNav({
   workspaceName,
@@ -24,7 +28,9 @@ export function TopNav({
   role,
   enabledModules,
   vertical,
+  restaurantStation = null,
   platformOwner = false,
+  preferWebAccountMenu = false,
 }: {
   workspaceName: string;
   workspaceId: string;
@@ -33,17 +39,22 @@ export function TopNav({
   role: Role;
   enabledModules: string[];
   vertical: WorkspaceVertical;
+  restaurantStation?: RestaurantStation | null;
   platformOwner?: boolean;
+  preferWebAccountMenu?: boolean;
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const branding = getWorkspaceBranding(workspaceName);
   const restaurantMode = vertical === "RESTAURANT";
+  const pathname = usePathname();
+  const stationView = restaurantMode ? restaurantWorkspaceView(pathname ?? "/restaurant") : null;
   const isDesktop = useSyncExternalStore(
     () => () => {},
     () => Boolean(window.businessOSDesktop?.signOut && window.businessOSDesktop.switchAccount),
     () => false,
   );
+  const useLegacyDesktopMenu = isDesktop && !preferWebAccountMenu;
 
   return (
     <header className="sticky top-0 z-40 flex min-h-16 flex-wrap items-center border-b bg-white/95 px-4 backdrop-blur print:hidden sm:px-6">
@@ -61,7 +72,7 @@ export function TopNav({
             }}
           >
             <SheetTitle className="sr-only">Navigation menu</SheetTitle>
-            <Sidebar workspaceName={workspaceName} gatePassEnabled={gatePassEnabled} role={role} enabledModules={enabledModules} vertical={vertical} />
+            <Sidebar workspaceName={workspaceName} gatePassEnabled={gatePassEnabled} role={role} enabledModules={enabledModules} vertical={vertical} restaurantStation={restaurantStation} />
           </SheetContent>
         </Sheet>
 
@@ -80,24 +91,19 @@ export function TopNav({
         {restaurantMode ? (
           <div className="hidden min-w-0 flex-1 lg:block">
             <p className="truncate text-sm font-semibold text-slate-900">{workspaceName}</p>
-            <p className="text-[11px] text-slate-500">Restaurant workspace</p>
+            <p className="text-[11px] text-slate-500">{stationView === "MANAGER" ? "Manager station" : stationView === "ORDER_TAKING" ? "Order Taking station" : stationView === "KITCHEN" ? "Kitchen station" : "Choose your station"}</p>
           </div>
         ) : (
           <GlobalSearch key={`desktop-${workspaceId}`} className="hidden min-w-0 max-w-[520px] flex-1 lg:block" />
         )}
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          {restaurantMode ? (
-            <Button
-              className="hidden bg-emerald-600 hover:bg-emerald-500 sm:inline-flex"
-              nativeButton={false}
-              render={<Link href="/restaurant/pos" />}
-            >
-              <ShoppingCart className="size-4" />
-              Open POS
-            </Button>
+          {restaurantMode && role !== "STAFF" && stationView !== "SELECTION" ? (
+            <Link href="/restaurant" className="hidden rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 sm:inline-flex">
+              Switch station
+            </Link>
           ) : null}
-          <WorkspaceSwitcher activeId={workspaceId} workspaces={workspaces} />
+          {shouldShowWorkspaceSwitcher(vertical, role) ? <WorkspaceSwitcher activeId={workspaceId} workspaces={workspaces} /> : null}
           <Button
             variant="ghost"
             size="icon"
@@ -108,7 +114,7 @@ export function TopNav({
             {mobileSearchOpen ? <X /> : <Search />}
           </Button>
           {!isDesktop && platformOwner ? <Link href="/admin/dashboard" className="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50">Admin portal</Link> : null}
-          {isDesktop ? <DesktopClerkAccountMenu /> : <WebAccountMenu />}
+          {useLegacyDesktopMenu ? <DesktopClerkAccountMenu /> : <WebAccountMenu />}
         </div>
       </div>
 

@@ -22,6 +22,12 @@ export class SubscriptionRequiredError extends Error {}
 
 export async function requirePermission(permission: Permission) {
   const context = await requireWorkspace();
+  // Restaurant STAFF use dedicated tenant-checked station actions only.
+  // Generic ERP "business.read" / "sales.create" permissions must not grant
+  // them financial, inventory or non-restaurant operations.
+  if (context.vertical === "RESTAURANT" && context.role === "STAFF") {
+    throw new ForbiddenError("Restaurant staff must use their assigned station.");
+  }
   if (!canPerformAction(context.role, permission)) throw new ForbiddenError("Forbidden");
 
   // Read-only access stays available after expiry. Every permission that can
