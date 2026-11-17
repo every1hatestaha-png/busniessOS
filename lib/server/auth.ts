@@ -223,6 +223,26 @@ const getUserWorkspaceMemberships = cache(async (userId: string) => db.workspace
   select: { workspaceId: true, role: true, workspace: true },
 }));
 
+// Resolve one trusted membership for the current request. The active cookie is
+// always paired with the authenticated user ID, and an invalid or stale cookie
+// falls back to the same deterministic first membership as the old list lookup.
+// Do not hydrate every workspace name merely to resolve the active tenant.
+const getCurrentWorkspaceMembership = cache(async (userId: string, activeWorkspaceId?: string) => {
+  const select = { workspaceId: true, role: true, workspace: true } as const;
+  if (activeWorkspaceId) {
+    const activeMembership = await db.workspaceMember.findFirst({
+      where: { userId, workspaceId: activeWorkspaceId },
+      select,
+    });
+    if (activeMembership) return activeMembership;
+  }
+  return db.workspaceMember.findFirst({
+    where: { userId },
+    orderBy: [{ createdAt: "asc" }, { workspaceId: "asc" }],
+    select,
+  });
+});
+
 const getCurrentUserWorkspaceMemberships = cache(async () => {
   const user = await getCurrentUser();
   const activeWorkspaceId = (await cookies()).get("businessos_workspace")?.value;
@@ -235,8 +255,7 @@ export const getCurrentWorkspace = cache(async () => {
   if (!user) return null;
 
   const activeWorkspaceId = (await cookies()).get("businessos_workspace")?.value;
-  const memberships = await getUserWorkspaceMemberships(user.id);
-  const membership = memberships.find((entry) => entry.workspaceId === activeWorkspaceId) ?? memberships[0];
+  const membership = await getCurrentWorkspaceMembership(user.id, activeWorkspaceId);
   if (!membership) return null;
 
   const vertical = resolveWorkspaceVertical(membership.workspace);
