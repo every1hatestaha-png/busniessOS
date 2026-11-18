@@ -1,5 +1,9 @@
 name: Restaurant dependency refresh candidate (non-committing)
 on:
+  push:
+    branches: [feat/restaurant-roles-kitchen-polling-v2-20261025]
+    paths:
+      - ".github/workflows/restaurant-dependency-refresh-candidate.yml"
   pull_request:
     branches: [main]
     paths:
@@ -25,7 +29,7 @@ jobs:
           pkg.devDependencies["eslint-config-next"] = "16.4.6";
           pkg.overrides["@hono/node-server"] = "2.1.6";
           pkg.overrides.hono = "4.13.16";
-          fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\\n");
+          fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
           NODE
       - name: Generate candidate npm lock using registry resolution
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
