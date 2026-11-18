@@ -29,10 +29,20 @@ jobs:
           pkg.devDependencies["eslint-config-next"] = "16.4.6";
           pkg.overrides["@hono/node-server"] = "2.1.6";
           pkg.overrides.hono = "4.13.16";
+          pkg.overrides["typescript-eslint"] = "8.73.0";
           fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
           NODE
       - name: Generate candidate npm lock using registry resolution
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Apply compatible npm audit remediations in candidate lock
+        id: auditfix
+        run: |
+          set +e
+          npm audit fix --package-lock-only --ignore-scripts --no-fund > audit-fix.log 2>&1
+          status=$?
+          set -e
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          cat audit-fix.log
       - name: Run strict audit and capture candidate report
         id: audit
         run: |
@@ -51,6 +61,7 @@ jobs:
             package.json
             package-lock.json
             audit-candidate.json
+            audit-fix.log
           retention-days: 7
       - name: Fail strict audit if candidate still contains advisories
         if: steps.audit.outputs.exit_code != '0'
