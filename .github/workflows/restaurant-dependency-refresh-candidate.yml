@@ -1,0 +1,55 @@
+name: Restaurant dependency refresh candidate (non-committing)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/restaurant-dependency-refresh-candidate.yml"
+permissions:
+  contents: read
+jobs:
+  candidate-lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Apply reviewed patch-version candidates in the disposable runner
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+          pkg.dependencies.next = "16.4.6";
+          pkg.devDependencies["eslint-config-next"] = "16.4.6";
+          pkg.overrides["@hono/node-server"] = "2.1.6";
+          pkg.overrides.hono = "4.13.16";
+          fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\\n");
+          NODE
+      - name: Generate candidate npm lock using registry resolution
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Run strict audit and capture candidate report
+        id: audit
+        run: |
+          set +e
+          npm audit --json > audit-candidate.json
+          status=$?
+          set -e
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          node -e 'const r=require("./audit-candidate.json"); console.log(JSON.stringify({vulnerabilities:r.metadata?.vulnerabilities, advisories:Object.keys(r.vulnerabilities||{})},null,2))'
+      - name: Upload candidate manifests and strict audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: restaurant-dependency-refresh-candidate
+          path: |
+            package.json
+            package-lock.json
+            audit-candidate.json
+          retention-days: 7
+      - name: Fail strict audit if candidate still contains advisories
+        if: steps.audit.outputs.exit_code != '0'
+        run: |
+          echo "Candidate lock is uploaded for review, but strict npm audit remains blocked."
+          exit 1
