@@ -17,6 +17,7 @@ vi.mock("@/components/documents/document-frame", () => ({ DocumentFrame: () => n
 vi.mock("@/components/invoices/print-button", () => ({ PrintButton: () => null }));
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.station.mockResolvedValue(undefined);
   mocks.auth.mockResolvedValue({ workspaceId: "workspace-a", role: "STAFF", user: { id: "synthetic-kitchen" }, workspace: { name: "Synthetic" } });
 });
 it("denies cashier KOT before loading the operational print projection", async () => {
