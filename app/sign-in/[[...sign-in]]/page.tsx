@@ -56,18 +56,30 @@ export default function SignInPage({ platformLogin = false }: { platformLogin?: 
       return;
     }
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
+    // A rejected network request is different from a returned AuthError.
+    // Always let the operator retry instead of leaving Signing in... stuck.
+    const signInResponse = await supabase.auth.signInWithPassword({
       email: identifier,
       password,
-    });
+    }).catch(() => null);
 
+    if (!signInResponse) {
+      setError("Could not contact the sign-in service. Check your connection and try again.");
+      setBusy(false);
+      return;
+    }
+
+    const { error: signInError } = signInResponse;
     if (signInError) {
       if (signInError.code === "email_not_confirmed" || signInError.message.toLowerCase().includes("email not confirmed")) {
         setError("Your email has not been verified yet.");
         setShowVerificationHelp(true);
       } else if (signInError.message === "Invalid login credentials") {
-        setError("Email or password is incorrect.");
-        setShowMigrationHelp(true);
+        const restaurantStaging = window.location.hostname?.startsWith("munshios-restaurant-staging-") === true;
+        setError(restaurantStaging
+          ? "This is a separate Restaurant test environment. Sign in with a staging test account, not your production MunshiOS account."
+          : "Email or password is incorrect.");
+        setShowMigrationHelp(!restaurantStaging);
       } else if (signInError.status === 429 || signInError.message.toLowerCase().includes("rate")) {
         setError("Too many sign-in attempts. Please wait a moment and try again.");
       } else {

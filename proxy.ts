@@ -24,8 +24,16 @@ function redirectWithCookies(url: URL, authResponse: NextResponse) {
   return copyResponseCookies(authResponse, NextResponse.redirect(url));
 }
 
+function trustedPageHeaders(request: NextRequest) {
+  // Rebuild this from the actual URL on every request. Never trust an
+  // x-munshios-internal-path header supplied by a client.
+  const forwarded = new Headers(request.headers);
+  forwarded.set("x-munshios-internal-path", request.nextUrl.pathname);
+  return forwarded;
+}
+
 async function getSupabaseSessionState(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  let response = NextResponse.next({ request: { headers: trustedPageHeaders(request) } });
   const { url, publishableKey } = getSupabasePublicConfig();
 
   const supabase = createServerClient(url, publishableKey, {
@@ -38,7 +46,7 @@ async function getSupabaseSessionState(request: NextRequest) {
           request.cookies.set(name, value);
         }
 
-        response = NextResponse.next({ request });
+        response = NextResponse.next({ request: { headers: trustedPageHeaders(request) } });
         for (const { name, value, options } of cookiesToSet) {
           response.cookies.set(name, value, options);
         }
@@ -156,6 +164,8 @@ async function supabaseOnlyProxy(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
   const isElectron = (request.headers.get("user-agent") || "").includes("Electron");
+  // Only isolated staging Electron clients use cookie-based Supabase auth.
+  const stagingSupabaseDesktop = isElectron && process.env.MUNSHIOS_DEPLOYMENT_ENVIRONMENT === "staging";
 
   // Health and readiness must remain reachable even when auth configuration is
   // broken so operators receive an explicit 503 from the readiness handler
@@ -164,7 +174,7 @@ async function supabaseOnlyProxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (isElectron || path.startsWith("/desktop-auth")) {
+  if ((isElectron && !stagingSupabaseDesktop) || path.startsWith("/desktop-auth")) {
     if (publicAuthPath(path) || path.startsWith("/desktop-auth")) {
       return NextResponse.next();
     }
@@ -209,7 +219,7 @@ const clerkProxy = clerkMiddleware(
     if (isElectron) {
       if (!authHeader) return NextResponse.redirect(new URL("/desktop-auth", request.url));
       await auth.protect({ token: ["session_token", "oauth_token"] });
-      return NextResponse.next();
+      return NextResponse.next({ request: { headers: trustedPageHeaders(request) } });
     }
 
     if (isApiV1Request(path)) {
@@ -241,10 +251,10 @@ function needsLegacyClerk(request: NextRequest) {
   const hasLegacyAuthorization = Boolean(request.headers.get("authorization"));
 
   return (
-    isElectron ||
+    (isElectron && process.env.MUNSHIOS_DEPLOYMENT_ENVIRONMENT !== "staging") ||
     path.startsWith("/desktop-auth") ||
     path.startsWith("/__clerk/") ||
-    (isApiV1Request(path) && hasLegacyAuthorization)
+    (isApiV1Request(path) && hasLegacyAuthorization && process.env.MUNSHIOS_DEPLOYMENT_ENVIRONMENT !== "staging")
   );
 }
 

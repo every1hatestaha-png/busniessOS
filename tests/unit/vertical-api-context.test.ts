@@ -27,6 +27,23 @@ describe("API context selects a trusted tenant and persisted vertical", () => {
     }));
   });
 
+  it("blocks Restaurant STAFF from generic V1 reads and writes, even when legacy STAFF permissions allow them", async () => {
+    mocks.findFirst.mockResolvedValue({
+      workspaceId: "workspace-B",
+      role: "STAFF",
+      workspace: { id: "workspace-B", businessType: "OTHER", vertical: "RESTAURANT" },
+    });
+
+    await expect(requireApiContext("business.read")).rejects.toMatchObject({
+      status: 403,
+      code: "STATION_ONLY",
+    });
+    await expect(requireApiContext("sales.create")).rejects.toMatchObject({
+      status: 403,
+      code: "STATION_ONLY",
+    });
+  });
+
   it("rejects a foreign workspace without membership and denies mutation by role", async () => {
     mocks.findFirst.mockResolvedValueOnce(null);
     await expect(requireApiContext()).rejects.toMatchObject({ status: 403, code: "WORKSPACE_REQUIRED" });

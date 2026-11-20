@@ -1,0 +1,5 @@
+# Isolated browser-based Restaurant QA (2026-10-25)
+
+Dedicated **preview-only** target: Neon project `wandering-moon-51932710`, branch `br-lingering-king-b5dc8i2r`, cloned from non-primary acceptance branch `br-sweet-hat-b5x5nzzz`. This is not the production manufacturing database. Vercel project `prj_ytXqF1zAoJjcsBIICz7PryfAczLz` and Git preview branch `feat/restaurant-roles-kitchen-polling-v2-20261025` have scoped DB, staging environment and controlled migration build variables. Never merge these environment settings into production, never replace business-os project configuration, and never mark web login working without direct session and readiness checks.
+
+Acceptance required: `/api/readiness` must return HTTP 200 with `database=ready`; unauthenticated user should reach `/sign-in`, authorized test account should reach Cashier, Kitchen and Manager as applicable, and staff role routing, KOT and settlement should be tested with synthetic records. An HTTP 200 on the login shell is not evidence that account login works.

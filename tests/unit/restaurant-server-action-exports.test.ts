@@ -10,7 +10,7 @@ import * as actions from "@/app/(dashboard)/restaurant/actions";
 import { initialRestaurantActionState } from "@/app/(dashboard)/restaurant/action-state";
 describe("Restaurant server-action export boundary", () => {
  it("passes the installed Next.js runtime validation for every action export", () => {
-  expect(Object.keys(actions)).toHaveLength(6);
+  expect(Object.keys(actions).sort()).toEqual(["closeCashShiftAction","correctRestaurantInstructionsAction","createKitchenTicketAction","createRecipeAction","createRestaurantTableAction","openCashShiftAction","reviewRestaurantCashVarianceAction","updateKitchenTicketStatusAction"]);
   expect(() => ensureServerEntryExports(Object.values(actions))).not.toThrow();
   for (const action of Object.values(actions)) expect(action.constructor.name).toBe("AsyncFunction");
  });

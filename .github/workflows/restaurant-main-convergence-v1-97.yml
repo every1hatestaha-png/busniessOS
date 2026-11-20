@@ -32,8 +32,8 @@ jobs:
       NODE_ENV: test
       NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_synthetic_restaurant_v197
-      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_live_fixture
-      CLERK_SECRET_KEY: sk_live_fixture
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Zml4dHVyZS5jbGVyay5hY2NvdW50cy5kZXYk
+      CLERK_SECRET_KEY: sk_test_fixture
       CLERK_OAUTH_CLIENT_ID: fixture-client
       RESTAURANT_V196_HEAD: aa6cad246fa1eacaa7cd5b8971065a532afe616a
       MAIN_PARENT: b9061723ea493a4947d56d7f72749bbb24cf3f8b

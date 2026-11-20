@@ -54,6 +54,441 @@ async function counts() {
   const tickets = await db.$queryRaw<Array<{ count: bigint }>>`SELECT COUNT(*) AS count FROM kitchen_tickets WHERE "workspaceId"=${workspaceId}::uuid`;
   return { orders: Number(orders[0].count), tickets: Number(tickets[0].count), audit: await db.auditLog.count({ where: { workspaceId, action: "restaurant.order.created" } }) };
 }
+it("cashier order with an item allergy note creates exactly one confirmed kitchen ticket", async () => {
+  const { createPosOrderAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
+  const { listRestaurantKitchenOrderLines, listRestaurantOrders } = await import("@/lib/server/restaurant-workspace");
+  const data = form();
+  data.set("itemsJson", JSON.stringify([{ menuItemId, quantity: 2, notes: "Peanut allergy; no onions" }]));
+  data.set("notes", "Table customer requires careful handling");
+  const before = await counts();
+  const result = await createPosOrderAction({ status: "idle", message: "" }, data);
+  expect(result).toMatchObject({ status: "success" });
+  expect(result.orderNumber).toMatch(/^R-\d{6}$/);
+  const orders = await db.$queryRaw<Array<{ id: string; status: string; orderNumber: string }>>`
+    SELECT "id","status","orderNumber" FROM "restaurant_orders"
+    WHERE "workspaceId"=${workspaceId}::uuid
+      AND "externalReference"=${`pos:${data.get("orderRequestId")}`}
+  `;
+  expect(orders).toHaveLength(1);
+  const order = orders[0];
+  expect(order.status).toBe("CONFIRMED");
+  expect(order.orderNumber).toBe(result.orderNumber);
+  const tickets = await db.$queryRaw<Array<{ restaurantOrderId: string; ticketNumber: string }>>`
+    SELECT "restaurantOrderId","ticketNumber" FROM "kitchen_tickets"
+    WHERE "workspaceId"=${workspaceId}::uuid AND "restaurantOrderId"=${order.id}::uuid
+  `;
+  expect(tickets).toEqual([{ restaurantOrderId: order.id, ticketNumber: `KOT-${order.orderNumber}` }]);
+  expect(await listRestaurantKitchenOrderLines(workspaceId, [order.id])).toEqual([
+    expect.objectContaining({ orderId: order.id, itemName: "Replay meal", quantity: 2,
+      notes: "Peanut allergy; no onions", modifiers: [] }),
+  ]);
+  expect((await listRestaurantOrders(workspaceId, 200, { statuses: ["CONFIRMED"] }))
+    .some((entry) => entry.id === order.id)).toBe(true);
+  const retry = await createPosOrderAction({ status: "idle", message: "" }, data);
+  expect(retry).toEqual(result);
+  expect(await counts()).toEqual({
+    orders: before.orders + 1, tickets: before.tickets + 1, audit: before.audit + 1,
+  });
+});
+
+it("rejects forged table IDs on takeaway and delivery without occupying tables or creating orders", async () => {
+  const { createPosOrderAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
+  const before = await counts();
+
+  for (const fulfillmentType of ["TAKEAWAY", "DELIVERY"] as const) {
+    const tableId = randomUUID();
+    await db.$executeRaw`
+      INSERT INTO "restaurant_tables" ("id", "workspaceId", "name", "capacity", "status")
+      VALUES (${tableId}::uuid, ${workspaceId}::uuid, ${`Non-dine-in ${fulfillmentType} ${tableId.slice(0, 8)}`}, 4, 'AVAILABLE')
+    `;
+
+    const data = form();
+    data.set("fulfillmentType", fulfillmentType);
+    data.set("restaurantTableId", tableId);
+    if (fulfillmentType === "DELIVERY") data.set("deliveryAddress", "Synthetic QA delivery address");
+
+    const result = await createPosOrderAction({ status: "idle", message: "" }, data);
+    expect(result.status).toBe("error");
+
+    const tables = await db.$queryRaw<Array<{ status: string }>>`
+      SELECT "status" FROM "restaurant_tables"
+      WHERE "id"=${tableId}::uuid AND "workspaceId"=${workspaceId}::uuid
+    `;
+    expect(tables).toEqual([{ status: "AVAILABLE" }]);
+  }
+
+  expect(await counts()).toEqual(before);
+});
+
+it("Kitchen query returns operational order fields without financial or customer data", async () => {
+  const { createPosOrderAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
+  const { listKitchenOrders } = await import("@/lib/server/restaurant-kitchen-orders");
+  const data = form();
+  const created = await createPosOrderAction({ status: "idle", message: "" }, data);
+  expect(created.status).toBe("success");
+  const queue = await listKitchenOrders(workspaceId, "CONFIRMED");
+  const matched = queue.find(order => order.orderNumber === created.orderNumber);
+  expect(matched).toBeDefined();
+  expect(matched).toMatchObject({
+    orderNumber: created.orderNumber,
+    fulfillmentType: "TAKEAWAY",
+    status: "CONFIRMED",
+  });
+  expect(matched).not.toHaveProperty("total");
+  expect(matched).not.toHaveProperty("customerPhone");
+  expect(matched).not.toHaveProperty("customerName");
+  expect(matched).not.toHaveProperty("paymentStatus");
+  expect(matched).not.toHaveProperty("deliveryAddress");
+});
+
+it("Kitchen print projection excludes customer and finance even when receipt has totals", async () => {
+  const { createPosOrderAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
+  const { getRestaurantKitchenPrintDocument } =
+    await import("@/lib/server/restaurant-kitchen-print");
+  const { getRestaurantPrintDocument } =
+    await import("@/lib/server/restaurant-print");
+  const data = form();
+  data.set("customerName", "Synthetic QA Guest");
+  data.set("notes", "No nuts, kitchen please confirm");
+  data.set("itemsJson", JSON.stringify([{
+    menuItemId, quantity: 2, notes: "Allergy: peanuts",
+    modifiers: ["No nuts", "Less spicy"],
+  }]));
+  const created = await createPosOrderAction({ status: "idle", message: "" }, data);
+  expect(created.status).toBe("success");
+  const [order] = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT "id" FROM "restaurant_orders"
+    WHERE "workspaceId"=${workspaceId}::uuid
+      AND "externalReference"=${`pos:${data.get("orderRequestId")}`}
+  `;
+  expect(order?.id).toBeTruthy();
+  const [kot, receipt] = await Promise.all([
+    getRestaurantKitchenPrintDocument(workspaceId, order.id),
+    getRestaurantPrintDocument(workspaceId, order.id),
+  ]);
+  expect(kot).toMatchObject({
+    orderNumber: created.orderNumber, status: "CONFIRMED",
+    notes: "No nuts, kitchen please confirm",
+  });
+  expect(kot?.items[0]).toMatchObject({
+    quantity: 2, notes: "Allergy: peanuts",
+    modifiers: ["No nuts", "Less spicy"],
+  });
+  expect(kot).not.toHaveProperty("customerName");
+  expect(kot).not.toHaveProperty("total");
+  expect(kot).not.toHaveProperty("paymentStatus");
+  expect(kot?.items[0]).not.toHaveProperty("unitPrice");
+  expect(kot?.items[0]).not.toHaveProperty("lineTotal");
+  expect(receipt).toMatchObject({
+    orderNumber: created.orderNumber,
+    customerName: "Synthetic QA Guest", total: 200,
+  });
+});
+
+it("rejects oversized kitchen options without silently creating a partial order", async () => {
+  const { createPosOrderAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
+  const before = await counts();
+  const data = form();
+  data.set("itemsJson", JSON.stringify([{
+    menuItemId, quantity: 1,
+    modifiers: Array.from({ length: 21 }, (_, i) => `Option ${i + 1}`),
+  }]));
+  const result = await createPosOrderAction({ status: "idle", message: "" }, data);
+  expect(result.status).toBe("error");
+  expect(result.message).toContain("at most 20 options");
+  expect(await counts()).toEqual(before);
+});
+
+it("preserves every accepted modifier through the kitchen snapshot and retry", async () => {
+  const { createPosOrderAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
+  const { listRestaurantKitchenOrderLines } = await import("@/lib/server/restaurant-workspace");
+  const before = await counts();
+  const data = form();
+  const modifiers = Array.from({ length: 20 }, (_, i) => `Option ${i + 1}`);
+  data.set("itemsJson", JSON.stringify([{ menuItemId, quantity: 1, modifiers }]));
+  const first = await createPosOrderAction({ status: "idle", message: "" }, data);
+  expect(first.status).toBe("success");
+  const second = await createPosOrderAction({ status: "idle", message: "" }, data);
+  expect(second).toEqual(first);
+  const [order] = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT "id" FROM "restaurant_orders" WHERE "workspaceId"=${workspaceId}::uuid
+      AND "externalReference"=${`pos:${data.get("orderRequestId")}`}
+  `;
+  const lines = await listRestaurantKitchenOrderLines(workspaceId, [order.id]);
+  expect(lines[0]?.modifiers).toEqual(modifiers);
+  expect(await counts()).toEqual({
+    orders: before.orders + 1, tickets: before.tickets + 1, audit: before.audit + 1,
+  });
+});
+
+it("manager kitchen performance query uses real prepared ticket timestamps in PostgreSQL", async () => {
+  const { createPosOrderAction, transitionKitchenOrderAction } =
+    await import("@/app/(dashboard)/restaurant/v1-actions");
+  const { getRestaurantKitchenPerformance } =
+    await import("@/lib/server/restaurant-kitchen-performance");
+  const data = form();
+  expect((await createPosOrderAction({ status: "idle", message: "" }, data)).status).toBe("success");
+  const [order] = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT "id" FROM "restaurant_orders"
+    WHERE "workspaceId"=${workspaceId}::uuid
+      AND "externalReference"=${`pos:${data.get("orderRequestId")}`}
+  `;
+  expect(order?.id).toBeTruthy();
+  const transition = new FormData();
+  transition.set("formWorkspaceId", workspaceId);
+  transition.set("orderId", order.id);
+  transition.set("nextStatus", "PREPARING");
+  expect((await transitionKitchenOrderAction(transition)).status).toBe("success");
+  transition.set("nextStatus", "READY");
+  expect((await transitionKitchenOrderAction(transition)).status).toBe("success");
+  const result = await getRestaurantKitchenPerformance(workspaceId, 7);
+  expect(result.prepared).toBeGreaterThanOrEqual(1);
+  expect(result.meanMinutes).not.toBeNull();
+  expect(result.p90Minutes).not.toBeNull();
+  expect(result.ready).toBeGreaterThanOrEqual(1);
+  expect(result.byDay.length).toBeGreaterThan(0);
+  // The same persisted Kitchen READY event must drive the Cashier service timer.
+  const { listRestaurantReadyAtByOrderIds } = await import("@/lib/server/restaurant-ready-handoff");
+  const readyTimes = await listRestaurantReadyAtByOrderIds(workspaceId, [order.id]);
+  expect(readyTimes.get(order.id)).toBeInstanceOf(Date);
+  expect(readyTimes.get(order.id)!.getTime()).toBeGreaterThan(0);
+});
+
+it("cashier READY selection prioritizes the first Kitchen-ready order, not the earliest created", async () => {
+  const { createPosOrderAction, transitionKitchenOrderAction } =
+    await import("@/app/(dashboard)/restaurant/v1-actions");
+  const { listRestaurantOrders } = await import("@/lib/server/restaurant-workspace");
+  const olderForm = form();
+  const newerForm = form();
+  expect((await createPosOrderAction({ status: "idle", message: "" }, olderForm)).status).toBe("success");
+  expect((await createPosOrderAction({ status: "idle", message: "" }, newerForm)).status).toBe("success");
+
+  const ids = await db.$queryRaw<Array<{ id: string; externalReference: string }>>`
+    SELECT "id","externalReference" FROM "restaurant_orders"
+    WHERE "workspaceId"=${workspaceId}::uuid
+      AND "externalReference" IN (${`pos:${olderForm.get("orderRequestId")}`}, ${`pos:${newerForm.get("orderRequestId")}`})
+  `;
+  const olderId = ids.find(row => row.externalReference === `pos:${olderForm.get("orderRequestId")}`)?.id;
+  const newerId = ids.find(row => row.externalReference === `pos:${newerForm.get("orderRequestId")}`)?.id;
+  expect(olderId).toBeTruthy();
+  expect(newerId).toBeTruthy();
+
+  // B is created after A but finishes in the Kitchen first.
+  // Do not rewrite protected creation timestamps or immutable KOT identity.
+  for (const orderId of [newerId!, olderId!]) {
+    const transition = new FormData();
+    transition.set("formWorkspaceId", workspaceId);
+    transition.set("orderId", orderId);
+    transition.set("nextStatus", "PREPARING");
+    expect((await transitionKitchenOrderAction(transition)).status).toBe("success");
+    transition.set("nextStatus", "READY");
+    expect((await transitionKitchenOrderAction(transition)).status).toBe("success");
+  }
+
+  const byCreation = await listRestaurantOrders(workspaceId, 60, {
+    statuses: ["READY"], oldestFirst: true,
+  });
+  const byHandoff = await listRestaurantOrders(workspaceId, 60, {
+    statuses: ["READY"], readyHandoffFirst: true,
+  });
+  const creationIds = byCreation.map(order => order.id);
+  const handoffIds = byHandoff.map(order => order.id);
+  expect(creationIds.indexOf(olderId!)).toBeLessThan(creationIds.indexOf(newerId!));
+  expect(handoffIds.indexOf(newerId!)).toBeGreaterThanOrEqual(0);
+  expect(handoffIds.indexOf(olderId!)).toBeGreaterThanOrEqual(0);
+  expect(handoffIds.indexOf(newerId!)).toBeLessThan(handoffIds.indexOf(olderId!));
+});
+
+it("cashier partial payment, exact retry and second collection reconcile the printed receipt", async () => {
+  const { createPosOrderAction, recordRestaurantPaymentAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
+  const { createCashBankAccount, getCashBankAccounts } = await import("@/lib/server/accounting");
+  const { listRestaurantPayments } = await import("@/lib/server/restaurant-integrity");
+  const { getRestaurantPrintDocument } = await import("@/lib/server/restaurant-print");
+
+  const actor = { workspaceId, userId, role: "OWNER" as const };
+  const created = await createCashBankAccount(actor, {
+    name: `Cashier replay settlement ${randomUUID()}`,
+    isBank: true, openingBalance: 0,
+    bankName: "Synthetic testing bank", accountTitle: "Cashier verification",
+    accountNumber: "000-123", notes: "",
+  });
+  const accountId = (await getCashBankAccounts(workspaceId))
+    .find(account => account.id === created.id)?.cashBankAccountId;
+  expect(accountId).toBeDefined();
+
+  const orderData = form();
+  const result = await createPosOrderAction({ status: "idle", message: "" }, orderData);
+  expect(result.status).toBe("success");
+  const [order] = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT "id" FROM "restaurant_orders"
+    WHERE "workspaceId"=${workspaceId}::uuid
+    AND "externalReference"=${`pos:${orderData.get("orderRequestId")}`}
+  `;
+  expect(order?.id).toBeTruthy();
+
+  function paymentForm(id: string, amount: number) {
+    const data = new FormData();
+    data.set("formWorkspaceId", workspaceId);
+    data.set("orderId", order.id);
+    data.set("cashBankAccountId", accountId!);
+    data.set("method", "BANK_TRANSFER");
+    data.set("amount", String(amount));
+    data.set("paymentRequestId", id);
+    data.set("reference", `bank-confirmation-${id}`);
+    return data;
+  }
+
+  const firstId = `rp:${randomUUID()}`;
+  const first = paymentForm(firstId, 40);
+  expect((await recordRestaurantPaymentAction(first)).status).toBe("success");
+  const partial = await getRestaurantPrintDocument(workspaceId, order.id);
+  expect(partial).toMatchObject({ retainedPaid: 40, outstanding: 60, paymentStatus: "PARTIALLY_PAID" });
+
+  expect((await recordRestaurantPaymentAction(first)).status).toBe("success");
+  expect((await listRestaurantPayments(workspaceId, order.id)).filter(x => !x.voidedAt)).toHaveLength(1);
+
+  const changed = paymentForm(firstId, 60);
+  expect((await recordRestaurantPaymentAction(changed)).status).toBe("error");
+  expect((await listRestaurantPayments(workspaceId, order.id)).filter(x => !x.voidedAt)).toHaveLength(1);
+
+  const second = paymentForm(`rp:${randomUUID()}`, 60);
+  expect((await recordRestaurantPaymentAction(second)).status).toBe("success");
+  const receipt = await getRestaurantPrintDocument(workspaceId, order.id);
+  expect(receipt).toMatchObject({
+    orderNumber: result.orderNumber,
+    retainedPaid: 100,
+    outstanding: 0,
+    paymentStatus: "PAID",
+  });
+  expect((await listRestaurantPayments(workspaceId, order.id)).filter(x => !x.voidedAt)).toHaveLength(2);
+});
+
+it("cashier -> assigned kitchen staff -> cashier completes with no cross-station actions", async () => {
+  const {
+    createPosOrderAction,
+    transitionKitchenOrderAction,
+    transitionRestaurantOrderAction,
+    recordRestaurantPaymentAction,
+  } = await import("@/app/(dashboard)/restaurant/v1-actions");
+  const { setRestaurantStaffStation } = await import("@/lib/server/restaurant-stations");
+  const { listRestaurantOrders } = await import("@/lib/server/restaurant-workspace");
+
+  const orderData = form();
+  const created = await createPosOrderAction({ status: "idle", message: "" }, orderData);
+  expect(created.status).toBe("success");
+  const [order] = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM restaurant_orders WHERE "workspaceId"=${workspaceId}::uuid
+      AND "externalReference"=${`pos:${orderData.get("orderRequestId")}`}
+  `;
+  expect(order?.id).toBeTruthy();
+
+  const member = await db.user.create({
+    data: {
+      clerkId: `kitchen-handoff-${randomUUID()}`,
+      email: `kitchen-handoff-${randomUUID()}@example.invalid`,
+    },
+  });
+  await db.workspaceMember.create({
+    data: { workspaceId, userId: member.id, role: "STAFF" },
+  });
+  await setRestaurantStaffStation({ workspaceId, role: "OWNER", userId }, member.id, "KITCHEN");
+  auth.requireWorkspace.mockResolvedValue({ workspaceId, role: "STAFF", user: member });
+
+  function transitionData(nextStatus: string) {
+    const payload = new FormData();
+    payload.set("formWorkspaceId", workspaceId);
+    payload.set("orderId", order.id);
+    payload.set("nextStatus", nextStatus);
+    return payload;
+  }
+
+  try {
+    expect((await transitionKitchenOrderAction(transitionData("PREPARING"))).status).toBe("success");
+    expect((await listRestaurantOrders(workspaceId, 100, { statuses: ["PREPARING"] }))
+      .some(x => x.id === order.id)).toBe(true);
+    expect((await transitionKitchenOrderAction(transitionData("READY"))).status).toBe("success");
+    expect((await listRestaurantOrders(workspaceId, 100, { statuses: ["READY"] }))
+      .some(x => x.id === order.id)).toBe(true);
+
+    expect((await transitionKitchenOrderAction(transitionData("CANCELLED"))).status).toBe("error");
+    expect((await transitionRestaurantOrderAction(transitionData("COMPLETED"))).status).toBe("error");
+
+    const payment = new FormData();
+    payment.set("formWorkspaceId", workspaceId);
+    payment.set("orderId", order.id);
+    payment.set("amount", "100");
+    payment.set("method", "BANK_TRANSFER");
+    payment.set("cashBankAccountId", "no-account");
+    expect((await recordRestaurantPaymentAction(payment)).status).toBe("error");
+  } finally {
+    auth.requireWorkspace.mockResolvedValue({ workspaceId, role: "OWNER", user: { id: userId } });
+  }
+
+  expect((await transitionRestaurantOrderAction(transitionData("COMPLETED"))).status).toBe("success");
+  expect((await listRestaurantOrders(workspaceId, 100, { statuses: ["COMPLETED"] }))
+    .some(x => x.id === order.id)).toBe(true);
+});
+
+it("manager-ready table lookup includes an order after kitchen prepares it", async () => {
+  const { createRestaurantTable } = await import("@/lib/server/industry-modules");
+  const { createPosOrderAction, transitionKitchenOrderAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
+  const { listRestaurantReadyTableIds } = await import("@/lib/server/restaurant-workspace");
+  const table = await createRestaurantTable({
+    workspaceId, userId, role: "OWNER",
+  }, { name: `Floor-ready-${randomUUID()}`, capacity: 4 });
+  const data = form();
+  data.set("fulfillmentType", "DINE_IN");
+  data.set("restaurantTableId", table.id);
+  expect((await createPosOrderAction({ status: "idle", message: "" }, data)).status).toBe("success");
+  const [order] = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM restaurant_orders WHERE "workspaceId"=${workspaceId}::uuid
+      AND "externalReference"=${`pos:${data.get("orderRequestId")}`}
+  `;
+  expect(order?.id).toBeTruthy();
+  expect(await listRestaurantReadyTableIds(workspaceId)).not.toContain(table.id);
+  const transition = new FormData();
+  transition.set("formWorkspaceId", workspaceId);
+  transition.set("orderId", order.id);
+  transition.set("nextStatus", "PREPARING");
+  expect((await transitionKitchenOrderAction(transition)).status).toBe("success");
+  transition.set("nextStatus", "READY");
+  expect((await transitionKitchenOrderAction(transition)).status).toBe("success");
+  expect(await listRestaurantReadyTableIds(workspaceId)).toContain(table.id);
+});
+
+it("manager today sales recognizes completion only when cashier closes a kitchen-ready order", async () => {
+  const { createPosOrderAction, transitionKitchenOrderAction, transitionRestaurantOrderAction } =
+    await import("@/app/(dashboard)/restaurant/v1-actions");
+  const { getRestaurantWorkspaceMetrics } = await import("@/lib/server/restaurant-workspace");
+  const original = await getRestaurantWorkspaceMetrics(workspaceId);
+  const orderData = form();
+  expect((await createPosOrderAction({ status: "idle", message: "" }, orderData)).status).toBe("success");
+  const [order] = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT "id" FROM restaurant_orders
+    WHERE "workspaceId"=${workspaceId}::uuid
+      AND "externalReference"=${`pos:${orderData.get("orderRequestId")}`}
+  `;
+  expect(order?.id).toBeTruthy();
+  // Restaurant identity snapshots, including createdAt, are protected by an
+  // immutable database trigger. Never mutate the order's creation timestamp
+  // even for synthetic tests. Verify reporting using legitimate transitions.
+  const beforeCompletion = await getRestaurantWorkspaceMetrics(workspaceId);
+  expect(beforeCompletion.todaySales).toBeCloseTo(original.todaySales, 2);
+  expect(beforeCompletion.todayOrders).toBe(original.todayOrders + 1);
+  const transition = new FormData();
+  transition.set("formWorkspaceId", workspaceId);
+  transition.set("orderId", order.id);
+  transition.set("nextStatus", "PREPARING");
+  expect((await transitionKitchenOrderAction(transition)).status).toBe("success");
+  transition.set("nextStatus", "READY");
+  expect((await transitionKitchenOrderAction(transition)).status).toBe("success");
+  transition.set("nextStatus", "COMPLETED");
+  expect((await transitionRestaurantOrderAction(transition)).status).toBe("success");
+  const metrics = await getRestaurantWorkspaceMetrics(workspaceId);
+  expect(metrics.todaySales).toBeCloseTo(original.todaySales + 100, 2);
+  expect(metrics.todayOrders).toBe(original.todayOrders + 1);
+});
+
 it("a repeated successful POS action produces one order, KOT and audit event", async () => {
   const { createPosOrderAction } = await import("@/app/(dashboard)/restaurant/v1-actions");
   const data = form(); const before = await counts();
