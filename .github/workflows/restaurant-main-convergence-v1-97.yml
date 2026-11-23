@@ -9,6 +9,23 @@ permissions:
   contents: read
 
 jobs:
+  dependency-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+      - run: npm ci
+      - name: Full audit advisory containment
+        run: node scripts/restaurant-audit-dev-advisories-v1-96.cjs
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=moderate
+
   pg18-convergence-certification:
     runs-on: ubuntu-latest
     timeout-minutes: 100
@@ -68,12 +85,6 @@ jobs:
           NODE
 
       - run: npm ci
-
-      - name: Full audit advisory containment
-        run: node scripts/restaurant-audit-dev-advisories-v1-96.cjs
-
-      - name: Production dependency audit
-        run: npm audit --omit=dev --audit-level=moderate
 
       - name: Prisma validate
         run: npx prisma validate
