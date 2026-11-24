@@ -20,10 +20,13 @@ jobs:
         with:
           node-version: '22.x'
           cache: npm
-      - run: npm ci
+      - name: Install locked dependencies
+        id: install
+        run: npm ci
       - name: Full audit advisory containment
         run: node scripts/restaurant-audit-dev-advisories-v1-96.cjs
       - name: Production dependency audit
+        if: ${{ always() && steps.install.outcome == 'success' }}
         run: npm audit --omit=dev --audit-level=moderate
 
   pg18-convergence-certification:
@@ -156,10 +159,10 @@ jobs:
           tests/integration/restaurant-historical-rehearsal-v1-88.test.ts
           tests/unit/restaurant-release-build-guard-v1-88.test.ts
 
-      - name: Production build wrapper
+      - name: Production-mode build with isolated preview auth fixtures
         env:
           NODE_ENV: production
-          VERCEL_ENV: production
+          VERCEL_ENV: preview
           RUN_PRISMA_MIGRATIONS_ON_BUILD: "0"
         run: npm run build
 
