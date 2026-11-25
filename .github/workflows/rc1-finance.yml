@@ -62,7 +62,7 @@ jobs:
       - name: Production Next.js build gate
         env:
           NODE_ENV: production
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Zml4dHVyZS5jbGVyay5hY2NvdW50cy5kZXYk
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Zml4dHVyZS5jbGVyLmFjY291bnRzLmRldi5kZXYk
           CLERK_SECRET_KEY: sk_test_fixture
           CLERK_OAUTH_CLIENT_ID: fixture-client
         run: npm run build:web
@@ -82,22 +82,7 @@ jobs:
         run: npx eslint app components lib
 
       - name: Production dependency audit
-        shell: bash
-        run: |
-          runtime_dir="$(mktemp -d)"
-          node - "$runtime_dir/package.json" <<'NODE'
-          const fs = require("node:fs");
-          const source = require("./package.json");
-          fs.writeFileSync(process.argv[2], JSON.stringify({
-            name: "munshios-runtime-audit",
-            version: source.version,
-            private: true,
-            dependencies: source.dependencies,
-          }, null, 2));
-          NODE
-          cd "$runtime_dir"
-          npx --yes npm@11.19.1 install --ignore-scripts --no-audit --no-fund --omit=peer
-          npx --yes npm@11.19.1 audit --omit=peer --audit-level=high
+        run: npm audit --omit=dev --audit-level=moderate
 
   desktop-smoke:
     runs-on: windows-latest
