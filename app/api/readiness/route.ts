@@ -27,7 +27,7 @@ export async function GET() {
       );
     }
     return NextResponse.json(
-      { ok: true, database: "ready", auth: "configured", revision: deploymentRevision(), fbr: getFbrCredentialDeploymentReadiness() },
+      { ok: true, database: "ready", auth: "configured", environment: process.env.MUNSHIOS_DEPLOYMENT_ENVIRONMENT === "staging" ? "staging" : "production", revision: deploymentRevision(), fbr: getFbrCredentialDeploymentReadiness() },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch {

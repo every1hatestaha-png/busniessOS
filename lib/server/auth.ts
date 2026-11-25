@@ -2,7 +2,8 @@ import "server-only";
 
 import { cache } from "react";
 import { auth, clerkClient } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { canOpenRestaurantStaffPage } from "@/lib/restaurant/station-access";
 import { cookies, headers } from "next/headers";
 
 import { db } from "@/lib/server/db";
@@ -211,7 +212,7 @@ export const getCurrentUser = cache(async () => {
   if (!user) {
     const requestHeaders = await headers();
     const isElectron = (requestHeaders.get("user-agent") || "").includes("Electron");
-    redirect(isElectron ? "/desktop-auth" : "/sign-in");
+    redirect(isElectron && process.env.MUNSHIOS_DEPLOYMENT_ENVIRONMENT !== "staging" ? "/desktop-auth" : "/sign-in");
   }
   return user;
 });
@@ -221,6 +222,26 @@ const getUserWorkspaceMemberships = cache(async (userId: string) => db.workspace
   orderBy: [{ createdAt: "asc" }, { workspaceId: "asc" }],
   select: { workspaceId: true, role: true, workspace: true },
 }));
+
+// Resolve one trusted membership for the current request. The active cookie is
+// always paired with the authenticated user ID, and an invalid or stale cookie
+// falls back to the same deterministic first membership as the old list lookup.
+// Do not hydrate every workspace name merely to resolve the active tenant.
+const getCurrentWorkspaceMembership = cache(async (userId: string, activeWorkspaceId?: string) => {
+  const select = { workspaceId: true, role: true, workspace: true } as const;
+  if (activeWorkspaceId) {
+    const activeMembership = await db.workspaceMember.findFirst({
+      where: { userId, workspaceId: activeWorkspaceId },
+      select,
+    });
+    if (activeMembership) return activeMembership;
+  }
+  return db.workspaceMember.findFirst({
+    where: { userId },
+    orderBy: [{ createdAt: "asc" }, { workspaceId: "asc" }],
+    select,
+  });
+});
 
 const getCurrentUserWorkspaceMemberships = cache(async () => {
   const user = await getCurrentUser();
@@ -234,8 +255,7 @@ export const getCurrentWorkspace = cache(async () => {
   if (!user) return null;
 
   const activeWorkspaceId = (await cookies()).get("businessos_workspace")?.value;
-  const memberships = await getUserWorkspaceMemberships(user.id);
-  const membership = memberships.find((entry) => entry.workspaceId === activeWorkspaceId) ?? memberships[0];
+  const membership = await getCurrentWorkspaceMembership(user.id, activeWorkspaceId);
   if (!membership) return null;
 
   const vertical = resolveWorkspaceVertical(membership.workspace);
@@ -262,5 +282,24 @@ export async function listCurrentUserWorkspaces() {
 export async function requireWorkspace() {
   const context = await getCurrentWorkspace();
   if (!context) redirect("/onboarding");
+
+  // Fail closed on *every* protected page/action, not only the dashboard
+  // layout (App Router can reuse that layout between client navigations).
+  // A caller-provided request header cannot spoof the path because proxy.ts
+  // always overwrites it with the real request URL.
+  if (context.vertical === "RESTAURANT" && context.role === "STAFF") {
+    const path = (await headers()).get("x-munshios-internal-path");
+    const stations = await db.$queryRaw<Array<{ station: "CASHIER" | "KITCHEN" }>>`
+      SELECT rss."station" FROM "restaurant_staff_stations" rss
+      INNER JOIN "workspace_members" wm
+        ON wm."workspaceId"=rss."workspaceId" AND wm."userId"=rss."userId"
+      WHERE rss."workspaceId"=${context.workspaceId}
+        AND rss."userId"=${context.user.id}
+        AND wm."role"='STAFF'
+      LIMIT 1
+    `;
+    if (!canOpenRestaurantStaffPage(path, stations[0]?.station ?? null)) notFound();
+  }
+
   return context;
 }

@@ -26,6 +26,7 @@ describe("database readiness endpoint", () => {
       productionTransmission: "disabled",
     });
     delete process.env.VERCEL_GIT_COMMIT_SHA;
+    delete process.env.MUNSHIOS_DEPLOYMENT_ENVIRONMENT;
   });
 
   it("returns ready only when the deployed runtime database has every shipped migration", async () => {
@@ -36,6 +37,7 @@ describe("database readiness endpoint", () => {
       ok: true,
       database: "ready",
       auth: "configured",
+      environment: "production",
       revision: null,
       fbr: { credentialEncryption: "configured", productionTransmission: "disabled" },
     });
@@ -53,8 +55,19 @@ describe("database readiness endpoint", () => {
       ok: true,
       database: "ready",
       auth: "configured",
+      environment: "production",
       revision: "5127483238af",
       fbr: { credentialEncryption: "missing", productionTransmission: "disabled" },
+    });
+  });
+
+  it("identifies a staging-only backend without leaking secrets", async () => {
+    process.env.MUNSHIOS_DEPLOYMENT_ENVIRONMENT = "staging";
+    checkDatabaseReadiness.mockResolvedValue({ ready: true, pendingCount: 0 });
+    const response = await GET();
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true, database: "ready", auth: "configured", environment: "staging",
     });
   });
 

@@ -7,6 +7,7 @@ import { writeAudit } from "@/lib/server/audit";
 import { db } from "@/lib/server/db";
 import { IndustryDomainError, requireWorkspaceModule, type IndustryContext } from "@/lib/server/industry-modules";
 import { releaseRestaurantTableIfSettled } from "@/lib/server/restaurant-table-settlement";
+import { validateRestaurantModifiers } from "@/lib/restaurant/order-modifier-validation";
 
 export type RestaurantOrderSource = "POS" | "WHATSAPP" | "MANUAL";
 export type RestaurantFulfillmentType = "DINE_IN" | "TAKEAWAY" | "DELIVERY";
@@ -114,11 +115,13 @@ async function priceLines(tx: Prisma.TransactionClient, workspaceId: string, lin
       throw new IndustryDomainError("INVALID_STATE", "Menu item quantity must be positive.");
     }
     const notes = cleanOptional(line.notes, 300);
-    const modifiers = Array.isArray(line.modifiers)
-      ? line.modifiers.map((modifier) => modifier.trim()).filter(Boolean).slice(0, 20)
-      : [];
-    if (modifiers.some((modifier) => modifier.length > 80)) {
-      throw new IndustryDomainError("INVALID_STATE", "Order modifiers must be 80 characters or fewer.");
+    let modifiers: string[];
+    try {
+      modifiers = validateRestaurantModifiers(line.modifiers);
+    } catch (error) {
+      throw new IndustryDomainError(
+        "INVALID_STATE", error instanceof Error ? error.message : "Menu options are invalid.",
+      );
     }
 
     const rows = await tx.$queryRaw<Array<{ id: string; name: string; price: Prisma.Decimal; isActive: boolean; isAvailable: boolean }>>`
@@ -151,6 +154,9 @@ async function insertRestaurantOrder(
   }
   if (input.fulfillmentType === "DINE_IN" && !input.restaurantTableId) {
     throw new IndustryDomainError("INVALID_STATE", "Dine-in orders require a restaurant table.");
+  }
+  if (input.fulfillmentType !== "DINE_IN" && input.restaurantTableId) {
+    throw new IndustryDomainError("INVALID_STATE", "Only dine-in orders can reserve a restaurant table.");
   }
   if (input.fulfillmentType === "DELIVERY" && !input.deliveryAddress?.trim()) {
     throw new IndustryDomainError("INVALID_STATE", "Delivery orders require an address.");
@@ -322,6 +328,15 @@ export async function createPosRestaurantOrder(context: IndustryContext, input: 
   if (hasFinancialOverride && !managerRoles.has(context.role)) {
     throw new IndustryDomainError("PERMISSION_DENIED", "Manager approval is required for POS financial overrides");
   }
+  // Request hashes must include every accepted kitchen option. Never hash only
+  // the first 20 values while the database rejects or loses the rest.
+  let normalizedOptions: string[][];
+  try {
+    normalizedOptions = input.items.map(line => validateRestaurantModifiers(line.modifiers));
+  } catch (error) {
+    throw new IndustryDomainError("INVALID_STATE",
+      error instanceof Error ? error.message : "Menu options are invalid.");
+  }
   const requestId = input.idempotencyKey?.trim().toLowerCase();
   if (requestId) assertUuid(requestId, "Order request");
   const requestHash = requestId ? createHash("sha256").update(JSON.stringify({
@@ -334,10 +349,10 @@ export async function createPosRestaurantOrder(context: IndustryContext, input: 
     notes: input.notes?.trim() || null,
     discountAmount: input.discountAmount ?? 0,
     taxAmount: input.taxAmount ?? 0,
-    items: input.items.map(line => ({
+    items: input.items.map((line, index) => ({
       menuItemId: line.menuItemId.toLowerCase(), quantity: line.quantity,
       notes: line.notes?.trim() || null,
-      modifiers: line.modifiers?.map(value => value.trim()).filter(Boolean).slice(0, 20) ?? [],
+      modifiers: normalizedOptions[index],
     })),
   })).digest("hex") : null;
   return db.$transaction(async (tx) => {
@@ -554,6 +569,8 @@ export async function listRestaurantOrders(workspaceId: string, limit = 100, opt
   source?: RestaurantOrderSource;
   oldestFirst?: boolean;
   outstandingOnly?: boolean;
+  /** Only READY: order by actual Kitchen READY time before applying LIMIT. */
+  readyHandoffFirst?: boolean;
 }) {
   await requireWorkspaceModule(workspaceId, "restaurant");
   const safeLimit = Math.max(1, Math.min(Math.trunc(limit), 250));
@@ -561,6 +578,23 @@ export async function listRestaurantOrders(workspaceId: string, limit = 100, opt
   const sourceFilter = options?.source ? Prisma.sql`AND ro."source"=${options.source}` : Prisma.empty;
   const outstandingFilter = options?.outstandingOnly ? Prisma.sql`AND restaurant_order_net_outstanding(ro."id", ro."workspaceId") > 0` : Prisma.empty;
   const direction = options?.oldestFirst ? Prisma.sql`ASC` : Prisma.sql`DESC`;
+  if (options?.readyHandoffFirst && (
+    options.statuses?.length !== 1 || options.statuses[0] !== "READY"
+  )) {
+    throw new IndustryDomainError("INVALID_STATE", "Kitchen handoff ordering requires only READY orders.");
+  }
+  // Select the longest-waiting Kitchen-ready tickets BEFORE the 60-row limit.
+  // Absence of a ready timestamp sorts last; tenant scope remains on both tables.
+  const orderBy = options?.readyHandoffFirst
+    ? Prisma.sql`COALESCE((
+        SELECT MAX(kt."readyAt")
+        FROM "kitchen_tickets" kt
+        WHERE kt."restaurantOrderId"=ro."id"
+          AND kt."workspaceId"=ro."workspaceId"
+          AND kt."status" IN ('READY','SERVED')
+          AND kt."readyAt" IS NOT NULL
+      ), 'infinity'::timestamptz) ASC, ro."createdAt" ASC, ro."id" ASC`
+    : Prisma.sql`ro."createdAt" ${direction}, ro."id" ${direction}`;
   const rows = await db.$queryRaw<Array<{
     id: string; orderNumber: string; source: RestaurantOrderSource; fulfillmentType: RestaurantFulfillmentType;
     status: RestaurantOrderStatus; paymentStatus: RestaurantPaymentStatus; customerName: string | null; customerPhone: string | null;
@@ -572,10 +606,62 @@ export async function listRestaurantOrders(workspaceId: string, limit = 100, opt
     LEFT JOIN "restaurant_tables" rt ON rt."id"=ro."restaurantTableId" AND rt."workspaceId"=ro."workspaceId"
     WHERE ro."workspaceId"=${workspaceId}::uuid
       ${statusFilter} ${sourceFilter} ${outstandingFilter}
-    ORDER BY ro."createdAt" ${direction}, ro."id" ${direction}
+    ORDER BY ${orderBy}
     LIMIT ${safeLimit}
   `;
   return rows.map((row) => ({ ...row, total: Number(row.total) }));
+}
+
+/**
+ * Complete restaurant floor READY state, independent of sampled manager orders.
+ * A heavily backed-up kitchen must not cause the floor overview to hide tables
+ * whose READY orders happen to fall outside the visible order-card limit.
+ */
+export async function listRestaurantReadyTableIds(workspaceId: string): Promise<string[]> {
+  await requireWorkspaceModule(workspaceId, "restaurant");
+  const rows = await db.$queryRaw<Array<{ tableId: string }>>`
+    SELECT DISTINCT ro."restaurantTableId"::text AS "tableId"
+    FROM "restaurant_orders" ro
+    WHERE ro."workspaceId"=${workspaceId}::uuid
+      AND ro."status"='READY'
+      AND ro."restaurantTableId" IS NOT NULL
+  `;
+  return rows.map((row) => row.tableId);
+}
+
+/**
+ * Tenant-scoped KOT line snapshots for exactly the orders displayed by the
+ * kitchen page. Avoids one query per ticket and never exposes prices/costs.
+ */
+export async function listRestaurantKitchenOrderLines(workspaceId: string, orderIds: readonly string[]) {
+  await requireWorkspaceModule(workspaceId, "restaurant");
+  if (!orderIds.length) return [];
+  if (orderIds.length > 250) throw new IndustryDomainError("INVALID_STATE", "Too many kitchen tickets requested.");
+  const rows = await db.$queryRaw<Array<{
+    orderId: string; itemName: string; quantity: Prisma.Decimal; notes: string | null; modifiers: unknown; categoryName: string | null;
+  }>>`
+    SELECT roi."restaurantOrderId" AS "orderId", roi."itemName", roi."quantity",
+           roi."notes", roi."modifiers", rmc."name" AS "categoryName"
+    FROM "restaurant_order_items" roi
+    INNER JOIN "restaurant_orders" ro ON ro."id" = roi."restaurantOrderId"
+    LEFT JOIN "restaurant_menu_items" rmi
+      ON rmi."id"=roi."menuItemId" AND rmi."workspaceId"=ro."workspaceId"
+    LEFT JOIN "restaurant_menu_categories" rmc
+      ON rmc."id"=rmi."categoryId" AND rmc."workspaceId"=ro."workspaceId"
+    WHERE ro."workspaceId" = ${workspaceId}::uuid
+      AND ro."id" IN (${Prisma.join(orderIds.map((id) => Prisma.sql`${id}::uuid`))})
+      AND ro."status" IN ('CONFIRMED', 'PREPARING', 'READY')
+    ORDER BY ro."createdAt" ASC, roi."createdAt" ASC, roi."id" ASC
+  `;
+  return rows.map((row) => ({
+    ...row,
+    quantity: Number(row.quantity),
+    // JSONB order modifiers are untrusted: only render bounded, nonblank text.
+    modifiers: Array.isArray(row.modifiers)
+      ? row.modifiers.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+          .slice(0, 20).map((entry) => entry.slice(0, 120))
+      : [],
+  }));
 }
 
 export async function getRestaurantOrder(workspaceId: string, orderId: string) {
@@ -628,17 +714,27 @@ export async function getRestaurantWorkspaceMetrics(workspaceId: string) {
     todaySales: Prisma.Decimal; todayOrders: number; liveOrders: number; pendingWhatsapp: number; readyOrders: number;
   }>>`
     SELECT
-      COALESCE(SUM("total") FILTER (
-        WHERE "status"='COMPLETED' AND "createdAt" >= (date_trunc('day', now() AT TIME ZONE ${timezone}) AT TIME ZONE ${timezone})
+      -- Restaurant returns (including compensating reversals) reduce a
+      -- completed order's net sales. Summing the original total overstated
+      -- revenue after a refund/return, even though receipts were correct.
+      COALESCE(SUM(GREATEST(
+        ro."total" - COALESCE((
+          SELECT SUM(rr."total")
+          FROM "restaurant_returns" rr
+          WHERE rr."workspaceId"=ro."workspaceId"
+            AND rr."restaurantOrderId"=ro."id"
+        ), 0), 0
+      )) FILTER (
+        WHERE ro."status"='COMPLETED' AND ro."completedAt" >= (date_trunc('day', now() AT TIME ZONE ${timezone}) AT TIME ZONE ${timezone})
       ), 0) AS "todaySales",
       COUNT(*) FILTER (
-        WHERE "createdAt" >= (date_trunc('day', now() AT TIME ZONE ${timezone}) AT TIME ZONE ${timezone})
+        WHERE ro."createdAt" >= (date_trunc('day', now() AT TIME ZONE ${timezone}) AT TIME ZONE ${timezone})
       )::int AS "todayOrders",
-      COUNT(*) FILTER (WHERE "status" IN ('CONFIRMED','PREPARING','READY'))::int AS "liveOrders",
-      COUNT(*) FILTER (WHERE "source"='WHATSAPP' AND "status"='PENDING_REVIEW')::int AS "pendingWhatsapp",
-      COUNT(*) FILTER (WHERE "status"='READY')::int AS "readyOrders"
-    FROM "restaurant_orders"
-    WHERE "workspaceId"=${workspaceId}::uuid
+      COUNT(*) FILTER (WHERE ro."status" IN ('CONFIRMED','PREPARING','READY'))::int AS "liveOrders",
+      COUNT(*) FILTER (WHERE ro."source"='WHATSAPP' AND ro."status"='PENDING_REVIEW')::int AS "pendingWhatsapp",
+      COUNT(*) FILTER (WHERE ro."status"='READY')::int AS "readyOrders"
+    FROM "restaurant_orders" ro
+    WHERE ro."workspaceId"=${workspaceId}::uuid
   `;
   const row = rows[0] ?? { todaySales: new Prisma.Decimal(0), todayOrders: 0, liveOrders: 0, pendingWhatsapp: 0, readyOrders: 0 };
   return { ...row, todaySales: Number(row.todaySales) };
